@@ -4,8 +4,11 @@ import type { Command, CommandResult } from '../shared/types.js';
 import { DomainError, mutate, report, seed, snapshot, todayKST, type DatabaseState } from './domain.js';
 // One trusted hotel, one process, one PostgreSQL aggregate row. Every read/write
 // shares this queue; failed mutations never publish partial in-memory state.
+// Small-memory PostgreSQL settings so the whole server fits a 512MB host (Render free).
+// The hotel data is one small JSONB row, so tiny buffers do not change behavior.
+export const pgliteOptions={startParams:[...PGlite.defaultStartParams,'-c','shared_buffers=16MB','-c','work_mem=2MB','-c','maintenance_work_mem=8MB','-c','temp_buffers=2MB','-c','wal_buffers=1MB']};
 export async function openStore(dataDir?:string,clock:()=>Date=()=>new Date()) {
- const db=await PGlite.create(dataDir);await db.exec(`CREATE TABLE IF NOT EXISTS hotel_state (id integer PRIMARY KEY CHECK (id=1), payload jsonb NOT NULL); CREATE TABLE IF NOT EXISTS command_requests (request_id text PRIMARY KEY, fingerprint text NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());`);
+ const db=await PGlite.create(dataDir,pgliteOptions);await db.exec(`CREATE TABLE IF NOT EXISTS hotel_state (id integer PRIMARY KEY CHECK (id=1), payload jsonb NOT NULL); CREATE TABLE IF NOT EXISTS command_requests (request_id text PRIMARY KEY, fingerprint text NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());`);
  await db.query('INSERT INTO hotel_state(id,payload) VALUES(1,$1::jsonb) ON CONFLICT(id) DO NOTHING',[JSON.stringify(seed(todayKST(clock())))]);
  let queue:Promise<unknown>=Promise.resolve();
  const serialized=<T>(work:()=>Promise<T>):Promise<T>=>{const task=queue.then(work,work);queue=task.catch(()=>{});return task};
