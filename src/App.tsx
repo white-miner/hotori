@@ -1,83 +1,2434 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowDownLeft, ArrowRight, ArrowUpRight, BedDouble, Bell, Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Clock3, Coffee, DoorOpen, LayoutDashboard, LoaderCircle, LockKeyhole, LogIn, LogOut, Menu, MoreHorizontal, Plus, Search, Settings2, ShieldCheck, Sparkles, TrendingUp, Users, Wrench, X } from 'lucide-react';
-import type { AppState, CommandType, Reservation, Room, RoomIssue, Report } from '../shared/types';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import {
+  ArrowDownLeft,
+  ArrowRight,
+  ArrowUpRight,
+  BedDouble,
+  Bell,
+  Building2,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleHelp,
+  ClipboardList,
+  Clock3,
+  Coffee,
+  DoorOpen,
+  LayoutDashboard,
+  LoaderCircle,
+  LockKeyhole,
+  LogIn,
+  LogOut,
+  Menu,
+  MoreHorizontal,
+  Plus,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Users,
+  Wrench,
+  X,
+} from "lucide-react";
+import type {
+  AppState,
+  CommandType,
+  Reservation,
+  Room,
+  RoomIssue,
+  Report,
+} from "../shared/types";
 
-type Page = 'overview'|'reservations'|'rooms'|'reports'|'team'|'settings';
-type Modal = {kind:'reservation';reservation?:Reservation}|{kind:'room';room:Room}|{kind:'roomCreate'}|{kind:'member'}|{kind:'cancel';reservation:Reservation}|null;
-const navigation: {id:Page;label:string;icon:typeof LayoutDashboard}[] = [{id:'overview',label:'운영 현황',icon:LayoutDashboard},{id:'reservations',label:'예약 관리',icon:CalendarDays},{id:'rooms',label:'객실 관리',icon:BedDouble},{id:'reports',label:'매출 리포트',icon:TrendingUp},{id:'team',label:'팀 관리',icon:Users},{id:'settings',label:'호텔 설정',icon:Settings2}];
-const money = (n:number) => new Intl.NumberFormat('ko-KR').format(n);
-const won = (n:number) => `${money(n)}원`;
-const isISODate=(date:string)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;const value=new Date(`${date}T12:00:00Z`);return Number.isFinite(value.getTime())&&value.toISOString().slice(0,10)===date;};
-const addDays=(date:string, amount:number)=>{if(!isISODate(date))return '';const d=new Date(`${date}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+amount);return Number.isFinite(d.getTime())?d.toISOString().slice(0,10):'';};
-const longDate=(d:string)=>new Date(`${d}T12:00:00Z`).toLocaleDateString('ko-KR',{month:'long',day:'numeric',weekday:'long',timeZone:'Asia/Seoul'});
-const shortDate=(d:string)=>d.slice(5).replace('-','.');
-const statusLabels:Record<Reservation['status'],string>={confirmed:'예약 확정',checked_in:'투숙 중',checked_out:'퇴실 완료',cancelled:'취소'};
-const roleLabels={owner:'대표',manager:'매니저',front:'프런트',housekeeping:'객실관리'};
-const cleaningLabels={clean:'청소 완료',dirty:'청소 필요',cleaning:'청소 중'};
-const facilityLabels={normal:'정상',inspection:'점검 중',blocked:'판매 중지'};
+type Page =
+  "overview" | "reservations" | "rooms" | "reports" | "team" | "settings";
+type Modal =
+  | { kind: "reservation"; reservation?: Reservation }
+  | { kind: "room"; room: Room }
+  | { kind: "roomCreate" }
+  | { kind: "member" }
+  | { kind: "cancel"; reservation: Reservation }
+  | null;
+const navigation: { id: Page; label: string; icon: typeof LayoutDashboard }[] =
+  [
+    { id: "overview", label: "운영 현황", icon: LayoutDashboard },
+    { id: "reservations", label: "예약 관리", icon: CalendarDays },
+    { id: "rooms", label: "객실 관리", icon: BedDouble },
+    { id: "reports", label: "매출 리포트", icon: TrendingUp },
+    { id: "team", label: "팀 관리", icon: Users },
+    { id: "settings", label: "호텔 설정", icon: Settings2 },
+  ];
+const money = (n: number) => new Intl.NumberFormat("ko-KR").format(n);
+const won = (n: number) => `${money(n)}원`;
+const isISODate = (date: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const value = new Date(`${date}T12:00:00Z`);
+  return (
+    Number.isFinite(value.getTime()) &&
+    value.toISOString().slice(0, 10) === date
+  );
+};
+const addDays = (date: string, amount: number) => {
+  if (!isISODate(date)) return "";
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + amount);
+  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : "";
+};
+const longDate = (d: string) =>
+  new Date(`${d}T12:00:00Z`).toLocaleDateString("ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+    timeZone: "Asia/Seoul",
+  });
+const shortDate = (d: string) => d.slice(5).replace("-", ".");
+const statusLabels: Record<Reservation["status"], string> = {
+  confirmed: "예약 확정",
+  checked_in: "투숙 중",
+  checked_out: "퇴실 완료",
+  cancelled: "취소",
+};
+const roleLabels = {
+  owner: "대표",
+  manager: "매니저",
+  front: "프런트",
+  housekeeping: "객실관리",
+};
+const cleaningLabels = {
+  clean: "청소 완료",
+  dirty: "청소 필요",
+  cleaning: "청소 중",
+};
+const facilityLabels = {
+  normal: "정상",
+  inspection: "점검 중",
+  blocked: "판매 중지",
+};
 
-async function api<T>(url:string, init?:RequestInit):Promise<T>{let res:Response;try{res=await fetch(url,init);}catch{throw new Error('호텔 서버에 연결할 수 없습니다. 잠시 후 다시 불러와 주세요.');}let value;try{value=await res.json();}catch{throw new Error('호텔 서버를 준비하고 있습니다. 잠시 후 다시 불러와 주세요.');}if(!res.ok)throw new Error(value.error||'요청을 처리하지 못했습니다. 다시 시도해 주세요.');return value;}
-
-export default function App(){
- const [state,setState]=useState<AppState|null>(null); const [page,setPage]=useState<Page>('overview'); const [date,setDate]=useState(''); const [loadError,setLoadError]=useState(''); const [refreshing,setRefreshing]=useState(false); const [modal,setModal]=useState<Modal>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [toast,setToast]=useState(''); const [more,setMore]=useState(false); const [search,setSearch]=useState(''); const [roomFilter,setRoomFilter]=useState('all'); const [arrivalTab,setArrivalTab]=useState<'arrivals'|'departures'|'staying'>('arrivals');
- const [reportStart,setReportStart]=useState(''); const [reportEnd,setReportEnd]=useState(''); const [report,setReport]=useState<Report|null>(null); const [reportError,setReportError]=useState(''); const [reportLoading,setReportLoading]=useState(false); const loadRef=useRef(0);const commandInFlight=useRef(false);const pendingCommand=useRef<{fingerprint:string;requestId:string}|null>(null);
- async function load(day=date){const version=++loadRef.current;setRefreshing(true); try{const value=await api<AppState>(`/api/state${day?'?date='+day:''}`);if(version!==loadRef.current)return;setState(value);setDate(value.selectedDate);setLoadError(''); if(!reportStart){setReportStart(value.today);setReportEnd(value.today);}}catch(e){if(version===loadRef.current)setLoadError((e as Error).message);}finally{if(version===loadRef.current)setRefreshing(false);}}
- useEffect(()=>{void load();},[]);
- useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),4500);return()=>clearTimeout(timer);},[toast]);
- async function command(type:CommandType,data:Record<string,unknown>,close=true){if(commandInFlight.current)return false;commandInFlight.current=true;setBusy(true);setError('');const fingerprint=JSON.stringify({type,data});if(pendingCommand.current?.fingerprint!==fingerprint)pendingCommand.current={fingerprint,requestId:crypto.randomUUID()};const requestId=pendingCommand.current.requestId;try{const result=await api<{message:string}>('/api/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,data,requestId})});pendingCommand.current=null;if(close)setModal(null);setToast(result.message);setReport(null);if(type==='demo.plan'){const today=state?.today||'';setReportStart(today);setReportEnd(today);setReportError('');await load(today);}else await load();return true;}catch(e){setError((e as Error).message);return false;}finally{commandInFlight.current=false;setBusy(false);}}
- function open(next:Modal){setError('');setModal(next);}
- function navigate(next:Page){setPage(next);setMore(false);setError('');setSearch('');}
- async function getReport(e?:FormEvent){e?.preventDefault();if(!isISODate(reportStart)||!isISODate(reportEnd)||reportEnd<reportStart){setReportError('시작일과 종료일을 올바르게 선택해 주세요.');setReport(null);return;}setReportLoading(true);setReportError('');try{setReport(await api<Report>(`/api/reports?start=${reportStart}&end=${reportEnd}`));}catch(e){setReport(null);setReportError((e as Error).message);}finally{setReportLoading(false);}}
- if(!state)return <div className="startup"><div className="brand-mark">h.</div><h1>호토리</h1>{loadError?<><p role="alert">{loadError}</p><button className="button primary" onClick={()=>void load()}>다시 불러오기</button></>:<p><LoaderCircle className="spin" size={18}/> 호텔의 하루를 준비하고 있어요</p>}</div>;
- const s=state; const d=s.dashboard; const roomType=(id:string)=>s.roomTypes.find(t=>t.id===id)?.name||id; const channel=(id:string)=>s.channels.find(c=>c.id===id); const occupied=(room:Room)=>s.reservations.find(r=>r.status!=='cancelled'&&r.status!=='checked_out'&&r.checkIn<=date&&(r.checkOut>date||(r.status==='checked_in'&&date<=s.today))&&r.roomIds.includes(room.id)); const selectedRoom=modal?.kind==='room'?(s.rooms.find(r=>r.id===modal.room.id)||modal.room):null;
- const reservations=s.reservations.filter(r=>(`${r.guestName} ${r.phone} ${r.id} ${r.roomIds.map(id=>s.rooms.find(room=>room.id===id)?.number).join(' ')}`).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
- const dayReservations=s.reservations.filter(r=>r.status!=='cancelled'&&(arrivalTab==='arrivals'?r.checkIn===date:arrivalTab==='departures'?(r.checkOut===date||(date===s.today&&r.status==='checked_in'&&r.checkOut<s.today)):r.checkIn<=date&&(r.checkOut>date||(r.status==='checked_in'&&r.checkOut<s.today&&date<=s.today))));
- const activeIssues=s.issues.filter(i=>i.status!=='resolved');
- function ReservationTable({items,compact=false}:{items:Reservation[];compact?:boolean}){return <div className="reservation-table"><div className="table-head"><span>고객 / 예약 정보</span><span>객실</span><span>예약 채널</span><span>판매 금액</span><span>상태</span><span/></div>{!items.length?<Empty icon={<CalendarDays/>} title="예약 내역이 없어요" text={compact?'선택한 날짜에 예정된 일정이 없습니다.':'검색 조건을 바꾸거나 새 예약을 등록해 주세요.'}/>:items.map(r=><button className="reservation-row" key={r.id} onClick={()=>open({kind:'reservation',reservation:r})}><span className="guest-cell"><span className="guest-avatar">{r.guestName.slice(0,1)}</span><span><strong>{r.guestName}</strong><small>{shortDate(r.checkIn)} → {shortDate(r.checkOut)} · {r.quantity}실</small></span></span><span><strong>{r.roomIds.length?r.roomIds.map(id=>s.rooms.find(room=>room.id===id)?.number).join(', '):'미배정'}</strong><small>{roomType(r.typeId)}</small></span><span className="channel-cell"><i style={{background:channel(r.channelId)?.color||'#4b7667'}}/>{channel(r.channelId)?.name}</span><span className="price">{won(r.totalAmount)}</span><span><Status status={r.status}/></span><ChevronRight size={16}/></button>)}</div>}
- return <div className="app-shell">
-  <aside className="sidebar"><a className="brand" href="#" onClick={e=>{e.preventDefault();navigate('overview');}}><span className="brand-mark">h.</span><span>hotori<span className="brand-korean">곁에 있는 운영 파트너</span></span></a><div className="property-switch"><span className="property-icon"><Building2 size={18}/></span><div><strong>{s.property.name}</strong><small>호텔 운영 워크스페이스</small></div><ChevronDown size={15}/></div><div className="nav-label">WORKSPACE</div><nav aria-label="주 메뉴">{navigation.map(n=><button key={n.id} onClick={()=>navigate(n.id)} className={`nav-item ${page===n.id?'active':''}`}><n.icon size={19}/><span>{n.label}</span>{n.id==='reservations'&&<span className="nav-count">{d.arrivals}</span>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-tip"><span className="tip-label"><Sparkles size={15}/> 함께 시작하는 호토리</span><p>작은 기록이 모여<br/>더 편안한 운영이 됩니다.</p><button onClick={()=>navigate('settings')}>내 플랜 살펴보기 <ArrowRight size={14}/></button></div><div className="profile"><span className="profile-avatar">운</span><div><strong>호텔 운영자</strong><small>데모 관리자</small></div><span className={`plan-tag ${s.plan}`}>{s.plan==='pro'?'PRO':'FREE'}</span></div></div></aside>
-  <div className="workspace"><header className="topbar"><div className="breadcrumb">워크스페이스 <ChevronRight size={13}/><strong>{navigation.find(n=>n.id===page)?.label}</strong></div><div className="topbar-right"><span className="demo-pill"><span/>데모 호텔</span><span className="saved"><ShieldCheck size={14}/>{refreshing?'불러오는 중':'변경사항 저장됨'}</span><button className="icon-button help-button" aria-label="데모 이용 안내" onClick={()=>setToast('이 화면은 체험용 호텔입니다. 예약과 변경 내용은 현재 데모 호텔에 저장됩니다.')}><CircleHelp size={18}/></button><span className="top-avatar">운</span></div></header>
-  <div className="mobile-header"><span className="mobile-brand">h. <b>hotori</b></span><span className="demo-pill"><span/>데모 호텔</span><span className={`plan-tag ${s.plan}`}>{s.plan.toUpperCase()}</span></div>
-  <main><div className="page-heading"><div><div className="eyebrow">{page==='overview'?'YOUR DAILY OPERATIONS': 'HOTORI WORKSPACE'}</div><h1>{page==='overview'?'호텔의 하루를 한눈에.':navigation.find(n=>n.id===page)?.label}</h1><p>{page==='overview'?`${s.property.name}의 운영 현황을 확인해 보세요.`:page==='reservations'?'예약부터 체크아웃까지, 놓치는 일정 없이.':page==='rooms'?'객실 컨디션과 인수인계를 함께 살펴보세요.':page==='reports'?'객실 판매금액과 예상 정산액을 구분해 확인하세요.':page==='team'?'함께 일하는 동료와 근무 기록을 관리하세요.':'호텔에 맞는 운영 환경을 만들어 보세요.'}</p></div>{(page==='overview'||page==='reservations')&&<button className="button primary" onClick={()=>open({kind:'reservation'})}><Plus size={17}/>새 예약 등록</button>}{page==='rooms'&&<button className="button primary" onClick={()=>open({kind:'roomCreate'})}><Plus size={17}/>객실 등록</button>}{page==='team'&&<button className="button primary" onClick={()=>open({kind:'member'})}><Plus size={17}/>구성원 등록</button>}</div>
-   {loadError&&<div className="error-banner" role="alert">{loadError}<button onClick={()=>void load()}>다시 시도</button></div>}
-   {error&&!modal&&<div className="error-banner" role="alert">{error}<button onClick={()=>setError('')}>닫기</button></div>}
-   {(page==='overview'||page==='reservations'||page==='rooms')&&<div className="date-toolbar"><div className="date-picker"><CalendarDays size={17}/><input aria-label="운영 기준일" type="date" value={date} min={s.limits.historyStart} max={addDays(s.limits.futureEnd,-1)} onChange={e=>{if(e.target.value)void load(e.target.value);}}/><span>{date===s.today?'오늘':new Date(`${date}T12:00Z`).toLocaleDateString('ko-KR',{weekday:'long'})}</span></div><div className="date-actions"><button className="text-button" onClick={()=>void load(s.today)}>오늘</button><button className="icon-button" aria-label="이전 날짜" disabled={date<=s.limits.historyStart||refreshing} onClick={()=>void load(addDays(date,-1))}><ChevronLeft size={17}/></button><button className="icon-button" aria-label="다음 날짜" disabled={date>=addDays(s.limits.futureEnd,-1)||refreshing} onClick={()=>void load(addDays(date,1))}><ChevronRight size={17}/></button></div><span className="date-caption">{longDate(date)} 기준</span></div>}
-   {page==='overview'&&<>
-    <section className="kpi-grid" aria-label="객실 운영 요약"><Kpi icon={<BedDouble size={19}/>} label="전체 객실" value={d.totalRooms} unit="실" foot="운영 중인 모든 객실"/><Kpi icon={<DoorOpen size={19}/>} label="판매 가능" value={d.availableRooms} unit="실" accent foot={`${d.blockedRooms}실 판매 중지 제외`}/><Kpi icon={<LogIn size={19}/>} label="체크인 예정" value={d.arrivals} unit="실" foot={`미배정 객실 ${d.unassigned}실`}/><Kpi icon={<LogOut size={19}/>} label="체크아웃 예정" value={d.departures} unit="실" foot="퇴실 후 청소 상태를 확인하세요"/></section>
-    <div className="dashboard-grid"><div className="dashboard-main"><section className="panel inventory-panel"><div className="panel-heading"><div><h2>객실 판매 현황 <span className="subtle-badge">{date===s.today?'오늘':shortDate(date)}</span></h2><p>객실 타입별 예약과 남은 객실을 확인하세요.</p></div><button className="text-button with-arrow" onClick={()=>navigate('rooms')}>객실 보기 <ArrowRight size={14}/></button></div><div className="inventory-overview"><div><span className="muted">객실 가동률</span><strong>{Math.round(d.occupancy)}<small>%</small></strong></div><div className="occupancy-bar"><span style={{width:`${Math.min(100,d.occupancy)}%`}}/></div><span className="occupancy-note">{d.soldRooms} / {d.totalRooms}실 판매</span></div><div className="inventory-columns"><span>객실 타입</span><span>전체</span><span>판매</span><span>잔여</span><span>판매율</span></div>{d.inventory.map(t=><div className="inventory-row" key={t.typeId}><span className="type-name"><span className="type-icon"><BedDouble size={17}/></span><strong>{roomType(t.typeId)}</strong></span><span>{t.total}</span><span>{t.sold}</span><span><b className="available-number">{t.available}</b></span><span className="mini-progress"><i style={{width:`${t.total?t.sold/t.total*100:0}%`}}/></span></div>)}<div className="panel-foot"><span className="legend-dot green"/>판매 완료 <span className="legend-dot"/>판매 가능 <span className="inventory-note">외부 예약은 직접 등록해 주세요</span></div></section>
-    <section className="panel schedule-panel"><div className="panel-heading"><div><h2>입실 · 퇴실 일정</h2><p>고객을 맞이할 준비를 함께 확인해요.</p></div><button className="text-button with-arrow" onClick={()=>navigate('reservations')}>전체 예약 <ArrowRight size={14}/></button></div><div className="schedule-tabs">{([{id:'arrivals',label:'체크인',count:d.arrivals},{id:'departures',label:'체크아웃',count:d.departures},{id:'staying',label:'투숙',count:d.soldRooms}] as const).map(t=><button key={t.id} className={arrivalTab===t.id?'active':''} onClick={()=>setArrivalTab(t.id)}>{t.label}<span>{t.count}</span></button>)}</div><ReservationTable items={dayReservations.slice(0,6)} compact/></section></div>
-    <div className="dashboard-aside"><section className="panel sales-card"><div className="panel-heading"><h2>일일 판매금액</h2><span className="small-icon"><TrendingUp size={17}/></span></div><p className="sales-date">{longDate(date)}</p><div className="sales-total">{money(d.revenue)}<span>원</span></div><div className="sales-line"><span>판매 객실</span><strong>{d.soldRooms}실</strong></div><div className="sales-line"><span>채널 수수료</span><strong>− {won(d.fee)}</strong></div><div className="sales-line net"><span>예상 정산액</span><strong>{won(d.netRevenue)}</strong></div><button className="sales-link" onClick={()=>{navigate('reports');setReportStart(date);setReportEnd(date);}}>판매 내역 자세히 보기 <ArrowRight size={15}/></button></section>
-    <section className="panel handoff-panel"><div className="panel-heading"><h2>인수인계 <span className="count-badge">{activeIssues.length}</span></h2><ClipboardList size={17} className="muted"/></div><p className="aside-description">다음 동료에게 전할 객실 이야기</p>{activeIssues.slice(0,4).map(issue=>{const room=s.rooms.find(r=>r.id===issue.roomId);return <button className="handoff-item" key={issue.id} onClick={()=>room&&open({kind:'room',room})}><span className={`issue-dot ${issue.priority}`}/><span><span className="issue-room">{room?.number}호 <span>{issue.category==='repair'?'시설·수리':issue.category==='condition'?'객실 컨디션':'기타'}</span></span><strong>{issue.title}</strong><small>{issue.status==='in_progress'?'처리 중':'확인 필요'}</small></span><ChevronRight size={14}/></button>})}{!activeIssues.length&&<p className="quiet-empty"><Check size={19}/> 모든 인수인계를 확인했어요.</p>}<button className="full-text-button" onClick={()=>{setRoomFilter('issues');navigate('rooms');}}>객실에서 인수인계 확인 <ArrowRight size={14}/></button></section><div className="operating-note"><span><Coffee size={19}/></span><p>바쁜 하루에도 놓치지 않도록.<br/><strong>호토리가 곁에서 기억할게요.</strong></p></div></div></div>
-   </>}
-   {page==='reservations'&&<section className="panel"><div className="list-toolbar"><div><h2>예약 목록 <span className="count-badge">{reservations.length}</span></h2><p>플랜 조회 범위 {s.limits.historyStart} ~ {s.limits.futureEnd} 전날</p></div><label className="search-box"><Search size={17}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="고객명, 연락처, 객실 검색" aria-label="예약 검색"/></label></div><div className="inline-notice"><CalendarDays size={15}/> 날짜 선택은 운영 기준일입니다. 목록에는 현재 플랜에서 조회 가능한 모든 예약이 표시됩니다.</div><ReservationTable items={reservations}/></section>}
-   {page==='rooms'&&<><div className="room-toolbar"><div className="filter-tabs">{[{id:'all',label:'전체 객실'},{id:'available',label:'판매 가능'},{id:'occupied',label:'배정 객실'},{id:'dirty',label:'청소 필요'},{id:'issues',label:'인수인계'}].map(f=><button key={f.id} className={roomFilter===f.id?'active':''} onClick={()=>setRoomFilter(f.id)}>{f.label}</button>)}</div><span className="muted small">등록 {s.rooms.length} / {s.limits.maxRooms??'제한 없음'}실</span></div><div className="room-grid">{s.rooms.filter(room=>roomFilter==='all'||(roomFilter==='available'&&!occupied(room)&&room.facility==='normal')||(roomFilter==='occupied'&&occupied(room))||(roomFilter==='dirty'&&room.cleaning==='dirty')||(roomFilter==='issues'&&activeIssues.some(i=>i.roomId===room.id))).map(room=>{const reservation=occupied(room);const issues=activeIssues.filter(i=>i.roomId===room.id);return <button key={room.id} className={`room-card ${room.facility==='blocked'?'blocked':reservation?'occupied':'vacant'}`} onClick={()=>open({kind:'room',room})}><div className="room-card-top"><span>{room.building} · {room.floor}층</span>{issues.length>0&&<span className="room-issue"><Wrench size={12}/> {issues.length}</span>}</div><div className="room-number">{room.number}<BedDouble size={21}/></div><p>{roomType(room.typeId)}</p><div className="room-card-bottom"><span className={`status-pill ${room.facility!=='normal'?'warning':reservation?'blue':'green'}`}>{room.facility!=='normal'?facilityLabels[room.facility]:reservation?'배정 · '+reservation.guestName:'공실'}</span><span className={room.cleaning==='dirty'?'text-warm':'muted'}>{cleaningLabels[room.cleaning]}</span></div></button>})}</div></>}
-   {page==='reports'&&<><section className="panel report-controls"><div><h2>판매금액 조회</h2><p>숙박일 기준 객실 매출 · 정산액은 수수료를 차감한 예상 금액입니다.</p></div><form onSubmit={getReport}><label>시작일<input type="date" required value={reportStart} min={s.limits.historyStart} max={addDays(s.limits.futureEnd,-1)} onChange={e=>{setReportStart(e.target.value);if(s.plan==='free')setReportEnd(e.target.value);}}/></label><span className="date-separator">—</span><label>종료일<input type="date" required value={reportEnd} min={reportStart||s.limits.historyStart} max={addDays(s.limits.futureEnd,-1)} onChange={e=>setReportEnd(e.target.value)}/></label><button className="button primary" disabled={reportLoading}>{reportLoading?<LoaderCircle size={16} className="spin"/>:<Search size={16}/>}조회</button></form></section>{s.plan==='free'&&<div className="upgrade-banner"><span className="upgrade-icon"><LockKeyhole size={19}/></span><div><strong>하루의 기록을 넘어, 운영의 흐름까지.</strong><p>기간별 매출 집계는 프로에서 제공해요. 무료 플랜은 같은 시작일·종료일로 조회할 수 있습니다.</p></div><button className="button secondary" onClick={()=>navigate('settings')}>플랜 살펴보기 <ArrowRight size={14}/></button></div>}{reportError&&<div className="error-banner" role="alert">{reportError}</div>}{report?<><div className="report-kpis"><Kpi label="객실 판매금액" value={money(report.revenue)} unit="원" foot={`${report.start} ~ ${report.end}`}/><Kpi label="채널 수수료" value={money(report.fee)} unit="원" foot="등록된 채널별 수수료 적용"/><Kpi label="예상 정산액" value={money(report.netRevenue)} unit="원" accent foot="실제 입금액과 다를 수 있습니다"/></div><section className="panel report-detail"><div className="panel-heading"><h2>일자별 판매 내역</h2><span className="muted small">{report.days.length}일 · {report.sold}실 판매</span></div><div className="report-table"><div><strong>숙박일</strong><strong>판매 객실</strong><strong>판매금액</strong><strong>수수료</strong><strong>예상 정산액</strong></div>{report.days.map(row=><div key={row.date}><span>{row.date}</span><span>{row.sold}실</span><span>{won(row.revenue)}</span><span>{won(row.fee)}</span><strong>{won(row.netRevenue)}</strong></div>)}</div></section></>:<section className="panel"><Empty icon={<TrendingUp/>} title="날짜를 선택하고 판매 내역을 확인하세요" text="예약에 기록된 객실 판매금액과 채널 수수료를 함께 보여드려요."/></section>}</>}
-   {page==='team'&&<><div className="inline-notice team-notice"><Users size={18}/><div><strong>데모 호텔의 구성원 관리</strong><span>실제 초대와 계정 연결은 아직 제공하지 않습니다. 등록된 구성원으로 근무 기록을 체험할 수 있습니다.</span></div></div>{s.plan==='free'&&<div className="upgrade-banner"><Clock3 size={23}/><div><strong>함께 일하는 시간도 한곳에.</strong><p>구성원 등록은 무료, 출퇴근 기록은 프로 플랜에서 제공됩니다.</p></div><button className="button secondary" onClick={()=>navigate('settings')}>프로 알아보기</button></div>}<section className="panel member-list">{s.members.map(member=>{const active=s.attendance.find(a=>a.memberId===member.id&&!a.clockOut);return <div key={member.id} className="member-row"><span className="member-avatar">{member.name.slice(0,1)}</span><div className="member-info"><strong>{member.name}</strong><small>{roleLabels[member.role]}</small></div>{active&&<span className="status-pill green">근무 중 · {new Date(active.clockIn).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'})}</span>}<button disabled={busy||(!active&&!s.limits.attendance)} className="button secondary small-button" onClick={()=>void command(active?'attendance.clockout':'attendance.clockin',active?{id:active.id}:{memberId:member.id},false)}>{active?<LogOut size={14}/>:<LogIn size={14}/>} {active?'퇴근 기록':'출근 기록'}{!active&&!s.limits.attendance&&<LockKeyhole size={12}/>}</button></div>})}</section><section className="panel attendance-panel"><div className="panel-heading"><h2>최근 근무 기록</h2><span className="muted small">한국 시간 기준</span></div>{!s.attendance.length?<Empty icon={<Clock3/>} title="아직 근무 기록이 없어요" text="구성원 옆 출근 기록 버튼으로 시작할 수 있습니다."/>:s.attendance.slice().reverse().map(a=><div className="attendance-row" key={a.id}><strong>{s.members.find(m=>m.id===a.memberId)?.name}</strong><span>{new Date(a.clockIn).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}</span><span>{a.clockOut?new Date(a.clockOut).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'근무 중'}</span></div>)}</section></>}
-   {page==='settings'&&<SettingsPage state={s} busy={busy} command={command} open={open}/>}
-   <footer className="workspace-footer"><span>hotori <span>곁에 있는 운영 파트너</span></span><span>데모 데이터로 자유롭게 둘러보세요</span></footer>
-  </main></div>
-  <nav className="mobile-nav" aria-label="모바일 주 메뉴">{navigation.slice(0,3).map(n=><button key={n.id} className={page===n.id?'active':''} onClick={()=>navigate(n.id)}><n.icon size={21}/>{n.label.replace(' 관리','').replace('운영 ','')}</button>)}<button className={more||['reports','team','settings'].includes(page)?'active':''} onClick={()=>setMore(!more)} aria-expanded={more}><MoreHorizontal size={22}/>더보기</button></nav>{more&&<div className="mobile-more">{navigation.slice(3).map(n=><button key={n.id} onClick={()=>navigate(n.id)}><n.icon size={19}/>{n.label}</button>)}</div>}
-  {toast&&<div className="toast" role="status"><Check size={17}/>{toast}<button aria-label="알림 닫기" onClick={()=>setToast('')}><X size={15}/></button></div>}
-  {modal&&<Dialog title={modal.kind==='reservation'?(modal.reservation?'예약 상세':'새 예약 등록'):modal.kind==='room'?`${selectedRoom?.number}호 객실 관리`:modal.kind==='cancel'?'예약을 취소할까요?':modal.kind==='member'?'구성원 등록':'객실 등록'} onClose={()=>!busy&&setModal(null)} busy={busy}><>{error&&<div className="form-error" role="alert">{error}</div>}{modal.kind==='reservation'&&<ReservationForm key={modal.reservation?.id||'new'} state={s} reservation={modal.reservation} busy={busy} command={command} onCancel={r=>open({kind:'cancel',reservation:r})}/ >}{modal.kind==='cancel'&&<><p className="cancel-text"><strong>{modal.reservation.guestName}</strong>님의 {modal.reservation.checkIn} 예약을 취소합니다. 취소 후 해당 객실은 다시 판매할 수 있습니다.</p><div className="form-actions"><button className="button secondary" disabled={busy} onClick={()=>open({kind:'reservation',reservation:modal.reservation})}>돌아가기</button><button className="button danger" disabled={busy} onClick={()=>void command('reservation.cancel',{id:modal.reservation.id,version:modal.reservation.version})}>예약 취소 확정</button></div></>}{modal.kind==='room'&&selectedRoom&&<RoomDetail room={selectedRoom} state={s} busy={busy} command={command} date={date}/>}{modal.kind==='roomCreate'&&<RoomCreate state={s} busy={busy} command={command}/>}{modal.kind==='member'&&<form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void command('member.create',{name:f.get('name'),role:f.get('role')});}}><p className="form-intro">등록된 구성원은 데모 호텔의 업무·근무 기록에 사용됩니다.</p><div className="form-fields"><label>이름<input name="name" required maxLength={40} placeholder="구성원 이름" autoFocus/></label><label>역할<select name="role"><option value="front">프런트</option><option value="manager">매니저</option><option value="housekeeping">객실관리</option></select></label></div><div className="form-actions"><button className="button primary" disabled={busy}>{busy?'저장 중…':'구성원 등록'}</button></div></form>}</></Dialog>}
- </div>;
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    throw new Error(
+      "호텔 서버에 연결할 수 없습니다. 잠시 후 다시 불러와 주세요.",
+    );
+  }
+  let value;
+  try {
+    value = await res.json();
+  } catch {
+    throw new Error(
+      "호텔 서버를 준비하고 있습니다. 잠시 후 다시 불러와 주세요.",
+    );
+  }
+  if (!res.ok)
+    throw new Error(
+      value.error || "요청을 처리하지 못했습니다. 다시 시도해 주세요.",
+    );
+  return value;
 }
 
-function Status({status}:{status:Reservation['status']}){return <span className={`status-pill ${status==='checked_in'?'blue':status==='confirmed'?'green':status==='cancelled'?'red':'neutral'}`}>{statusLabels[status]}</span>}
-function Kpi({label,value,unit,foot,accent,icon}:{label:string;value:string|number;unit:string;foot:string;accent?:boolean;icon?:ReactNode}){return <div className={`kpi ${accent?'accent':''}`}><div className="kpi-label">{label}<span>{icon}</span></div><div className="kpi-value">{value}<span>{unit}</span></div><p>{accent&&<span className="live-dot"/>}{foot}</p></div>}
-function Empty({icon,title,text}:{icon:ReactNode;title:string;text:string}){return <div className="empty-state"><span>{icon}</span><strong>{title}</strong><p>{text}</p></div>}
-function Dialog({title,children,onClose,busy}:{title:string;children:ReactNode;onClose:()=>void;busy:boolean}){const ref=useRef<HTMLDivElement>(null);useEffect(()=>{const before=document.activeElement as HTMLElement;const node=ref.current;node?.querySelector<HTMLElement>('input,select,button')?.focus();function key(e:KeyboardEvent){if(e.key==='Escape'&&!busy)onClose();if(e.key==='Tab'){const items=Array.from(node?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]')||[]);const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}}document.addEventListener('keydown',key);const overflow=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.removeEventListener('keydown',key);document.body.style.overflow=overflow;before?.focus();};},[busy]);return <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget&&!busy)onClose();}}><div ref={ref} className="modal" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><div className="modal-header"><div><span className="eyebrow">HOTORI</span><h2 id="dialog-title">{title}</h2></div><button aria-label="닫기" className="icon-button" disabled={busy} onClick={onClose}><X size={20}/></button></div>{children}</div></div>}
-
-function ReservationForm({state:s,reservation:r,busy,command,onCancel}:{state:AppState;reservation?:Reservation;busy:boolean;command:(type:CommandType,data:Record<string,unknown>,close?:boolean)=>Promise<boolean>;onCancel:(r:Reservation)=>void}){
- const initialDate=s.selectedDate<s.today?s.today:s.selectedDate;const [checkIn,setCheckIn]=useState(r?.checkIn??initialDate);const [checkOut,setCheckOut]=useState(r?.checkOut??addDays(initialDate,1));const [typeId,setTypeId]=useState(r?.typeId??s.roomTypes[0].id);const [quantity,setQuantity]=useState(r?.quantity??1);const [nightlyRate,setNightlyRate]=useState(r?.nightlyRate??s.roomTypes[0].baseRate);const [assign,setAssign]=useState<string[]>(r?.roomIds??[]);const [formError,setFormError]=useState('');const validDates=isISODate(checkIn)&&isISODate(checkOut)&&checkOut>checkIn;const nights=validDates?Math.round((new Date(checkOut).getTime()-new Date(checkIn).getTime())/86400000):0;const total=nightlyRate*quantity*nights;const locked=!!r&&(!!r.clipped||['cancelled','checked_out','checked_in'].includes(r.status));const canCancel=r?.status==='confirmed';
- const candidate=s.rooms.filter(room=>room.typeId===typeId&&room.facility==='normal');
- function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!validDates){setFormError('체크인과 체크아웃 날짜를 올바르게 선택해 주세요. 체크아웃은 체크인 다음 날부터 가능합니다.');return;}setFormError('');const f=new FormData(e.currentTarget);void command(r?'reservation.update':'reservation.create',{...(r?{id:r.id,version:r.version}:{}),guestName:f.get('guestName'),phone:f.get('phone'),typeId,quantity,checkIn,checkOut,channelId:f.get('channelId'),nightlyRate,memo:f.get('memo')});}
- return <><div className="form-intro">{r?<><Status status={r.status}/><span className="reservation-id">예약번호 {r.id}</span>{r.clipped&&<span>조회 기간에 포함된 숙박일만 표시되어 일정 수정이 제한됩니다.</span>}</>:<>예약 가능한 숙박일: {s.today} ~ {addDays(s.limits.futureEnd,-1)}<br/>외부 예약 사이트의 재고는 별도로 확인해 주세요.</>}</div><form onSubmit={submit}>{formError&&<div className="form-error" role="alert">{formError}</div>}<fieldset disabled={busy||locked} className="plain-fieldset"><div className="form-fields two-columns"><label>고객명 <span>*</span><input name="guestName" defaultValue={r?.guestName} required maxLength={60} placeholder="예약자 이름"/></label><label>연락처<input name="phone" defaultValue={r?.phone} type="tel" maxLength={30} placeholder="선택 입력"/></label><label>체크인 <span>*</span><input type="date" value={checkIn} required min={r?s.limits.historyStart:s.today} max={addDays(s.limits.futureEnd,-1)} onChange={e=>setCheckIn(e.target.value)}/></label><label>체크아웃 <span>*</span><input type="date" value={checkOut} required min={addDays(checkIn,1)||undefined} max={s.limits.futureEnd} onChange={e=>setCheckOut(e.target.value)}/></label><label>객실 타입<select value={typeId} onChange={e=>setTypeId(e.target.value)}>{s.roomTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label><label>객실 수<input type="number" value={quantity} min={1} max={999} required step={1} onChange={e=>setQuantity(Number(e.target.value))}/></label><label>예약 채널<select name="channelId" defaultValue={r?.channelId||s.channels[0].id}>{s.channels.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>객실당 1박 판매금액 (원)<input type="number" min={0} max={999999999} step={1} required value={nightlyRate} onChange={e=>setNightlyRate(Number(e.target.value))}/></label><label className="full-width">운영 메모<textarea name="memo" defaultValue={r?.memo} rows={2} maxLength={1000} placeholder="동료와 공유할 내용을 남겨 주세요"/></label></div></fieldset><div className="reservation-summary"><span>{validDates?`${nights}박 · ${quantity}실`:"숙박 날짜를 선택해 주세요"}</span><span>총 판매금액 <strong>{won(total)}</strong></span></div>{(!locked||canCancel)&&<div className="form-actions">{canCancel&&r&&<button type="button" disabled={busy} className="text-button text-danger" onClick={()=>onCancel(r)}>예약 취소</button>}{!locked&&<button className="button primary" disabled={busy}>{busy?'저장 중…':r?'변경사항 저장':'예약 등록'}</button>}</div>}</form>{r&&r.status==='confirmed'&&<div className="reservation-operations"><h3>객실 배정 및 입실</h3><p>배정할 객실을 {r.quantity}개 선택하세요. 청소·시설·예약 충돌은 저장 시 다시 확인합니다.</p><div className="assignment-options">{candidate.map(room=><label key={room.id}><input type="checkbox" checked={assign.includes(room.id)} onChange={e=>setAssign(e.target.checked?[...assign,room.id]:assign.filter(id=>id!==room.id))}/>{room.number}<small>{cleaningLabels[room.cleaning]}</small></label>)}</div><div className="operation-buttons"><button className="button secondary" disabled={busy||assign.length!==r.quantity} onClick={()=>void command('reservation.assign',{id:r.id,version:r.version,roomIds:assign})}>객실 배정 저장</button><button className="button primary" disabled={busy||r.roomIds.length!==r.quantity||!((r.checkIn<=s.today&&r.checkOut>s.today)||(!!s.lateArrivalDate&&r.checkIn<=s.lateArrivalDate&&r.checkOut>s.lateArrivalDate))} onClick={()=>void command('reservation.checkin',{id:r.id,version:r.version})}><LogIn size={16}/>{r.checkIn>s.today?'입실일에 체크인':'체크인'}</button></div></div>}{r?.status==='checked_in'&&<div className="form-actions"><button className="button primary" disabled={busy||r.checkOut>s.today} onClick={()=>void command('reservation.checkout',{id:r.id,version:r.version})}><LogOut size={16}/>{r.checkOut>s.today?'퇴실일에 체크아웃':'체크아웃 처리'}</button></div>}</>;
+export default function App() {
+  const [state, setState] = useState<AppState | null>(null);
+  const [page, setPage] = useState<Page>("overview");
+  const [date, setDate] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [modal, setModal] = useState<Modal>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+  const [more, setMore] = useState(false);
+  const [search, setSearch] = useState("");
+  const [roomFilter, setRoomFilter] = useState("all");
+  const [arrivalTab, setArrivalTab] = useState<
+    "arrivals" | "departures" | "staying"
+  >("arrivals");
+  const [reportStart, setReportStart] = useState("");
+  const [reportEnd, setReportEnd] = useState("");
+  const [report, setReport] = useState<Report | null>(null);
+  const [reportError, setReportError] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const loadRef = useRef(0);
+  const commandInFlight = useRef(false);
+  const pendingCommand = useRef<{
+    fingerprint: string;
+    requestId: string;
+  } | null>(null);
+  async function load(day = date) {
+    const version = ++loadRef.current;
+    setRefreshing(true);
+    try {
+      const value = await api<AppState>(
+        `/api/state${day ? "?date=" + day : ""}`,
+      );
+      if (version !== loadRef.current) return;
+      setState(value);
+      setDate(value.selectedDate);
+      setLoadError("");
+      if (!reportStart) {
+        setReportStart(value.today);
+        setReportEnd(value.today);
+      }
+    } catch (e) {
+      if (version === loadRef.current) setLoadError((e as Error).message);
+    } finally {
+      if (version === loadRef.current) setRefreshing(false);
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 4500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  async function command(
+    type: CommandType,
+    data: Record<string, unknown>,
+    close = true,
+  ) {
+    if (commandInFlight.current) return false;
+    commandInFlight.current = true;
+    setBusy(true);
+    setError("");
+    const fingerprint = JSON.stringify({ type, data });
+    if (pendingCommand.current?.fingerprint !== fingerprint)
+      pendingCommand.current = { fingerprint, requestId: crypto.randomUUID() };
+    const requestId = pendingCommand.current.requestId;
+    try {
+      const result = await api<{ message: string }>("/api/commands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, data, requestId }),
+      });
+      pendingCommand.current = null;
+      if (close) setModal(null);
+      setToast(result.message);
+      setReport(null);
+      if (type === "demo.plan") {
+        const today = state?.today || "";
+        setReportStart(today);
+        setReportEnd(today);
+        setReportError("");
+        await load(today);
+      } else await load();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      commandInFlight.current = false;
+      setBusy(false);
+    }
+  }
+  function open(next: Modal) {
+    setError("");
+    setModal(next);
+  }
+  function navigate(next: Page) {
+    setPage(next);
+    setMore(false);
+    setError("");
+    setSearch("");
+  }
+  async function getReport(e?: FormEvent) {
+    e?.preventDefault();
+    if (
+      !isISODate(reportStart) ||
+      !isISODate(reportEnd) ||
+      reportEnd < reportStart
+    ) {
+      setReportError("시작일과 종료일을 올바르게 선택해 주세요.");
+      setReport(null);
+      return;
+    }
+    setReportLoading(true);
+    setReportError("");
+    try {
+      setReport(
+        await api<Report>(`/api/reports?start=${reportStart}&end=${reportEnd}`),
+      );
+    } catch (e) {
+      setReport(null);
+      setReportError((e as Error).message);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+  if (!state)
+    return (
+      <div className="startup">
+        <div className="brand-mark">h.</div>
+        <h1>호토리</h1>
+        {loadError ? (
+          <>
+            <p role="alert">{loadError}</p>
+            <button className="button primary" onClick={() => void load()}>
+              다시 불러오기
+            </button>
+          </>
+        ) : (
+          <p>
+            <LoaderCircle className="spin" size={18} /> 호텔의 하루를 준비하고
+            있어요
+          </p>
+        )}
+      </div>
+    );
+  const s = state;
+  const d = s.dashboard;
+  const roomType = (id: string) =>
+    s.roomTypes.find((t) => t.id === id)?.name || id;
+  const channel = (id: string) => s.channels.find((c) => c.id === id);
+  const occupied = (room: Room) =>
+    s.reservations.find(
+      (r) =>
+        r.status !== "cancelled" &&
+        r.status !== "checked_out" &&
+        r.checkIn <= date &&
+        (r.checkOut > date || (r.status === "checked_in" && date <= s.today)) &&
+        r.roomIds.includes(room.id),
+    );
+  const selectedRoom =
+    modal?.kind === "room"
+      ? s.rooms.find((r) => r.id === modal.room.id) || modal.room
+      : null;
+  const reservations = s.reservations.filter((r) =>
+    `${r.guestName} ${r.phone} ${r.id} ${r.roomIds.map((id) => s.rooms.find((room) => room.id === id)?.number).join(" ")}`
+      .toLocaleLowerCase()
+      .includes(search.toLocaleLowerCase()),
+  );
+  const dayReservations = s.reservations.filter(
+    (r) =>
+      r.status !== "cancelled" &&
+      (arrivalTab === "arrivals"
+        ? r.checkIn === date
+        : arrivalTab === "departures"
+          ? r.checkOut === date ||
+            (date === s.today &&
+              r.status === "checked_in" &&
+              r.checkOut < s.today)
+          : r.checkIn <= date &&
+            (r.checkOut > date ||
+              (r.status === "checked_in" &&
+                r.checkOut < s.today &&
+                date <= s.today))),
+  );
+  const activeIssues = s.issues.filter((i) => i.status !== "resolved");
+  function ReservationTable({
+    items,
+    compact = false,
+  }: {
+    items: Reservation[];
+    compact?: boolean;
+  }) {
+    return (
+      <div className="reservation-table">
+        <div className="table-head">
+          <span>고객 / 예약 정보</span>
+          <span>객실</span>
+          <span>예약 채널</span>
+          <span>판매 금액</span>
+          <span>상태</span>
+          <span />
+        </div>
+        {!items.length ? (
+          <Empty
+            icon={<CalendarDays />}
+            title="예약 내역이 없어요"
+            text={
+              compact
+                ? "선택한 날짜에 예정된 일정이 없습니다."
+                : "검색 조건을 바꾸거나 새 예약을 등록해 주세요."
+            }
+          />
+        ) : (
+          items.map((r) => (
+            <button
+              className="reservation-row"
+              key={r.id}
+              onClick={() => open({ kind: "reservation", reservation: r })}
+            >
+              <span className="guest-cell">
+                <span className="guest-avatar">{r.guestName.slice(0, 1)}</span>
+                <span>
+                  <strong>{r.guestName}</strong>
+                  <small>
+                    {shortDate(r.checkIn)} → {shortDate(r.checkOut)} ·{" "}
+                    {r.quantity}실
+                  </small>
+                </span>
+              </span>
+              <span>
+                <strong>
+                  {r.roomIds.length
+                    ? r.roomIds
+                        .map(
+                          (id) =>
+                            s.rooms.find((room) => room.id === id)?.number,
+                        )
+                        .join(", ")
+                    : "미배정"}
+                </strong>
+                <small>{roomType(r.typeId)}</small>
+              </span>
+              <span className="channel-cell">
+                <i
+                  style={{
+                    background: channel(r.channelId)?.color || "#4b7667",
+                  }}
+                />
+                {channel(r.channelId)?.name}
+              </span>
+              <span className="price">{won(r.totalAmount)}</span>
+              <span>
+                <Status status={r.status} />
+              </span>
+              <ChevronRight size={16} />
+            </button>
+          ))
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <a
+          className="brand"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate("overview");
+          }}
+        >
+          <span className="brand-mark">h.</span>
+          <span>
+            hotori<span className="brand-korean">곁에 있는 운영 파트너</span>
+          </span>
+        </a>
+        <div className="property-switch">
+          <span className="property-icon">
+            <Building2 size={18} />
+          </span>
+          <div>
+            <strong>{s.property.name}</strong>
+            <small>호텔 운영 워크스페이스</small>
+          </div>
+          <ChevronDown size={15} />
+        </div>
+        <div className="nav-label">WORKSPACE</div>
+        <nav aria-label="주 메뉴">
+          {navigation.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => navigate(n.id)}
+              className={`nav-item ${page === n.id ? "active" : ""}`}
+            >
+              <n.icon size={19} />
+              <span>{n.label}</span>
+              {n.id === "reservations" && (
+                <span className="nav-count">{d.arrivals}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="sidebar-tip">
+            <span className="tip-label">
+              <Sparkles size={15} /> 함께 시작하는 호토리
+            </span>
+            <p>
+              작은 기록이 모여
+              <br />더 편안한 운영이 됩니다.
+            </p>
+            <button onClick={() => navigate("settings")}>
+              내 플랜 살펴보기 <ArrowRight size={14} />
+            </button>
+          </div>
+          <div className="profile">
+            <span className="profile-avatar">운</span>
+            <div>
+              <strong>호텔 운영자</strong>
+              <small>데모 관리자</small>
+            </div>
+            <span className={`plan-tag ${s.plan}`}>
+              {s.plan === "pro" ? "PRO" : "FREE"}
+            </span>
+          </div>
+        </div>
+      </aside>
+      <div className="workspace">
+        <header className="topbar">
+          <div className="breadcrumb">
+            워크스페이스 <ChevronRight size={13} />
+            <strong>{navigation.find((n) => n.id === page)?.label}</strong>
+          </div>
+          <div className="topbar-right">
+            <span className="demo-pill">
+              <span />
+              데모 호텔
+            </span>
+            <span className="saved">
+              <ShieldCheck size={14} />
+              {refreshing ? "불러오는 중" : "변경사항 저장됨"}
+            </span>
+            <button
+              className="icon-button help-button"
+              aria-label="데모 이용 안내"
+              onClick={() =>
+                setToast(
+                  "이 화면은 체험용 호텔입니다. 예약과 변경 내용은 현재 데모 호텔에 저장됩니다.",
+                )
+              }
+            >
+              <CircleHelp size={18} />
+            </button>
+            <span className="top-avatar">운</span>
+          </div>
+        </header>
+        <div className="mobile-header">
+          <span className="mobile-brand">
+            h. <b>hotori</b>
+          </span>
+          <span className="demo-pill">
+            <span />
+            데모 호텔
+          </span>
+          <span className={`plan-tag ${s.plan}`}>{s.plan.toUpperCase()}</span>
+        </div>
+        <main>
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">
+                {page === "overview"
+                  ? "YOUR DAILY OPERATIONS"
+                  : "HOTORI WORKSPACE"}
+              </div>
+              <h1>
+                {page === "overview"
+                  ? "호텔의 하루를 한눈에."
+                  : navigation.find((n) => n.id === page)?.label}
+              </h1>
+              <p>
+                {page === "overview"
+                  ? `${s.property.name}의 운영 현황을 확인해 보세요.`
+                  : page === "reservations"
+                    ? "예약부터 체크아웃까지, 놓치는 일정 없이."
+                    : page === "rooms"
+                      ? "객실 컨디션과 인수인계를 함께 살펴보세요."
+                      : page === "reports"
+                        ? "객실 판매금액과 예상 정산액을 구분해 확인하세요."
+                        : page === "team"
+                          ? "함께 일하는 동료와 근무 기록을 관리하세요."
+                          : "호텔에 맞는 운영 환경을 만들어 보세요."}
+              </p>
+            </div>
+            {(page === "overview" || page === "reservations") && (
+              <button
+                className="button primary"
+                onClick={() => open({ kind: "reservation" })}
+              >
+                <Plus size={17} />새 예약 등록
+              </button>
+            )}
+            {page === "rooms" && (
+              <button
+                className="button primary"
+                onClick={() => open({ kind: "roomCreate" })}
+              >
+                <Plus size={17} />
+                객실 등록
+              </button>
+            )}
+            {page === "team" && (
+              <button
+                className="button primary"
+                onClick={() => open({ kind: "member" })}
+              >
+                <Plus size={17} />
+                구성원 등록
+              </button>
+            )}
+          </div>
+          {loadError && (
+            <div className="error-banner" role="alert">
+              {loadError}
+              <button onClick={() => void load()}>다시 시도</button>
+            </div>
+          )}
+          {error && !modal && (
+            <div className="error-banner" role="alert">
+              {error}
+              <button onClick={() => setError("")}>닫기</button>
+            </div>
+          )}
+          {(page === "overview" ||
+            page === "reservations" ||
+            page === "rooms") && (
+            <div className="date-toolbar">
+              <div className="date-picker">
+                <CalendarDays size={17} />
+                <input
+                  aria-label="운영 기준일"
+                  type="date"
+                  value={date}
+                  min={s.limits.historyStart}
+                  max={addDays(s.limits.futureEnd, -1)}
+                  onChange={(e) => {
+                    if (e.target.value) void load(e.target.value);
+                  }}
+                />
+                <span>
+                  {date === s.today
+                    ? "오늘"
+                    : new Date(`${date}T12:00Z`).toLocaleDateString("ko-KR", {
+                        weekday: "long",
+                      })}
+                </span>
+              </div>
+              <div className="date-actions">
+                <button
+                  className="text-button"
+                  onClick={() => void load(s.today)}
+                >
+                  오늘
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="이전 날짜"
+                  disabled={date <= s.limits.historyStart || refreshing}
+                  onClick={() => void load(addDays(date, -1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="다음 날짜"
+                  disabled={
+                    date >= addDays(s.limits.futureEnd, -1) || refreshing
+                  }
+                  onClick={() => void load(addDays(date, 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+              <span className="date-caption">{longDate(date)} 기준</span>
+            </div>
+          )}
+          {page === "overview" && (
+            <>
+              <section className="kpi-grid" aria-label="객실 운영 요약">
+                <Kpi
+                  icon={<BedDouble size={19} />}
+                  label="전체 객실"
+                  value={d.totalRooms}
+                  unit="실"
+                  foot="운영 중인 모든 객실"
+                />
+                <Kpi
+                  icon={<DoorOpen size={19} />}
+                  label="판매 가능"
+                  value={d.availableRooms}
+                  unit="실"
+                  accent
+                  foot={`${d.blockedRooms}실 판매 중지 제외`}
+                />
+                <Kpi
+                  icon={<LogIn size={19} />}
+                  label="체크인 예정"
+                  value={d.arrivals}
+                  unit="실"
+                  foot={`미배정 객실 ${d.unassigned}실`}
+                />
+                <Kpi
+                  icon={<LogOut size={19} />}
+                  label="체크아웃 예정"
+                  value={d.departures}
+                  unit="실"
+                  foot="퇴실 후 청소 상태를 확인하세요"
+                />
+              </section>
+              <div className="dashboard-grid">
+                <div className="dashboard-main">
+                  <section className="panel inventory-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>
+                          객실 판매 현황{" "}
+                          <span className="subtle-badge">
+                            {date === s.today ? "오늘" : shortDate(date)}
+                          </span>
+                        </h2>
+                        <p>객실 타입별 예약과 남은 객실을 확인하세요.</p>
+                      </div>
+                      <button
+                        className="text-button with-arrow"
+                        onClick={() => navigate("rooms")}
+                      >
+                        객실 보기 <ArrowRight size={14} />
+                      </button>
+                    </div>
+                    <div className="inventory-overview">
+                      <div>
+                        <span className="muted">객실 가동률</span>
+                        <strong>
+                          {Math.round(d.occupancy)}
+                          <small>%</small>
+                        </strong>
+                      </div>
+                      <div className="occupancy-bar">
+                        <span
+                          style={{ width: `${Math.min(100, d.occupancy)}%` }}
+                        />
+                      </div>
+                      <span className="occupancy-note">
+                        {d.soldRooms} / {d.totalRooms}실 판매
+                      </span>
+                    </div>
+                    <div className="inventory-columns">
+                      <span>객실 타입</span>
+                      <span>전체</span>
+                      <span>판매</span>
+                      <span>잔여</span>
+                      <span>판매율</span>
+                    </div>
+                    {d.inventory.map((t) => (
+                      <div className="inventory-row" key={t.typeId}>
+                        <span className="type-name">
+                          <span className="type-icon">
+                            <BedDouble size={17} />
+                          </span>
+                          <strong>{roomType(t.typeId)}</strong>
+                        </span>
+                        <span>{t.total}</span>
+                        <span>{t.sold}</span>
+                        <span>
+                          <b className="available-number">{t.available}</b>
+                        </span>
+                        <span className="mini-progress">
+                          <i
+                            style={{
+                              width: `${t.total ? (t.sold / t.total) * 100 : 0}%`,
+                            }}
+                          />
+                        </span>
+                      </div>
+                    ))}
+                    <div className="panel-foot">
+                      <span className="legend-dot green" />
+                      판매 완료 <span className="legend-dot" />
+                      판매 가능{" "}
+                      <span className="inventory-note">
+                        외부 예약은 직접 등록해 주세요
+                      </span>
+                    </div>
+                  </section>
+                  <section className="panel schedule-panel">
+                    <div className="panel-heading">
+                      <div>
+                        <h2>입실 · 퇴실 일정</h2>
+                        <p>고객을 맞이할 준비를 함께 확인해요.</p>
+                      </div>
+                      <button
+                        className="text-button with-arrow"
+                        onClick={() => navigate("reservations")}
+                      >
+                        전체 예약 <ArrowRight size={14} />
+                      </button>
+                    </div>
+                    <div className="schedule-tabs">
+                      {(
+                        [
+                          {
+                            id: "arrivals",
+                            label: "체크인",
+                            count: d.arrivals,
+                          },
+                          {
+                            id: "departures",
+                            label: "체크아웃",
+                            count: d.departures,
+                          },
+                          { id: "staying", label: "투숙", count: d.soldRooms },
+                        ] as const
+                      ).map((t) => (
+                        <button
+                          key={t.id}
+                          className={arrivalTab === t.id ? "active" : ""}
+                          onClick={() => setArrivalTab(t.id)}
+                        >
+                          {t.label}
+                          <span>{t.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <ReservationTable
+                      items={dayReservations.slice(0, 6)}
+                      compact
+                    />
+                  </section>
+                </div>
+                <div className="dashboard-aside">
+                  <section className="panel sales-card">
+                    <div className="panel-heading">
+                      <h2>일일 판매금액</h2>
+                      <span className="small-icon">
+                        <TrendingUp size={17} />
+                      </span>
+                    </div>
+                    <p className="sales-date">{longDate(date)}</p>
+                    <div className="sales-total">
+                      {money(d.revenue)}
+                      <span>원</span>
+                    </div>
+                    <div className="sales-line">
+                      <span>판매 객실</span>
+                      <strong>{d.soldRooms}실</strong>
+                    </div>
+                    <div className="sales-line">
+                      <span>채널 수수료</span>
+                      <strong>− {won(d.fee)}</strong>
+                    </div>
+                    <div className="sales-line net">
+                      <span>예상 정산액</span>
+                      <strong>{won(d.netRevenue)}</strong>
+                    </div>
+                    <button
+                      className="sales-link"
+                      onClick={() => {
+                        navigate("reports");
+                        setReportStart(date);
+                        setReportEnd(date);
+                      }}
+                    >
+                      판매 내역 자세히 보기 <ArrowRight size={15} />
+                    </button>
+                  </section>
+                  <section className="panel handoff-panel">
+                    <div className="panel-heading">
+                      <h2>
+                        인수인계{" "}
+                        <span className="count-badge">
+                          {activeIssues.length}
+                        </span>
+                      </h2>
+                      <ClipboardList size={17} className="muted" />
+                    </div>
+                    <p className="aside-description">
+                      다음 동료에게 전할 객실 이야기
+                    </p>
+                    {activeIssues.slice(0, 4).map((issue) => {
+                      const room = s.rooms.find((r) => r.id === issue.roomId);
+                      return (
+                        <button
+                          className="handoff-item"
+                          key={issue.id}
+                          onClick={() => room && open({ kind: "room", room })}
+                        >
+                          <span className={`issue-dot ${issue.priority}`} />
+                          <span>
+                            <span className="issue-room">
+                              {room?.number}호{" "}
+                              <span>
+                                {issue.category === "repair"
+                                  ? "시설·수리"
+                                  : issue.category === "condition"
+                                    ? "객실 컨디션"
+                                    : "기타"}
+                              </span>
+                            </span>
+                            <strong>{issue.title}</strong>
+                            <small>
+                              {issue.status === "in_progress"
+                                ? "처리 중"
+                                : "확인 필요"}
+                            </small>
+                          </span>
+                          <ChevronRight size={14} />
+                        </button>
+                      );
+                    })}
+                    {!activeIssues.length && (
+                      <p className="quiet-empty">
+                        <Check size={19} /> 모든 인수인계를 확인했어요.
+                      </p>
+                    )}
+                    <button
+                      className="full-text-button"
+                      onClick={() => {
+                        setRoomFilter("issues");
+                        navigate("rooms");
+                      }}
+                    >
+                      객실에서 인수인계 확인 <ArrowRight size={14} />
+                    </button>
+                  </section>
+                  <div className="operating-note">
+                    <span>
+                      <Coffee size={19} />
+                    </span>
+                    <p>
+                      바쁜 하루에도 놓치지 않도록.
+                      <br />
+                      <strong>호토리가 곁에서 기억할게요.</strong>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+          {page === "reservations" && (
+            <section className="panel">
+              <div className="list-toolbar">
+                <div>
+                  <h2>
+                    예약 목록{" "}
+                    <span className="count-badge">{reservations.length}</span>
+                  </h2>
+                  <p>
+                    플랜 조회 범위 {s.limits.historyStart} ~{" "}
+                    {s.limits.futureEnd} 전날
+                  </p>
+                </div>
+                <label className="search-box">
+                  <Search size={17} />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="고객명, 연락처, 객실 검색"
+                    aria-label="예약 검색"
+                  />
+                </label>
+              </div>
+              <div className="inline-notice">
+                <CalendarDays size={15} /> 날짜 선택은 운영 기준일입니다.
+                목록에는 현재 플랜에서 조회 가능한 모든 예약이 표시됩니다.
+              </div>
+              <ReservationTable items={reservations} />
+            </section>
+          )}
+          {page === "rooms" && (
+            <>
+              <div className="room-toolbar">
+                <div className="filter-tabs">
+                  {[
+                    { id: "all", label: "전체 객실" },
+                    { id: "available", label: "판매 가능" },
+                    { id: "occupied", label: "배정 객실" },
+                    { id: "dirty", label: "청소 필요" },
+                    { id: "issues", label: "인수인계" },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      className={roomFilter === f.id ? "active" : ""}
+                      onClick={() => setRoomFilter(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="muted small">
+                  등록 {s.rooms.length} / {s.limits.maxRooms ?? "제한 없음"}실
+                </span>
+              </div>
+              <div className="room-grid">
+                {s.rooms
+                  .filter(
+                    (room) =>
+                      roomFilter === "all" ||
+                      (roomFilter === "available" &&
+                        !occupied(room) &&
+                        room.facility === "normal") ||
+                      (roomFilter === "occupied" && occupied(room)) ||
+                      (roomFilter === "dirty" && room.cleaning === "dirty") ||
+                      (roomFilter === "issues" &&
+                        activeIssues.some((i) => i.roomId === room.id)),
+                  )
+                  .map((room) => {
+                    const reservation = occupied(room);
+                    const issues = activeIssues.filter(
+                      (i) => i.roomId === room.id,
+                    );
+                    return (
+                      <button
+                        key={room.id}
+                        className={`room-card ${room.facility === "blocked" ? "blocked" : reservation ? "occupied" : "vacant"}`}
+                        onClick={() => open({ kind: "room", room })}
+                      >
+                        <div className="room-card-top">
+                          <span>
+                            {room.building} · {room.floor}층
+                          </span>
+                          {issues.length > 0 && (
+                            <span className="room-issue">
+                              <Wrench size={12} /> {issues.length}
+                            </span>
+                          )}
+                        </div>
+                        <div className="room-number">
+                          {room.number}
+                          <BedDouble size={21} />
+                        </div>
+                        <p>{roomType(room.typeId)}</p>
+                        <div className="room-card-bottom">
+                          <span
+                            className={`status-pill ${room.facility !== "normal" ? "warning" : reservation ? "blue" : "green"}`}
+                          >
+                            {room.facility !== "normal"
+                              ? facilityLabels[room.facility]
+                              : reservation
+                                ? "배정 · " + reservation.guestName
+                                : "공실"}
+                          </span>
+                          <span
+                            className={
+                              room.cleaning === "dirty" ? "text-warm" : "muted"
+                            }
+                          >
+                            {cleaningLabels[room.cleaning]}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </>
+          )}
+          {page === "reports" && (
+            <>
+              <section className="panel report-controls">
+                <div>
+                  <h2>판매금액 조회</h2>
+                  <p>
+                    숙박일 기준 객실 매출 · 정산액은 수수료를 차감한 예상
+                    금액입니다.
+                  </p>
+                </div>
+                <form onSubmit={getReport}>
+                  <label>
+                    시작일
+                    <input
+                      type="date"
+                      required
+                      value={reportStart}
+                      min={s.limits.historyStart}
+                      max={addDays(s.limits.futureEnd, -1)}
+                      onChange={(e) => {
+                        setReportStart(e.target.value);
+                        if (s.plan === "free") setReportEnd(e.target.value);
+                      }}
+                    />
+                  </label>
+                  <span className="date-separator">—</span>
+                  <label>
+                    종료일
+                    <input
+                      type="date"
+                      required
+                      value={reportEnd}
+                      min={reportStart || s.limits.historyStart}
+                      max={addDays(s.limits.futureEnd, -1)}
+                      onChange={(e) => setReportEnd(e.target.value)}
+                    />
+                  </label>
+                  <button className="button primary" disabled={reportLoading}>
+                    {reportLoading ? (
+                      <LoaderCircle size={16} className="spin" />
+                    ) : (
+                      <Search size={16} />
+                    )}
+                    조회
+                  </button>
+                </form>
+              </section>
+              {s.plan === "free" && (
+                <div className="upgrade-banner">
+                  <span className="upgrade-icon">
+                    <LockKeyhole size={19} />
+                  </span>
+                  <div>
+                    <strong>하루의 기록을 넘어, 운영의 흐름까지.</strong>
+                    <p>
+                      기간별 매출 집계는 프로에서 제공해요. 무료 플랜은 같은
+                      시작일·종료일로 조회할 수 있습니다.
+                    </p>
+                  </div>
+                  <button
+                    className="button secondary"
+                    onClick={() => navigate("settings")}
+                  >
+                    플랜 살펴보기 <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
+              {reportError && (
+                <div className="error-banner" role="alert">
+                  {reportError}
+                </div>
+              )}
+              {report ? (
+                <>
+                  <div className="report-kpis">
+                    <Kpi
+                      label="객실 판매금액"
+                      value={money(report.revenue)}
+                      unit="원"
+                      foot={`${report.start} ~ ${report.end}`}
+                    />
+                    <Kpi
+                      label="채널 수수료"
+                      value={money(report.fee)}
+                      unit="원"
+                      foot="등록된 채널별 수수료 적용"
+                    />
+                    <Kpi
+                      label="예상 정산액"
+                      value={money(report.netRevenue)}
+                      unit="원"
+                      accent
+                      foot="실제 입금액과 다를 수 있습니다"
+                    />
+                  </div>
+                  <section className="panel report-detail">
+                    <div className="panel-heading">
+                      <h2>일자별 판매 내역</h2>
+                      <span className="muted small">
+                        {report.days.length}일 · {report.sold}실 판매
+                      </span>
+                    </div>
+                    <div className="report-table">
+                      <div>
+                        <strong>숙박일</strong>
+                        <strong>판매 객실</strong>
+                        <strong>판매금액</strong>
+                        <strong>수수료</strong>
+                        <strong>예상 정산액</strong>
+                      </div>
+                      {report.days.map((row) => (
+                        <div key={row.date}>
+                          <span>{row.date}</span>
+                          <span>{row.sold}실</span>
+                          <span>{won(row.revenue)}</span>
+                          <span>{won(row.fee)}</span>
+                          <strong>{won(row.netRevenue)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              ) : (
+                <section className="panel">
+                  <Empty
+                    icon={<TrendingUp />}
+                    title="날짜를 선택하고 판매 내역을 확인하세요"
+                    text="예약에 기록된 객실 판매금액과 채널 수수료를 함께 보여드려요."
+                  />
+                </section>
+              )}
+            </>
+          )}
+          {page === "team" && (
+            <>
+              <div className="inline-notice team-notice">
+                <Users size={18} />
+                <div>
+                  <strong>데모 호텔의 구성원 관리</strong>
+                  <span>
+                    실제 초대와 계정 연결은 아직 제공하지 않습니다. 등록된
+                    구성원으로 근무 기록을 체험할 수 있습니다.
+                  </span>
+                </div>
+              </div>
+              {s.plan === "free" && (
+                <div className="upgrade-banner">
+                  <Clock3 size={23} />
+                  <div>
+                    <strong>함께 일하는 시간도 한곳에.</strong>
+                    <p>
+                      구성원 등록은 무료, 출퇴근 기록은 프로 플랜에서
+                      제공됩니다.
+                    </p>
+                  </div>
+                  <button
+                    className="button secondary"
+                    onClick={() => navigate("settings")}
+                  >
+                    프로 알아보기
+                  </button>
+                </div>
+              )}
+              <section className="panel member-list">
+                {s.members.map((member) => {
+                  const active = s.attendance.find(
+                    (a) => a.memberId === member.id && !a.clockOut,
+                  );
+                  return (
+                    <div key={member.id} className="member-row">
+                      <span className="member-avatar">
+                        {member.name.slice(0, 1)}
+                      </span>
+                      <div className="member-info">
+                        <strong>{member.name}</strong>
+                        <small>{roleLabels[member.role]}</small>
+                      </div>
+                      {active && (
+                        <span className="status-pill green">
+                          근무 중 ·{" "}
+                          {new Date(active.clockIn).toLocaleTimeString(
+                            "ko-KR",
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              timeZone: "Asia/Seoul",
+                            },
+                          )}
+                        </span>
+                      )}
+                      <button
+                        disabled={busy || (!active && !s.limits.attendance)}
+                        className="button secondary small-button"
+                        onClick={() =>
+                          void command(
+                            active
+                              ? "attendance.clockout"
+                              : "attendance.clockin",
+                            active
+                              ? { id: active.id }
+                              : { memberId: member.id },
+                            false,
+                          )
+                        }
+                      >
+                        {active ? <LogOut size={14} /> : <LogIn size={14} />}{" "}
+                        {active ? "퇴근 기록" : "출근 기록"}
+                        {!active && !s.limits.attendance && (
+                          <LockKeyhole size={12} />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
+              </section>
+              <section className="panel attendance-panel">
+                <div className="panel-heading">
+                  <h2>최근 근무 기록</h2>
+                  <span className="muted small">한국 시간 기준</span>
+                </div>
+                {!s.attendance.length ? (
+                  <Empty
+                    icon={<Clock3 />}
+                    title="아직 근무 기록이 없어요"
+                    text="구성원 옆 출근 기록 버튼으로 시작할 수 있습니다."
+                  />
+                ) : (
+                  s.attendance
+                    .slice()
+                    .reverse()
+                    .map((a) => (
+                      <div className="attendance-row" key={a.id}>
+                        <strong>
+                          {s.members.find((m) => m.id === a.memberId)?.name}
+                        </strong>
+                        <span>
+                          {new Date(a.clockIn).toLocaleString("ko-KR", {
+                            timeZone: "Asia/Seoul",
+                          })}
+                        </span>
+                        <span>
+                          {a.clockOut
+                            ? new Date(a.clockOut).toLocaleString("ko-KR", {
+                                timeZone: "Asia/Seoul",
+                              })
+                            : "근무 중"}
+                        </span>
+                      </div>
+                    ))
+                )}
+              </section>
+            </>
+          )}
+          {page === "settings" && (
+            <SettingsPage state={s} busy={busy} command={command} open={open} />
+          )}
+          <footer className="workspace-footer">
+            <span>
+              hotori <span>곁에 있는 운영 파트너</span>
+            </span>
+            <span>데모 데이터로 자유롭게 둘러보세요</span>
+          </footer>
+        </main>
+      </div>
+      <nav className="mobile-nav" aria-label="모바일 주 메뉴">
+        {navigation.slice(0, 3).map((n) => (
+          <button
+            key={n.id}
+            className={page === n.id ? "active" : ""}
+            onClick={() => navigate(n.id)}
+          >
+            <n.icon size={21} />
+            {n.label.replace(" 관리", "").replace("운영 ", "")}
+          </button>
+        ))}
+        <button
+          className={
+            more || ["reports", "team", "settings"].includes(page)
+              ? "active"
+              : ""
+          }
+          onClick={() => setMore(!more)}
+          aria-expanded={more}
+        >
+          <MoreHorizontal size={22} />
+          더보기
+        </button>
+      </nav>
+      {more && (
+        <div className="mobile-more">
+          {navigation.slice(3).map((n) => (
+            <button key={n.id} onClick={() => navigate(n.id)}>
+              <n.icon size={19} />
+              {n.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          <Check size={17} />
+          {toast}
+          <button aria-label="알림 닫기" onClick={() => setToast("")}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
+      {modal && (
+        <Dialog
+          title={
+            modal.kind === "reservation"
+              ? modal.reservation
+                ? "예약 상세"
+                : "새 예약 등록"
+              : modal.kind === "room"
+                ? `${selectedRoom?.number}호 객실 관리`
+                : modal.kind === "cancel"
+                  ? "예약을 취소할까요?"
+                  : modal.kind === "member"
+                    ? "구성원 등록"
+                    : "객실 등록"
+          }
+          onClose={() => !busy && setModal(null)}
+          busy={busy}
+        >
+          <>
+            {error && (
+              <div className="form-error" role="alert">
+                {error}
+              </div>
+            )}
+            {modal.kind === "reservation" && (
+              <ReservationForm
+                key={modal.reservation?.id || "new"}
+                state={s}
+                reservation={modal.reservation}
+                busy={busy}
+                command={command}
+                onCancel={(r) => open({ kind: "cancel", reservation: r })}
+              />
+            )}
+            {modal.kind === "cancel" && (
+              <>
+                <p className="cancel-text">
+                  <strong>{modal.reservation.guestName}</strong>님의{" "}
+                  {modal.reservation.checkIn} 예약을 취소합니다. 취소 후 해당
+                  객실은 다시 판매할 수 있습니다.
+                </p>
+                <div className="form-actions">
+                  <button
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() =>
+                      open({
+                        kind: "reservation",
+                        reservation: modal.reservation,
+                      })
+                    }
+                  >
+                    돌아가기
+                  </button>
+                  <button
+                    className="button danger"
+                    disabled={busy}
+                    onClick={() =>
+                      void command("reservation.cancel", {
+                        id: modal.reservation.id,
+                        version: modal.reservation.version,
+                      })
+                    }
+                  >
+                    예약 취소 확정
+                  </button>
+                </div>
+              </>
+            )}
+            {modal.kind === "room" && selectedRoom && (
+              <RoomDetail
+                room={selectedRoom}
+                state={s}
+                busy={busy}
+                command={command}
+                date={date}
+              />
+            )}
+            {modal.kind === "roomCreate" && (
+              <RoomCreate state={s} busy={busy} command={command} />
+            )}
+            {modal.kind === "member" && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  void command("member.create", {
+                    name: f.get("name"),
+                    role: f.get("role"),
+                  });
+                }}
+              >
+                <p className="form-intro">
+                  등록된 구성원은 데모 호텔의 업무·근무 기록에 사용됩니다.
+                </p>
+                <div className="form-fields">
+                  <label>
+                    이름
+                    <input
+                      name="name"
+                      required
+                      maxLength={40}
+                      placeholder="구성원 이름"
+                      autoFocus
+                    />
+                  </label>
+                  <label>
+                    역할
+                    <select name="role">
+                      <option value="front">프런트</option>
+                      <option value="manager">매니저</option>
+                      <option value="housekeeping">객실관리</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="form-actions">
+                  <button className="button primary" disabled={busy}>
+                    {busy ? "저장 중…" : "구성원 등록"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        </Dialog>
+      )}
+    </div>
+  );
 }
 
-function RoomDetail({room,state:s,busy,command,date}:{room:Room;state:AppState;busy:boolean;command:(type:CommandType,data:Record<string,unknown>,close?:boolean)=>Promise<boolean>;date:string}){const [showIssue,setShowIssue]=useState(false);const issues=s.issues.filter(i=>i.roomId===room.id);const active=issues.filter(i=>i.status!=='resolved');return <><div className="room-detail-heading"><span className="large-room-icon"><BedDouble size={27}/></span><div><strong>{s.roomTypes.find(t=>t.id===room.typeId)?.name}</strong><p>{room.building} · {room.floor}층 · {date} 기준</p></div></div><div className="form-fields two-columns room-state"><label>청소 상태<select value={room.cleaning} disabled={busy} onChange={e=>void command('room.update',{id:room.id,version:room.version,cleaning:e.target.value},false)}>{Object.entries(cleaningLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>시설 · 판매 상태<select value={room.facility} disabled={busy} onChange={e=>void command('room.update',{id:room.id,version:room.version,facility:e.target.value},false)}>{Object.entries(facilityLabels).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div><p className="helper-text">판매 중지는 객실 전체 일정에 적용됩니다. 판매 재개는 상태를 정상으로 변경해 주세요.</p><div className="detail-section-heading"><h3>객실 인수인계 <span>{active.length}/{s.limits.maxOpenIssues} 미해결</span></h3><button className="text-button" disabled={busy} onClick={()=>setShowIssue(!showIssue)}><Plus size={15}/>기록 추가</button></div>{showIssue&&<form className="issue-form" onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);if(await command('issue.create',{roomId:room.id,title:f.get('title'),detail:f.get('detail'),category:f.get('category'),priority:f.get('priority')},false))setShowIssue(false);}}><div className="form-fields"><label>제목<input required maxLength={100} name="title" placeholder="예: 에어컨 작동 시 소음"/></label><div className="two-columns form-fields"><label>분류<select name="category"><option value="repair">고장·수리</option><option value="condition">컨디션</option><option value="other">기타</option></select></label><label>중요도<select name="priority"><option value="normal">일반</option><option value="urgent">긴급</option></select></label></div><label>내용<textarea name="detail" rows={2} maxLength={1000}/></label></div><div className="form-actions"><button className="button secondary" type="button" onClick={()=>setShowIssue(false)}>접기</button><button className="button primary" disabled={busy}>인수인계 저장</button></div></form>}{issues.length?issues.map(issue=><div className={`detail-issue ${issue.status==='resolved'?'resolved':''}`} key={issue.id}><div><span className={`status-pill ${issue.status==='resolved'?'neutral':issue.priority==='urgent'?'red':'amber'}`}>{issue.status==='resolved'?'해결 완료':issue.status==='in_progress'?'처리 중':issue.priority==='urgent'?'긴급':'접수'}</span><strong>{issue.title}</strong></div>{issue.detail&&<p>{issue.detail}</p>}<div className="issue-bottom"><small>{new Date(issue.createdAt).toLocaleDateString('ko-KR',{timeZone:'Asia/Seoul'})} 작성</small><span>{issue.status==='open'&&<button className="text-button" disabled={busy} onClick={()=>void command('issue.update',{id:issue.id,version:issue.version,status:'in_progress'},false)}>처리 시작</button>}{issue.status!=='resolved'?<button className="text-button" disabled={busy} onClick={()=>void command('issue.update',{id:issue.id,version:issue.version,status:'resolved'},false)}><Check size={13}/> 해결</button>:<button className="text-button" disabled={busy} onClick={()=>void command('issue.update',{id:issue.id,version:issue.version,status:'open'},false)}>다시 열기</button>}</span></div></div>):<p className="quiet-empty">아직 기록된 인수인계가 없어요.</p>}</>}
-function RoomCreate({state:s,busy,command}:{state:AppState;busy:boolean;command:(type:CommandType,data:Record<string,unknown>,close?:boolean)=>Promise<boolean>}){return <form onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);void command('room.create',{number:f.get('number'),building:f.get('building'),floor:Number(f.get('floor')),typeId:f.get('typeId')});}}><p className="form-intro">현재 {s.rooms.length}실 등록 · {s.plan==='free'?'무료 최대 20실':'프로 객실 수 제한 없음'}</p><div className="form-fields two-columns"><label>객실 번호<input name="number" required maxLength={20} placeholder="예: 501"/></label><label>건물동<input name="building" required defaultValue={s.rooms[0]?.building||'본관'} maxLength={30}/></label><label>층<input name="floor" type="number" required step={1} min={-10} max={200} defaultValue={5}/></label><label>객실 타입<select name="typeId">{s.roomTypes.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div><div className="form-actions"><button className="button primary" disabled={busy}>{busy?'등록 중…':'객실 등록'}</button></div></form>}
-function SettingsPage({state:s,busy,command,open}:{state:AppState;busy:boolean;command:(type:CommandType,data:Record<string,unknown>,close?:boolean)=>Promise<boolean>;open:(m:Modal)=>void}){return <div className="settings-layout"><section className="panel settings-panel"><div className="panel-heading"><div><h2>호텔 기본 정보</h2><p>모든 화면에 표시되는 호텔 이름입니다.</p></div><Building2 size={21} className="muted"/></div><form onSubmit={e=>{e.preventDefault();void command('property.update',{name:new FormData(e.currentTarget).get('hotelName')},false);}}><label>호텔 이름<input name="hotelName" key={s.property.name} defaultValue={s.property.name} required maxLength={80}/></label><div className="settings-facts"><span>기준 시간대<strong>서울 (Asia/Seoul)</strong></span><span>호텔 유형<strong>체험용 데모 호텔</strong></span></div><button className="button secondary" disabled={busy}>이름 저장</button></form></section><section className="panel settings-panel"><div className="panel-heading"><div><h2>객실 등록 현황</h2><p>판매 중지 객실도 등록 수에 포함됩니다.</p></div><BedDouble size={21} className="muted"/></div><div className="usage-number">{s.rooms.length}<span> / {s.limits.maxRooms??'제한 없음'}실</span></div><div className="usage-track"><span style={{width:`${Math.min(100,s.rooms.length/(s.limits.maxRooms||Math.max(20,s.rooms.length))*100)}%`}}/></div><button className="button secondary" onClick={()=>open({kind:'roomCreate'})}><Plus size={16}/>객실 등록</button></section><section className="panel plans-panel"><div className="panel-heading"><div><h2>호텔과 함께 자라는 플랜</h2><p>호텔 한 곳의 모든 구성원이 함께 사용합니다.</p></div><span className={`plan-tag ${s.plan}`}>현재 {s.plan==='pro'?'PRO':'FREE'}</span></div><div className="plan-cards"><div className={`plan-card ${s.plan==='free'?'current':''}`}><span className="plan-label">FREE</span><h3>기본 운영의 시작</h3><div className="plan-price">무료</div><ul><li><Check size={15}/>과거·미래 각각 1개월 예약</li><li><Check size={15}/>하루 단위 판매금액</li><li><Check size={15}/>객실별 미해결 기록 1개</li><li><Check size={15}/>객실 등록 20실 · 구성원 등록</li></ul></div><div className={`plan-card pro-card ${s.plan==='pro'?'current':''}`}><span className="plan-label">PRO <Sparkles size={13}/></span><h3>더 넓게 보는 호텔 운영</h3><div className="plan-price">30,000<span>원 / 월 · 예정</span></div><ul><li><Check size={15}/>과거·미래 각각 6개월 예약</li><li><Check size={15}/>기간별 판매금액 집계</li><li><Check size={15}/>객실별 미해결 기록 30개</li><li><Check size={15}/>객실·건물동 수 제한 없음</li><li><Check size={15}/>구성원 출퇴근 기록</li></ul></div></div><div className="demo-plan-settings"><div><strong><Sparkles size={16}/> 플랜 체험</strong><p>실제 결제 없이 데모 호텔의 기능 제한을 전환합니다.<br/>플랜을 바꿔도 저장된 데이터는 삭제되지 않습니다.</p></div><div className="segmented"><button disabled={busy||s.plan==='free'} className={s.plan==='free'?'active':''} onClick={()=>void command('demo.plan',{plan:'free'},false)}>무료 체험</button><button disabled={busy||s.plan==='pro'} className={s.plan==='pro'?'active':''} onClick={()=>void command('demo.plan',{plan:'pro'},false)}>프로 체험</button></div></div></section><section className="preview-boundaries"><ShieldCheck size={19}/><div><strong>지금 보고 있는 것은 작동하는 첫 초안입니다.</strong><p>예약·객실·인수인계 변경은 데모 호텔에 저장됩니다. 실제 로그인, 직원 초대, 결제와 외부 예약 연동은 제공하지 않으며, 실제 고객 정보는 입력하지 마세요.</p></div></section></div>}
+function Status({ status }: { status: Reservation["status"] }) {
+  return (
+    <span
+      className={`status-pill ${status === "checked_in" ? "blue" : status === "confirmed" ? "green" : status === "cancelled" ? "red" : "neutral"}`}
+    >
+      {statusLabels[status]}
+    </span>
+  );
+}
+function Kpi({
+  label,
+  value,
+  unit,
+  foot,
+  accent,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  unit: string;
+  foot: string;
+  accent?: boolean;
+  icon?: ReactNode;
+}) {
+  return (
+    <div className={`kpi ${accent ? "accent" : ""}`}>
+      <div className="kpi-label">
+        {label}
+        <span>{icon}</span>
+      </div>
+      <div className="kpi-value">
+        {value}
+        <span>{unit}</span>
+      </div>
+      <p>
+        {accent && <span className="live-dot" />}
+        {foot}
+      </p>
+    </div>
+  );
+}
+function Empty({
+  icon,
+  title,
+  text,
+}: {
+  icon: ReactNode;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="empty-state">
+      <span>{icon}</span>
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
+  );
+}
+function Dialog({
+  title,
+  children,
+  onClose,
+  busy,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  busy: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement;
+    const node = ref.current;
+    node?.querySelector<HTMLElement>("input,select,button")?.focus();
+    function key(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Tab") {
+        const items = Array.from(
+          node?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+          ) || [],
+        );
+        const first = items[0],
+          last = items.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
+    }
+    document.addEventListener("keydown", key);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.body.style.overflow = overflow;
+      before?.focus();
+    };
+  }, [busy]);
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+      <div
+        ref={ref}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+      >
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">HOTORI</span>
+            <h2 id="dialog-title">{title}</h2>
+          </div>
+          <button
+            aria-label="닫기"
+            className="icon-button"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <X size={20} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
 
+function ReservationForm({
+  state: s,
+  reservation: r,
+  busy,
+  command,
+  onCancel,
+}: {
+  state: AppState;
+  reservation?: Reservation;
+  busy: boolean;
+  command: (
+    type: CommandType,
+    data: Record<string, unknown>,
+    close?: boolean,
+  ) => Promise<boolean>;
+  onCancel: (r: Reservation) => void;
+}) {
+  const initialDate = s.selectedDate < s.today ? s.today : s.selectedDate;
+  const [checkIn, setCheckIn] = useState(r?.checkIn ?? initialDate);
+  const [checkOut, setCheckOut] = useState(
+    r?.checkOut ?? addDays(initialDate, 1),
+  );
+  const [typeId, setTypeId] = useState(r?.typeId ?? s.roomTypes[0].id);
+  const [quantity, setQuantity] = useState(r?.quantity ?? 1);
+  const [nightlyRate, setNightlyRate] = useState(
+    r?.nightlyRate ?? s.roomTypes[0].baseRate,
+  );
+  const [assign, setAssign] = useState<string[]>(r?.roomIds ?? []);
+  const [formError, setFormError] = useState("");
+  const validDates =
+    isISODate(checkIn) && isISODate(checkOut) && checkOut > checkIn;
+  const nights = validDates
+    ? Math.round(
+        (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000,
+      )
+    : 0;
+  const total = nightlyRate * quantity * nights;
+  const locked =
+    !!r &&
+    (!!r.clipped ||
+      ["cancelled", "checked_out", "checked_in"].includes(r.status));
+  const canCancel = r?.status === "confirmed";
+  const candidate = s.rooms.filter(
+    (room) => room.typeId === typeId && room.facility === "normal",
+  );
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!validDates) {
+      setFormError(
+        "체크인과 체크아웃 날짜를 올바르게 선택해 주세요. 체크아웃은 체크인 다음 날부터 가능합니다.",
+      );
+      return;
+    }
+    setFormError("");
+    const f = new FormData(e.currentTarget);
+    void command(r ? "reservation.update" : "reservation.create", {
+      ...(r ? { id: r.id, version: r.version } : {}),
+      guestName: f.get("guestName"),
+      phone: f.get("phone"),
+      typeId,
+      quantity,
+      checkIn,
+      checkOut,
+      channelId: f.get("channelId"),
+      nightlyRate,
+      memo: f.get("memo"),
+    });
+  }
+  return (
+    <>
+      <div className="form-intro">
+        {r ? (
+          <>
+            <Status status={r.status} />
+            <span className="reservation-id">예약번호 {r.id}</span>
+            {r.clipped && (
+              <span>
+                조회 기간에 포함된 숙박일만 표시되어 일정 수정이 제한됩니다.
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            예약 가능한 숙박일: {s.today} ~ {addDays(s.limits.futureEnd, -1)}
+            <br />
+            외부 예약 사이트의 재고는 별도로 확인해 주세요.
+          </>
+        )}
+      </div>
+      <form onSubmit={submit}>
+        {formError && (
+          <div className="form-error" role="alert">
+            {formError}
+          </div>
+        )}
+        <fieldset disabled={busy || locked} className="plain-fieldset">
+          <div className="form-fields two-columns">
+            <label>
+              고객명 <span>*</span>
+              <input
+                name="guestName"
+                defaultValue={r?.guestName}
+                required
+                maxLength={60}
+                placeholder="예약자 이름"
+              />
+            </label>
+            <label>
+              연락처
+              <input
+                name="phone"
+                defaultValue={r?.phone}
+                type="tel"
+                maxLength={30}
+                placeholder="선택 입력"
+              />
+            </label>
+            <label>
+              체크인 <span>*</span>
+              <input
+                type="date"
+                value={checkIn}
+                required
+                min={r ? s.limits.historyStart : s.today}
+                max={addDays(s.limits.futureEnd, -1)}
+                onChange={(e) => setCheckIn(e.target.value)}
+              />
+            </label>
+            <label>
+              체크아웃 <span>*</span>
+              <input
+                type="date"
+                value={checkOut}
+                required
+                min={addDays(checkIn, 1) || undefined}
+                max={s.limits.futureEnd}
+                onChange={(e) => setCheckOut(e.target.value)}
+              />
+            </label>
+            <label>
+              객실 타입
+              <select
+                value={typeId}
+                onChange={(e) => setTypeId(e.target.value)}
+              >
+                {s.roomTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              객실 수
+              <input
+                type="number"
+                value={quantity}
+                min={1}
+                max={999}
+                required
+                step={1}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+              />
+            </label>
+            <label>
+              예약 채널
+              <select
+                name="channelId"
+                defaultValue={r?.channelId || s.channels[0].id}
+              >
+                {s.channels.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              객실당 1박 판매금액 (원)
+              <input
+                type="number"
+                min={0}
+                max={999999999}
+                step={1}
+                required
+                value={nightlyRate}
+                onChange={(e) => setNightlyRate(Number(e.target.value))}
+              />
+            </label>
+            <label className="full-width">
+              운영 메모
+              <textarea
+                name="memo"
+                defaultValue={r?.memo}
+                rows={2}
+                maxLength={1000}
+                placeholder="동료와 공유할 내용을 남겨 주세요"
+              />
+            </label>
+          </div>
+        </fieldset>
+        <div className="reservation-summary">
+          <span>
+            {validDates
+              ? `${nights}박 · ${quantity}실`
+              : "숙박 날짜를 선택해 주세요"}
+          </span>
+          <span>
+            총 판매금액 <strong>{won(total)}</strong>
+          </span>
+        </div>
+        {(!locked || canCancel) && (
+          <div className="form-actions">
+            {canCancel && r && (
+              <button
+                type="button"
+                disabled={busy}
+                className="text-button text-danger"
+                onClick={() => onCancel(r)}
+              >
+                예약 취소
+              </button>
+            )}
+            {!locked && (
+              <button className="button primary" disabled={busy}>
+                {busy ? "저장 중…" : r ? "변경사항 저장" : "예약 등록"}
+              </button>
+            )}
+          </div>
+        )}
+      </form>
+      {r && r.status === "confirmed" && (
+        <div className="reservation-operations">
+          <h3>객실 배정 및 입실</h3>
+          <p>
+            배정할 객실을 {r.quantity}개 선택하세요. 청소·시설·예약 충돌은 저장
+            시 다시 확인합니다.
+          </p>
+          <div className="assignment-options">
+            {candidate.map((room) => (
+              <label key={room.id}>
+                <input
+                  type="checkbox"
+                  checked={assign.includes(room.id)}
+                  onChange={(e) =>
+                    setAssign(
+                      e.target.checked
+                        ? [...assign, room.id]
+                        : assign.filter((id) => id !== room.id),
+                    )
+                  }
+                />
+                {room.number}
+                <small>{cleaningLabels[room.cleaning]}</small>
+              </label>
+            ))}
+          </div>
+          <div className="operation-buttons">
+            <button
+              className="button secondary"
+              disabled={busy || assign.length !== r.quantity}
+              onClick={() =>
+                void command("reservation.assign", {
+                  id: r.id,
+                  version: r.version,
+                  roomIds: assign,
+                })
+              }
+            >
+              객실 배정 저장
+            </button>
+            <button
+              className="button primary"
+              disabled={
+                busy ||
+                r.roomIds.length !== r.quantity ||
+                !(
+                  (r.checkIn <= s.today && r.checkOut > s.today) ||
+                  (!!s.lateArrivalDate &&
+                    r.checkIn <= s.lateArrivalDate &&
+                    r.checkOut > s.lateArrivalDate)
+                )
+              }
+              onClick={() =>
+                void command("reservation.checkin", {
+                  id: r.id,
+                  version: r.version,
+                })
+              }
+            >
+              <LogIn size={16} />
+              {r.checkIn > s.today ? "입실일에 체크인" : "체크인"}
+            </button>
+          </div>
+        </div>
+      )}
+      {r?.status === "checked_in" && (
+        <div className="form-actions">
+          <button
+            className="button primary"
+            disabled={busy || r.checkOut > s.today}
+            onClick={() =>
+              void command("reservation.checkout", {
+                id: r.id,
+                version: r.version,
+              })
+            }
+          >
+            <LogOut size={16} />
+            {r.checkOut > s.today ? "퇴실일에 체크아웃" : "체크아웃 처리"}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 
-
-
+function RoomDetail({
+  room,
+  state: s,
+  busy,
+  command,
+  date,
+}: {
+  room: Room;
+  state: AppState;
+  busy: boolean;
+  command: (
+    type: CommandType,
+    data: Record<string, unknown>,
+    close?: boolean,
+  ) => Promise<boolean>;
+  date: string;
+}) {
+  const [showIssue, setShowIssue] = useState(false);
+  const issues = s.issues.filter((i) => i.roomId === room.id);
+  const active = issues.filter((i) => i.status !== "resolved");
+  return (
+    <>
+      <div className="room-detail-heading">
+        <span className="large-room-icon">
+          <BedDouble size={27} />
+        </span>
+        <div>
+          <strong>{s.roomTypes.find((t) => t.id === room.typeId)?.name}</strong>
+          <p>
+            {room.building} · {room.floor}층 · {date} 기준
+          </p>
+        </div>
+      </div>
+      <div className="form-fields two-columns room-state">
+        <label>
+          청소 상태
+          <select
+            value={room.cleaning}
+            disabled={busy}
+            onChange={(e) =>
+              void command(
+                "room.update",
+                {
+                  id: room.id,
+                  version: room.version,
+                  cleaning: e.target.value,
+                },
+                false,
+              )
+            }
+          >
+            {Object.entries(cleaningLabels).map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          시설 · 판매 상태
+          <select
+            value={room.facility}
+            disabled={busy}
+            onChange={(e) =>
+              void command(
+                "room.update",
+                {
+                  id: room.id,
+                  version: room.version,
+                  facility: e.target.value,
+                },
+                false,
+              )
+            }
+          >
+            {Object.entries(facilityLabels).map(([v, l]) => (
+              <option key={v} value={v}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="helper-text">
+        판매 중지는 객실 전체 일정에 적용됩니다. 판매 재개는 상태를 정상으로
+        변경해 주세요.
+      </p>
+      <div className="detail-section-heading">
+        <h3>
+          객실 인수인계{" "}
+          <span>
+            {active.length}/{s.limits.maxOpenIssues} 미해결
+          </span>
+        </h3>
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => setShowIssue(!showIssue)}
+        >
+          <Plus size={15} />
+          기록 추가
+        </button>
+      </div>
+      {showIssue && (
+        <form
+          className="issue-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            if (
+              await command(
+                "issue.create",
+                {
+                  roomId: room.id,
+                  title: f.get("title"),
+                  detail: f.get("detail"),
+                  category: f.get("category"),
+                  priority: f.get("priority"),
+                },
+                false,
+              )
+            )
+              setShowIssue(false);
+          }}
+        >
+          <div className="form-fields">
+            <label>
+              제목
+              <input
+                required
+                maxLength={100}
+                name="title"
+                placeholder="예: 에어컨 작동 시 소음"
+              />
+            </label>
+            <div className="two-columns form-fields">
+              <label>
+                분류
+                <select name="category">
+                  <option value="repair">고장·수리</option>
+                  <option value="condition">컨디션</option>
+                  <option value="other">기타</option>
+                </select>
+              </label>
+              <label>
+                중요도
+                <select name="priority">
+                  <option value="normal">일반</option>
+                  <option value="urgent">긴급</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              내용
+              <textarea name="detail" rows={2} maxLength={1000} />
+            </label>
+          </div>
+          <div className="form-actions">
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => setShowIssue(false)}
+            >
+              접기
+            </button>
+            <button className="button primary" disabled={busy}>
+              인수인계 저장
+            </button>
+          </div>
+        </form>
+      )}
+      {issues.length ? (
+        issues.map((issue) => (
+          <div
+            className={`detail-issue ${issue.status === "resolved" ? "resolved" : ""}`}
+            key={issue.id}
+          >
+            <div>
+              <span
+                className={`status-pill ${issue.status === "resolved" ? "neutral" : issue.priority === "urgent" ? "red" : "amber"}`}
+              >
+                {issue.status === "resolved"
+                  ? "해결 완료"
+                  : issue.status === "in_progress"
+                    ? "처리 중"
+                    : issue.priority === "urgent"
+                      ? "긴급"
+                      : "접수"}
+              </span>
+              <strong>{issue.title}</strong>
+            </div>
+            {issue.detail && <p>{issue.detail}</p>}
+            <div className="issue-bottom">
+              <small>
+                {new Date(issue.createdAt).toLocaleDateString("ko-KR", {
+                  timeZone: "Asia/Seoul",
+                })}{" "}
+                작성
+              </small>
+              <span>
+                {issue.status === "open" && (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void command(
+                        "issue.update",
+                        {
+                          id: issue.id,
+                          version: issue.version,
+                          status: "in_progress",
+                        },
+                        false,
+                      )
+                    }
+                  >
+                    처리 시작
+                  </button>
+                )}
+                {issue.status !== "resolved" ? (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void command(
+                        "issue.update",
+                        {
+                          id: issue.id,
+                          version: issue.version,
+                          status: "resolved",
+                        },
+                        false,
+                      )
+                    }
+                  >
+                    <Check size={13} /> 해결
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void command(
+                        "issue.update",
+                        {
+                          id: issue.id,
+                          version: issue.version,
+                          status: "open",
+                        },
+                        false,
+                      )
+                    }
+                  >
+                    다시 열기
+                  </button>
+                )}
+              </span>
+            </div>
+          </div>
+        ))
+      ) : (
+        <p className="quiet-empty">아직 기록된 인수인계가 없어요.</p>
+      )}
+    </>
+  );
+}
+function RoomCreate({
+  state: s,
+  busy,
+  command,
+}: {
+  state: AppState;
+  busy: boolean;
+  command: (
+    type: CommandType,
+    data: Record<string, unknown>,
+    close?: boolean,
+  ) => Promise<boolean>;
+}) {
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        void command("room.create", {
+          number: f.get("number"),
+          building: f.get("building"),
+          floor: Number(f.get("floor")),
+          typeId: f.get("typeId"),
+        });
+      }}
+    >
+      <p className="form-intro">
+        현재 {s.rooms.length}실 등록 ·{" "}
+        {s.plan === "free" ? "무료 최대 20실" : "프로 객실 수 제한 없음"}
+      </p>
+      <div className="form-fields two-columns">
+        <label>
+          객실 번호
+          <input name="number" required maxLength={20} placeholder="예: 501" />
+        </label>
+        <label>
+          건물동
+          <input
+            name="building"
+            required
+            defaultValue={s.rooms[0]?.building || "본관"}
+            maxLength={30}
+          />
+        </label>
+        <label>
+          층
+          <input
+            name="floor"
+            type="number"
+            required
+            step={1}
+            min={-10}
+            max={200}
+            defaultValue={5}
+          />
+        </label>
+        <label>
+          객실 타입
+          <select name="typeId">
+            {s.roomTypes.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="form-actions">
+        <button className="button primary" disabled={busy}>
+          {busy ? "등록 중…" : "객실 등록"}
+        </button>
+      </div>
+    </form>
+  );
+}
+function SettingsPage({
+  state: s,
+  busy,
+  command,
+  open,
+}: {
+  state: AppState;
+  busy: boolean;
+  command: (
+    type: CommandType,
+    data: Record<string, unknown>,
+    close?: boolean,
+  ) => Promise<boolean>;
+  open: (m: Modal) => void;
+}) {
+  return (
+    <div className="settings-layout">
+      <section className="panel settings-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>호텔 기본 정보</h2>
+            <p>모든 화면에 표시되는 호텔 이름입니다.</p>
+          </div>
+          <Building2 size={21} className="muted" />
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void command(
+              "property.update",
+              { name: new FormData(e.currentTarget).get("hotelName") },
+              false,
+            );
+          }}
+        >
+          <label>
+            호텔 이름
+            <input
+              name="hotelName"
+              key={s.property.name}
+              defaultValue={s.property.name}
+              required
+              maxLength={80}
+            />
+          </label>
+          <div className="settings-facts">
+            <span>
+              기준 시간대<strong>서울 (Asia/Seoul)</strong>
+            </span>
+            <span>
+              호텔 유형<strong>체험용 데모 호텔</strong>
+            </span>
+          </div>
+          <button className="button secondary" disabled={busy}>
+            이름 저장
+          </button>
+        </form>
+      </section>
+      <section className="panel settings-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>객실 등록 현황</h2>
+            <p>판매 중지 객실도 등록 수에 포함됩니다.</p>
+          </div>
+          <BedDouble size={21} className="muted" />
+        </div>
+        <div className="usage-number">
+          {s.rooms.length}
+          <span> / {s.limits.maxRooms ?? "제한 없음"}실</span>
+        </div>
+        <div className="usage-track">
+          <span
+            style={{
+              width: `${Math.min(100, (s.rooms.length / (s.limits.maxRooms || Math.max(20, s.rooms.length))) * 100)}%`,
+            }}
+          />
+        </div>
+        <button
+          className="button secondary"
+          onClick={() => open({ kind: "roomCreate" })}
+        >
+          <Plus size={16} />
+          객실 등록
+        </button>
+      </section>
+      <section className="panel plans-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>호텔과 함께 자라는 플랜</h2>
+            <p>호텔 한 곳의 모든 구성원이 함께 사용합니다.</p>
+          </div>
+          <span className={`plan-tag ${s.plan}`}>
+            현재 {s.plan === "pro" ? "PRO" : "FREE"}
+          </span>
+        </div>
+        <div className="plan-cards">
+          <div className={`plan-card ${s.plan === "free" ? "current" : ""}`}>
+            <span className="plan-label">FREE</span>
+            <h3>기본 운영의 시작</h3>
+            <div className="plan-price">무료</div>
+            <ul>
+              <li>
+                <Check size={15} />
+                과거·미래 각각 1개월 예약
+              </li>
+              <li>
+                <Check size={15} />
+                하루 단위 판매금액
+              </li>
+              <li>
+                <Check size={15} />
+                객실별 미해결 기록 1개
+              </li>
+              <li>
+                <Check size={15} />
+                객실 등록 20실 · 구성원 등록
+              </li>
+            </ul>
+          </div>
+          <div
+            className={`plan-card pro-card ${s.plan === "pro" ? "current" : ""}`}
+          >
+            <span className="plan-label">
+              PRO <Sparkles size={13} />
+            </span>
+            <h3>더 넓게 보는 호텔 운영</h3>
+            <div className="plan-price">
+              30,000<span>원 / 월 · 예정</span>
+            </div>
+            <ul>
+              <li>
+                <Check size={15} />
+                과거·미래 각각 6개월 예약
+              </li>
+              <li>
+                <Check size={15} />
+                기간별 판매금액 집계
+              </li>
+              <li>
+                <Check size={15} />
+                객실별 미해결 기록 30개
+              </li>
+              <li>
+                <Check size={15} />
+                객실·건물동 수 제한 없음
+              </li>
+              <li>
+                <Check size={15} />
+                구성원 출퇴근 기록
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div className="demo-plan-settings">
+          <div>
+            <strong>
+              <Sparkles size={16} /> 플랜 체험
+            </strong>
+            <p>
+              실제 결제 없이 데모 호텔의 기능 제한을 전환합니다.
+              <br />
+              플랜을 바꿔도 저장된 데이터는 삭제되지 않습니다.
+            </p>
+          </div>
+          <div className="segmented">
+            <button
+              disabled={busy || s.plan === "free"}
+              className={s.plan === "free" ? "active" : ""}
+              onClick={() => void command("demo.plan", { plan: "free" }, false)}
+            >
+              무료 체험
+            </button>
+            <button
+              disabled={busy || s.plan === "pro"}
+              className={s.plan === "pro" ? "active" : ""}
+              onClick={() => void command("demo.plan", { plan: "pro" }, false)}
+            >
+              프로 체험
+            </button>
+          </div>
+        </div>
+      </section>
+      <section className="preview-boundaries">
+        <ShieldCheck size={19} />
+        <div>
+          <strong>지금 보고 있는 것은 작동하는 첫 초안입니다.</strong>
+          <p>
+            예약·객실·인수인계 변경은 데모 호텔에 저장됩니다. 실제 로그인, 직원
+            초대, 결제와 외부 예약 연동은 제공하지 않으며, 실제 고객 정보는
+            입력하지 마세요.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
