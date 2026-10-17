@@ -9,7 +9,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   addMonths,
+  businessDateOf,
   dateValue,
+  type DatabaseState,
   DomainError,
   lateArrivalDate,
   mutate,
@@ -932,6 +934,463 @@ describe("배포 접근 제어(비밀번호·호스트 허용 목록)", () => {
       assert.equal(r.status, 403);
     } finally {
       await app.close();
+    }
+  });
+});
+describe("대실(시간제)·되돌리기·영업일·색 설정", () => {
+  const noon = "2026-10-17T03:00:00.000Z"; // 12:00 KST
+  const at = (iso: string, minutes: number) =>
+    new Date(Date.parse(iso) + minutes * 60000).toISOString();
+  const walkin = (
+    s: DatabaseState,
+    data: Record<string, unknown>,
+    now = noon,
+  ) =>
+    mutate(
+      s,
+      command("reservation.walkin", { stayType: "hourly", ...data }),
+      today,
+      now,
+    );
+  it("대실 현장 입실: 정액+추가요금, 청소 시간 포함 겹침 차단, 일찍 퇴실하면 청소 필요", () => {
+    const s = seed(today);
+    const res = walkin(s, {
+      roomId: "room-301",
+      hours: 4,
+      guestName: "대실 테스트",
+    });
+    const r = s.reservations.find((x) => x.id === res.id)!;
+    assert.equal(r.stayType, "hourly");
+    assert.equal(r.status, "checked_in");
+    assert.equal(r.totalAmount, 35000);
+    assert.equal(r.checkIn, today);
+    assert.equal(r.endAt, "2026-10-17T07:00:00.000Z");
+    assert.equal(r.checkedInAt, noon);
+    assert.ok(res.undoToken);
+    // 같은 방 겹치는 시간·청소 30분 안쪽은 거절, 그 뒤는 예약 가능
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("reservation.create", {
+            stayType: "hourly",
+            roomId: "room-301",
+            hours: 2,
+            startAt: at(noon, 250),
+          }),
+          today,
+          noon,
+        ),
+      errorCode("ROOM_CONFLICT"),
+    );
+    const later = mutate(
+      s,
+      command("reservation.create", {
+        stayType: "hourly",
+        roomId: "room-301",
+        hours: 2,
+        startAt: at(noon, 270),
+        channelId: "direct",
+      }),
+      today,
+      noon,
+    );
+    assert.equal(
+      s.reservations.find((x) => x.id === later.id)!.status,
+      "confirmed",
+    );
+    // 추가 시간 요금: 6시간 = 35,000 + 2 × 10,000
+    const six = walkin(s, { roomId: "room-302", hours: 6 });
+    assert.equal(
+      s.reservations.find((x) => x.id === six.id)!.totalAmount,
+      55000,
+    );
+    // 대실은 숙박 재고·가동률에 들어가지 않음
+    const view = snapshot(s, today, today, noon);
+    assert.equal(view.dashboard.hourlyCount, 3);
+    assert.equal(view.dashboard.hourlyRevenue, 35000 + 35000 + 55000);
+    // 일찍 퇴실 가능 → 청소 필요
+    mutate(
+      s,
+      command("reservation.checkout", { id: r.id, version: r.version }),
+      today,
+      at(noon, 60),
+    );
+    assert.equal(r.status, "checked_out");
+    assert.equal(s.rooms.find((x) => x.id === "room-301")!.cleaning, "dirty");
+    assert.equal(
+      s.rooms.find((x) => x.id === "room-301")!.cleaningSince,
+      at(noon, 60),
+    );
+    // 청소 전 방에는 대실 입실 불가
+    assert.throws(
+      () => walkin(s, { roomId: "room-301", hours: 2 }, at(noon, 61)),
+      errorCode("ROOM_NOT_READY"),
+    );
+    // 숙박·대실 매출 분리
+    const rep = report(s, today, today, today);
+    assert.equal(rep.hourlyRevenue, 35000 + 35000 + 55000);
+    assert.equal(rep.hourlyCount, 3);
+    assert.equal(rep.revenue, rep.nightlyRevenue + rep.hourlyRevenue);
+    assert.equal(rep.days[0].hourlyRevenue, rep.hourlyRevenue);
+  });
+  it("밤까지 이어지는 대실은 그날 숙박 재고에서 빠지고, 대실 예약은 시작 2시간 전부터 입실", () => {
+    const s = seed(today);
+    walkin(s, { roomId: "room-501", hours: 8 }); // 12:00~20:00, 디럭스
+    const nightly = (n: number) =>
+      mutate(
+        s,
+        command(
+          "reservation.create",
+          booking({
+            typeId: "deluxe",
+            checkIn: today,
+            checkOut: "2026-10-18",
+            guestName: `밤손님${n}`,
+          }),
+        ),
+        today,
+        noon,
+      );
+    nightly(1);
+    nightly(2);
+    assert.throws(() => nightly(3), errorCode("SOLD_OUT"));
+    // 반대로 숙박이 꽉 찬 날 밤까지 이어지는 대실도 거절
+    assert.throws(
+      () => walkin(s, { roomId: "room-502", hours: 4 }),
+      errorCode("SOLD_OUT"),
+    );
+    walkin(s, { roomId: "room-502", hours: 2 }); // 14:00 끝 → 가능
+    const future = mutate(
+      s,
+      command("reservation.create", {
+        stayType: "hourly",
+        roomId: "room-302",
+        hours: 3,
+        startAt: at(noon, 180),
+      }),
+      today,
+      noon,
+    );
+    const fr = s.reservations.find((x) => x.id === future.id)!;
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("reservation.checkin", { id: fr.id, version: fr.version }),
+          today,
+          noon,
+        ),
+      errorCode("INVALID_STATUS"),
+    );
+    mutate(
+      s,
+      command("reservation.checkin", { id: fr.id, version: fr.version }),
+      today,
+      at(noon, 120),
+    );
+    assert.equal(fr.status, "checked_in");
+    assert.equal(fr.startAt, at(noon, 120)); // 일찍 와도 3시간 이용
+    assert.equal(fr.endAt, at(noon, 300));
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("reservation.update", { ...fr, guestName: "변경" }),
+          today,
+          noon,
+        ),
+      errorCode("HOURLY_READONLY"),
+    );
+  });
+  it("예전 데이터(stayType·설정·색 없음)는 숙박·기본값으로 읽음", () => {
+    const s = seed(today);
+    delete s.settings;
+    delete s.floorColors;
+    for (const r of s.reservations) delete r.stayType;
+    for (const t of s.roomTypes) delete t.hourlyRate;
+    const view = snapshot(s, today, today, noon);
+    assert.equal(view.settings.baseHours, 4);
+    assert.equal(view.settings.checkInTime, "15:00");
+    assert.deepEqual(view.floorColors, {});
+    assert.equal(
+      view.roomTypes.find((t) => t.id === "standard")!.hourlyRate,
+      35000,
+    );
+    assert.equal(view.dashboard.hourlyCount, 0);
+    assert.ok(view.reservations.every((r) => r.stayType === undefined));
+    assert.equal(report(s, today, today, today).hourlyRevenue, 0);
+    // 기본값으로도 대실 가능
+    const res = walkin(s, { roomId: "room-301", hours: 4 });
+    assert.equal(
+      s.reservations.find((x) => x.id === res.id)!.totalAmount,
+      35000,
+    );
+  });
+  it("되돌리기: 바로 전 상태 복원, 다른 변경 뒤·시간 지난 뒤·두 번은 거절, 화면 응답에 내부 정보 없음", () => {
+    const s = seed(today);
+    const r = s.reservations.find((x) => x.id === "demo-3")!;
+    const before = structuredClone(r);
+    const res = mutate(
+      s,
+      command("reservation.checkin", { id: r.id, version: r.version }),
+      today,
+      noon,
+    );
+    assert.ok(res.undoToken && res.undoUntil);
+    assert.equal(Date.parse(res.undoUntil!) - Date.parse(noon), 5000);
+    assert.equal(snapshot(s, today, today, noon).hasOwnProperty("undo"), false);
+    const revision = s.revision;
+    mutate(s, command("undo", { token: res.undoToken }), today, at(noon, 0.05));
+    const restored = s.reservations.find((x) => x.id === "demo-3")!;
+    assert.equal(restored.status, "confirmed");
+    assert.deepEqual(restored, before);
+    assert.equal(s.revision, revision + 1);
+    assert.ok(s.audit.some((a) => a.action === "reservation.checkin"));
+    assert.ok(s.audit.some((a) => a.action === "undo"));
+    assert.throws(
+      () => mutate(s, command("undo", { token: res.undoToken }), today, noon),
+      errorCode("UNDO_EXPIRED"),
+    );
+    // 다른 변경 뒤에는 되돌리지 않음
+    const w = walkin(s, { roomId: "room-302", hours: 2 });
+    mutate(s, command("property.update", { name: "다른 변경" }), today, noon);
+    assert.throws(
+      () => mutate(s, command("undo", { token: w.undoToken }), today, noon),
+      errorCode("UNDO_EXPIRED"),
+    );
+    // 시간이 지나면 거절
+    const room = s.rooms.find((x) => x.id === "room-204")!;
+    const c = mutate(
+      s,
+      command("room.update", {
+        id: room.id,
+        version: room.version,
+        cleaning: "clean",
+      }),
+      today,
+      noon,
+    );
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("undo", { token: c.undoToken }),
+          today,
+          at(noon, 0.5),
+        ),
+      errorCode("UNDO_EXPIRED"),
+    );
+    // 현장 대실 되돌리기 → 예약 없어지고 방은 그대로 비어 있음
+    const count = s.reservations.length;
+    const w2 = walkin(s, { roomId: "room-304", hours: 3 });
+    assert.equal(s.reservations.length, count + 1);
+    mutate(s, command("undo", { token: w2.undoToken }), today, noon);
+    assert.equal(s.reservations.length, count);
+    assert.equal(s.rooms.find((x) => x.id === "room-304")!.cleaning, "clean");
+    // 되돌린 뒤에는 다른 작업이 겹치는지 검사
+    const x = s.reservations.find((x) => x.id === "demo-3")!;
+    const ci = mutate(
+      s,
+      command("reservation.checkin", { id: x.id, version: x.version }),
+      today,
+      noon,
+    );
+    mutate(
+      s,
+      command("room.update", {
+        id: "room-301",
+        version: s.rooms.find((r) => r.id === "room-301")!.version,
+        cleaning: "dirty",
+      }),
+      today,
+      noon,
+    );
+    assert.throws(
+      () => mutate(s, command("undo", { token: ci.undoToken }), today, noon),
+      errorCode("UNDO_EXPIRED"),
+    );
+  });
+  it("영업일 06시 경계: 새벽 대실은 전날 영업일 매출, 06시부터 새 영업일", () => {
+    assert.equal(businessDateOf("2026-10-17T20:59:59Z"), "2026-10-17"); // 10-18 05:59 KST
+    assert.equal(businessDateOf("2026-10-17T21:00:00Z"), "2026-10-18"); // 10-18 06:00 KST
+    assert.equal(businessDateOf("2026-10-17T15:00:00Z"), "2026-10-17"); // 자정
+    const s = seed(today);
+    const night = "2026-10-17T17:00:00.000Z"; // 10-18 02:00 KST
+    const res = mutate(
+      s,
+      command("reservation.walkin", {
+        stayType: "hourly",
+        roomId: "room-301",
+        hours: 3,
+      }),
+      "2026-10-18",
+      night,
+    );
+    const r = s.reservations.find((x) => x.id === res.id)!;
+    assert.equal(r.checkIn, "2026-10-17");
+    assert.equal(
+      report(s, "2026-10-17", "2026-10-17", "2026-10-18").hourlyRevenue,
+      35000,
+    );
+    assert.equal(
+      report(s, "2026-10-18", "2026-10-18", "2026-10-18").hourlyRevenue,
+      0,
+    );
+    const view = snapshot(s, "2026-10-18", "2026-10-18", night);
+    assert.equal(view.businessDate, "2026-10-17");
+    assert.equal(view.businessDayCutoffHour, 6);
+    assert.equal(
+      snapshot(s, "2026-10-18", "2026-10-18", "2026-10-17T21:00:00.000Z")
+        .businessDate,
+      "2026-10-18",
+    );
+    // 새벽 현장 숙박은 전날 숙박으로 입실 (late arrival 규칙 유지)
+    const n = mutate(
+      s,
+      command("reservation.walkin", {
+        stayType: "nightly",
+        roomId: "room-302",
+        nights: 1,
+      }),
+      "2026-10-18",
+      night,
+    );
+    const nr = s.reservations.find((x) => x.id === n.id)!;
+    assert.equal(nr.checkIn, "2026-10-17");
+    assert.equal(nr.checkOut, "2026-10-18");
+    assert.equal(nr.status, "checked_in");
+  });
+  it("설정: 대실 요금·시간 저장하면 새 대실 금액에 반영, 잘못된 값 거절", () => {
+    const s = seed(today);
+    mutate(
+      s,
+      command("settings.update", {
+        baseHours: 3,
+        extraHourFee: 5000,
+        cleaningMinutes: 20,
+        hourlyRates: { standard: 30000 },
+      }),
+      today,
+      noon,
+    );
+    const res = walkin(s, { roomId: "room-301", hours: 5 });
+    assert.equal(
+      s.reservations.find((x) => x.id === res.id)!.totalAmount,
+      30000 + 2 * 5000,
+    );
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("settings.update", { checkInTime: "25:00" }),
+          today,
+          noon,
+        ),
+      errorCode("INVALID_INPUT"),
+    );
+    assert.throws(
+      () =>
+        mutate(
+          s,
+          command("settings.update", { hourlyRates: { nope: 1 } }),
+          today,
+          noon,
+        ),
+      errorCode("INVALID_TYPE"),
+    );
+  });
+  it("층 색·특수객실 색과 이름: 저장·지우기·형식 검사, PostgreSQL 재시작 후에도 유지", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hotori-color-"));
+    let store = await openStore(dir, clock);
+    try {
+      await store.command(
+        command("floor.update", {
+          building: "본관",
+          floor: 3,
+          color: "#1ba6de",
+        }),
+      );
+      await store.command(
+        command("floor.update", {
+          building: "본관",
+          floor: 5,
+          color: "#D9381E",
+        }),
+      );
+      let view = await store.state();
+      const room = view.rooms.find((r) => r.number === "503")!;
+      await store.command(
+        command("room.update", {
+          id: room.id,
+          version: room.version,
+          color: "#8DBB2A",
+          label: "반려동물",
+        }),
+      );
+      await assert.rejects(
+        store.command(
+          command("floor.update", {
+            building: "본관",
+            floor: 3,
+            color: "blue",
+          }),
+        ),
+        errorCode("INVALID_COLOR"),
+      );
+      await assert.rejects(
+        store.command(
+          command("floor.update", {
+            building: "본관",
+            floor: 9,
+            color: "#000000",
+          }),
+        ),
+        errorCode("NOT_FOUND"),
+      );
+      await assert.rejects(
+        store.command(
+          command("room.update", {
+            id: room.id,
+            version: room.version + 1,
+            label: "12345678901234",
+          }),
+        ),
+        errorCode("INVALID_INPUT"),
+      );
+      await store.command(
+        command("floor.update", { building: "본관", floor: 5, color: null }),
+      );
+      await store.close();
+      store = await openStore(dir, clock);
+      view = await store.state();
+      assert.deepEqual(view.floorColors, { "본관|3": "#1BA6DE" });
+      const again = view.rooms.find((r) => r.number === "503")!;
+      assert.equal(again.color, "#8DBB2A");
+      assert.equal(again.label, "반려동물");
+      // 다른 방은 기본값(색 없음)
+      assert.equal(
+        view.rooms.find((r) => r.number === "201")!.color,
+        undefined,
+      );
+      await store.command(
+        command("room.update", {
+          id: again.id,
+          version: again.version,
+          color: null,
+          label: "",
+        }),
+      );
+      const cleared = (await store.state()).rooms.find(
+        (r) => r.number === "503",
+      )!;
+      assert.equal(cleared.color, undefined);
+      assert.equal(cleared.label, undefined);
+      // 서버를 처음 켤 때 만든 대실 예시가 들어 있음
+      assert.ok(view.reservations.some((r) => r.stayType === "hourly"));
+    } finally {
+      await store.close();
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

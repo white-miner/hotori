@@ -39,7 +39,7 @@ export async function openStore(
   );
   await db.query(
     "INSERT INTO hotel_state(id,payload) VALUES(1,$1::jsonb) ON CONFLICT(id) DO NOTHING",
-    [JSON.stringify(seed(todayKST(clock())))],
+    [JSON.stringify(seed(todayKST(clock()), clock().toISOString()))],
   );
   let queue: Promise<unknown> = Promise.resolve();
   const serialized = <T>(work: () => Promise<T>): Promise<T> => {

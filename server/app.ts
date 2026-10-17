@@ -101,22 +101,18 @@ export function createApp(
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     if (!allowedHosts.has((req.headers.host ?? "").toLowerCase()))
-      return res
-        .status(403)
-        .json({
-          error: "허용되지 않은 로컬 호스트입니다.",
-          code: "INVALID_HOST",
-        });
+      return res.status(403).json({
+        error: "허용되지 않은 로컬 호스트입니다.",
+        code: "INVALID_HOST",
+      });
     if (
       req.headers.origin &&
       !allowedOrigins.has(req.headers.origin.toLowerCase())
     )
-      return res
-        .status(403)
-        .json({
-          error: "허용되지 않은 요청 출처입니다.",
-          code: "INVALID_ORIGIN",
-        });
+      return res.status(403).json({
+        error: "허용되지 않은 요청 출처입니다.",
+        code: "INVALID_ORIGIN",
+      });
     if (
       accessPassword &&
       !(req.method === "GET" && req.path === "/api/health") &&
@@ -126,12 +122,10 @@ export function createApp(
         "WWW-Authenticate",
         'Basic realm="HOTORI", charset="UTF-8"',
       );
-      return res
-        .status(401)
-        .json({
-          error: "호토리 접속 비밀번호가 필요합니다.",
-          code: "AUTH_REQUIRED",
-        });
+      return res.status(401).json({
+        error: "호토리 접속 비밀번호가 필요합니다.",
+        code: "AUTH_REQUIRED",
+      });
     }
     if (
       req.method !== "GET" &&
@@ -178,6 +172,14 @@ export function createApp(
       .json({ error: "API 경로를 찾을 수 없습니다.", code: "NOT_FOUND" }),
   );
   if (distDir && existsSync(path.join(distDir, "index.html"))) {
+    // 해시가 붙은 빌드 파일(글꼴 포함)은 오래 보관해도 안전해요.
+    app.use(
+      "/assets",
+      express.static(path.join(distDir, "assets"), {
+        setHeaders: (res) =>
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable"),
+      }),
+    );
     app.use(express.static(distDir));
     app.use((req, res, next) =>
       req.method === "GET"
@@ -191,12 +193,10 @@ export function createApp(
         .status(error.status)
         .json({ error: error.message, code: error.code });
     if (error instanceof SyntaxError)
-      return void res
-        .status(400)
-        .json({
-          error: "JSON 형식이 올바르지 않습니다.",
-          code: "INVALID_JSON",
-        });
+      return void res.status(400).json({
+        error: "JSON 형식이 올바르지 않습니다.",
+        code: "INVALID_JSON",
+      });
     if (error?.type === "entity.too.large")
       return void res
         .status(413)
@@ -205,12 +205,10 @@ export function createApp(
       "HOTORI 요청 처리 실패:",
       error instanceof Error ? error.message : "unknown",
     );
-    res
-      .status(500)
-      .json({
-        error: "서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-        code: "INTERNAL_ERROR",
-      });
+    res.status(500).json({
+      error: "서버 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+      code: "INTERNAL_ERROR",
+    });
   };
   app.use(errorHandler);
   return app;
