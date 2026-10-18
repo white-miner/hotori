@@ -594,9 +594,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
             <div className="lg cal-lg">
               <span><i className="lg-bar" />숙박</span>
-              <span><i className="lg-bar cx" />취소·노쇼</span>
+              <span><i className="lg-bar ok" />입실 완료</span>
               <span><i className="lg-dot" />대실</span>
-              <span><Ring on size={13} />입실 완료</span>
+              <span><i className="lg-bar cx" />취소·노쇼</span>
             </div>
           </div>
           {rangeNav}

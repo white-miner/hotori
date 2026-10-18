@@ -1,4 +1,5 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
+import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
@@ -304,6 +305,7 @@ export default function Settings({ data, email, notify }: Props) {
           {[
             ["rooms", "객실·타입"],
             ["plats", "플랫폼"],
+            ["pcolor", "플랫폼 색"],
             ["shop", "매점"],
             ["exp", "지출 분류"],
             ["share", "현황 공유"],
@@ -711,6 +713,53 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="preview-row">
             미리 보기 {s.platforms.slice(0, 5).map((p) => <PlatBadge key={p.id} p={p} />)}
           </div>
+        </section>
+
+        <section className="card" id="set-pcolor">
+          <h3>플랫폼 색</h3>
+          <div className="sub">객실 캘린더 막대 색이에요. 옅은 바탕은 입실 전, 꽉 찬 색은 입실 완료예요. 공유 링크 화면도 같은 색으로 보여요.</div>
+          {s.platforms.map((p) => {
+            const def = defaultPlatformColor(p);
+            const cur = platPaint(p);
+            const opts = PLAT_PRESETS.includes(def) ? PLAT_PRESETS : [def, ...PLAT_PRESETS]; // 순서는 늘 같게, 기본 색엔 작은 점
+            const set = (color: string | null) =>
+              update((x) => ({
+                ...x,
+                platforms: x.platforms.map((y) => {
+                  if (y.id !== p.id) return y;
+                  const { color: _old, ...rest } = y;
+                  return color && color !== defaultPlatformColor(y) ? { ...rest, color } : rest;
+                }),
+              }));
+            return (
+              <div className="pcrow" key={p.id}>
+                <div className="pc-name">
+                  <span className="pc-bar" style={{ background: cur.t, borderColor: cur.b }}>
+                    {p.name || "이름 없음"}
+                  </span>
+                  <span className="pc-bar ok" style={{ background: cur.c, borderColor: cur.c, color: cur.f }}>
+                    입실
+                  </span>
+                </div>
+                <div className="pc-sw" role="radiogroup" aria-label={`${p.name} 색`}>
+                  {opts.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      role="radio"
+                      aria-checked={cur.c === c}
+                      aria-label={c === def ? `기본 색 ${c}` : c}
+                      title={c === def ? "기본 색" : c}
+                      className={`sw ${cur.c === c ? "on" : ""} ${c === def ? "def" : ""}`}
+                      style={{ background: c }}
+                      onClick={() => set(c === def ? null : c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {!s.platforms.length ? <div className="muted sm">플랫폼을 먼저 추가해 주세요</div> : null}
         </section>
 
         <section className="card" id="set-shop">

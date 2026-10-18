@@ -3,7 +3,8 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isMoved, legsOf, md, orderedFloors, typeLabel, weekday, won } from "../shared/ledger";
 import { type Bar, calendarLayout } from "../shared/calendar";
-import { Ring, lookups } from "./ui";
+import { paint } from "../shared/platform";
+import { lookups } from "./ui";
 
 type L = ReturnType<typeof lookups>;
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
@@ -35,18 +36,25 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
   const cx = !isActive(b);
   const p = L.plats.get(b.platformId);
   const px = span.len * cw;
+  // 입실 완료: 플랫폼 색으로 꽉 채워요 (글자는 흰색·검은색 중 잘 보이는 쪽)
   const arr = isActive(b) && b.arrived;
-  const ringMin = 72 + (bar.prev !== undefined ? 30 : 0) + (bar.next !== undefined ? 30 : 0); // 옮긴 방 표시가 있으면 ◯ 대신 왼쪽 선이 먼저
+  const c = paint(p);
   return (
     <div
-      className={`cbar ${cx ? "cx" : ""} ${bar.prev !== undefined ? "mvi" : ""} ${bar.next !== undefined ? "mvo" : ""} ${arr && px < ringMin ? "arr" : ""} ${bar.conflict ? "cf" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
-      style={{ left: span.start * cw + (span.clipL ? 0 : 2), width: span.len * cw - (span.clipL ? 0 : 2) - (span.clipR ? 0 : 3) }}
+      className={`cbar ${cx ? "cx" : ""} ${bar.prev !== undefined ? "mvi" : ""} ${bar.next !== undefined ? "mvo" : ""} ${arr ? "ok" : ""} ${bar.conflict ? "cf" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
+      style={{
+        left: span.start * cw + (span.clipL ? 0 : 2),
+        width: span.len * cw - (span.clipL ? 0 : 2) - (span.clipR ? 0 : 3),
+        ["--pc" as string]: c.c,
+        ["--pb" as string]: c.b,
+        ["--pt" as string]: c.t,
+        ["--pf" as string]: c.f,
+      }}
       title={tip(b, L, readOnly)}
       {...(readOnly ? {} : { role: "button", tabIndex: 0 })}
       onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(b))}
       onKeyDown={readOnly ? undefined : (e) => e.key === "Enter" && onOpen(b)}
     >
-      {arr && px >= ringMin ? <Ring on size={13} /> : null}
       {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
       {bar.prev !== undefined ? <span className="cb-mv" title={`${L.roomLabel(bar.prev) ?? "?"}호에서 옮겨 왔어요`}>{L.rooms.get(bar.prev ?? "")?.no ?? "?"}→</span> : null}
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
@@ -65,7 +73,8 @@ function Marks({ m, cw, L, readOnly, onOpen }: { m?: Map<number, Booking[]>; cw:
           {list.slice(0, 3).map((d) => (
             <i
               key={d.id}
-              className={`cdot ${isActive(d) ? "" : "cx"}`}
+              className={`cdot ${isActive(d) ? (d.arrived ? "ok" : "") : "cx"}`}
+              style={isActive(d) ? { ["--pc" as string]: paint(L.plats.get(d.platformId)).b } : undefined}
               title={tip(d, L, readOnly)}
               onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(d))}
             />
@@ -126,8 +135,33 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
   const width = lw + cw * dates.length;
   const vars = { width, ["--cw" as string]: `${cw}px`, ["--lw" as string]: `${lw}px` };
 
+  // 지금 보이는 막대·점의 플랫폼만 (취소·노쇼는 회색이라 빼요)
+  const shown = new Set<string>();
+  const addB = (b: Booking) => isActive(b) && shown.add(b.platformId);
+  for (const bars of lay.rooms.values()) for (const x of bars) addB(x.b);
+  for (const lane of lay.lanes) for (const x of lane) addB(x.b);
+  for (const m of [...lay.dayuse.values(), lay.lanesDayuse]) for (const list of m.values()) list.forEach(addB);
+  const legend = s.platforms.filter((p) => shown.has(p.id));
+
   return (
     <>
+      {legend.length ? (
+        <div className="cal-pl" aria-label="플랫폼 색">
+          {legend.map((p) => {
+            const c = paint(p);
+            return (
+              <span key={p.id} title={p.name}>
+                <i style={{ background: c.t, borderColor: c.b }} />
+                {p.name}
+              </span>
+            );
+          })}
+          <span className="cal-pl-ok">
+            <i />
+            꽉 찬 막대 = 입실 완료
+          </span>
+        </div>
+      ) : null}
       {lay.conflicts ? (
         <div className="cal-cf" role="status">
           같은 방에 밤이 겹치는 숙박 {lay.conflicts}건 — 빨간 테두리를 눌러 방을 옮겨 주세요
@@ -216,8 +250,8 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
       </div>
       <p className="stock-hint">
         {readOnly
-          ? "보기 전용 · 막대는 숙박(퇴실일 칸은 비어요) · 점은 대실 · ◯ 또는 왼쪽 굵은 선은 입실 완료"
-          : "막대를 누르면 예약을 고치고, 빈 칸을 누르면 그 방·그날로 새 예약을 적어요 · 점은 대실 · ◯ 또는 왼쪽 굵은 선은 입실 완료"}
+          ? "보기 전용 · 막대는 숙박(퇴실일 칸은 비어요) · 점은 대실 · 색은 플랫폼 · 색이 꽉 찬 막대·점은 입실 완료"
+          : "막대를 누르면 예약을 고치고, 빈 칸을 누르면 그 방·그날로 새 예약을 적어요 · 점은 대실 · 색은 플랫폼 · 색이 꽉 찬 막대·점은 입실 완료"}
       </p>
     </>
   );

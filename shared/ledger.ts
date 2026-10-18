@@ -49,6 +49,7 @@ export interface Platform {
   id: string;
   name: string;
   abbr: string; // 한 글자 약자
+  color?: string | null; // 캘린더 막대 색 (#RRGGBB). 없으면 플랫폼 기본 색
 }
 export interface HotelSettings {
   buildings: Building[]; // 1개 이상. 1개면 화면은 예전과 똑같아요.
@@ -149,7 +150,14 @@ export function normalizeSettings(raw: unknown): HotelSettings {
             return { ...t, name, code: name };
           })
       : [],
-    platforms: Array.isArray(s.platforms) ? s.platforms : [],
+    platforms: Array.isArray(s.platforms)
+      ? s.platforms
+          .filter((p) => p && typeof p.id === "string")
+          .map((p) => {
+            const { color, ...rest } = p;
+            return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? { ...rest, color: color.toUpperCase() } : rest;
+          })
+      : [],
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
     shopItems: normalizeShopItems((s as { shopItems?: unknown }).shopItems),
     expenseCategories: normalizeExpenseCategories((s as { expenseCategories?: unknown }).expenseCategories),

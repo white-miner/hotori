@@ -880,9 +880,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cal-lg { display: none; }
   .cal-cf { margin: 0 6px 10px; }
 }
-/* 좁은 막대의 입실 완료: ◯ 대신 왼쪽 굵은 선 */
-.cbar.arr { box-shadow: inset 3px 0 0 var(--ink); border-top-left-radius: 4px; border-bottom-left-radius: 4px; padding-left: 7px; }
-.cbar.arr.cf { box-shadow: inset 3px 0 0 var(--ink), 0 0 0 2px var(--red-s); }
 
 /* ---------- 객실 이동 (예약 수정 창) ---------- */
 .btn.dark { background: var(--ink); color: #fff; }
@@ -974,3 +971,60 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .exmodal .two { grid-template-columns: 1fr; }
 }
 .exrow .nin { flex: 1; min-width: 0; }
+
+/* ---------- 객실 캘린더: 플랫폼 색 ---------- */
+.cbar { --pc: #9a9a9a; --pb: #9a9a9a; --pt: #f3f3f3; --pf: #fff; background-color: var(--pt); border: 2px solid var(--pb); color: var(--ink); padding: 0 6px; }
+.cbar:hover, .cbar.ro:hover { border-color: var(--pb); filter: brightness(0.97); }
+.cbar.ro:hover { filter: none; }
+.cbar .cb-p { background: #fff; border-color: transparent; color: var(--ink2); }
+.cbar .cb-mv { color: var(--ink2); }
+.cbar .cb-t { background: rgba(255, 255, 255, 0.75); }
+.cbar.ok { background-color: var(--pc); border-color: var(--pc); color: var(--pf); }
+.cbar.ok .cb-mv { color: var(--pf); opacity: 0.85; }
+.cbar.ok .cb-p { background: rgba(255, 255, 255, 0.92); color: var(--ink); }
+.cbar.ok .cb-t { background: rgba(255, 255, 255, 0.92); color: var(--ink); }
+/* 객실 이동 경계는 그대로 점선 */
+.cbar.mvi { border-left-style: dashed; }
+.cbar.mvo { border-right-style: dashed; }
+.cbar.ok.mvi, .cbar.ok.mvo { border-color: var(--pb); }
+/* 겹침: 플랫폼 테두리는 두고 바깥에 빨간 고리 */
+.cbar.cf { border: 2px solid var(--pb); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--red); z-index: 3; }
+/* 범위 밖으로 이어지는 쪽 */
+.cbar.cl { border-left: 0; background-image: linear-gradient(to right, rgba(255, 255, 255, 0.7) 0 3px, transparent 3px); }
+.cbar.cr { border-right: 0; background-image: linear-gradient(to left, rgba(255, 255, 255, 0.7) 0 3px, transparent 3px); }
+.cbar.cl.cr { background-image: linear-gradient(to right, rgba(255, 255, 255, 0.7) 0 3px, transparent 3px calc(100% - 3px), rgba(255, 255, 255, 0.7) calc(100% - 3px)); }
+/* 취소·노쇼: 예전처럼 회색 점선 + 가운데 줄 */
+.cbar.cx, .cbar.cx:hover { background: transparent; border: 1px dashed #c8c8c8; color: var(--ink4); filter: none; box-shadow: none; }
+.cbar.cx.cl { border-left: 0; }
+.cbar.cx.cr { border-right: 0; }
+.cbar.cx .cb-p { background: var(--panel2); color: var(--ink4); }
+.cbar.cx .cb-mv { color: var(--ink4); }
+/* 대실 점: 플랫폼 색 고리, 입실하면 꽉 차게 */
+.cdot { width: 8px; height: 8px; background: #fff; box-shadow: inset 0 0 0 2px var(--pc, var(--ink2)), 0 0 0 1.5px #fff; }
+.cdot.ok { background: var(--pc, var(--ink2)); }
+.cdot.cx { background: #fff; box-shadow: inset 0 0 0 1.2px var(--ink4), 0 0 0 1.5px #fff; }
+/* 범례 */
+.cal-lg i.lg-bar { border: 2px solid #8a8a8a; background: #ededed; }
+.cal-lg i.lg-bar.ok { background: #8a8a8a; }
+.cal-lg i.lg-bar.cx { border: 1px dashed #c8c8c8; background: transparent; }
+.cal-lg i.lg-dot { width: 8px; height: 8px; background: #fff; box-shadow: inset 0 0 0 2px var(--ink3); }
+.cal-pl { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 0 0 10px; font-size: 12px; font-weight: 650; color: var(--ink2); }
+.cal-pl span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cal-pl i { width: 18px; height: 12px; border-radius: 4px; border: 2px solid; flex: none; }
+.cal-pl .cal-pl-ok { color: var(--ink3); font-weight: 550; }
+.cal-pl .cal-pl-ok i { border-color: var(--ink3); background: var(--ink3); }
+@media (max-width: 760px) {
+  .cal-pl { gap: 5px 10px; font-size: 11px; margin: 0 4px 8px; }
+  .cal-pl i { width: 14px; height: 10px; border-radius: 3px; }
+  .cbar { padding: 0 4px; border-width: 1.5px; }
+  .cbar.cf { border-width: 1.5px; }
+}
+/* 설정 › 플랫폼 색 */
+.pcrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff; border-radius: 14px; padding: 8px 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.pc-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pc-bar { display: inline-flex; align-items: center; height: 26px; padding: 0 9px; border: 2px solid; border-radius: 8px; font-size: 12.5px; font-weight: 700; white-space: nowrap; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+.pc-bar.ok { font-size: 11.5px; padding: 0 7px; }
+.pc-sw { display: flex; gap: 5px; flex-wrap: wrap; }
+.pc-sw .sw { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); position: relative; }
+.pc-sw .sw.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink); }
+.pc-sw .sw.def::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ink4); }
