@@ -9,6 +9,7 @@ import {
   type Placement,
   addDays,
   businessDate,
+  isEarlyOut,
   type ShopItem,
   normalizeSettings,
 } from "../shared/ledger";
@@ -38,13 +39,15 @@ interface BookingRow {
   start_time: string | null;
   end_time: string | null;
   arrived: boolean;
+  early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
+  refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
 }
 const COLS =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,memo,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,cancelled_at,created_at,updated_at";
 
 /** DB의 [{room, nights}] → [{roomId, nights}]. 모양이 이상하거나 박수 합이 안 맞으면 이동 없음 */
 function segsFromRow(v: unknown, nights: number | null): RoomSegment[] | null {
@@ -69,6 +72,8 @@ export function fromRow(r: BookingRow): Booking {
     startTime: r.start_time ? r.start_time.slice(0, 5) : null,
     endTime: r.end_time ? r.end_time.slice(0, 5) : null,
     arrived: r.arrived,
+    earlyOut: r.early_out_on ?? null,
+    refund: r.refund_amount ?? null,
     memo: r.memo,
     cancelledAt: r.cancelled_at,
     createdAt: r.created_at,
@@ -92,6 +97,9 @@ function toRow(b: Booking) {
     start_time: stay ? null : b.startTime,
     end_time: stay ? null : b.endTime,
     arrived: b.arrived,
+    // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
+    early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
+    refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
   };
 }
@@ -215,6 +223,26 @@ export function useHotelData(hotelId: string) {
     const saved = fromRow(data as BookingRow);
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
   }, [refresh]);
+  // 중도 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
+  const setEarlyOut = useCallback(async (id: string, earlyOut: string | null, refund: number | null) => {
+    const box: { prev?: Booking } = {};
+    setBookings((list) => list.map((x) => (x.id === id ? ((box.prev = x), { ...x, earlyOut, refund: earlyOut ? refund : null }) : x)));
+    const { data, error } = await supabase
+      .from("bookings")
+      .update({ early_out_on: earlyOut, refund_amount: earlyOut && refund ? refund : null })
+      .eq("id", id)
+      .select(COLS)
+      .single();
+    if (error) {
+      const prev = box.prev;
+      if (prev) setBookings((list) => list.map((x) => (x.id === id ? prev : x)));
+      void refresh();
+      throw error;
+    }
+    const saved = fromRow(data as BookingRow);
+    setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+    return saved;
+  }, [refresh]);
   // 객실 배치에서 옮기기·되돌리기: room_id와 구간을 함께 (구간이 null이면 한 방)
   const setPlacement = useCallback(async (id: string, p: Placement) => {
     const segs = normalizeSegments(p.segments);
@@ -247,7 +275,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, deleteBooking, saveHotel };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, deleteBooking, saveHotel };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 
@@ -257,8 +285,8 @@ export async function queryLedger(hotelId: string, from: string, to: string): Pr
     .from("bookings")
     .select(COLS)
     .eq("hotel_id", hotelId)
-    .gte("check_in", from)
-    .lte("check_in", to)
+    // 입실일이 기간 안이거나, 기간 안에 중도 퇴실(환불)한 예약 (환불은 퇴실한 날 매출에서 빠져요)
+    .or(`and(check_in.gte.${from},check_in.lte.${to}),and(early_out_on.gte.${from},early_out_on.lte.${to})`)
     .order("check_in", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(5000);

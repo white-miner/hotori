@@ -20,6 +20,8 @@ import {
   firstOverbooking,
   freeRooms,
   isActive,
+  isEarlyOut,
+  usedNights,
   md,
   nightBoard,
   orderedFloors,
@@ -443,7 +445,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">
-          <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
+          <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
         </div>
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>

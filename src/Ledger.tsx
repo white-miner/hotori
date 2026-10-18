@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { type Booking, addDays, dayLabel, isActive, isMoved, legsOf, perNight, stayRoomIds, typeLabel, usableTypes, won } from "../shared/ledger";
+import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryShopSales, useExpenses } from "./data";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
@@ -79,7 +79,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   }, [hotelId, from, to, data.syncedAt, data.bookings]);
 
   const q = query.trim().toLowerCase();
-  const list = (rows ?? []).filter((b) => {
+  // 조건(플랫폼·타입·종류·검색·상태)만 거른 목록: 기간 밖 입실이라도 기간 안에 중도 퇴실 환불이 있으면 매출 계산에 들어가요
+  const matched = (rows ?? []).filter((b) => {
     if (plat && b.platformId !== plat) return false;
     if (type && b.typeId !== type) return false;
     if (kind && b.kind !== kind) return false;
@@ -92,16 +93,21 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     }
     return true;
   });
+  const inRange = (b: Booking) => b.checkIn >= from && b.checkIn <= to;
+  const list = matched.filter(inRange);
   if (sort === "in-asc") list.sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.createdAt.localeCompare(b.createdAt));
   else if (sort === "rec") list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const act = list.filter(isActive);
-  const sum = act.reduce((n, b) => n + b.price, 0);
-  const nights = act.reduce((n, b) => n + (b.nights ?? 0), 0);
+  // 매출: 취소 0 · 노쇼는 받은 금액 그대로 · 중도 퇴실은 결제 − 환불 (환불은 퇴실한 날 기준)
+  const rev = roomRevenue(matched, from, to);
+  const sum = rev.net;
+  const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
   // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
   const filtered = !!(plat || type || kind || q || st === "void");
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
   // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
-  const roomsAll = (rows ?? []).filter(isActive).reduce((n, b) => n + b.price, 0);
+  const revAll = roomRevenue(rows ?? [], from, to);
+  const roomsAll = revAll.net;
   const exT = expenseTotals(ex.list ?? []);
   const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
@@ -114,7 +120,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           <div className="sub">
             {tab === "bookings" ? (
               <>
-                {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 취소·노쇼 제외</span>
+                {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 박수는 취소·노쇼 제외 · 매출은 노쇼 포함, 환불은 퇴실한 날</span>
               </>
             ) : (
               <>
@@ -127,7 +133,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
               매출<b>{won(money.sales)}원</b>
               <i className="muted">
                 {" "}
-                · 숙박·대실 {won(roomsAll)} · 매점 {won(shopSum?.amount ?? 0)}
+                · 숙박·대실 {won(roomsAll)}{revAll.refunds ? ` (환불 −${won(revAll.refunds)})` : ""} · 매점 {won(shopSum?.amount ?? 0)}
               </i>
             </span>
             <span className="op">−</span>
@@ -272,8 +278,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           list.map((b) => {
             const p = L.plats.get(b.platformId);
             const per = perNight(b);
+            const eo = isActive(b) && isEarlyOut(b);
             return (
-              <div key={b.id} role="button" tabIndex={0} className={`lrow ${isActive(b) ? "" : "cx"}`} onClick={() => onOpen(b)}>
+              <div key={b.id} role="button" tabIndex={0} className={`lrow ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
                 <span className="c-date">{dayLabel(b.checkIn)}</span>
                 <span className="c-kind">{b.kind === "stay" ? "숙박" : "대실"}</span>
                 <span className="c-plat">
@@ -282,19 +289,21 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 </span>
                 <span className="c-name">
                   <span className="gn">{b.guestName}</span>
-                  {STATUS[b.status] ? <span className="cxt">{STATUS[b.status]}</span> : null}
+                  {STATUS[b.status] ? <span className={b.status === "noshow" ? "nst" : "cxt"} title={b.status === "noshow" ? "결제한 금액은 매출에 남아요" : "전액 환불 · 매출에서 빠져요"}>{STATUS[b.status]}</span> : null}
                   {b.memo ? <span className="memo">{b.memo}</span> : null}
                 </span>
                 <span className="c-type">
                   <TypeBadge t={L.types.get(b.typeId)} />
                 </span>
-                <span className="c-len">{b.kind === "stay" ? `${b.nights}박` : `${b.startTime}~${b.endTime}`}</span>
+                <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
+                  {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
+                </span>
                 <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
                   {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
                 </span>
                 <span className="c-price r">
                   {won(b.price)}
-                  {per ? <small>1박 {won(per)}</small> : null}
+                  {eo && b.refund ? <small className="rf">환불 −{won(b.refund)}</small> : per ? <small>1박 {won(per)}</small> : null}
                 </span>
                 <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
               </div>

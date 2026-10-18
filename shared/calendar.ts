@@ -1,5 +1,5 @@
 // 객실 캘린더: 방마다 한 줄, 날짜마다 한 칸. 숙박은 입실일부터 N박만큼 막대 (퇴실일 칸은 비어 있어요).
-import { type Booking, type HotelSettings, type Leg, addDays, daysBetween, isActive, isCancelledRefilled, legsOf, roomMap } from "./ledger";
+import { type Booking, type HotelSettings, type Leg, addDays, daysBetween, freedLegsOf, isActive, isCancelledRefilled, legsOf, roomMap } from "./ledger";
 
 export interface Span {
   start: number; // 보이는 범위 안에서 시작 칸 (0부터)
@@ -24,6 +24,10 @@ export interface Bar {
   leg: Leg; // 객실 이동이면 그 방에 묵는 구간
   prev?: string | null; // 앞 구간 방 (이동해 들어왔으면)
   next?: string | null; // 다음 구간 방 (이동해 나가면)
+  /** 중도 퇴실로 비운 밤 (흐린 점선 꼬리: 방·재고는 비어 있어요) */
+  freed?: boolean;
+  /** 이 막대 다음 날 중도 퇴실 (꼬리가 이어 붙어요) */
+  endsEarly?: boolean;
 }
 export interface CalendarLayout {
   rooms: Map<string, Bar[]>; // roomId → 막대들
@@ -56,7 +60,7 @@ export function stackLanes(bars: Bar[]): Bar[][] {
 /** 같은 방 안에서 정상 숙박끼리 밤이 겹치면 둘 다 conflict, 쌍 수를 돌려줘요 */
 export function markConflicts(bars: Bar[]): number {
   let n = 0;
-  const act = bars.filter((x) => isActive(x.b));
+  const act = bars.filter((x) => isActive(x.b) && !x.freed);
   for (let i = 0; i < act.length; i++)
     for (let j = i + 1; j < act.length; j++)
       if (act[i].b.id !== act[j].b.id && overlapNights(act[i], act[j])) {
@@ -96,14 +100,27 @@ export function calendarLayout(s: HotelSettings, bookings: Booking[], from: stri
       const span = barSpan(leg.checkIn, leg.nights, from, to);
       if (!span) return;
       const bar: Bar = { b, span, conflict: false, leg, prev: k > 0 ? legs[k - 1].roomId : undefined, next: k < legs.length - 1 ? legs[k + 1].roomId : undefined };
+      if (b.earlyOut && isActive(b) && addDays(leg.checkIn, leg.nights) === b.earlyOut) bar.endsEarly = true;
       if (room) out.rooms.set(room.id, [...(out.rooms.get(room.id) ?? []), bar]);
       else loose.push(bar);
     });
+    // 중도 퇴실: 비운 밤은 흐린 꼬리로 (정상 예약일 때만)
+    if (isActive(b))
+      for (const leg of freedLegsOf(b)) {
+        const room = leg.roomId ? rooms.get(leg.roomId) : undefined;
+        if (buildingId && room?.buildingId !== buildingId) continue;
+        const span = barSpan(leg.checkIn, leg.nights, from, to);
+        if (!span) continue;
+        const bar: Bar = { b, span, conflict: false, leg: { ...leg, idx: 100 + leg.idx }, freed: true };
+        if (room) out.rooms.set(room.id, [...(out.rooms.get(room.id) ?? []), bar]);
+        else loose.push(bar);
+      }
   }
   for (const bars of out.rooms.values()) {
     out.conflicts += markConflicts(bars);
-    // 취소는 밑에, 정상은 위에 그려요
-    bars.sort((a, b) => Number(isActive(a.b)) - Number(isActive(b.b)) || a.span.start - b.span.start);
+    // 취소·비운 꼬리는 밑에, 정상은 위에 그려요
+    const up = (x: Bar) => Number(isActive(x.b) && !x.freed);
+    bars.sort((a, b) => up(a) - up(b) || a.span.start - b.span.start);
   }
   out.lanes = stackLanes(loose);
   return out;

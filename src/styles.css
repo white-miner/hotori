@@ -339,6 +339,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lrow .c-price { font-family: var(--num); font-weight: 750; display: flex; flex-direction: column; align-items: flex-end; }
 .lrow .c-price small { font-size: 10.5px; color: var(--ink3); font-weight: 550; }
 .lrow.cx { background: #fafafa !important; }
+/* 노쇼: 줄을 긋지 않아요 (받은 금액은 매출) · 중도 퇴실: 이용한 박수와 환불 */
+.nst { font-size: 10px; font-weight: 750; color: var(--ink2); background: #efefef; border-radius: 6px; padding: 1px 5px; white-space: nowrap; }
+.lrow.ns .c-name .gn { color: var(--ink2); }
+.lrow.eo .c-len { color: var(--ink); white-space: normal; line-height: 1.3; font-size: 12.5px; }
+.lrow .c-price small.rf { color: var(--red-d); font-weight: 700; }
 .lempty { padding: 30px; text-align: center; color: var(--ink3); }
 .fine { font-size: 12px; color: var(--ink3); line-height: 1.6; }
 .fine.pad { padding: 12px 6px; }
@@ -1008,6 +1013,12 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cal-pl i { width: 18px; height: 12px; border-radius: 4px; flex: none; }
 .cal-pl .cal-pl-ok { color: var(--ink3); font-weight: 550; }
 .cal-pl .cal-pl-ok i { background: #ececec; box-shadow: inset 0 0 0 2px #6b6b6b; }
+.cal-pl .cal-pl-eo { color: var(--ink3); font-weight: 550; }
+.cal-pl .cal-pl-eo i { background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px #b8b8b8; }
+/* 중도 퇴실: 묵은 밤은 그대로, 비운 밤은 흐린 점선 꼬리 (그 방은 비어 있어서 그 위에 새 예약이 올 수 있어요) */
+.cbar.eo, .cbar.eo:hover { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--pt) 55%, transparent) 0 4px, transparent 4px 8px); border: 1.5px dashed color-mix(in srgb, var(--pb) 45%, #c8c8c8); box-shadow: none; color: var(--ink4); z-index: 0; }
+.cbar.eo .cb-eo { font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cbar.eoe { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
 @media (max-width: 760px) {
   .cal-pl { gap: 5px 10px; font-size: 11px; margin: 0 4px 8px; }
   .cal-pl i { width: 14px; height: 10px; border-radius: 3px; }
@@ -1037,7 +1048,31 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 
 /* 수정 창 위 '입실 완료' 단추: 누르면 바로 저장 (켜지면 빨강으로 꽉 차요) */
 .mtop { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 0 0 12px; }
-.mtop.two { grid-template-columns: 1fr 1fr; }
+.mtop.n2 { grid-template-columns: 1fr 1fr; }
+.mtop.n3 { grid-template-columns: 1.2fr 1fr 1fr; }
+.mtop.n3 .bin span, .mtop.n3 .bmove span { display: none; }
+/* 중도 퇴실 단추: 흰 바탕 회색 테두리 (빨강은 입실 완료만) */
+.beo { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 12px 12px; border-radius: 14px; background: #fff; color: var(--ink); border: 1.5px solid #cfcfcf; }
+.beo b { font-size: 15px; font-weight: 800; white-space: nowrap; }
+.beo:hover, .beo.on { border-color: var(--ink); background: #f6f6f6; }
+.beo.undo { color: var(--ink2); border-style: dashed; }
+.beo:disabled { opacity: 0.6; cursor: default; }
+.eoline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; padding: 9px 12px; border-radius: 12px; background: #f4f4f4; color: var(--ink2); font-size: 13px; }
+.eoline b { color: var(--ink); font-weight: 800; }
+.eoline span { color: var(--ink3); font-weight: 550; }
+/* 중도 퇴실 확인 (예약 창 안의 작은 카드) */
+.eoc { margin: -2px 0 14px; padding: 14px; border-radius: 16px; background: #fff; border: 1.5px solid var(--ink); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); display: flex; flex-direction: column; gap: 12px; }
+.eoc-h { display: flex; flex-direction: column; gap: 3px; }
+.eoc-h b { font-size: 16px; font-weight: 850; }
+.eoc-h span { font-size: 12.5px; color: var(--ink3); font-weight: 550; }
+.eoc-d, .eoc-r { display: grid; grid-template-columns: 76px 1fr; align-items: center; gap: 6px 10px; }
+.eoc-d label, .eoc-r > label:first-child { font-size: 13px; font-weight: 700; color: var(--ink2); }
+.eoc-d .chips { flex-wrap: wrap; }
+.eoc-r .inp.price { max-width: 240px; }
+.eoc .inp input:focus { outline: none; }
+.eoc-r small { grid-column: 2; font-size: 11.5px; color: var(--ink3); font-weight: 550; }
+.eoc-a { display: flex; justify-content: flex-end; gap: 8px; }
+.eoc-a .btn.dark { padding: 0 22px; font-weight: 800; }
 .mtop .bmove { margin: 0; }
 .bin { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border-radius: 14px; background: #fff; color: var(--red); border: 1.5px solid var(--red); text-align: left; }
 .bin b { font-size: 15px; font-weight: 800; white-space: nowrap; }
@@ -1079,5 +1114,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .mvbar .btn.green { padding: 0 16px; }
   .bmove span { display: none; }
   .mtop .bin span { display: none; }
-  .mtop.two .bin, .mtop.two .bmove { padding: 12px 10px; justify-content: center; }
+  .mtop.n2 .bin, .mtop.n2 .bmove, .mtop.n3 .bin, .mtop.n3 .bmove { padding: 12px 8px; justify-content: center; }
+  .mtop.n3 { grid-template-columns: 1fr 1fr; }
+  .mtop.n3 > :first-child { grid-column: 1 / -1; }
+  .mtop .bin b, .mtop .beo b { font-size: 14px; }
+  .eoc-d, .eoc-r { grid-template-columns: 1fr; }
+  .eoc-r small { grid-column: 1; }
+  .eoc-a .btn { flex: 1; }
 }

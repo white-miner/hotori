@@ -1,7 +1,7 @@
 // 객실 캘린더: 방마다 한 줄, 날짜마다 한 칸. 숙박은 막대, 대실은 그날 칸의 작은 점.
 // 칸을 하나하나 그리지 않고 줄마다 배경 격자 + 막대만 절대 위치로 그려요 (60실 × 92일도 가볍게).
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isMoved, legsOf, md, orderedFloors, typeLabel, weekday, won } from "../shared/ledger";
+import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, md, orderedFloors, typeLabel, usedLabel, weekday, won } from "../shared/ledger";
 import { type Bar, calendarLayout } from "../shared/calendar";
 import { paint } from "../shared/platform";
 import { pastelColor } from "../shared/floorColor";
@@ -29,7 +29,8 @@ function tip(b: Booking, L: L, readOnly: boolean): string {
   if (b.kind === "dayuse")
     return `대실 ${b.startTime ?? ""}~${b.endTime ?? ""} · ${b.guestName || "이름 없음"} · ${p}${readOnly ? "" : ` · ${won(b.price)}원`}${st}`;
   const mv = isMoved(b) ? ` · 객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId) ?? "?"} ${l.nights}박`).join(" → ")}` : "";
-  return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${mv}${st}`;
+  const eo = isActive(b) && isEarlyOut(b) ? ` · ${md(b.earlyOut!)} 중도 퇴실 (${usedLabel(b)})${!readOnly && b.refund ? ` · 환불 ${won(b.refund)}원` : ""}` : "";
+  return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${mv}${st}${eo}`;
 }
 
 const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { bar: Bar; cw: number; L: L; readOnly: boolean; onOpen: (b: Booking) => void; typeCode?: string }) {
@@ -38,11 +39,11 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
   const p = L.plats.get(b.platformId);
   const px = span.len * cw;
   // 바탕은 늘 플랫폼 색을 옅게, 입실 완료면 같은 색 진한 테두리 (꽉 찬 색은 안 써요)
-  const arr = isActive(b) && b.arrived;
+  const arr = isActive(b) && b.arrived && !bar.freed;
   const c = paint(p);
   return (
     <div
-      className={`cbar ${cx ? "cx" : ""} ${bar.prev !== undefined ? "mvi" : ""} ${bar.next !== undefined ? "mvo" : ""} ${arr ? "ok" : ""} ${bar.conflict ? "cf" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
+      className={`cbar ${cx ? "cx" : ""} ${bar.prev !== undefined ? "mvi" : ""} ${bar.next !== undefined ? "mvo" : ""} ${arr ? "ok" : ""} ${bar.conflict ? "cf" : ""} ${bar.freed ? "eo" : ""} ${bar.endsEarly ? "eoe" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
       style={{
         left: span.start * cw + (span.clipL ? 0 : 2),
         width: span.len * cw - (span.clipL ? 0 : 2) - (span.clipR ? 0 : 3),
@@ -54,11 +55,17 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
       onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(b))}
       onKeyDown={readOnly ? undefined : (e) => e.key === "Enter" && onOpen(b)}
     >
+      {bar.freed ? (
+        <span className="cb-eo">{px >= 70 ? "중도 퇴실 · 빈 방" : "빈 방"}</span>
+      ) : (
+        <>
       {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
       {bar.prev !== undefined ? <span className="cb-mv" title={`${L.roomLabel(bar.prev) ?? "?"}호에서 옮겨 왔어요`}>{L.rooms.get(bar.prev ?? "")?.no ?? "?"}→</span> : null}
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
       {bar.next !== undefined ? <span className="cb-mv nx" title={`다음 날 ${L.roomLabel(bar.next) ?? "?"}호로 옮겨요`}>→{L.rooms.get(bar.next ?? "")?.no ?? "?"}</span> : null}
       {px >= 96 ? <span className="cb-p">{p?.abbr ?? "?"}</span> : null}
+        </>
+      )}
     </div>
   );
 });
@@ -141,6 +148,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
   for (const lane of lay.lanes) for (const x of lane) addB(x.b);
   for (const m of [...lay.dayuse.values(), lay.lanesDayuse]) for (const list of m.values()) list.forEach(addB);
   const legend = s.platforms.filter((p) => shown.has(p.id));
+  const anyFreed = [...lay.rooms.values(), ...lay.lanes].some((bars) => bars.some((x) => x.freed));
 
   return (
     <>
@@ -159,6 +167,12 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
             <i />
             진한 테두리 = 입실 완료
           </span>
+          {anyFreed ? (
+            <span className="cal-pl-eo">
+              <i />
+              흐린 점선 = 중도 퇴실로 비운 밤
+            </span>
+          ) : null}
         </div>
       ) : null}
       {lay.conflicts ? (

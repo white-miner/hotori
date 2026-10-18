@@ -108,6 +108,10 @@ export interface Booking {
   startTime: string | null; // HH:MM (대실만)
   endTime: string | null;
   arrived: boolean;
+  /** 중도 퇴실: 손님이 떠난 영업일 (입실 다음 날 ~ 퇴실 전날). 그날 밤부터는 방이 비어요. 없으면 끝까지 묵어요 */
+  earlyOut?: string | null;
+  /** 중도 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 중도 퇴실한 날짜에 빠져요 */
+  refund?: number | null;
   memo: string | null;
   cancelledAt: string | null;
   createdAt: string;
@@ -353,9 +357,90 @@ export function effectiveTypeId(b: Pick<Booking, "typeId" | "roomId">, rooms: Ma
 
 // ---------- 밤 차지 ----------
 export const isActive = (b: Pick<Booking, "status">) => b.status === "active";
-export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights">, date: string): boolean {
+export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">, date: string): boolean {
   if (b.kind !== "stay" || !b.nights) return false;
-  return b.checkIn <= date && date < addDays(b.checkIn, b.nights);
+  return b.checkIn <= date && date < addDays(b.checkIn, usedNights(b) ?? b.nights);
+}
+// ---------- 중도 퇴실 ----------
+type EarlyPick = Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">;
+/** 중도 퇴실이 맞게 적혀 있나요: 숙박 2박 이상, 입실 다음 날 ~ 퇴실 전날 */
+export const isEarlyOut = (b: EarlyPick): boolean =>
+  b.kind === "stay" && !!b.nights && !!b.earlyOut && b.earlyOut > b.checkIn && b.earlyOut < addDays(b.checkIn, b.nights);
+/** 실제로 묵은 박수 (중도 퇴실이 없으면 예약 박수 그대로) */
+export function usedNights(b: EarlyPick): number | null {
+  if (b.kind !== "stay" || !b.nights) return b.nights ?? null;
+  return isEarlyOut(b) ? daysBetween(b.checkIn, b.earlyOut!) : b.nights;
+}
+/** 실제 퇴실일 (중도 퇴실이면 그날) */
+export const stayEnd = (b: EarlyPick): string => addDays(b.checkIn, usedNights(b) ?? 0);
+/** 중도 퇴실 단추를 보여 줄까요: 정상 숙박 2박 이상, 오늘(영업일)이 첫 밤 다음 날 ~ 퇴실 전날 */
+export const canEarlyOutToday = (b: Pick<Booking, "kind" | "checkIn" | "nights" | "status" | "earlyOut">, today: string): boolean =>
+  b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 2 && !isEarlyOut(b) && today > b.checkIn && today < addDays(b.checkIn, b.nights);
+/** 고를 수 있는 퇴실 날짜들 (입실 다음 날 ~ 퇴실 전날) */
+export const earlyOutDates = (b: Pick<Booking, "checkIn" | "nights">): string[] =>
+  Array.from({ length: Math.max(0, (b.nights ?? 0) - 1) }, (_, i) => addDays(b.checkIn, i + 1));
+export const EARLY_OUT_COPY = "중도 퇴실";
+/** "3박 중 2박 이용" */
+export const usedLabel = (b: EarlyPick) => `${b.nights}박 중 ${usedNights(b)}박 이용`;
+/** 중도 퇴실 확인: 날짜·환불 금액 */
+export function validateEarlyOut(b: Booking, date: string, refund: number | null): string | null {
+  if (b.status !== "active") return "취소·노쇼 예약은 중도 퇴실할 수 없어요.";
+  if (b.kind !== "stay" || !b.nights || b.nights < 2) return "2박 이상 숙박만 중도 퇴실할 수 있어요.";
+  if (!(date > b.checkIn && date < addDays(b.checkIn, b.nights))) return "퇴실 날짜는 입실 다음 날부터 원래 퇴실 전날까지예요.";
+  if (refund != null && (!Number.isInteger(refund) || refund < 0)) return "환불 금액을 숫자로 적어 주세요.";
+  if (refund != null && refund > b.price) return `환불 금액은 결제 금액(${won(b.price)}원)보다 클 수 없어요.`;
+  return null;
+}
+/**
+ * 중도 퇴실 되돌리기를 막아야 하나요: 비운 밤에 다른 예약이 그 방에 들어왔거나,
+ * 되돌리면 그 밤 남은 객실이 모자라요(새로 오버부킹). 막을 이유(문구) 또는 null
+ */
+export function earlyOutUndoBlock(s: HotelSettings, bookings: Booking[], b: Booking, roomLabel: (id: string | null) => string | null = (x) => x): string | null {
+  if (!isEarlyOut(b)) return null;
+  const back: Booking = { ...b, earlyOut: null, refund: null };
+  const freed = Array.from({ length: b.nights! - usedNights(b)! }, (_, i) => addDays(b.earlyOut!, i));
+  const others = bookings.filter((x) => x.id !== b.id);
+  for (const d of freed) {
+    const room = roomOnNight(back, d);
+    if (!room) continue;
+    const hit = others.find((x) => isActive(x) && roomOnNight(x, d) === room);
+    if (hit) return `${dayLabel(d)} 밤 ${roomLabel(room) ?? "?"}호에 ${hit.guestName} 님 예약이 들어와서 되돌릴 수 없어요. 그 예약을 먼저 옮겨 주세요.`;
+  }
+  const before = stockTable(s, others, freed);
+  const after = stockTable(s, [...others, back], freed);
+  for (const [tid, row] of after)
+    for (const [d, n] of row)
+      if (n < 0 && n < (before.get(tid)?.get(d) ?? 0)) {
+        const t = s.types.find((x) => x.id === tid);
+        return `${dayLabel(d)} 밤 ${typeLabel(t) || "그 타입"} 남은 객실이 없어서 되돌릴 수 없어요 (비운 방이 다시 팔렸어요).`;
+      }
+  return null;
+}
+// ---------- 매출 (취소 · 노쇼 · 중도 퇴실) ----------
+/**
+ * 예약 하나가 매출에 남기는 금액:
+ *  · 취소 = 0 (전액 환불)
+ *  · 노쇼 = 결제 금액 그대로 (받은 돈)
+ *  · 중도 퇴실 = 결제 금액 − 환불
+ */
+export function revenueOf(b: Pick<Booking, "status" | "price" | "kind" | "checkIn" | "nights" | "earlyOut" | "refund">): number {
+  if (b.status === "cancelled") return 0;
+  return b.price - (b.status === "active" && isEarlyOut(b) ? (b.refund ?? 0) : 0);
+}
+export const countsRevenue = (b: Pick<Booking, "status">) => b.status !== "cancelled";
+/**
+ * 기간 매출 (날짜를 정직하게): 결제 금액은 입실일에, 중도 퇴실 환불은 퇴실한 날에 잡아요.
+ * 그래서 9/30 입실 · 10/2 중도 퇴실 환불은 10월 매출에서 빠져요.
+ */
+export function roomRevenue(bookings: Booking[], from: string, to: string): { sales: number; refunds: number; net: number } {
+  let sales = 0;
+  let refunds = 0;
+  for (const b of bookings) {
+    if (!countsRevenue(b)) continue;
+    if (b.checkIn >= from && b.checkIn <= to) sales += b.price;
+    if (b.status === "active" && isEarlyOut(b) && b.refund && b.earlyOut! >= from && b.earlyOut! <= to) refunds += b.refund;
+  }
+  return { sales, refunds, net: sales - refunds };
 }
 // ---------- 객실 이동 (한 예약, 방 여러 개) ----------
 /** 한 방에 머무는 구간: 입실일·박수·방. 이동이 없으면 구간 하나 */
@@ -367,8 +452,29 @@ export interface Leg {
 }
 const segsValid = (segs: RoomSegment[] | null | undefined, nights: number | null): segs is RoomSegment[] =>
   !!segs && segs.length >= 2 && !!nights && segs.every((x) => x.roomId && x.nights >= 1) && segs.reduce((n, x) => n + x.nights, 0) === nights;
-/** 숙박의 구간들 (대실·박수 없음이면 빈 배열) */
-export function legsOf(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): Leg[] {
+type LegPick = Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments" | "earlyOut">;
+/**
+ * 실제로 묵는 구간들: 중도 퇴실이면 떠난 날 밤부터는 잘라내요 (그 밤은 방·재고가 비어요).
+ * 재고·방 비었는지·현황판은 모두 이걸로 봐요.
+ */
+export function legsOf(b: LegPick): Leg[] {
+  const all = fullLegsOf(b);
+  if (!isEarlyOut(b)) return all;
+  const end = b.earlyOut!;
+  return all
+    .filter((l) => l.checkIn < end)
+    .map((l) => ({ ...l, nights: Math.min(l.nights, daysBetween(l.checkIn, end)) }));
+}
+/** 중도 퇴실로 비운 구간 (캘린더의 흐린 꼬리). 없으면 빈 배열 */
+export function freedLegsOf(b: LegPick): Leg[] {
+  if (!isEarlyOut(b)) return [];
+  const end = b.earlyOut!;
+  return fullLegsOf(b)
+    .filter((l) => addDays(l.checkIn, l.nights) > end)
+    .map((l) => (l.checkIn >= end ? l : { ...l, checkIn: end, nights: daysBetween(end, addDays(l.checkIn, l.nights)) }));
+}
+/** 예약한 대로의 구간들 (중도 퇴실과 상관없이 처음 박수 전부) — 객실 이동 구간 고치기용 */
+export function fullLegsOf(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): Leg[] {
   if (b.kind !== "stay" || !b.nights) return [];
   if (!segsValid(b.segments, b.nights)) return [{ roomId: b.roomId, checkIn: b.checkIn, nights: b.nights, idx: 0 }];
   let d = b.checkIn;
@@ -380,13 +486,13 @@ export function legsOf(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId"
 }
 export const isMoved = (b: Pick<Booking, "kind" | "nights" | "segments">) => b.kind === "stay" && segsValid(b.segments, b.nights);
 /** 그 밤에 쓰는 방 (그 밤에 안 묵으면 undefined) */
-export function roomOnNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, date: string): string | null | undefined {
+export function roomOnNight(b: LegPick, date: string): string | null | undefined {
   for (const l of legsOf(b)) if (l.checkIn <= date && date < addDays(l.checkIn, l.nights)) return l.roomId;
   return undefined;
 }
 /** 묵는 방 전부 (순서대로, 겹치지 않게) */
-export function stayRoomIds(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): string[] {
-  const legs = legsOf(b);
+export function stayRoomIds(b: LegPick): string[] {
+  const legs = fullLegsOf(b);
   const ids = (legs.length ? legs.map((l) => l.roomId) : [b.roomId]).filter((x): x is string => !!x);
   return [...new Set(ids)];
 }
@@ -427,7 +533,7 @@ export function moveStay(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomI
   if (b.kind !== "stay" || fromNight < 2 || fromNight > n || !b.roomId) return isMoved(b) ? b.segments! : null;
   const keep: RoomSegment[] = [];
   let left = fromNight - 1;
-  for (const l of legsOf(b)) {
+  for (const l of fullLegsOf(b)) {
     if (left <= 0) break;
     const take = Math.min(left, l.nights);
     keep.push({ roomId: l.roomId!, nights: take });
@@ -458,14 +564,16 @@ export const placementOf = (b: Pick<Booking, "kind" | "nights" | "roomId" | "seg
  * 보는 밤이 첫 밤(또는 그 앞)이면 숙박 전체, 아니면 그 밤부터 퇴실까지. 대실은 늘 전체.
  * 돌려주는 값: k박째(1부터)와 옮기는 밤들(checkIn·nights)
  */
-export function boardMoveWindow(b: Pick<Booking, "kind" | "checkIn" | "nights">, night: string): { from: number; whole: boolean; checkIn: string; nights: number } {
+export function boardMoveWindow(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">, night: string): { from: number; whole: boolean; checkIn: string; nights: number } {
   const n = b.kind === "stay" ? (b.nights ?? 0) : 0;
   if (!n) return { from: 1, whole: true, checkIn: b.checkIn, nights: 0 };
-  const k = Math.min(n, Math.max(1, Math.round((Date.parse(night) - Date.parse(b.checkIn)) / 864e5) + 1));
-  return { from: k, whole: k === 1, checkIn: addDays(b.checkIn, k - 1), nights: n - k + 1 };
+  // 중도 퇴실했으면 실제로 묵은 밤까지만 비어 있으면 돼요
+  const u = usedNights(b) ?? n;
+  const k = Math.min(u, Math.max(1, Math.round((Date.parse(night) - Date.parse(b.checkIn)) / 864e5) + 1));
+  return { from: k, whole: k === 1, checkIn: addDays(b.checkIn, k - 1), nights: u - k + 1 };
 }
 /** 객실 배치에서 roomId로 옮긴 결과 (첫 밤이면 방만 바꾸고, 중간 밤이면 그 밤에서 나눠요) */
-export function boardMove(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, night: string, roomId: string): Placement {
+export function boardMove(b: LegPick, night: string, roomId: string): Placement {
   const w = boardMoveWindow(b, night);
   if (b.kind !== "stay" || w.whole || !b.roomId) return { roomId, segments: null };
   const segs = moveStay(b, w.from, roomId);
@@ -714,7 +822,7 @@ export function isCancelledRefilled(c: Booking, bookings: Booking[], rooms: Map<
     if (b.id === c.id || !isActive(b) || b.kind !== c.kind) return false;
     if (c.kind === "stay") {
       if (cl?.roomId) return legsOf(b).some((l) => legsClash(l, cl));
-      if (!nightsOverlap(b, c)) return false;
+      if (!nightsOverlap({ checkIn: b.checkIn, nights: usedNights(b) }, c)) return false;
       return (
         effectiveTypeId(b, rooms) === effectiveTypeId(c, rooms) &&
         b.createdAt > (c.cancelledAt ?? c.updatedAt)

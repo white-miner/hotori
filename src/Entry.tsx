@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, Minus, Plus } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2 } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -16,7 +16,15 @@ import {
   daysBetween,
   fitSegments,
   legConflicts,
-  legsOf,
+  fullLegsOf,
+  canEarlyOutToday,
+  checkOut,
+  earlyOutDates,
+  isEarlyOut,
+  roomOnNight,
+  usedLabel,
+  usedNights,
+  validateEarlyOut,
   moveStay,
   undoMove,
   type RoomSegment,
@@ -32,7 +40,7 @@ import {
   won,
 } from "../shared/ledger";
 import type { HotelData } from "./data";
-import type { EntryRequest } from "./App";
+import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 
 interface Props {
@@ -43,6 +51,9 @@ interface Props {
   onSaved: (msg: string, again?: Partial<Booking>) => void;
   /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
   onBoardMove?: () => void;
+  notify: (m: string, opt?: ToastOpt) => void;
+  /** 중도 퇴실 되돌리기 (비운 밤이 다시 팔렸으면 막고 false) */
+  undoEarlyOut: (id: string) => Promise<boolean>;
 }
 const TYPE_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"];
 const TYPE_LABEL = "QWERTYUIO";
@@ -72,7 +83,7 @@ function TimePick({ value, label, onPick }: { value: string; label: string; onPi
   );
 }
 
-export default function Entry({ data, today, req, onClose, onSaved, onBoardMove }: Props) {
+export default function Entry({ data, today, req, onClose, onSaved, onBoardMove, notify, undoEarlyOut }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const base = req.booking;
@@ -111,6 +122,55 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
+  // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
+  const [eo, setEo] = useState<{ date: string; refund: string } | null>(null);
+  const [eoBusy, setEoBusy] = useState(false);
+  const [eoErr, setEoErr] = useState<string | null>(null);
+  const live = base ? (data.bookings.find((x) => x.id === base.id) ?? base) : null;
+  const eoNow = !!live && isEarlyOut(live) && live.status === "active";
+  const eoToday = !!live && canEarlyOutToday(live, today);
+  // 지난 숙박 바로잡기: 이미 끝난 2박 이상 숙박은 아래 단추로 날짜를 골라 적어요
+  const eoPast = !!live && !eoNow && !eoToday && live.status === "active" && live.kind === "stay" && (live.nights ?? 0) >= 2 && today >= checkOut(live);
+  const eocRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (eo) eocRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!eo]);
+  const openEo = () => {
+    if (!live) return;
+    const ds = earlyOutDates(live);
+    setEoErr(null);
+    setEo({ date: ds.includes(today) ? today : ds[ds.length - 1], refund: "" });
+  };
+  const confirmEo = async () => {
+    if (!live || !eo || eoBusy) return;
+    const refund = eo.refund.trim() ? Number(eo.refund.replace(/\D/g, "")) : null;
+    const v = validateEarlyOut(live, eo.date, refund);
+    if (v) return setEoErr(v);
+    setEoBusy(true);
+    setEoErr(null);
+    try {
+      const saved = await data.setEarlyOut(live.id, eo.date, refund || null);
+      const freed = (saved.nights ?? 0) - (usedNights(saved) ?? 0);
+      const room = L.roomLabel(roomOnNight(live, eo.date) ?? null);
+      onClose();
+      notify(
+        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 중도 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refund ? ` · 환불 ${won(refund)}원` : ""}`,
+        { action: { label: "되돌리기", run: () => void undoEarlyOut(saved.id) }, ms: 8000 },
+      );
+    } catch (e) {
+      setEoErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setEoBusy(false);
+    }
+  };
+  const undoEo = async () => {
+    if (!live || eoBusy) return;
+    setEoBusy(true);
+    const ok = await undoEarlyOut(live.id);
+    setEoBusy(false);
+    if (ok) onClose();
+  };
   // 입실 완료: 예약 창 위 단추로 바로 저장해요 (저장 버튼을 안 눌러도 돼요)
   const [inBusy, setInBusy] = useState(false);
   const [inErr, setInErr] = useState<string | null>(null);
@@ -164,6 +224,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
     startTime: kind === "dayuse" ? startTime : null,
     endTime: kind === "dayuse" ? endTime : null,
     arrived,
+    earlyOut: base?.earlyOut ?? null,
+    refund: base?.refund ?? null,
     memo: memo || null,
     cancelledAt: base?.cancelledAt ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),
@@ -178,10 +240,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
   const table = useMemo(() => stockTable(s, others, nightDates), [s, others, nightDates]);
   const totals = useMemo(() => typeTotals(s), [s]);
   const minRemain = (tid: string) => Math.min(...nightDates.map((d) => table.get(tid)?.get(d) ?? 0));
-  const legs = legsOf(draft);
+  const legs = fullLegsOf(draft);
   const moved = legs.length > 1;
-  // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요
-  const firstNights = moved ? legs[0].nights : nights;
+  // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요 (중도 퇴실했으면 실제로 묵은 밤까지만)
+  const firstNights = Math.min(moved ? legs[0].nights : nights, usedNights(draft) ?? nights);
   const free = useMemo(
     () => freeRooms(s, data.bookings, { ...draft, nights: kind === "stay" ? firstNights : null }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,7 +299,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
           : override === "noshow"
-            ? `${saved.guestName} 님 노쇼로 표시했어요 · 남은 객실이 늘었어요`
+            ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 금액은 매출에 남고 남은 객실이 늘었어요`
             : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
@@ -333,7 +395,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
           </button>
         </div>
         {base && isActive(base) ? (
-          <div className={`mtop ${onBoardMove ? "two" : ""}`}>
+          <div className={`mtop n${1 + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0)}`}>
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
                 <ArrowRightLeft size={17} />
@@ -352,6 +414,95 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
               <b>{arrived ? "입실 완료됨 · 취소" : "입실 완료"}</b>
               {arrived ? null : <span>누르면 바로 저장돼요</span>}
             </button>
+            {eoNow ? (
+              <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
+                <Undo2 size={17} />
+                <b>중도 퇴실 되돌리기</b>
+              </button>
+            ) : eoToday ? (
+              <button type="button" className={`beo ${eo ? "on" : ""}`} aria-expanded={!!eo} onClick={() => (eo ? setEo(null) : openEo())}>
+                <DoorOpen size={17} />
+                <b>중도 퇴실</b>
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        {eoNow && live ? (
+          <div className="eoline">
+            <DoorOpen size={15} />
+            <b>{dayLabel(live.earlyOut!)} 중도 퇴실</b>
+            <span>
+              {usedLabel(live)} · {dayLabel(live.earlyOut!)} 밤부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
+            </span>
+          </div>
+        ) : null}
+        {eo && live ? (
+          <div className="eoc" role="group" aria-label="중도 퇴실" ref={eocRef}>
+            <div className="eoc-h">
+              <b>
+                {eo.date === today ? "오늘 퇴실" : `${dayLabel(eo.date)} 퇴실`} · {live.nights}박 중 {daysBetween(live.checkIn, eo.date)}박 이용
+              </b>
+              <span>
+                {dayLabel(eo.date)} 밤부터 {live.nights! - daysBetween(live.checkIn, eo.date)}박은 바로 빈 방이 돼요
+                {L.roomLabel(roomOnNight(live, eo.date) ?? null) ? ` (${L.roomLabel(roomOnNight(live, eo.date) ?? null)}호)` : ""}
+              </span>
+            </div>
+            {earlyOutDates(live).length > 1 || eo.date !== today ? (
+              <div className="eoc-d">
+                <label>퇴실한 날</label>
+                {earlyOutDates(live).length <= 6 ? (
+                  <div className="chips">
+                    {earlyOutDates(live).map((d) => (
+                      <button type="button" key={d} className={`chip ${eo.date === d ? "on" : ""}`} onClick={() => setEo({ ...eo, date: d })}>
+                        {d === today ? `오늘 ${dayLabel(d)}` : dayLabel(d)}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <select className="inp" value={eo.date} onChange={(e) => setEo({ ...eo, date: e.target.value })}>
+                    {earlyOutDates(live).map((d) => (
+                      <option key={d} value={d}>
+                        {d === today ? `오늘 ${dayLabel(d)}` : dayLabel(d)} · {daysBetween(live.checkIn, d)}박 이용
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ) : null}
+            <div className="eoc-r">
+              <label htmlFor="eo-refund">
+                환불 금액
+              </label>
+              <label className="inp price">
+                <input
+                  id="eo-refund"
+                  className="num"
+                  inputMode="numeric"
+                  placeholder="없으면 비워 두세요"
+                  value={eo.refund ? Number(eo.refund).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setEo({ ...eo, refund: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmEo();
+                    }
+                  }}
+                />
+                원
+              </label>
+              <small>
+                결제 {won(live.price)}원 → 매출 {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원 · 환불은 {dayLabel(eo.date)} 매출에서 빠져요
+              </small>
+            </div>
+            {eoErr ? <div className="ferr">{eoErr}</div> : null}
+            <div className="eoc-a">
+              <button type="button" className="btn" onClick={() => setEo(null)}>
+                닫기
+              </button>
+              <button type="button" className="btn dark" disabled={eoBusy} onClick={() => void confirmEo()}>
+                {eoBusy ? "저장 중…" : "중도 퇴실"}
+              </button>
+            </div>
           </div>
         ) : null}
         {inErr ? <div className="ferr mtop-err">{inErr}</div> : null}
@@ -724,7 +875,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
           {kind === "dayuse" ? (
             <div className="pt">대실은 남은 객실에 포함되지 않아요. 이용 시간만 따로 보여 줘요.</div>
           ) : !isActive(draft) ? (
-            <div className="pt">취소·노쇼는 장부에 줄을 그어 남기고, 남은 객실은 다시 늘어나요.</div>
+            <div className="pt">
+              {status === "noshow"
+                ? "노쇼는 결제한 금액을 매출에 그대로 남기고, 방과 남은 객실은 다시 비워요."
+                : "취소는 전액 환불로 보고 장부에 줄을 그어 남겨요. 매출에서 빠지고 남은 객실은 다시 늘어나요."}
+            </div>
           ) : preview.length ? (
             <>
               <div className="pt">저장하면 이렇게 바뀌어요</div>
@@ -784,9 +939,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
                   <button type="button" className="btn line sm" onClick={() => void save(false, "cancelled")}>
                     취소 처리
                   </button>
-                  <button type="button" className="btn line sm" onClick={() => void save(false, "noshow")}>
+                  <button type="button" className="btn line sm" title="결제한 금액은 매출에 남고, 방·재고는 비워요" onClick={() => void save(false, "noshow")}>
                     노쇼
                   </button>
+                  {eoPast ? (
+                    <button type="button" className="btn line sm" title="지난 숙박을 바로잡아요: 떠난 날을 고르면 그 뒤 밤은 비워요" onClick={() => (eo ? setEo(null) : openEo())}>
+                      중도 퇴실 적기
+                    </button>
+                  ) : null}
                 </>
               ) : (
                 <button type="button" className="btn line sm" onClick={() => setStatus("active")}>

@@ -3,8 +3,8 @@ import type { Session } from "@supabase/supabase-js";
 import { BookOpen, LayoutGrid, LogOut, Menu, Plus, Search, Settings as Gear, ShoppingBag } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData } from "./data";
-import { type Booking, businessDate } from "../shared/ledger";
-import { Brand, isTypingTarget } from "./ui";
+import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
+import { Brand, isTypingTarget, lookups } from "./ui";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
@@ -117,6 +117,33 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
   const openNew = useCallback((preset?: Partial<Booking>) => setEntry({ preset, n: Date.now() }), []);
+  // 중도 퇴실 되돌리기 (예약 창 단추·알림의 되돌리기): 비운 밤이 다시 팔렸으면 막아요
+  const bkRef = useRef(data.bookings);
+  bkRef.current = data.bookings;
+  const hotelRef = useRef(data.hotel);
+  hotelRef.current = data.hotel;
+  const undoEarlyOut = useCallback(
+    async (id: string): Promise<boolean> => {
+      const b = bkRef.current.find((x) => x.id === id);
+      const s = hotelRef.current?.settings;
+      if (!b || !s || !isEarlyOut(b)) return false;
+      const block = earlyOutUndoBlock(s, bkRef.current, b, lookups(s).roomLabel);
+      if (block) {
+        notify(block, { ms: 7000 });
+        return false;
+      }
+      try {
+        await data.setEarlyOut(id, null, null);
+        notify(`${b.guestName} 님 중도 퇴실을 되돌렸어요 · 원래대로 ${dayLabel(checkOut(b))} 퇴실`);
+        return true;
+      } catch (e) {
+        notify(e instanceof Error ? `되돌리지 못했어요: ${e.message}` : "되돌리지 못했어요", { ms: 7000 });
+        return false;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [notify, data.setEarlyOut],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -235,6 +262,8 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           today={today}
           req={entry}
           onClose={() => setEntry(null)}
+          notify={notify}
+          undoEarlyOut={undoEarlyOut}
           onBoardMove={
             entry.night && entry.booking && view === "board"
               ? () => {
