@@ -36,9 +36,6 @@ svg { display: block; flex: none; }
 /* ---------- 배지 ---------- */
 .tb { display: inline-block; text-align: center; font-family: var(--num); font-weight: 800; font-size: 11px; min-width: 25px; max-width: 8.5em; height: 19px; line-height: 17px; padding: 0 6px; border-radius: 7px; flex: 0 1 auto; background: #fff; color: var(--ink2); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 .pb { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 1px solid var(--line); font-size: 11px; font-weight: 750; color: var(--ink2); flex: none; line-height: 1; }
-.ring { flex: none; }
-.ringbtn { display: inline-flex; padding: 2px; margin: -2px; border-radius: 50%; }
-.ringbtn:hover { background: rgba(0, 0, 0, 0.06); }
 .cxt { font-size: 10px; font-weight: 750; color: var(--red-d); background: var(--red-s); border-radius: 6px; padding: 1px 5px; white-space: nowrap; text-decoration: none !important; }
 .cxt.big { font-size: 12px; padding: 4px 9px; border-radius: 999px; }
 
@@ -184,7 +181,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .dumark { position: absolute; top: -8px; right: 8px; z-index: 1; font-family: var(--num); font-size: 10px; font-weight: 750; line-height: 1; color: #fff; background: var(--dayuse); border-radius: 6px; padding: 3px 5px; white-space: nowrap; letter-spacing: -0.02em; }
 .cell .dumark i { font-style: normal; font-family: "PV", system-ui, sans-serif; }
 .cell .dumark em { font-style: normal; opacity: 0.85; }
-.cell .ring.fill { filter: none; }
 .cell > * { flex-shrink: 0; }
 .cell .r1 { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 2px 3px; border-radius: 9px; margin: 0 0 1px; }
 .cell .r1.strip { padding: 3px 5px; }
@@ -540,7 +536,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .nm .pb { width: 15px; height: 15px; font-size: 9px; }
   .cell .r3 { font-size: 9.5px; padding: 0 2px; }
   .cell .rp { display: none; }
-  .cell .ring { width: 13px; height: 13px; }
   .cell .dus .du { font-size: 9px; padding: 1px 3px; }
   .cell .dumark { top: -7px; right: 4px; font-size: 8.5px; padding: 2px 3px; border-radius: 4px; }
   .cell .dumark i, .cell .dumark em { display: none; }
@@ -1040,10 +1035,20 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .bmove span { font-size: 12px; color: rgba(255, 255, 255, 0.72); font-weight: 550; margin-left: auto; text-align: right; }
 .bmove:hover { background: #333; }
 
-/* 입실 단추: 검은 덩어리 대신 가는 동그라미, 입실하면 빨간 체크 고리 */
-.cell .ringbtn .ring:not(.off) path { stroke: var(--stay); }
-.cell .ringbtn.on { background: #fff1f1; }
-.cell .ringbtn:disabled { opacity: 0.35; cursor: default; }
+/* 수정 창 위 '입실 완료' 단추: 누르면 바로 저장 (켜지면 빨강으로 꽉 차요) */
+.mtop { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 0 0 12px; }
+.mtop.two { grid-template-columns: 1fr 1fr; }
+.mtop .bmove { margin: 0; }
+.bin { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border-radius: 14px; background: #fff; color: var(--red); border: 1.5px solid var(--red); text-align: left; }
+.bin b { font-size: 15px; font-weight: 800; white-space: nowrap; }
+.bin span { font-size: 12px; color: var(--ink3); font-weight: 550; margin-left: auto; text-align: right; }
+.bin:hover { background: var(--red-s); }
+.bin.on { background: var(--red); color: #fff; }
+.bin.on:hover { background: var(--red-d); }
+.bin:disabled { opacity: 0.6; cursor: default; }
+.mtop-err { margin: -4px 0 12px; }
+/* 대실 목록·장부의 입실 완료 표시 (글자만) */
+.intag { flex: none; font-size: 11.5px; font-weight: 750; color: var(--red-d); background: var(--red-s); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 
 /* ---------- 객실 배치에서 옮기기 ---------- */
 :root { --mv: #12a150; --mv-s: #e9f8ef; }
@@ -1073,4 +1078,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .mvbar .btn .kbdh { display: none; }
   .mvbar .btn.green { padding: 0 16px; }
   .bmove span { display: none; }
+  .mtop .bin span { display: none; }
+  .mtop.two .bin, .mtop.two .bmove { padding: 12px 10px; justify-content: center; }
 }

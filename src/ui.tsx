@@ -58,25 +58,6 @@ export function PlatBadge({ p }: { p?: Platform | null }) {
   );
 }
 
-// filled: 객실 배치 칸에서는 입실완료를 꽉 찬 동그라미로
-export function Ring({ on, size = 18, filled = false }: { on: boolean; size?: number; filled?: boolean }) {
-  return on ? (
-    <svg className={`ring ${filled ? "fill" : ""}`} width={size} height={size} viewBox="0 0 20 20" aria-label="입실">
-      <path
-        d="M10.5 2.6c4.3.1 7.2 3.3 7 7.4-.2 4.2-3.6 7.3-7.8 7.2C5.5 17 2.6 13.9 2.8 9.8 3 6 5.8 3.3 9.4 2.9"
-        fill={filled ? "#1A1A1A" : "none"}
-        stroke="#1A1A1A"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-      />
-    </svg>
-  ) : (
-    <svg className="ring off" width={size} height={size} viewBox="0 0 20 20" aria-label="입실 전">
-      <circle cx="10" cy="10" r="7.2" fill="none" stroke="#C4C4C4" strokeWidth="1.6" strokeDasharray="2.6 2.6" />
-    </svg>
-  );
-}
-
 export function lookups(s: HotelSettings) {
   const types = new Map(s.types.map((t) => [t.id, t]));
   const plats = new Map(s.platforms.map((p) => [p.id, p]));

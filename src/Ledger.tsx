@@ -5,7 +5,7 @@ import { type HotelData, queryLedger, queryShopSales, useExpenses } from "./data
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
-import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
+import { PlatBadge, TypeBadge, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -296,7 +296,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                   {won(b.price)}
                   {per ? <small>1박 {won(per)}</small> : null}
                 </span>
-                <span className="c-ring">{isActive(b) ? <Ring on={b.arrived} size={16} /> : null}</span>
+                <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
               </div>
             );
           })

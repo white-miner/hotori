@@ -36,7 +36,7 @@ import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import RoomCalendar from "./RoomCalendar";
-import { DateChip, FitText, PlatBadge, Ring, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
+import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -49,7 +49,7 @@ interface Props {
   /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
   move?: BoardMove | null;
   onMoveEnd?: () => void;
-  /** 현황 공유 링크: 보기만 해요 (고치기·입실 표시·방 배정·가격 없음) */
+  /** 현황 공유 링크: 보기만 해요 (고치기·입실 완료·방 배정·가격 없음) */
   readOnly?: boolean;
   /** 공유 보기에서 고를 수 있는 날짜 범위 */
   minDate?: string;
@@ -351,8 +351,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setSelDate(d);
     setTab("rooms");
   };
-  const toggleArrived = (b: Booking) =>
-    data.patchBooking(b.id, { arrived: !b.arrived }).catch(() => notify("입실 표시를 저장하지 못했어요"));
   const assign = (b: Booking, roomId: string) =>
     data
       .patchBooking(b.id, { roomId })
@@ -446,20 +444,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
-          {cancelled || readOnly ? null : (
-            <button
-              className={`ringbtn ${b.arrived ? "on" : ""}`}
-              aria-label={b.arrived ? "입실 표시 지우기" : "입실 표시"}
-              aria-pressed={b.arrived}
-              disabled={!!mvB}
-              onClick={(e) => {
-                e.stopPropagation();
-                void toggleArrived(b);
-              }}
-            >
-              <Ring on={b.arrived} size={17} />
-            </button>
-          )}
         </div>
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>
@@ -708,7 +692,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="bdh">
           <div>
             <h1>객실 배치 현황</h1>
-            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실)" : "칸을 누르면 예약을 고치거나 객실을 옮기고, ◯를 누르면 입실로 표시해요 · 굵은 테두리는 입실 완료"}</div>
+            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실)" : "칸을 누르면 예약을 고치거나 객실을 옮겨요 · 입실 완료는 예약 창 위 단추로 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료"}</div>
           </div>
           <div className="dnav">
             <span className="cnt-m">
@@ -828,20 +812,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                     {readOnly ? null : ` · ${won(d.price)}원`}
                   </span>
                 </div>
-                {isActive(d) && readOnly ? (
-                  <Ring on={d.arrived} />
-                ) : isActive(d) ? (
-                  <button
-                    className="ringbtn"
-                    aria-label="입실 표시"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void toggleArrived(d);
-                    }}
-                  >
-                    <Ring on={d.arrived} />
-                  </button>
-                ) : null}
+                {isActive(d) && d.arrived ? <span className="intag">입실 완료</span> : null}
               </div>
             ))
           ) : (

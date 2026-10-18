@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, ArrowRightLeft, CalendarDays, Clock, Minus, Plus } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, Minus, Plus } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -111,6 +111,24 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
+  // 입실 완료: 예약 창 위 단추로 바로 저장해요 (저장 버튼을 안 눌러도 돼요)
+  const [inBusy, setInBusy] = useState(false);
+  const [inErr, setInErr] = useState<string | null>(null);
+  const toggleIn = async () => {
+    if (!base || inBusy) return;
+    const next = !arrived;
+    setInBusy(true);
+    setInErr(null);
+    setArrived(next);
+    try {
+      await data.patchBooking(base.id, { arrived: next });
+    } catch {
+      setArrived(!next);
+      setInErr("입실 완료를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setInBusy(false);
+    }
+  };
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
   const [otherRooms, setOtherRooms] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -314,13 +332,29 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
             <kbd>Esc</kbd>닫기
           </button>
         </div>
-        {onBoardMove && base && isActive(base) ? (
-          <button type="button" className="bmove" onClick={onBoardMove}>
-            <ArrowRightLeft size={17} />
-            <b>객실 이동</b>
-            <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? " · 이 밤부터 옮겨요" : ""}</span>
-          </button>
+        {base && isActive(base) ? (
+          <div className={`mtop ${onBoardMove ? "two" : ""}`}>
+            {onBoardMove ? (
+              <button type="button" className="bmove" onClick={onBoardMove}>
+                <ArrowRightLeft size={17} />
+                <b>객실 이동</b>
+                <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? " · 이 밤부터 옮겨요" : ""}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={`bin ${arrived ? "on" : ""}`}
+              aria-pressed={arrived}
+              disabled={inBusy}
+              onClick={() => void toggleIn()}
+            >
+              <Check size={17} strokeWidth={2.6} />
+              <b>{arrived ? "입실 완료됨 · 취소" : "입실 완료"}</b>
+              {arrived ? null : <span>누르면 바로 저장돼요</span>}
+            </button>
+          </div>
         ) : null}
+        {inErr ? <div className="ferr mtop-err">{inErr}</div> : null}
 
         <div className="fld">
           <label>
@@ -675,11 +709,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove 
         ) : null}
 
         <div className="fld">
-          <label>입실 · 메모</label>
-          <div className="two memo">
-            <button type="button" className={`chip ${arrived ? "on" : ""}`} onClick={() => setArrived((a) => !a)}>
-              {arrived ? "◯ 입실 완료" : "◯ 입실 표시"}
-            </button>
+          <label>{isNew ? "입실 · 메모" : "메모"}</label>
+          <div className={isNew ? "two memo" : ""}>
+            {isNew ? (
+              <button type="button" className={`chip ${arrived ? "on" : ""}`} aria-pressed={arrived} onClick={() => setArrived((a) => !a)}>
+                {arrived ? <Check size={14} strokeWidth={2.6} /> : null}입실 완료
+              </button>
+            ) : null}
             <input className="inp" placeholder="메모 (선택)" maxLength={200} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
         </div>
