@@ -717,7 +717,7 @@ export default function Settings({ data, email, notify }: Props) {
 
         <section className="card" id="set-pcolor">
           <h3>플랫폼 색</h3>
-          <div className="sub">객실 캘린더 막대 색이에요. 옅은 바탕은 입실 전, 꽉 찬 색은 입실 완료예요. 공유 링크 화면도 같은 색으로 보여요.</div>
+          <div className="sub">객실 캘린더 막대의 옅은 바탕 색이에요. 입실 완료면 같은 색 진한 테두리가 생겨요. 공유 링크 화면도 같은 색으로 보여요.</div>
           {s.platforms.map((p) => {
             const def = defaultPlatformColor(p);
             const cur = platPaint(p);
@@ -734,11 +734,11 @@ export default function Settings({ data, email, notify }: Props) {
             return (
               <div className="pcrow" key={p.id}>
                 <div className="pc-name">
-                  <span className="pc-bar" style={{ background: cur.t, borderColor: cur.b }}>
+                  <span className="pc-bar" style={{ background: cur.t }} title="입실 전">
                     {p.name || "이름 없음"}
                   </span>
-                  <span className="pc-bar ok" style={{ background: cur.c, borderColor: cur.c, color: cur.f }}>
-                    입실
+                  <span className="pc-bar ok" style={{ background: cur.t, borderColor: cur.b }} title="입실 완료">
+                    입실 완료
                   </span>
                 </div>
                 <div className="pc-sw" role="radiogroup" aria-label={`${p.name} 색`}>

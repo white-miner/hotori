@@ -36,7 +36,7 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
   const cx = !isActive(b);
   const p = L.plats.get(b.platformId);
   const px = span.len * cw;
-  // 입실 완료: 플랫폼 색으로 꽉 채워요 (글자는 흰색·검은색 중 잘 보이는 쪽)
+  // 바탕은 늘 플랫폼 색을 옅게, 입실 완료면 같은 색 진한 테두리 (꽉 찬 색은 안 써요)
   const arr = isActive(b) && b.arrived;
   const c = paint(p);
   return (
@@ -45,10 +45,8 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
       style={{
         left: span.start * cw + (span.clipL ? 0 : 2),
         width: span.len * cw - (span.clipL ? 0 : 2) - (span.clipR ? 0 : 3),
-        ["--pc" as string]: c.c,
         ["--pb" as string]: c.b,
         ["--pt" as string]: c.t,
-        ["--pf" as string]: c.f,
       }}
       title={tip(b, L, readOnly)}
       {...(readOnly ? {} : { role: "button", tabIndex: 0 })}
@@ -74,7 +72,7 @@ function Marks({ m, cw, L, readOnly, onOpen }: { m?: Map<number, Booking[]>; cw:
             <i
               key={d.id}
               className={`cdot ${isActive(d) ? (d.arrived ? "ok" : "") : "cx"}`}
-              style={isActive(d) ? { ["--pc" as string]: paint(L.plats.get(d.platformId)).b } : undefined}
+              style={isActive(d) ? ((c) => ({ ["--pt" as string]: c.d, ["--pb" as string]: c.b }))(paint(L.plats.get(d.platformId))) : undefined}
               title={tip(d, L, readOnly)}
               onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(d))}
             />
@@ -151,14 +149,14 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
             const c = paint(p);
             return (
               <span key={p.id} title={p.name}>
-                <i style={{ background: c.t, borderColor: c.b }} />
+                <i style={{ background: c.d }} />
                 {p.name}
               </span>
             );
           })}
           <span className="cal-pl-ok">
             <i />
-            꽉 찬 막대 = 입실 완료
+            진한 테두리 = 입실 완료
           </span>
         </div>
       ) : null}
@@ -250,8 +248,8 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
       </div>
       <p className="stock-hint">
         {readOnly
-          ? "보기 전용 · 막대는 숙박(퇴실일 칸은 비어요) · 점은 대실 · 색은 플랫폼 · 색이 꽉 찬 막대·점은 입실 완료"
-          : "막대를 누르면 예약을 고치고, 빈 칸을 누르면 그 방·그날로 새 예약을 적어요 · 점은 대실 · 색은 플랫폼 · 색이 꽉 찬 막대·점은 입실 완료"}
+          ? "보기 전용 · 막대는 숙박(퇴실일 칸은 비어요) · 점은 대실 · 색은 플랫폼 · 진한 테두리는 입실 완료"
+          : "막대를 누르면 예약을 고치고, 빈 칸을 누르면 그 방·그날로 새 예약을 적어요 · 점은 대실 · 색은 플랫폼 · 진한 테두리는 입실 완료"}
       </p>
     </>
   );

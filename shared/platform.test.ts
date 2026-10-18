@@ -38,14 +38,16 @@ test("꽉 찬 색 위 글자는 대비가 큰 쪽 (노랑엔 검정, 남색엔 �
   for (const c of PRESETS) assert.ok(contrast(c, textOn(c)) >= 3.5, `${c} 글자 대비`);
 });
 
-test("옅은 바탕은 흰색에 가깝고, 아주 밝은 색은 테두리를 조금 진하게", () => {
+test("옅은 바탕은 흰색에 가깝고, 입실 완료 테두리는 같은 색을 조금 진하게", () => {
   assert.equal(tint("#000000", 0.16), "#D6D6D6");
-  assert.ok(contrast(tint("#E3102D"), "#1A1A1A") > 10, "옅은 바탕 위 검은 글자");
+  for (const c of PRESETS) {
+    const x = paint(P("x", "p", c));
+    assert.ok(contrast(x.t, "#1A1A1A") > 12, `${c} 옅은 바탕 위 검은 글자`);
+    assert.ok(contrast(x.t, "#FFFFFF") < 1.35, `${c} 바탕은 흰색에 가깝게 (화면이 시끄럽지 않게)`);
+    assert.ok(contrast(x.b, x.t) >= 1.9, `${c} 테두리가 바탕과 구분돼요`);
+  }
   const y = paint(P("익스피디아"));
-  assert.notEqual(y.b, y.c);
-  assert.ok(contrast(y.b, "#FFFFFF") > contrast(y.c, "#FFFFFF"));
-  const n = paint(P("네이버"));
-  assert.equal(n.b, n.c);
+  assert.ok(contrast(y.b, "#FFFFFF") > 2, "노랑 테두리는 충분히 진하게");
   assert.equal(paint(null).c, "#9A9A9A");
 });
 

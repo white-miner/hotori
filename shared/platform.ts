@@ -66,12 +66,13 @@ export function shade(hex: string, a = 0.18): string {
 }
 
 export interface PlatformPaint {
-  c: string; // 꽉 찬 바탕
-  b: string; // 테두리 (노랑처럼 아주 밝은 색은 조금 진하게 해서 흰 바탕에서도 보이게)
-  t: string; // 옅은 바탕
+  c: string; // 플랫폼 색 (설정 견본)
+  b: string; // 입실 완료 테두리: 조금 진하게 (노랑처럼 아주 밝은 색은 더 진하게 해서 옅은 바탕 위에서도 보이게)
+  t: string; // 옅은 바탕 (입실 전·후 모두)
+  d: string; // 대실 점 (입실 전): 막대 바탕보다 조금 진한 옅은 색
   f: string; // 꽉 찬 바탕 위 글자
 }
 export function paint(p: (Pick<Platform, "id" | "name"> & { color?: string | null }) | null | undefined): PlatformPaint {
   const c = p ? platformColor(p) : "#9A9A9A";
-  return { c, b: contrast(c, "#FFFFFF") < 1.8 ? shade(c, 0.22) : c, t: tint(c), f: textOn(c) };
+  return { c, b: shade(c, contrast(c, "#FFFFFF") < 1.8 ? 0.3 : 0.12), t: tint(c, 0.13), d: tint(c, 0.38), f: textOn(c) };
 }
