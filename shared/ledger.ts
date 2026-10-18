@@ -475,6 +475,53 @@ export function perNight(b: Pick<Booking, "price" | "nights">): number | null {
 }
 export const won = (v: number) => v.toLocaleString("ko-KR");
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+/**
+ * 사람이 적은 시간을 HH:MM으로: "13:30", "1330", "930", "9:5", "13", "13시 30분", "오후 1:30", "1:30 PM".
+ * 알아볼 수 없으면 "" 를 돌려줘요.
+ */
+export function parseTime(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  if (!v) return "";
+  const pm = /오후|pm|p\.m\./.test(v);
+  const am = /오전|am|a\.m\./.test(v);
+  let h: number;
+  let m: number;
+  const sep = /^\D*(\d{1,2})\s*(?::|시|\.|h)\s*(\d{1,2})?\s*분?\D*$/.exec(v);
+  if (sep) {
+    h = Number(sep[1]);
+    m = sep[2] ? Number(sep[2]) : 0;
+  } else {
+    const d = v.replace(/\D/g, "");
+    if (!d || d.length > 4) return "";
+    if (d.length <= 2) [h, m] = [Number(d), 0];
+    else [h, m] = [Number(d.slice(0, d.length - 2)), Number(d.slice(-2))];
+  }
+  if (pm && h < 12) h += 12;
+  if (am && h === 12) h = 0;
+  if (h === 24 && m === 0) h = 0;
+  if (!(h >= 0 && h <= 23 && m >= 0 && m <= 59)) return "";
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+/** HH:MM + 분 (자정을 넘기면 다음날 시각) */
+export function addMinutesToTime(t: string, min: number): string {
+  if (!TIME_RE.test(t)) return "";
+  const [a, b] = t.split(":").map(Number);
+  const x = (((a * 60 + b + min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`;
+}
+/** 시작~끝 이용 시간(분). 끝이 시작보다 이르면 자정을 넘긴 것으로 봐요 */
+export function dayuseMinutes(start: string, end: string): number | null {
+  if (!TIME_RE.test(start) || !TIME_RE.test(end)) return null;
+  const s = Number(start.slice(0, 2)) * 60 + Number(start.slice(3));
+  let e = Number(end.slice(0, 2)) * 60 + Number(end.slice(3));
+  if (e <= s) e += 1440;
+  return e - s;
+}
+/** 기기 시각을 가장 가까운 5분으로 (13:32 → 13:30, 13:33 → 13:35) */
+export function nowRounded(d: Date = new Date(), step = 5): string {
+  const x = Math.round((d.getHours() * 60 + d.getMinutes()) / step) * step;
+  return addMinutesToTime("00:00", x);
+}
 
 export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.platforms.some((p) => p.id === b.platformId)) return "플랫폼을 골라 주세요.";

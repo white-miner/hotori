@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, Minus, Plus } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock, Minus, Plus } from "lucide-react";
 import {
   type Booking,
   type Kind,
   type Status,
-  TIME_RE,
+  addMinutesToTime,
+  dayuseMinutes,
+  nowRounded,
+  parseTime,
   addDays,
   allRooms as placedRooms,
   dayLabel,
@@ -33,17 +36,31 @@ interface Props {
 }
 const TYPE_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"];
 const TYPE_LABEL = "QWERTYUIO";
-const fmtTime = (v: string) => {
-  const d = v.replace(/\D/g, "").slice(0, 4);
-  if (d.length <= 2) return d;
-  return `${d.slice(0, d.length - 2).padStart(2, "0")}:${d.slice(-2)}`;
-};
-const plusHours = (t: string, h: number) => {
-  if (!TIME_RE.test(t)) return "";
-  const [a, b] = t.split(":").map(Number);
-  const m = (a * 60 + b + h * 60) % 1440;
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-};
+const DURATIONS = [1, 2, 3, 4, 5, 6];
+const durLabel = (min: number) => (min % 60 ? `${Math.floor(min / 60)}시간 ${min % 60}분` : `${min / 60}시간`);
+
+/** 작은 시계 단추: 누르면 기기 시간 고르기가 열려요 (값은 언제나 24시간 HH:MM) */
+function TimePick({ value, label, onPick }: { value: string; label: string; onPick: (v: string) => void }) {
+  return (
+    <span className="tpick" title={label}>
+      <Clock size={15} />
+      <input
+        type="time"
+        tabIndex={-1}
+        aria-label={label}
+        value={value}
+        onChange={(e) => e.target.value && onPick(e.target.value)}
+        onClick={(e) => {
+          try {
+            e.currentTarget.showPicker?.();
+          } catch {
+            /* 기본 동작 */
+          }
+        }}
+      />
+    </span>
+  );
+}
 
 export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const s = data.hotel!.settings;
@@ -58,8 +75,24 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
   const [nights, setNights] = useState(base?.nights ?? p.nights ?? 1);
-  const [startTime, setStart] = useState(base?.startTime ?? "");
-  const [endTime, setEnd] = useState(base?.endTime ?? "");
+  // 대실 시간: 적는 중인 글자(raw)는 그대로 두고, 알아볼 수 있으면 HH:MM으로 저장해요
+  const [startRaw, setStartRaw] = useState(base?.startTime ?? "");
+  const [endRaw, setEndRaw] = useState(base?.endTime ?? "");
+  const startTime = parseTime(startRaw);
+  const [dur, setDur] = useState<number | null>(() => {
+    const m = base?.startTime && base?.endTime ? dayuseMinutes(base.startTime, base.endTime) : null;
+    return m && DURATIONS.includes(m / 60) ? m / 60 : null;
+  });
+  // 이용 시간을 골랐으면 끝 시간은 시작 + 이용 시간
+  const endTime = dur != null && startTime ? addMinutesToTime(startTime, dur * 60) : parseTime(endRaw);
+  const useMin = dayuseMinutes(startTime, endTime);
+  const startRef = useRef<HTMLInputElement>(null);
+  // 오늘 대실을 새로 적을 때는 지금 시각(5분 단위)을 시작 시간으로 넣어 둬요
+  useEffect(() => {
+    if (!isNew || kind !== "dayuse" || startRaw || checkIn !== today) return;
+    setStartRaw(nowRounded());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, checkIn]);
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [price, setPrice] = useState(base ? String(base.price) : "");
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
@@ -181,7 +214,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
       if (e.key === "Escape") {
         e.preventDefault();
         // 날짜 칸에서 Esc는 날짜 고르기만 닫고, 적던 예약은 그대로 둬요
-        if (e.target instanceof HTMLInputElement && e.target.type === "date") return e.target.blur();
+        if (e.target instanceof HTMLInputElement && (e.target.type === "date" || e.target.type === "time" || e.target.classList.contains("tm-in"))) return e.target.blur();
         return onClose();
       }
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -352,28 +385,84 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
               이용시간<em>*</em>
             </label>
             <div className="times">
-              <input
-                className="inp num tm-in"
-                inputMode="numeric"
-                placeholder="12:00"
-                value={startTime}
-                onChange={(e) => setStart(fmtTime(e.target.value))}
-                aria-label="시작 시간"
-              />
+              <span className="tbox">
+                <input
+                  ref={startRef}
+                  className="inp num tm-in"
+                  inputMode="numeric"
+                  placeholder="13:30"
+                  maxLength={10}
+                  value={startRaw}
+                  onChange={(e) => setStartRaw(e.target.value)}
+                  onBlur={() => startTime && setStartRaw(startTime)}
+                  aria-label="시작 시간"
+                  title="1330 처럼 숫자만 적어도 돼요"
+                />
+                <TimePick value={startTime} label="시작 시간 고르기" onPick={(v) => setStartRaw(v)} />
+              </span>
               <span className="tilde">~</span>
-              <input
-                className="inp num tm-in"
-                inputMode="numeric"
-                placeholder="14:00"
-                value={endTime}
-                onChange={(e) => setEnd(fmtTime(e.target.value))}
-                aria-label="끝 시간"
-              />
-              {[2, 3, 4].map((h) => (
-                <button type="button" key={h} className="chip sm" onClick={() => setEnd(plusHours(startTime, h))} disabled={!TIME_RE.test(startTime)}>
+              <span className="tbox">
+                <input
+                  className={`inp num tm-in ${dur != null ? "auto" : ""}`}
+                  inputMode="numeric"
+                  placeholder="15:30"
+                  maxLength={10}
+                  value={dur != null ? endTime : endRaw}
+                  onChange={(e) => {
+                    setDur(null);
+                    setEndRaw(e.target.value);
+                  }}
+                  onBlur={() => dur == null && parseTime(endRaw) && setEndRaw(parseTime(endRaw))}
+                  aria-label="끝 시간"
+                />
+                <TimePick
+                  value={endTime}
+                  label="끝 시간 고르기"
+                  onPick={(v) => {
+                    setDur(null);
+                    setEndRaw(v);
+                  }}
+                />
+              </span>
+            </div>
+            <div className="chips durs">
+              {DURATIONS.map((h) => (
+                <button
+                  type="button"
+                  key={h}
+                  className={`chip sm ${dur === h ? "on" : ""}`}
+                  aria-pressed={dur === h}
+                  onClick={() => {
+                    if (dur === h) {
+                      setDur(null);
+                      setEndRaw(endTime);
+                      return;
+                    }
+                    if (!startTime) setStartRaw(checkIn === today ? nowRounded() : "");
+                    setDur(h);
+                    if (!startTime && checkIn !== today) startRef.current?.focus();
+                  }}
+                >
                   {h}시간
                 </button>
               ))}
+            </div>
+            <div className={`trange ${useMin ? "" : "empty"}`}>
+              {useMin ? (
+                <>
+                  <b>
+                    {startTime} ~ {endTime}
+                  </b>
+                  {useMin + Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3)) > 1440 ? <span className="nd">다음날</span> : null}
+                  <span> · {durLabel(useMin)} 이용</span>
+                </>
+              ) : startRaw && !startTime ? (
+                <span className="bad">시작 시간을 알아볼 수 없어요. 예: 13:30 또는 1330</span>
+              ) : endRaw && dur == null && !parseTime(endRaw) ? (
+                <span className="bad">끝 시간을 알아볼 수 없어요. 예: 15:30</span>
+              ) : (
+                <span>시작 시간을 적고 이용 시간을 누르면 끝 시간이 저절로 들어가요</span>
+              )}
             </div>
           </div>
         )}

@@ -7,6 +7,10 @@ import {
   businessDate,
   firstOverbooking,
   TYPE_NAME_MAX,
+  parseTime,
+  addMinutesToTime,
+  dayuseMinutes,
+  nowRounded,
   typeLabel,
   usableTypes,
   addRoomsToFloor,
@@ -340,4 +344,20 @@ test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1
   const empty = normalizeSettings({ buildings: [{ id: "x", name: "A동" }], floors: [] });
   const first = addFloorOnTop(empty, "x", "f1");
   assert.equal(first.floors[0].name, "1층");
+});
+
+test("대실 시간: 사람이 적은 그대로 알아들어요", () => {
+  const cases: [string, string][] = [
+    ["13:30", "13:30"], ["1330", "13:30"], ["930", "09:30"], ["9:5", "09:05"], ["13", "13:00"], ["9", "09:00"],
+    ["13시 30분", "13:30"], ["13시", "13:00"], ["오후 1:30", "13:30"], ["1:30 PM", "13:30"], ["오전 12:10", "00:10"], ["13.30", "13:30"],
+    ["24:00", "00:00"], ["2400", "00:00"], ["2460", ""], ["25:00", ""], ["13:60", ""], ["abc", ""], ["", ""], ["13305", ""],
+  ];
+  for (const [i, o] of cases) assert.equal(parseTime(i), o, i);
+  assert.equal(addMinutesToTime("13:30", 120), "15:30");
+  assert.equal(addMinutesToTime("23:30", 120), "01:30", "자정을 넘겨요");
+  assert.equal(dayuseMinutes("13:30", "15:30"), 120);
+  assert.equal(dayuseMinutes("23:30", "01:30"), 120);
+  assert.equal(nowRounded(new Date(2026, 9, 18, 13, 32)), "13:30");
+  assert.equal(nowRounded(new Date(2026, 9, 18, 13, 33)), "13:35");
+  assert.equal(nowRounded(new Date(2026, 9, 18, 23, 58)), "00:00");
 });
