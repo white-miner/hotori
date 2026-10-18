@@ -15,6 +15,7 @@ import {
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 import type { Expense } from "../shared/expense";
+import type { PayKind, Payment } from "../shared/payment";
 
 export interface Hotel {
   id: string;
@@ -45,9 +46,31 @@ interface BookingRow {
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
+  booking_payments?: PaymentRow[];
 }
-const COLS =
+interface PaymentRow {
+  id: string;
+  booking_id?: string;
+  kind: PayKind;
+  method: PayMethod;
+  amount: number;
+  biz_date: string;
+  created_at: string;
+}
+const PAY_COLS = "id,booking_id,kind,method,amount,biz_date,created_at";
+const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
+  id: r.id,
+  bookingId: r.booking_id ?? bookingId ?? "",
+  kind: r.kind === "balance" ? "balance" : "deposit",
+  method: r.method === "cash" ? "cash" : "card",
+  amount: r.amount,
+  bizDate: r.biz_date,
+  createdAt: r.created_at,
+});
+const COLS_BASE =
   "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,cancelled_at,created_at,updated_at";
+// 받은 돈(선금·잔금)도 함께 불러와요
+const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
 /** DB의 [{room, nights}] → [{roomId, nights}]. 모양이 이상하거나 박수 합이 안 맞으면 이동 없음 */
 function segsFromRow(v: unknown, nights: number | null): RoomSegment[] | null {
@@ -75,6 +98,7 @@ export function fromRow(r: BookingRow): Booking {
     earlyOut: r.early_out_on ?? null,
     refund: r.refund_amount ?? null,
     memo: r.memo,
+    payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     cancelledAt: r.cancelled_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -223,6 +247,23 @@ export function useHotelData(hotelId: string) {
     const saved = fromRow(data as BookingRow);
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
   }, [refresh]);
+  // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
+  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: PayMethod; amount: number; bizDate: string }) => {
+    const { data, error } = await supabase
+      .from("booking_payments")
+      .insert({ booking_id: bookingId, kind: p.kind, method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate })
+      .select(PAY_COLS)
+      .single();
+    if (error) throw error;
+    const saved = payFromRow(data as PaymentRow);
+    setBookings((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: [...(x.payments ?? []), saved] } : x)));
+    return saved;
+  }, []);
+  const deletePayment = useCallback(async (bookingId: string, id: string) => {
+    const { error } = await supabase.from("booking_payments").delete().eq("id", id);
+    if (error) throw error;
+    setBookings((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
+  }, []);
   // 중도 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
   const setEarlyOut = useCallback(async (id: string, earlyOut: string | null, refund: number | null) => {
     const box: { prev?: Booking } = {};
@@ -275,7 +316,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, deleteBooking, saveHotel };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 
@@ -292,6 +333,19 @@ export async function queryLedger(hotelId: string, from: string, to: string): Pr
     .limit(5000);
   if (error) throw error;
   return (data as BookingRow[]).map(fromRow);
+}
+
+/** 장부 현금 시재: 그 기간에 받은 선금·잔금 (받은 날 기준) */
+export async function queryPayments(hotelId: string, from: string, to: string): Promise<Payment[]> {
+  const { data, error } = await supabase
+    .from("booking_payments")
+    .select(PAY_COLS)
+    .eq("hotel_id", hotelId)
+    .gte("biz_date", from)
+    .lte("biz_date", to)
+    .limit(10000);
+  if (error) throw error;
+  return (data as PaymentRow[]).map((r) => payFromRow(r));
 }
 
 // ---------- 현황 공유 링크 (Pro) ----------

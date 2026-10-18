@@ -1,5 +1,6 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
 import { pastelColor, strongColor } from "../shared/floorColor";
+import { isOnsite } from "../shared/payment";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -666,7 +667,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             플랫폼 <span className="tag">{s.platforms.length}개</span>
           </h3>
-          <div className="sub">동그라미 속 한 글자는 화이트보드 메모처럼 방 칸에 보여요. 위에서부터 단축키 1~9가 붙어요.</div>
+          <div className="sub">동그라미 속 한 글자는 화이트보드 메모처럼 방 칸에 보여요. 위에서부터 단축키 1~9가 붙어요. '현장 결제'를 켠 플랫폼만 잔금을 따지고, 나머지는 플랫폼이 받은 걸로 봐요.</div>
           {s.platforms.map((p, i) => (
             <div className="trow" key={p.id}>
               <span className="ord">
@@ -691,6 +692,15 @@ export default function Settings({ data, email, notify }: Props) {
                 aria-label="플랫폼 이름"
                 onChange={(e) => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, name: e.target.value } : y)) }))}
               />
+              <button
+                type="button"
+                className={`chip sm onsite ${isOnsite(p) ? "on" : ""}`}
+                aria-pressed={isOnsite(p)}
+                title="켜면 이 플랫폼 예약은 현장에서 받는 돈(선금·잔금)을 따져요. 끄면 플랫폼이 받은 걸로 봐요"
+                onClick={() => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, onsite: !isOnsite(y) } : y)) }))}
+              >
+                현장 결제
+              </button>
               {i < 9 ? <span className="k">{i + 1}</span> : null}
               <button
                 className="ic"

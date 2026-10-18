@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
-import { type HotelData, queryLedger, queryShopSales, useExpenses } from "./data";
+import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
+import { bookingCash, payState } from "../shared/payment";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
@@ -47,6 +48,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [type, setType] = useState("");
   const [kind, setKind] = useState("");
   const [st, setSt] = useState<StatusF>("all");
+  const [dueOnly, setDueOnly] = useState(false);
+  const [payCash, setPayCash] = useState(0);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -68,6 +71,17 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     };
   }, [hotelId, from, to, shopTick]);
 
+  // 예약 현금(선금·잔금): 받은 날이 이 기간 안이면 현금 시재에 넣어요
+  useEffect(() => {
+    let alive = true;
+    queryPayments(hotelId, from, to)
+      .then((r) => alive && setPayCash(bookingCash(r, from, to)))
+      .catch(() => alive && setPayCash(0));
+    return () => {
+      alive = false;
+    };
+  }, [hotelId, from, to, data.syncedAt, data.bookings]);
+
   useEffect(() => {
     let alive = true;
     queryLedger(hotelId, from, to)
@@ -86,6 +100,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (kind && b.kind !== kind) return false;
     if (st === "active" && !isActive(b)) return false;
     if (st === "void" && isActive(b)) return false;
+    if (dueOnly && payState(b, L.plats.get(b.platformId)).left <= 0) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
       const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
@@ -103,13 +118,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const sum = rev.net;
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
   // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
-  const filtered = !!(plat || type || kind || q || st === "void");
+  const filtered = !!(plat || type || kind || q || st === "void" || dueOnly);
+  const dueTotal = list.reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0);
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
   // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
   const revAll = roomRevenue(rows ?? [], from, to);
   const roomsAll = revAll.net;
   const exT = expenseTotals(ex.list ?? []);
-  const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT);
+  const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
 
   return (
@@ -144,14 +160,22 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             <span className={`tot ${money.left < 0 ? "neg" : ""}`}>
               남은 금액<b>{won(money.left)}원</b>
             </span>
-            <span className={`cash ${money.cash < 0 ? "neg" : ""}`} title="숙박·대실은 결제 방법을 따로 적지 않아서 매점 현금만 넣어요">
+            <span
+              className={`cash ${money.cash < 0 ? "neg" : ""}`}
+              title="현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금, 받은 날 기준) − 현금 지출. 플랫폼이 받은 예약 금액과 카드는 빠져요"
+            >
               현금 시재<b>{won(money.cash)}원</b>
               <i className="muted">
                 {" "}
-                · 매점 현금 {won(money.cashIn)} − 현금 지출 {won(money.cashOut)}
+                · 매점 현금 {won(money.shopCash)} + 예약 현금 {won(money.bookingCash)} − 현금 지출 {won(money.cashOut)}
               </i>
             </span>
           </div>
+          {tab === "bookings" && dueTotal > 0 ? (
+            <div className="lsum-f">
+              <span className="dueamt">잔금 남음 {won(dueTotal)}원</span> <span className="muted">· 이 목록에서 아직 못 받은 돈</span>
+            </div>
+          ) : null}
           {tab === "bookings" && sumUp.shop === null ? (
             <div className="lsum-f muted">
               조건에 맞는 예약 합계 <b>{won(sumUp.rooms)}원</b>
@@ -243,6 +267,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           <option value="in-asc">입실 날짜 이른 순</option>
           <option value="rec">최근 기록·수정 순</option>
         </select>
+        <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
+          잔금 남음
+        </button>
         <div className="seg">
           {(
             [
@@ -279,6 +306,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             const p = L.plats.get(b.platformId);
             const per = perNight(b);
             const eo = isActive(b) && isEarlyOut(b);
+            const ps = payState(b, p);
             return (
               <div key={b.id} role="button" tabIndex={0} className={`lrow ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
                 <span className="c-date">{dayLabel(b.checkIn)}</span>
@@ -304,6 +332,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <span className="c-price r">
                   {won(b.price)}
                   {eo && b.refund ? <small className="rf">환불 −{won(b.refund)}</small> : per ? <small>1박 {won(per)}</small> : null}
+                  {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
                 </span>
                 <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
               </div>

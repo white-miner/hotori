@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2 } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -25,6 +25,7 @@ import {
   usedLabel,
   usedNights,
   validateEarlyOut,
+  revenueOf,
   moveStay,
   undoMove,
   type RoomSegment,
@@ -42,6 +43,8 @@ import {
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
+import { PAY_KIND_LABEL, isOnsite, validatePayment } from "../shared/payment";
+import { PAY_LABEL, type PayMethod } from "../shared/shop";
 
 interface Props {
   data: HotelData;
@@ -122,6 +125,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
+  // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
+  const [dep, setDep] = useState<{ amount: string; method: PayMethod; date: string }>({ amount: "", method: "card", date: today });
+  const [bal, setBal] = useState<{ method: PayMethod; amount: string } | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payErr, setPayErr] = useState<string | null>(null);
   // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
   const [eo, setEo] = useState<{ date: string; refund: string } | null>(null);
   const [eoBusy, setEoBusy] = useState(false);
@@ -232,6 +240,43 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     updatedAt: new Date().toISOString(),
   };
   const draft = draftBase;
+  const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
+  const payTracked = isOnsite(L.plats.get(platformId)) || livePays.length > 0;
+  const depAmt = payTracked && !livePays.length ? Number(dep.amount || 0) : 0;
+  const payPaid = livePays.reduce((n, x) => n + x.amount, 0) + depAmt;
+  const payDue = revenueOf({ ...draftBase, status: "active" });
+  const payLeft = Math.max(0, payDue - payPaid);
+  const takeBalance = async () => {
+    if (!base || !bal || payBusy) return;
+    const amount = Number(bal.amount || 0);
+    const v = validatePayment(amount, bal.method, today);
+    if (v) return setPayErr(v);
+    setPayBusy(true);
+    setPayErr(null);
+    try {
+      await data.addPayment(base.id, { kind: "balance", method: bal.method, amount, bizDate: today });
+      setBal(null);
+      const left = Math.max(0, payDue - payPaid - amount);
+      notify(`${guestName} 님 잔금 ${won(amount)}원 받음 (${PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`);
+    } catch (e) {
+      setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+  const delPay = async (id: string) => {
+    if (!base || payBusy) return;
+    if (!window.confirm("이 결제 줄을 지울까요? 잔금이 다시 늘어나요.")) return;
+    setPayBusy(true);
+    setPayErr(null);
+    try {
+      await data.deletePayment(base.id, id);
+    } catch (e) {
+      setPayErr(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+    } finally {
+      setPayBusy(false);
+    }
+  };
   const nightDates = useMemo(
     () => Array.from({ length: kind === "stay" ? nights : 1 }, (_, i) => addDays(checkIn, i)),
     [kind, nights, checkIn],
@@ -286,10 +331,25 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
           : `${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
       );
+    if (depAmt > 0) {
+      const pv = validatePayment(depAmt, dep.method, dep.date);
+      if (pv) return setErr(`선금: ${pv}`);
+      if (depAmt > draft.price) return setErr("선금이 판매 가격보다 커요.");
+    }
     setBusy(true);
     setErr(null);
     try {
       const saved = await data.saveBooking(draft, isNew);
+      // 선금: 예약을 저장한 다음 한 줄 적어요 (못 적으면 알려 드려요)
+      let depNote = "";
+      if (depAmt > 0 && isActive(saved)) {
+        try {
+          await data.addPayment(saved.id, { kind: "deposit", method: dep.method, amount: depAmt, bizDate: dep.date });
+          depNote = ` · 선금 ${won(depAmt)}원(${PAY_LABEL[dep.method]})`;
+        } catch (e) {
+          depNote = ` · 선금은 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
+        }
+      }
       const t = L.types.get(saved.typeId);
       const tail =
         kind === "stay" && isActive(saved) && preview[0]
@@ -300,7 +360,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
           : override === "noshow"
             ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 금액은 매출에 남고 남은 객실이 늘었어요`
-            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
+            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}${depNote}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
     } catch (e) {
@@ -717,6 +777,105 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               />
               원{per ? <small>1박 평균 {won(per)}원</small> : null}
             </label>
+          </div>
+        </div>
+
+        <div className="fld pay">
+          <label>결제</label>
+          <div className="payb">
+            {!payTracked ? (
+              <div className="muted sm payota">플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span></div>
+            ) : (
+              <>
+                {livePays.map((x) => (
+                  <div className="payrow" key={x.id}>
+                    <b>{PAY_KIND_LABEL[x.kind]}</b>
+                    <span className="num">{won(x.amount)}원</span>
+                    <span className="muted">{PAY_LABEL[x.method]} · {dayLabel(x.bizDate)}</span>
+                    <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {!livePays.length ? (
+                  <div className="paydep">
+                    <span className="pl">선금</span>
+                    <label className="inp price sm">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="없으면 비워 두세요"
+                        aria-label="선금"
+                        value={dep.amount ? won(Number(dep.amount)) : ""}
+                        onChange={(e) => setDep({ ...dep, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                      />
+                      원
+                    </label>
+                    <div className="seg sm">
+                      {(["card", "cash"] as const).map((m) => (
+                        <button type="button" key={m} className={dep.method === m ? "on" : ""} onClick={() => setDep({ ...dep, method: m })}>
+                          {PAY_LABEL[m]}
+                        </button>
+                      ))}
+                    </div>
+                    <input className="inp sm" type="date" aria-label="선금 받은 날" value={dep.date} onChange={(e) => e.target.value && setDep({ ...dep, date: e.target.value })} />
+                  </div>
+                ) : null}
+                <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
+                  {payLeft > 0 ? (
+                    <>
+                      잔금 <b className="num">{won(payLeft)}원</b>
+                      <span className="muted"> = 판매 가격 {won(payDue)} − 받은 돈 {won(payPaid)}</span>
+                    </>
+                  ) : payPaid > 0 ? (
+                    <>
+                      <Check size={14} strokeWidth={2.6} /> 완납 <span className="muted">· 받은 돈 {won(payPaid)}원</span>
+                    </>
+                  ) : (
+                    <span className="muted">판매 가격을 적으면 잔금이 보여요</span>
+                  )}
+                  {live && isActive(live) && payLeft > 0 && !bal ? (
+                    <button type="button" className="btn sm dark balbtn" onClick={() => setBal({ method: "card", amount: String(payLeft) })}>
+                      잔금 받음
+                    </button>
+                  ) : null}
+                </div>
+                {bal ? (
+                  <div className="paybal">
+                    <div className="seg sm">
+                      {(["card", "cash"] as const).map((m) => (
+                        <button type="button" key={m} className={bal.method === m ? "on" : ""} onClick={() => setBal({ ...bal, method: m })}>
+                          {PAY_LABEL[m]}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="inp price sm">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        aria-label="받은 잔금"
+                        value={bal.amount ? won(Number(bal.amount)) : ""}
+                        onChange={(e) => setBal({ ...bal, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void takeBalance();
+                          }
+                        }}
+                      />
+                      원
+                    </label>
+                    <button type="button" className="btn sm" onClick={() => setBal(null)}>
+                      닫기
+                    </button>
+                    <button type="button" className="btn sm red" disabled={payBusy} onClick={() => void takeBalance()}>
+                      {payBusy ? "저장 중…" : "받음 기록"}
+                    </button>
+                  </div>
+                ) : null}
+                {payErr ? <div className="ferr">{payErr}</div> : null}
+              </>
+            )}
           </div>
         </div>
 

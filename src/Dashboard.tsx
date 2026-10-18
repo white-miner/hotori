@@ -38,6 +38,7 @@ import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import RoomCalendar from "./RoomCalendar";
+import { payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -441,7 +442,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <span>{b.guestName}</span>
         </div>
         <div className="r3 rp">
-          {readOnly ? <span /> : <span className="pr">{won(b.price)}</span>}
+          {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled ? 0 : payState(b, L.plats.get(b.platformId)).left)}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">

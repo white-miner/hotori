@@ -67,11 +67,13 @@ export function monthlyByCategory(list: Expense[]): { month: string; total: numb
 
 /**
  * 장부 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액,
- * 현금 시재 = 현금 매출 − 현금 지출. 숙박·대실은 결제 방법을 따로 적지 않아서 현금 매출은 매점 현금만이에요.
+ * 현금 시재 = 현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금) − 현금 지출.
+ * 플랫폼이 받은 예약 금액은 현금이 아니라서 빠져요.
  */
-export function moneySummary(rooms: number, shop: number, shopCash: number, exp: Pick<ExpenseTotals, "amount" | "cash">) {
+export function moneySummary(rooms: number, shop: number, shopCash: number, exp: Pick<ExpenseTotals, "amount" | "cash">, bookingCash = 0) {
   const sales = rooms + shop;
-  return { sales, expense: exp.amount, left: sales - exp.amount, cash: shopCash - exp.cash, cashIn: shopCash, cashOut: exp.cash };
+  const cashIn = shopCash + bookingCash;
+  return { sales, expense: exp.amount, left: sales - exp.amount, cash: cashIn - exp.cash, cashIn, shopCash, bookingCash, cashOut: exp.cash };
 }
 
 /** 지출 창 검사: 문제가 있으면 한국어 안내 */

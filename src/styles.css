@@ -1122,3 +1122,33 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .eoc-r small { grid-column: 1; }
   .eoc-a .btn { flex: 1; }
 }
+
+/* ---------- 선금 · 잔금 ---------- */
+.seg.sm { padding: 3px; }
+.seg.sm button { padding: 5px 12px; font-size: 12.5px; }
+.fld.pay { align-items: start; }
+.fld.pay > label { padding-top: 9px; }
+.payb { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.payota { padding: 9px 0; }
+.payota span { color: var(--ink4); }
+.paydep, .paybal { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.paydep .pl { font-size: 13px; font-weight: 700; color: var(--ink2); min-width: 30px; }
+.paydep .inp.price, .paybal .inp.price { width: 170px; flex: none; }
+.paydep input[type="date"].inp { width: 150px; flex: none; }
+.payrow { display: flex; align-items: center; gap: 10px; background: var(--panel); border-radius: 12px; padding: 7px 8px 7px 12px; font-size: 13px; }
+.payrow b { font-weight: 800; }
+.payrow .num { font-weight: 750; }
+.payrow .ic { margin-left: auto; }
+.payleft { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 13.5px; font-weight: 650; min-height: 32px; }
+.payleft.due b { color: var(--red); font-weight: 850; }
+.payleft.ok { color: var(--ink); }
+.payleft .muted { font-size: 12px; font-weight: 550; }
+.payleft .balbtn { margin-left: auto; }
+.paybal { background: #fff; border: 1.5px solid var(--ink); border-radius: 14px; padding: 8px; }
+/* 잔금 표시 (장부 · 객실 배치): 빨간 글자 */
+.dueamt { color: var(--red) !important; font-weight: 800; white-space: nowrap; }
+.paidtag { font-size: 10.5px; font-weight: 750; color: var(--ink3); white-space: nowrap; }
+@media (max-width: 760px) {
+  .paydep .inp.price, .paybal .inp.price { width: 140px; }
+  .paydep input[type="date"].inp { width: 140px; }
+}

@@ -1,4 +1,5 @@
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
+import type { Payment } from "./payment";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -50,6 +51,8 @@ export interface Platform {
   name: string;
   abbr: string; // 한 글자 약자
   color?: string | null; // 캘린더 막대 색 (#RRGGBB). 없으면 플랫폼 기본 색
+  /** 현장 결제 (잔금을 따져요). 없으면 이름에 '현장'·'전화'가 있을 때 켜진 걸로 봐요 */
+  onsite?: boolean;
 }
 export interface HotelSettings {
   buildings: Building[]; // 1개 이상. 1개면 화면은 예전과 똑같아요.
@@ -113,6 +116,8 @@ export interface Booking {
   /** 중도 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 중도 퇴실한 날짜에 빠져요 */
   refund?: number | null;
   memo: string | null;
+  /** 받은 돈 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
+  payments?: Payment[];
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
