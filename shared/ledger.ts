@@ -55,6 +55,34 @@ export interface HotelSettings {
   types: RoomType[];
   platforms: Platform[];
   lowThreshold: number;
+  shopItems: ShopItem[]; // 매점 물품 (위에서부터 매점 화면 순서)
+}
+export interface ShopItem {
+  id: string;
+  name: string; // 최대 20글자, 비어 있으면 매점 화면에 안 나와요
+  price: number; // 원
+  category: string; // 자유 입력, 비어 있으면 '기타'
+  hidden: boolean; // 품절·숨김
+}
+export const SHOP_NAME_MAX = 20;
+export const SHOP_CATEGORY_MAX = 12;
+export const FREE_SHOP_ITEM_LIMIT = 10;
+export function normalizeShopItems(raw: unknown): ShopItem[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return raw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string")
+    .filter((x) => !seen.has(x.id as string) && !!seen.add(x.id as string))
+    .map((x) => {
+      const price = Math.round(Number(x.price));
+      return {
+        id: x.id as string,
+        name: typeof x.name === "string" ? x.name.slice(0, SHOP_NAME_MAX) : "",
+        price: Number.isFinite(price) && price >= 0 ? Math.min(price, 10_000_000) : 0,
+        category: typeof x.category === "string" ? x.category.slice(0, SHOP_CATEGORY_MAX) : "",
+        hidden: x.hidden === true,
+      };
+    });
 }
 
 export interface Booking {
@@ -84,7 +112,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2 };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [] };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -115,6 +143,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
       : [],
     platforms: Array.isArray(s.platforms) ? s.platforms : [],
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
+    shopItems: normalizeShopItems((s as { shopItems?: unknown }).shopItems),
   };
 }
 

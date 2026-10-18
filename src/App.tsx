@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { LogOut, Menu, Plus, Search } from "lucide-react";
+import { BookOpen, LayoutGrid, LogOut, Menu, Plus, Search, Settings as Gear, ShoppingBag } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData } from "./data";
 import { type Booking, businessDate } from "../shared/ledger";
@@ -10,16 +10,18 @@ import Dashboard from "./Dashboard";
 import Entry from "./Entry";
 import Ledger from "./Ledger";
 import Settings from "./Settings";
+import Shop from "./Shop";
 
-type View = "board" | "ledger" | "settings";
-const VIEWS: { id: View; label: string }[] = [
-  { id: "board", label: "현황판" },
-  { id: "ledger", label: "장부" },
-  { id: "settings", label: "설정" },
+type View = "board" | "ledger" | "shop" | "settings";
+const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
+  { id: "board", label: "현황판", icon: LayoutGrid },
+  { id: "ledger", label: "장부", icon: BookOpen },
+  { id: "shop", label: "매점", icon: ShoppingBag },
+  { id: "settings", label: "설정", icon: Gear },
 ];
 const viewFromHash = (): View => {
   const h = location.hash.replace("#/", "");
-  return h === "ledger" || h === "settings" ? h : "board";
+  return h === "ledger" || h === "settings" || h === "shop" ? h : "board";
 };
 
 export default function App() {
@@ -110,6 +112,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       if (e.code === "KeyN") {
         e.preventDefault();
         openNew({ checkIn: selDate });
+      } else if (e.code === "KeyM") {
+        e.preventDefault();
+        go("shop");
       } else if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
@@ -136,6 +141,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           {VIEWS.map((v) => (
             <a key={v.id} href={`#/${v.id}`} className={view === v.id ? "on" : ""} onClick={() => setView(v.id)}>
               {v.label}
+              {v.id === "shop" ? <kbd className="nk">M</kbd> : null}
             </a>
           ))}
         </nav>
@@ -165,11 +171,6 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             {menu ? (
               <div className="pop" onMouseLeave={() => setMenu(false)}>
                 <div className="pop-h">{email}</div>
-                {VIEWS.map((v) => (
-                  <button key={v.id} className={`pop-i nav-m ${view === v.id ? "on" : ""}`} onClick={() => go(v.id)}>
-                    {v.label}
-                  </button>
-                ))}
                 <button className="pop-i" onClick={() => void supabase.auth.signOut()}>
                   <LogOut size={15} /> 로그아웃
                 </button>
@@ -191,14 +192,27 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         />
       ) : view === "ledger" ? (
         <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b) => setEntry({ booking: b })} />
+      ) : view === "shop" ? (
+        <Shop data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : (
         <Settings data={data} email={email} notify={notify} />
       )}
 
-      <button className="fab" onClick={() => openNew({ checkIn: selDate })}>
-        <Plus size={19} strokeWidth={2.4} />
-        기록
-      </button>
+      {view === "shop" ? null : (
+        <button className="fab" onClick={() => openNew({ checkIn: selDate })}>
+          <Plus size={19} strokeWidth={2.4} />
+          기록
+        </button>
+      )}
+      {/* 휴대폰: 아래 탭으로 한 번에 이동 */}
+      <nav className="tabbar" aria-label="화면">
+        {VIEWS.map((v) => (
+          <a key={v.id} href={`#/${v.id}`} className={view === v.id ? "on" : ""} onClick={() => setView(v.id)}>
+            <v.icon size={20} strokeWidth={view === v.id ? 2.3 : 1.8} />
+            {v.label}
+          </a>
+        ))}
+      </nav>
 
       {entry ? (
         <Entry

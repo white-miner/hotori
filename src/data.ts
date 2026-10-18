@@ -5,8 +5,10 @@ import {
   type HotelSettings,
   addDays,
   businessDate,
+  type ShopItem,
   normalizeSettings,
 } from "../shared/ledger";
+import type { ShopSale } from "../shared/shop";
 
 export interface Hotel {
   id: string;
@@ -271,4 +273,156 @@ export async function fetchShared(token: string): Promise<SharedStatus | null> {
     // 공유 보기에는 판매 가격·메모가 오지 않아요
     bookings: d.bookings.map((r) => fromRow({ ...r, price: 0, memo: null, cancelled_at: null, created_at: "", updated_at: "" })),
   };
+}
+
+// ---------- 매점 ----------
+interface ShopSaleRow {
+  id: string;
+  item_id: string;
+  item_name: string;
+  unit_price: number;
+  qty: number;
+  biz_date: string;
+  created_at: string;
+}
+const SHOP_COLS = "id,item_id,item_name,unit_price,qty,biz_date,created_at";
+const fromShopRow = (r: ShopSaleRow): ShopSale => ({
+  id: r.id,
+  itemId: r.item_id,
+  itemName: r.item_name,
+  unitPrice: r.unit_price,
+  qty: r.qty,
+  bizDate: r.biz_date,
+  createdAt: r.created_at,
+});
+export async function queryShopSales(hotelId: string, from: string, to: string): Promise<ShopSale[]> {
+  const { data, error } = await supabase
+    .from("shop_sales")
+    .select(SHOP_COLS)
+    .eq("hotel_id", hotelId)
+    .gte("biz_date", from)
+    .lte("biz_date", to)
+    .order("created_at")
+    .limit(20000);
+  if (error) throw error;
+  return (data as ShopSaleRow[]).map(fromShopRow);
+}
+
+/** 매점 판매: 기간(영업일)으로 불러오고, 다른 기기에서 판 것도 실시간 + 10초마다 맞춰요 */
+export function useShopSales(hotelId: string, from: string, to: string) {
+  const [sales, setSales] = useState<ShopSale[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pending = useRef(new Map<string, Promise<string>>()); // 임시 id → 진짜 id
+  const salesRef = useRef<ShopSale[]>([]);
+  salesRef.current = sales ?? [];
+  const range = useRef({ from, to });
+  range.current = { from, to };
+
+  const refresh = useCallback(async () => {
+    const want = `${from}~${to}`;
+    try {
+      const rows = await queryShopSales(hotelId, from, to);
+      if (want !== `${range.current.from}~${range.current.to}`) return;
+      // 아직 저장 중인 판매(임시 id)는 그대로 남겨요
+      setSales((cur) => [...rows, ...(cur ?? []).filter((s) => pending.current.has(s.id))]);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "불러오지 못했어요");
+    }
+  }, [hotelId, from, to]);
+
+  useEffect(() => {
+    setSales(null);
+    void refresh();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void refresh(), 250);
+    };
+    const ch = supabase
+      .channel(`shop-${hotelId}-${from}-${to}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "shop_sales", filter: `hotel_id=eq.${hotelId}` }, soon)
+      // 지운 알림은 거를 수 없어서, 내가 가진 판매일 때만 다시 불러와요
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "shop_sales" }, (p) => {
+        const id = (p.old as { id?: string } | null)?.id;
+        if (id && salesRef.current.some((s) => s.id === id)) soon();
+      })
+      .subscribe();
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 10000);
+    const vis = () => document.visibilityState === "visible" && soon();
+    document.addEventListener("visibilitychange", vis);
+    window.addEventListener("focus", vis);
+    return () => {
+      clearTimeout(t);
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", vis);
+      window.removeEventListener("focus", vis);
+      void supabase.removeChannel(ch);
+    };
+  }, [hotelId, from, to, refresh]);
+
+  /** 1개 팔기: 화면에는 바로 보이고, 저장은 뒤에서 해요 */
+  const sell = useCallback(
+    async (item: ShopItem, bizDate: string): Promise<void> => {
+      const tmp = `tmp-${Math.random().toString(36).slice(2)}`;
+      const optimistic: ShopSale = {
+        id: tmp,
+        itemId: item.id,
+        itemName: item.name.trim(),
+        unitPrice: item.price,
+        qty: 1,
+        bizDate,
+        createdAt: new Date().toISOString(),
+      };
+      setSales((cur) => [...(cur ?? []), optimistic]);
+      const p = (async () => {
+        const { data, error } = await supabase
+          .from("shop_sales")
+          .insert({ hotel_id: hotelId, item_id: item.id, item_name: optimistic.itemName, unit_price: item.price, qty: 1, biz_date: bizDate })
+          .select(SHOP_COLS)
+          .single();
+        if (error) throw error;
+        const saved = fromShopRow(data as ShopSaleRow);
+        setSales((cur) => (cur ?? []).map((s) => (s.id === tmp ? saved : s)).filter((s, i, a) => a.findIndex((x) => x.id === s.id) === i));
+        return saved.id;
+      })();
+      pending.current.set(tmp, p);
+      try {
+        await p;
+      } catch (e) {
+        setSales((cur) => (cur ?? []).filter((s) => s.id !== tmp));
+        throw e;
+      } finally {
+        pending.current.delete(tmp);
+      }
+    },
+    [hotelId],
+  );
+  /** 1개 되돌리기: 그날 그 물품의 가장 최근 판매를 지워요 */
+  const undo = useCallback(async (sale: ShopSale): Promise<void> => {
+    setSales((cur) => (cur ?? []).filter((s) => s.id !== sale.id));
+    try {
+      const id = pending.current.has(sale.id) ? await pending.current.get(sale.id)! : sale.id;
+      setSales((cur) => (cur ?? []).filter((s) => s.id !== id));
+      const { error } = await supabase.from("shop_sales").delete().eq("id", id);
+      if (error) throw error;
+    } catch (e) {
+      void refresh();
+      throw e;
+    }
+  }, [refresh]);
+
+  return { sales, error, refresh, sell, undo };
+}
+/** 이 물품을 판 기록이 있나요 (지우기 전에 확인) */
+export async function hasShopSales(hotelId: string, itemId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("shop_sales")
+    .select("id", { count: "exact", head: true })
+    .eq("hotel_id", hotelId)
+    .eq("item_id", itemId);
+  if (error) throw error;
+  return (count ?? 0) > 0;
 }

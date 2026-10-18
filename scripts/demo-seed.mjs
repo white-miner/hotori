@@ -1,6 +1,8 @@
 // 예시 호텔 데이터를 만드는 SQL을 출력해요 (화이트보드와 같은 방 번호, 손님·금액은 모두 예시).
 // 사용: node scripts/demo-seed.mjs <hotel-uuid> [기준날짜 YYYY-MM-DD] > seed.sql
 // 출력된 SQL은 Supabase SQL 편집기에서 실행해요. 그 호텔의 기존 예약은 지워지고 다시 만들어져요.
+import { SHOP_ITEMS } from "./demo-shop-items.mjs";
+
 const HOTEL = process.argv[2];
 if (!/^[0-9a-f-]{36}$/.test(HOTEL ?? "")) throw new Error("hotel uuid가 필요해요");
 const BASE = process.argv[3] ?? new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10); // KST-6h 영업일
@@ -48,6 +50,7 @@ const settings = {
   floors: [...floors, ...ANNEX],
   types: TYPES,
   platforms: PLAT,
+  shopItems: SHOP_ITEMS, // 매점 판매 예시는 scripts/demo-shop-seed.mjs
 };
 
 const ROOMS = floors.flatMap((f) => f.rooms.map((r) => ({ ...r, c: TYPES.find((t) => t.id === r.typeId).code })));

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { type Booking, addDays, dayLabel, isActive, perNight, typeLabel, usableTypes, won } from "../shared/ledger";
-import { type HotelData, queryLedger } from "./data";
+import { type HotelData, queryLedger, queryShopSales } from "./data";
+import { ledgerSummary } from "../shared/shop";
 import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
 
 interface Props {
@@ -27,6 +28,22 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [shopSum, setShopSum] = useState<{ amount: number; count: number } | null>(null);
+  const [shopTick, setShopTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => document.visibilityState === "visible" && setShopTick((n) => n + 1), 15000);
+    return () => clearInterval(t);
+  }, []);
+  // 매점 매출은 예약과 따로 불러와서 합계만 보여 줘요 (장부 줄에는 섞지 않아요)
+  useEffect(() => {
+    let alive = true;
+    queryShopSales(hotelId, from, to)
+      .then((r) => alive && setShopSum({ amount: r.reduce((n, x) => n + x.unitPrice * x.qty, 0), count: r.reduce((n, x) => n + x.qty, 0) }))
+      .catch(() => alive && setShopSum(null));
+    return () => {
+      alive = false;
+    };
+  }, [hotelId, from, to, shopTick]);
 
   useEffect(() => {
     let alive = true;
@@ -57,6 +74,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   const act = list.filter(isActive);
   const sum = act.reduce((n, b) => n + b.price, 0);
   const nights = act.reduce((n, b) => n + (b.nights ?? 0), 0);
+  // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
+  const filtered = !!(plat || type || kind || q || st === "void");
+  const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
 
   return (
     <main className="page ledger">
@@ -64,7 +84,22 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
         <div>
           <h1>장부</h1>
           <div className="sub">
-            {list.length}건 · 숙박 {nights}박 · 합계 {won(sum)}원 <span className="muted">(취소·노쇼 제외)</span>
+            {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 취소·노쇼 제외</span>
+          </div>
+          <div className="lsum">
+            <span>
+              숙박·대실<b>{won(sumUp.rooms)}원</b>
+            </span>
+            {sumUp.shop === null ? null : (
+              <span>
+                매점<b>{won(sumUp.shop)}원</b>
+                {shopSum ? <i className="muted"> · {shopSum.count}개</i> : null}
+              </span>
+            )}
+            <span className="tot">
+              {sumUp.shop === null ? "합계" : "총 합계"}
+              <b>{won(sumUp.total)}원</b>
+            </span>
           </div>
         </div>
       </div>

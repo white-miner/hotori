@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
+  FREE_SHOP_ITEM_LIMIT,
+  SHOP_CATEGORY_MAX,
+  SHOP_NAME_MAX,
   TYPE_NAME_MAX,
   addRoomsToFloor,
   floorsOf,
@@ -14,7 +17,8 @@ import {
   typeTotals,
   usableTypes,
 } from "../shared/ledger";
-import { type HotelData, type ShareState, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
+import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
+import { canAddShopItem } from "../shared/shop";
 import { FitText, PALETTE, PlatBadge, TypeBadge, TypeLine, uid } from "./ui";
 
 interface Props {
@@ -212,6 +216,22 @@ export default function Settings({ data, email, notify }: Props) {
     }
     return { t, p };
   }, [data.bookings]);
+  const setShop = (id: string, patch: Partial<HotelSettings["shopItems"][number]>) =>
+    update((x) => ({ ...x, shopItems: x.shopItems.map((y) => (y.id === id ? { ...y, ...patch } : y)) }));
+  const removeShop = async (id: string, hidden: boolean) => {
+    let sold = false;
+    try {
+      sold = await hasShopSales(hotel.id, id);
+    } catch {
+      return notify("판매 기록을 확인하지 못했어요. 잠시 뒤 다시 눌러 주세요");
+    }
+    if (sold && !hidden) {
+      setShop(id, { hidden: true });
+      return notify("판매 기록이 있어서 지우지 않고 숨겼어요. 한 번 더 누르면 목록에서 지워요");
+    }
+    update((x) => ({ ...x, shopItems: x.shopItems.filter((y) => y.id !== id) }));
+    if (sold) notify("목록에서 지웠어요. 지난 매출은 그대로 남아요");
+  };
   const typeOf = (id: string | null) => s.types.find((t) => t.id === id) ?? null;
 
   const setFloor = (fid: string, fn: (f: Floor) => Floor) => update((x) => ({ ...x, floors: x.floors.map((f) => (f.id === fid ? fn(f) : f)) }));
@@ -283,6 +303,7 @@ export default function Settings({ data, email, notify }: Props) {
           {[
             ["rooms", "객실·타입"],
             ["plats", "플랫폼"],
+            ["shop", "매점"],
             ["share", "현황 공유"],
             ["plan", "요금제"],
           ].map(([id, l]) => (
@@ -690,6 +711,85 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
         </section>
 
+        <section className="card" id="set-shop">
+          <h3>
+            매점 물품{" "}
+            <span className="tag">
+              {s.shopItems.length}개{hotel.plan === "free" ? ` / ${FREE_SHOP_ITEM_LIMIT}개` : ""}
+            </span>
+          </h3>
+          <div className="sub">매점 화면에 이 순서대로 큰 칸으로 보여요. 분류를 적으면 같은 분류끼리 묶어요. 가격을 바꿔도 지난 매출은 그대로예요.</div>
+          {s.shopItems.map((it, i) => (
+            <div className={`trow shrow ${it.hidden ? "off" : ""}`} key={it.id}>
+              <span className="ord">
+                <button aria-label="위로" onClick={() => update((x) => ({ ...x, shopItems: move(x.shopItems, i, -1) }))}>
+                  <ArrowUp size={12} />
+                </button>
+                <button aria-label="아래로" onClick={() => update((x) => ({ ...x, shopItems: move(x.shopItems, i, 1) }))}>
+                  <ArrowDown size={12} />
+                </button>
+              </span>
+              <span className="sh-nc">
+                <input
+                  className="nin"
+                  value={it.name}
+                  placeholder="물품 이름"
+                  maxLength={SHOP_NAME_MAX}
+                  aria-label="물품 이름"
+                  autoFocus={!it.name && i === s.shopItems.length - 1}
+                  onChange={(e) => setShop(it.id, { name: e.target.value.slice(0, SHOP_NAME_MAX) })}
+                />
+                <input
+                  className="nin cat"
+                  value={it.category}
+                  placeholder="분류 (선택)"
+                  maxLength={SHOP_CATEGORY_MAX}
+                  aria-label="분류"
+                  onChange={(e) => setShop(it.id, { category: e.target.value.slice(0, SHOP_CATEGORY_MAX) })}
+                />
+              </span>
+              <label className="sh-p">
+                <input
+                  className="nin num"
+                  inputMode="numeric"
+                  value={it.price ? it.price.toLocaleString("ko-KR") : ""}
+                  placeholder="가격"
+                  aria-label="가격"
+                  onChange={(e) => {
+                    const v = Number(e.target.value.replace(/[^0-9]/g, "").slice(0, 8));
+                    setShop(it.id, { price: Math.min(v, 10_000_000) });
+                  }}
+                />
+                <span>원</span>
+              </label>
+              <button
+                className={`ic sh-h ${it.hidden ? "on" : ""}`}
+                aria-label={it.hidden ? "다시 보이기" : "품절·숨김"}
+                title={it.hidden ? "숨김 · 누르면 다시 보여요" : "품절·숨김"}
+                onClick={() => setShop(it.id, { hidden: !it.hidden })}
+              >
+                {it.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+              <button className="ic" aria-label="물품 지우기" onClick={() => void removeShop(it.id, it.hidden)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          {!canAddShopItem(hotel.plan, s.shopItems.length, FREE_SHOP_ITEM_LIMIT) ? (
+            <div className="share-lock">Free 요금제는 물품 {FREE_SHOP_ITEM_LIMIT}개까지예요. Pro에서는 제한 없이 등록할 수 있어요.</div>
+          ) : (
+            <button
+              className="add"
+              onClick={() =>
+                update((x) => ({ ...x, shopItems: [...x.shopItems, { id: uid("i"), name: "", price: 0, category: "", hidden: false }] }))
+              }
+            >
+              <Plus size={14} />
+              물품 추가
+            </button>
+          )}
+        </section>
+
         <ShareCard hotelId={hotel.id} plan={hotel.plan} notify={notify} />
 
         <section className="card" id="set-plan">
@@ -704,6 +804,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>객실 20실까지</li>
                 <li>여러 기기 동시 사용 (PC·태블릿·휴대폰)</li>
                 <li>장부 최근 3개월</li>
+                <li>매점 물품 {FREE_SHOP_ITEM_LIMIT}개까지 · 하루 매출</li>
               </ul>
             </div>
             <div className={hotel.plan === "pro" ? "now" : ""}>
@@ -713,6 +814,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>직원 여러 명 동시 사용</li>
                 <li>장부 무기한 · 엑셀 내보내기</li>
                 <li>월별 플랫폼 합계 · 수정 기록</li>
+                <li>매점 물품 제한 없음 · 월별 매점 매출</li>
                 <li>현황 공유 링크 (직원은 로그인 없이 보기)</li>
               </ul>
             </div>
