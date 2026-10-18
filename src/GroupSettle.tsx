@@ -209,6 +209,12 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                   <td className="r num">{st.extraTime ? `+${won(st.extraTime)}` : "서비스 0"}</td>
                 </tr>
               ) : null}
+              {st.parking ? (
+                <tr>
+                  <td colSpan={4}>주차 (추가 차량 − 도보 할인)</td>
+                  <td className="r num">{st.parking > 0 ? `+${won(st.parking)}` : `−${won(-st.parking)}`}</td>
+                </tr>
+              ) : null}
               {info.extras.map((x, i) => (
                 <tr key={`x${i}`}>
                   <td colSpan={4}>

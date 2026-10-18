@@ -1,7 +1,9 @@
+import { parkingMark } from "../shared/parking";
+import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
 import {
   type BoardTab,
   type Booking,
@@ -103,7 +105,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     if (h) return h;
     try {
       const v = localStorage.getItem(TAB_KEY);
-      return v === "rooms" || v === "calendar" ? v : "stock";
+      return v === "rooms" || v === "calendar" || v === "parking" ? v : "stock";
     } catch {
       return "stock";
     }
@@ -429,6 +431,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const legs = legsOf(b);
     const li = legs.findIndex((l) => l.roomId === r.id && l.checkIn <= selDate && selDate < addDays(l.checkIn, l.nights));
     const no = (id: string | null | undefined) => (id ? (L.rooms.get(id)?.no ?? "?") : "?");
+    // 주차 표시: 칸 위 테두리에 작은 탭 (대실 표시처럼 칸 크기는 그대로) · 휴대폰은 아이콘
+    const pm =
+      s.parking.enabled && isActive(b) && parkingMark(b) ? (
+        <span className={`pmark ptab ${b.arrival === "walk" ? "walk" : ""}`} title={b.arrival === "car" ? `차량 ${b.cars ?? 1}대` : "도보"} aria-label={b.arrival === "car" ? `차량 ${b.cars ?? 1}대` : "도보"}>
+          <i className="pm-t">{parkingMark(b)}</i>
+          <span className="pm-i">
+            {b.arrival === "car" ? <Car size={10} strokeWidth={2.6} /> : <Footprints size={10} strokeWidth={2.6} />}
+            {b.arrival === "car" && (b.cars ?? 1) > 1 ? b.cars : null}
+          </span>
+        </span>
+      ) : null;
     const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${no(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${no(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
     return (
       <div
@@ -445,7 +458,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {du.length > 1 ? <em> +{du.length - 1}</em> : null}
           </span>
         ) : null}
-        {headOf(b.guests && !cancelled ? <span className="gcount" title={`인원 ${b.guests}명`}>{b.guests}명</span> : null)}
+        {pm}
+        {headOf(
+          <>
+            {b.guests && !cancelled ? <span className="gcount" title={`인원 ${b.guests}명`}>{b.guests}명</span> : null}
+          </>,
+        )}
         {tline}
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
@@ -499,7 +517,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const activeDayuse = board.dayuse.filter(isActive).length;
 
   const tabs = (
-    <div className="boardtabs seg" role="tablist" aria-label="현황판">
+    <div className={`boardtabs seg ${s.parking.enabled ? "four" : ""}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "stock"} className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}>
         재고 현황
         {(over ? overs : oversAll).length ? (
@@ -514,6 +532,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
         객실 캘린더
       </button>
+      {s.parking.enabled ? (
+        <button role="tab" aria-selected={tab === "parking"} className={tab === "parking" ? "on" : ""} onClick={() => setTab("parking")}>
+          주차
+        </button>
+      ) : null}
     </div>
   );
   // 오버부킹이 하나라도 있으면 두 탭 모두 맨 위에 빨간 알림 (누르면 재고 현황)
@@ -675,6 +698,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           <p className="stock-hint">날짜나 숫자를 누르면 그날 밤 객실 배치로 가요</p>
+        </div>
+      </main>
+    );
+
+  if (tab === "parking" && s.parking.enabled)
+    return (
+      <main className="page board-page one">
+        <div className="main">
+          {tabs}
+          {banner}
+          <ParkingView bookings={bookings} L={L} date={selDate} today={today} setDate={setSelDate} readOnly={readOnly} onOpen={(b) => onOpen(b, selDate)} />
         </div>
       </main>
     );

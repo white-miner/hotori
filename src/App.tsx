@@ -192,7 +192,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             <input
               ref={searchRef}
               value={query}
-              placeholder="이름·플랫폼으로 찾기"
+              placeholder={hotel.settings.parking.enabled ? "이름·플랫폼·차량번호로 찾기" : "이름·플랫폼으로 찾기"}
               onChange={(e) => search(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && (e.currentTarget.blur(), search(""))}
             />

@@ -1334,3 +1334,62 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .r3 .ttag.warn { white-space: normal; overflow: visible; line-height: 1.25; padding: 1px 4px; text-align: left; flex: 1 1 auto; }
 .cell .r3:has(.ttag.warn) { white-space: normal; align-items: flex-start; }
 .cell .r3 .ttag.warn { word-break: keep-all; }
+/* 주차 관리 */
+.tgl { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--ink3); }
+.tgl i { width: 34px; height: 20px; border-radius: 999px; background: #d6d6d6; position: relative; transition: background 0.15s; }
+.tgl i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); transition: left 0.15s; }
+.tgl.on { color: var(--ink); }
+.tgl.on i { background: var(--red); }
+.tgl.on i::after { left: 16px; }
+#set-parking h3 { display: flex; align-items: center; }
+.prow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cstep .sb { width: 30px; height: 30px; }
+.cstep .sv { font-size: 16px; }
+.plates { display: flex; gap: 6px; flex-wrap: wrap; }
+.plates .plate { width: 190px; height: 34px; font-family: var(--num); font-weight: 650; }
+.pmark { font-size: 10px; font-weight: 800; color: var(--ink2); border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 0 4px; line-height: 15px; white-space: nowrap; }
+.pmark.walk { color: var(--ink3); }
+@media (max-width: 760px) { .plates .plate { width: 100%; } }
+.boardtabs.four button { padding: 8px 18px; }
+@media (max-width: 760px) { .boardtabs.four button { font-size: 13px; padding: 8px 0; gap: 4px; } }
+.park .hl { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.park-nav { display: flex; align-items: center; gap: 8px; }
+.park-nav b { font-size: 15px; min-width: 92px; text-align: center; }
+.park-sum { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; margin: 6px 0 12px; }
+.park-sum b { font-size: 18px; font-weight: 800; }
+.park-f { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.park-q { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink3); min-width: 220px; }
+.park-q input { border: 0; outline: none; background: transparent; font-size: 13.5px; min-width: 0; flex: 1; }
+.park-list { background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.prow-h, .prow-i { display: grid; grid-template-columns: minmax(150px, 1.4fr) 80px minmax(140px, 2fr) 64px; gap: 10px; align-items: center; padding: 10px 14px; }
+.park-list:has(.prow-i.ro) .prow-h, .prow-i.ro { grid-template-columns: 80px minmax(140px, 2fr) 64px; }
+.prow-h { font-size: 12px; color: var(--ink3); font-weight: 700; background: var(--panel2); }
+.prow-i { border-top: 1px solid var(--line2); font-size: 13.5px; cursor: pointer; }
+.prow-i.ro { cursor: default; }
+.prow-i:not(.ro):hover { background: var(--panel2); }
+.prow-i .pl { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.prow-i .pl b { font-family: var(--num); font-weight: 800; letter-spacing: 0.01em; }
+.prow-i .rm { font-weight: 800; }
+.prow-i .gn { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow-i.walk, .prow-i.unset { color: var(--ink2); }
+.prow-h .r, .prow-i .r { text-align: right; }
+.park-empty { padding: 28px 14px; text-align: center; font-size: 13.5px; border-top: 1px solid var(--line2); }
+@media (max-width: 760px) {
+  .prow-h { display: none; }
+  .prow-i { grid-template-columns: 1fr auto; grid-template-areas: "pl r" "gn rm"; gap: 2px 10px; padding: 10px 12px; }
+  .prow-i.ro { grid-template-columns: 1fr auto; grid-template-areas: "gn rm" "gn r"; }
+  .prow-i .pl { grid-area: pl; }
+  .prow-i .rm { grid-area: rm; text-align: right; }
+  .prow-i .gn { grid-area: gn; font-size: 12.5px; color: var(--ink2); }
+  .prow-i .r { grid-area: r; }
+  .park-q { min-width: 0; flex: 1; }
+}
+.park-sum { align-items: baseline; }
+.cell .pmark.ptab { position: absolute; top: -8px; left: 10px; z-index: 1; line-height: 14px; display: inline-flex; align-items: center; }
+.cell .pmark .pm-t { font-style: normal; }
+.cell .pmark .pm-i { display: none; align-items: center; gap: 1px; font-family: var(--num); }
+@media (max-width: 760px) {
+  .cell .pmark.ptab { top: -7px; left: 6px; padding: 0 3px; line-height: 12px; }
+  .cell .pmark .pm-t { display: none; }
+  .cell .pmark .pm-i { display: inline-flex; font-size: 9px; }
+}

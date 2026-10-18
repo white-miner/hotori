@@ -1,6 +1,6 @@
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
-import { DEFAULT_HOUR_FEE, type StayTimes, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
+import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -75,6 +75,8 @@ export interface HotelSettings {
   stayTimes: StayTimes;
   /** 빠른 입실 · 늦은 퇴실 1시간 추가 요금 (없으면 10,000원) */
   extraHourFee: number;
+  /** 주차 관리 (없으면 꺼짐) */
+  parking: ParkingSettings;
 }
 export interface ShopItem {
   id: string;
@@ -139,6 +141,14 @@ export interface Booking {
   lateOut?: number | null;
   /** 판매 가격(price)에 들어 있는 시간 추가 금액 (0 + 시간 있음 = 서비스) */
   timeFee?: number | null;
+  /** 주차: 도보 · 차량 (안 적었으면 없음) */
+  arrival?: "walk" | "car" | null;
+  cars?: number | null;
+  plates?: string[] | null;
+  /** 판매 가격(price)에 들어 있는 추가 차량 금액 */
+  carFee?: number | null;
+  /** 판매 가격에서 빠진 도보 할인 */
+  walkOff?: number | null;
   /** 단체 예약 묶음 (같은 단체의 방들은 같은 값) */
   groupId?: string | null;
   groupName?: string | null;
@@ -156,7 +166,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE, parking: normalizeParking(undefined) };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -200,6 +210,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     specialDates: normalizeSpecialDates((s as { specialDates?: unknown }).specialDates),
     stayTimes: normalizeStayTimes((s as { stayTimes?: unknown }).stayTimes),
     extraHourFee: normalizeHourFee((s as { extraHourFee?: unknown }).extraHourFee),
+    parking: normalizeParking((s as { parking?: unknown }).parking),
   };
 }
 
@@ -796,10 +807,10 @@ export function stockRangeLabel(period: StockPeriod, from: string, to: string, t
 }
 
 // ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
-export type BoardTab = "stock" | "rooms" | "calendar";
+export type BoardTab = "stock" | "rooms" | "calendar" | "parking";
 /** '#/board/rooms' → rooms, '#/board/stock' → stock, 그 밖에는 null (기기에 남긴 탭을 써요) */
 export function boardTabFromHash(hash: string): BoardTab | null {
-  const m = /^#\/board\/(stock|rooms|calendar)\/?$/.exec(hash);
+  const m = /^#\/board\/(stock|rooms|calendar|parking)\/?$/.exec(hash);
   return m ? (m[1] as BoardTab) : null;
 }
 

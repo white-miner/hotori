@@ -49,6 +49,7 @@ export interface Settlement {
   roomSum: number;
   extraGuests: number; // 추가 인원 (B)
   extraTime: number; // 빠른 입실 · 늦은 퇴실 (D)
+  parking: number; // 추가 차량 − 도보 할인 (E)
   extras: number; // 추가 항목
   refunds: number; // 중도 퇴실 환불
   cancelled: { rooms: number; amount: number }; // 빠진 것 (청구 안 함)
@@ -69,18 +70,22 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
   const byType = new Map<string, SettleLine>();
   let extraGuests = 0;
   let extraTime = 0;
+  let parking = 0;
   let refunds = 0;
   for (const b of counted) {
     const xf = Math.min(b.extraFee ?? 0, b.price);
     extraGuests += xf;
     const tf = b.kind === "stay" && (b.earlyIn || b.lateOut) ? Math.min(Math.max(0, b.timeFee ?? 0), b.price - xf) : 0;
     extraTime += tf;
+    const cf = b.arrival === "car" ? Math.max(0, b.carFee ?? 0) : 0;
+    const wo = b.arrival === "walk" ? Math.max(0, b.walkOff ?? 0) : 0;
+    parking += cf - wo;
     if (b.status === "active" && b.earlyOut && b.refund) refunds += b.refund;
     let l = byType.get(b.typeId);
     if (!l) byType.set(b.typeId, (l = { typeId: b.typeId, rooms: 0, nights: 0, rate: 0, subtotal: 0, noshow: 0 }));
     l.rooms++;
     l.nights += b.nights ?? 1;
-    l.subtotal += b.price - xf - tf;
+    l.subtotal += b.price - xf - tf - cf + wo;
     if (b.status === "noshow") l.noshow++;
   }
   const lines = [...byType.values()].map((l) => {
@@ -90,7 +95,7 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
   const cx = members.filter((b) => b.status === "cancelled");
   const roomSum = lines.reduce((a, l) => a + l.subtotal, 0);
   const extras = (info?.extras ?? []).reduce((a, x) => a + Math.max(0, x.amount), 0);
-  const total = Math.max(0, roomSum + extraGuests + extraTime + extras - refunds);
+  const total = Math.max(0, roomSum + extraGuests + extraTime + parking + extras - refunds);
   const paid = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0) + counted.reduce((a, b) => a + paidOf(b), 0);
   const tracked = info?.payMode === "postpaid" || isOnsite(plat) || paid > 0 || extras > 0;
   const left = tracked ? Math.max(0, total - paid) : 0;
@@ -99,6 +104,7 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
     roomSum,
     extraGuests,
     extraTime,
+    parking,
     extras,
     refunds,
     cancelled: { rooms: cx.length, amount: cx.reduce((a, b) => a + b.price, 0) },

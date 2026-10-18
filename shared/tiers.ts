@@ -76,3 +76,20 @@ export const HOUR_FEE_MAX = 1_000_000;
 export function normalizeHourFee(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(HOUR_FEE_MAX, Math.round(v)) : DEFAULT_HOUR_FEE;
 }
+
+// ---------- 주차 관리 (설정에서 켜는 호텔만) ----------
+/**
+ * extraCarFee: 추가 차량 1대 1박 요금 (2번째 차부터) · walkDiscount: 도보 할인 (예약 1건에 한 번)
+ * 꺼져 있으면 예약 창 · 객실 배치에 주차가 안 보여요.
+ */
+export interface ParkingSettings {
+  enabled: boolean;
+  extraCarFee: number;
+  walkDiscount: number;
+}
+export const DEFAULT_PARKING: ParkingSettings = { enabled: false, extraCarFee: 10_000, walkDiscount: 0 };
+const won0 = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(1_000_000, Math.round(v)) : d);
+export function normalizeParking(raw: unknown): ParkingSettings {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return { enabled: o.enabled === true, extraCarFee: won0(o.extraCarFee, DEFAULT_PARKING.extraCarFee), walkDiscount: won0(o.walkDiscount, DEFAULT_PARKING.walkDiscount) };
+}

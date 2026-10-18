@@ -46,6 +46,7 @@ import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, isOnsite, paySplit, splitLine, validatePayment } from "../shared/payment";
+import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
 
 interface Props {
@@ -146,6 +147,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     return base.timeFee === autoTimeFee(s, clampHours(base.earlyIn), clampHours(base.lateOut)) ? "auto" : "manual";
   });
   const [tEdit, setTEdit] = useState(false);
+  // 주차 (설정에서 켠 호텔만): 도보 · 차량, 대수 · 번호, 추가 차량 금액(+) · 도보 할인(−)은 판매 가격에 들어 있어요
+  const pk = s.parking.enabled;
+  const [arrival, setArrival] = useState<Arrival | null>(base?.arrival ?? null);
+  const [cars, setCars] = useState<number>(Math.max(1, base?.cars ?? 1));
+  const [plates, setPlates] = useState<string[]>(base?.plates ?? []);
+  const [carFee, setCarFee] = useState<number>(base?.arrival === "car" ? Math.max(0, base.carFee ?? 0) : 0);
+  const [walkOff, setWalkOff] = useState<number>(base?.arrival === "walk" ? Math.max(0, base.walkOff ?? 0) : 0);
+  const [cMan, setCMan] = useState(false);
+  const [wMan, setWMan] = useState(false);
   // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
   const [dep, setDep] = useState<{ amount: string; method: BookPayMethod; date: string }>({ amount: "", method: "card", date: today });
   const [bal, setBal] = useState<{ method: BookPayMethod; amount: string } | null>(null);
@@ -261,6 +271,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     earlyIn: kind === "stay" && earlyIn ? earlyIn : null,
     lateOut: kind === "stay" && lateOut ? lateOut : null,
     timeFee: kind === "stay" && (earlyIn || lateOut) ? timeFee : null,
+    arrival: pk ? arrival : (base?.arrival ?? null),
+    cars: pk ? (arrival === "car" ? cars : null) : (base?.cars ?? null),
+    plates: pk ? (arrival === "car" ? plates : null) : (base?.plates ?? null),
+    carFee: pk ? (arrival === "car" && carFee ? carFee : null) : (base?.carFee ?? null),
+    walkOff: pk ? (arrival === "walk" && walkOff ? walkOff : null) : (base?.walkOff ?? null),
     cancelledAt: base?.cancelledAt ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -322,6 +337,41 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
   const tAuto = autoTimeFee(s, earlyIn, lateOut);
+  // 주차 금액: 자동이면 대수 · 박수 · 도보/차량이 바뀔 때 다시 계산해서 판매 가격에 차이만큼
+  const cAuto = autoCarFee(s, arrival, cars, kind === "stay" ? nights : 1);
+  const wAuto = autoWalkOff(s, arrival);
+  const setCFee = (v: number, manual: boolean) => {
+    const n = Math.max(0, Math.min(SURCHARGE_MAX, Math.round(v)));
+    const d = n - carFee;
+    if (d) setPrice((x) => String(Math.max(0, Number(x || 0) + d)));
+    setCarFee(n);
+    setCMan(manual);
+  };
+  const setWOff = (v: number, manual: boolean) => {
+    const n = Math.max(0, Math.min(SURCHARGE_MAX, Math.round(v)));
+    const d = n - walkOff;
+    if (d) setPrice((x) => String(Math.max(0, Number(x || 0) - d)));
+    setWalkOff(n);
+    setWMan(manual);
+  };
+  const pkInit = useRef(false);
+  useEffect(() => {
+    if (!pk) return;
+    if (!pkInit.current) {
+      // 처음 열 때: 저장된 금액이 자동 계산과 다르면 직접 고친 걸로 봐요
+      pkInit.current = true;
+      if (base?.arrival === "car" && (base.carFee ?? 0) !== cAuto) setCMan(true);
+      if (base?.arrival === "walk" && (base.walkOff ?? 0) !== wAuto) setWMan(true);
+      if (base) return;
+    }
+    if (arrival !== "car") {
+      if (carFee) setCFee(0, false);
+    } else if (!cMan && carFee !== cAuto) setCFee(cAuto, false);
+    if (arrival !== "walk") {
+      if (walkOff) setWOff(0, false);
+    } else if (!wMan && walkOff !== wAuto) setWOff(wAuto, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pk, arrival, cAuto, wAuto]);
   // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
   const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
   const stepGuests = (d: number) => {
@@ -1026,6 +1076,89 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
 
+        {pk ? (
+          <div className="fld pfld">
+            <label>주차</label>
+            <div className="payb">
+              <div className="prow">
+                <div className="seg sm" role="group" aria-label="도보 · 차량">
+                  {(["walk", "car"] as const).map((m) => (
+                    <button type="button" key={m} className={arrival === m ? "on" : ""} aria-pressed={arrival === m} onClick={() => setArrival(arrival === m ? null : m)}>
+                      {ARRIVAL_LABEL[m]}
+                    </button>
+                  ))}
+                </div>
+                {arrival === "car" ? (
+                  <div className="step cstep">
+                    <button type="button" className="sb" aria-label="차량 1대 줄이기" disabled={cars <= 1} onClick={() => setCars((n) => Math.max(1, n - 1))}>
+                      <Minus size={14} />
+                    </button>
+                    <span className="sv">
+                      {cars}
+                      <small>대</small>
+                    </span>
+                    <button type="button" className="sb" aria-label="차량 1대 늘리기" disabled={cars >= CARS_MAX} onClick={() => setCars((n) => Math.min(CARS_MAX, n + 1))}>
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                ) : null}
+                {!arrival ? <span className="muted sm">안 정해도 돼요 · 다시 누르면 지워져요</span> : null}
+              </div>
+              {arrival === "car" ? (
+                <div className="plates">
+                  {Array.from({ length: cars }, (_, i) => (
+                    <input
+                      key={i}
+                      className="inp sm plate"
+                      placeholder={`차량번호${cars > 1 ? ` ${i + 1}` : ""} (예: 12가 3456)`}
+                      aria-label={`차량번호 ${i + 1}`}
+                      maxLength={PLATE_MAX}
+                      value={plates[i] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPlates((p) => {
+                          const n = [...p];
+                          while (n.length < i) n.push("");
+                          n[i] = v;
+                          return n;
+                        });
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : null}
+              {arrival === "car" && (carFee > 0 || cAuto > 0 || cMan) ? (
+                <FeeLine
+                  text={
+                    <>
+                      판매 가격에 <b>추가 차량 {won(carFee)}원</b> 포함{cMan ? " · 직접 고침" : ` · ${carFeeLine(cars, kind === "stay" ? nights : 1, s.parking.extraCarFee)}`}
+                    </>
+                  }
+                  label="추가 차량 금액"
+                  value={carFee}
+                  auto={cAuto}
+                  manual={cMan}
+                  onSet={setCFee}
+                />
+              ) : null}
+              {arrival === "walk" && (walkOff > 0 || wAuto > 0 || wMan) ? (
+                <FeeLine
+                  text={
+                    <>
+                      판매 가격에서 <b>도보 할인 −{won(walkOff)}원</b> 뺐어요{wMan ? " · 직접 고침" : ""}
+                    </>
+                  }
+                  label="도보 할인 금액"
+                  value={walkOff}
+                  auto={wAuto}
+                  manual={wMan}
+                  onSet={setWOff}
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="fld pay">
           <label>결제</label>
           <div className="payb">
@@ -1378,6 +1511,31 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** 판매 가격에 들어 있는 금액 한 줄: 금액 바꾸기 · 자동 계산으로 */
+function FeeLine({ text, label, value, auto, manual, onSet }: { text: React.ReactNode; label: string; value: number; auto: number; manual: boolean; onSet: (v: number, manual: boolean) => void }) {
+  const [edit, setEdit] = useState(false);
+  return (
+    <div className="xfee">
+      <span>{text}</span>
+      {edit ? (
+        <label className="inp price sm">
+          <input className="num" inputMode="numeric" aria-label={label} autoFocus value={value ? won(value) : ""} onChange={(e) => onSet(Number(e.target.value.replace(/\D/g, "").slice(0, 8) || 0), true)} onBlur={() => setEdit(false)} />
+          원
+        </label>
+      ) : (
+        <button type="button" className="auto" onClick={() => setEdit(true)}>
+          금액 바꾸기
+        </button>
+      )}
+      {manual && value !== auto ? (
+        <button type="button" className="auto" onClick={() => onSet(auto, false)}>
+          자동 계산 {won(auto)}원으로
+        </button>
+      ) : null}
     </div>
   );
 }

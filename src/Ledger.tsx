@@ -7,6 +7,7 @@ import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf,
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
 import { bookingCash, paySplit, payState } from "../shared/payment";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
+import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
@@ -129,7 +130,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (q) {
       const p = L.plats.get(b.platformId);
       const hay = [b.guestName, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
+      if (!hay.includes(q) && !plateMatches(b, q)) return false;
     }
     return true;
   });
@@ -178,6 +179,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
                   {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
                   {b.guests ? <small className="gcount"> · {b.guests}명</small> : null}
+                  {s.parking.enabled && parkingMark(b) ? <small className="gcount" title={b.plates?.length ? `차량번호 ${b.plates.join(", ")}` : undefined}> · {parkingMark(b)}</small> : null}
                   {timeTags(s, b).length ? <small className="gcount" title={`${timeLine(b)}${isTimeService(b) ? " · 서비스" : b.timeFee ? ` · ${won(b.timeFee)}원 포함` : ""}`}> · {timeTags(s, b).join(" · ")}</small> : null}
                 </span>
                 <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
@@ -441,7 +443,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       <div className="filters">
         <label className="search ls">
           <Search size={16} />
-          <input value={query} placeholder="이름·플랫폼·메모·방 번호" onChange={(e) => setQuery(e.target.value)} />
+          <input value={query} placeholder={s.parking.enabled ? "이름·플랫폼·메모·방·차량번호" : "이름·플랫폼·메모·방 번호"} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <label className="fdate">
           입실일

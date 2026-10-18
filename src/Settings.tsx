@@ -720,6 +720,45 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="sub stimes-f">빠른 입실 · 늦은 퇴실 1시간마다 이 금액을 판매 가격에 더해요. 예약 창에서 금액을 바꾸거나 서비스(0원)로 할 수 있어요.</div>
         </section>
 
+        <section className="card" id="set-parking">
+          <h3>
+            주차 관리
+            <button
+              type="button"
+              role="switch"
+              aria-checked={s.parking.enabled}
+              aria-label="주차 관리"
+              className={`tgl ${s.parking.enabled ? "on" : ""}`}
+              onClick={() => update((x) => ({ ...x, parking: { ...x.parking, enabled: !x.parking.enabled } }))}
+            >
+              <i />
+              {s.parking.enabled ? "켜짐" : "꺼짐"}
+            </button>
+          </h3>
+          <div className="sub">켜면 예약 창에 도보 · 차량, 차량 대수 · 번호를 적고, 현황판에 주차 현황이 생겨요. 공유 화면에는 차량번호와 요금이 안 보여요.</div>
+          {s.parking.enabled ? (
+            <>
+              <div className="stimes">
+                <label>
+                  <span>추가 차량 1대당 주차 요금 (1박)</span>
+                  <span className="inp price hfee">
+                    <input className="num" inputMode="numeric" aria-label="추가 차량 1대당 주차 요금" value={won(s.parking.extraCarFee)} onChange={(e) => update((x) => ({ ...x, parking: { ...x.parking, extraCarFee: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) } }))} />
+                    원
+                  </span>
+                </label>
+                <label>
+                  <span>도보 할인 (예약 1건, 없으면 0)</span>
+                  <span className="inp price hfee">
+                    <input className="num" inputMode="numeric" aria-label="도보 할인" value={won(s.parking.walkDiscount)} onChange={(e) => update((x) => ({ ...x, parking: { ...x.parking, walkDiscount: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) } }))} />
+                    원
+                  </span>
+                </label>
+              </div>
+              <div className="sub stimes-f">첫 차는 무료, 2번째 차부터 1대 × 박수만큼 판매 가격에 더해요. 도보면 할인만큼 빼요. 예약 창에서 금액을 바꿀 수 있어요.</div>
+            </>
+          ) : null}
+        </section>
+
         <section className="card" id="set-surcharge">
           <h3>인원 추가 요금</h3>
           <div className="sub">객실 타입의 기본 인원을 넘으면 1명 1박마다 더해요. 금·토 밤과 특별일 밤은 오른쪽 요금이에요. 예약 창에서 금액을 바꿀 수 있어요.</div>

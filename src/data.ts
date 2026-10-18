@@ -17,6 +17,7 @@ import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 import type { Expense } from "../shared/expense";
 import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
 import { clampHours } from "../shared/extratime";
+import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
 
 export interface Hotel {
@@ -50,6 +51,11 @@ interface BookingRow {
   early_in_hours?: number | null; // 빠른 입실 시간 수
   late_out_hours?: number | null; // 늦은 퇴실 시간 수
   time_fee?: number | null; // 판매 가격에 들어 있는 시간 추가 금액
+  arrival_mode?: string | null; // 도보(walk) · 차량(car)
+  car_count?: number | null;
+  car_plates?: string[] | null; // 공유 링크에는 없어요
+  car_fee?: number | null; // 판매 가격에 들어 있는 추가 차량 금액
+  walk_discount?: number | null; // 판매 가격에서 빠진 도보 할인
   group_id?: string | null; // 단체 예약 묶음
   group_name?: string | null;
   cancelled_at: string | null;
@@ -77,7 +83,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -156,6 +162,11 @@ export function fromRow(r: BookingRow): Booking {
     earlyIn: r.early_in_hours ?? null,
     lateOut: r.late_out_hours ?? null,
     timeFee: r.time_fee ?? null,
+    arrival: r.arrival_mode === "walk" || r.arrival_mode === "car" ? r.arrival_mode : null,
+    cars: r.car_count ?? null,
+    plates: r.car_plates ?? null,
+    carFee: r.car_fee ?? null,
+    walkOff: r.walk_discount ?? null,
     groupId: r.group_id ?? null,
     groupName: r.group_name ?? null,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -190,6 +201,11 @@ function toRow(b: Booking) {
     early_in_hours: stay && clampHours(b.earlyIn) ? clampHours(b.earlyIn) : null,
     late_out_hours: stay && clampHours(b.lateOut) ? clampHours(b.lateOut) : null,
     time_fee: stay && (clampHours(b.earlyIn) || clampHours(b.lateOut)) ? Math.min(Math.max(0, Math.round(b.timeFee ?? 0)), Math.round(b.price)) : null,
+    arrival_mode: b.arrival === "walk" || b.arrival === "car" ? b.arrival : null,
+    car_count: b.arrival === "car" ? Math.max(1, Math.min(CARS_MAX, Math.round(b.cars ?? 1))) : null,
+    car_plates: b.arrival === "car" && cleanPlates(b.plates, b.cars ?? 1).length ? cleanPlates(b.plates, b.cars ?? 1) : null,
+    car_fee: b.arrival === "car" && b.carFee && b.carFee > 0 ? Math.min(Math.round(b.carFee), Math.round(b.price)) : null,
+    walk_discount: b.arrival === "walk" && b.walkOff && b.walkOff > 0 ? Math.min(Math.round(b.walkOff), 100_000_000) : null,
     group_id: b.groupId && b.groupName?.trim() ? b.groupId : null,
     group_name: b.groupId && b.groupName?.trim() ? b.groupName.trim().slice(0, 40) : null,
   };
