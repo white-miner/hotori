@@ -1,7 +1,7 @@
 // 객실 캘린더: 방마다 한 줄, 날짜마다 한 칸. 숙박은 막대, 대실은 그날 칸의 작은 점.
 // 칸을 하나하나 그리지 않고 줄마다 배경 격자 + 막대만 절대 위치로 그려요 (60실 × 92일도 가볍게).
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type Booking, type HotelSettings, addDays, dayLabel, isActive, md, orderedFloors, typeLabel, weekday, won } from "../shared/ledger";
+import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isMoved, legsOf, md, orderedFloors, typeLabel, weekday, won } from "../shared/ledger";
 import { type Bar, calendarLayout } from "../shared/calendar";
 import { Ring, lookups } from "./ui";
 
@@ -26,7 +26,8 @@ function tip(b: Booking, L: L, readOnly: boolean): string {
   const st = isActive(b) ? (b.arrived ? " · 입실 완료" : "") : ` · ${STATUS[b.status] ?? ""}`;
   if (b.kind === "dayuse")
     return `대실 ${b.startTime ?? ""}~${b.endTime ?? ""} · ${b.guestName || "이름 없음"} · ${p}${readOnly ? "" : ` · ${won(b.price)}원`}${st}`;
-  return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${st}`;
+  const mv = isMoved(b) ? ` · 객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId) ?? "?"} ${l.nights}박`).join(" → ")}` : "";
+  return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${mv}${st}`;
 }
 
 const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { bar: Bar; cw: number; L: L; readOnly: boolean; onOpen: (b: Booking) => void; typeCode?: string }) {
@@ -35,18 +36,21 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
   const p = L.plats.get(b.platformId);
   const px = span.len * cw;
   const arr = isActive(b) && b.arrived;
+  const ringMin = 72 + (bar.prev !== undefined ? 30 : 0) + (bar.next !== undefined ? 30 : 0); // 옮긴 방 표시가 있으면 ◯ 대신 왼쪽 선이 먼저
   return (
     <div
-      className={`cbar ${cx ? "cx" : ""} ${arr && px < 72 ? "arr" : ""} ${bar.conflict ? "cf" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
+      className={`cbar ${cx ? "cx" : ""} ${bar.prev !== undefined ? "mvi" : ""} ${bar.next !== undefined ? "mvo" : ""} ${arr && px < ringMin ? "arr" : ""} ${bar.conflict ? "cf" : ""} ${span.clipL ? "cl" : ""} ${span.clipR ? "cr" : ""} ${readOnly ? "ro" : ""}`}
       style={{ left: span.start * cw + (span.clipL ? 0 : 2), width: span.len * cw - (span.clipL ? 0 : 2) - (span.clipR ? 0 : 3) }}
       title={tip(b, L, readOnly)}
       {...(readOnly ? {} : { role: "button", tabIndex: 0 })}
       onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(b))}
       onKeyDown={readOnly ? undefined : (e) => e.key === "Enter" && onOpen(b)}
     >
-      {arr && px >= 72 ? <Ring on size={13} /> : null}
+      {arr && px >= ringMin ? <Ring on size={13} /> : null}
       {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
+      {bar.prev !== undefined ? <span className="cb-mv" title={`${L.roomLabel(bar.prev) ?? "?"}호에서 옮겨 왔어요`}>{L.rooms.get(bar.prev ?? "")?.no ?? "?"}→</span> : null}
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
+      {bar.next !== undefined ? <span className="cb-mv nx" title={`다음 날 ${L.roomLabel(bar.next) ?? "?"}호로 옮겨요`}>→{L.rooms.get(bar.next ?? "")?.no ?? "?"}</span> : null}
       {px >= 96 ? <span className="cb-p">{p?.abbr ?? "?"}</span> : null}
     </div>
   );
@@ -177,7 +181,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
                       }
                     >
                       {(lay.rooms.get(r.id) ?? []).map((bar) => (
-                        <BarEl key={bar.b.id} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} />
+                        <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} />
                       ))}
                       <Marks m={lay.dayuse.get(r.id)} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} />
                     </div>
@@ -200,7 +204,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
                   </div>
                   <div className="cal-t ro">
                     {lane.map((bar) => (
-                      <BarEl key={bar.b.id} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} typeCode={typeLabel(L.types.get(bar.b.typeId ?? "")) || undefined} />
+                      <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} typeCode={typeLabel(L.types.get(bar.b.typeId ?? "")) || undefined} />
                     ))}
                     {i === 0 ? <Marks m={lay.lanesDayuse} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} /> : null}
                   </div>

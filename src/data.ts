@@ -3,6 +3,8 @@ import { supabase } from "./supabase";
 import {
   type Booking,
   type HotelSettings,
+  type RoomSegment,
+  fitSegments,
   addDays,
   businessDate,
   type ShopItem,
@@ -27,6 +29,7 @@ interface BookingRow {
   guest_name: string;
   type_id: string;
   room_id: string | null;
+  room_segments?: unknown; // 객실 이동 [{room, nights}] (없으면 null)
   check_in: string;
   nights: number | null;
   start_time: string | null;
@@ -38,8 +41,15 @@ interface BookingRow {
   updated_at: string;
 }
 const COLS =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,check_in,nights,start_time,end_time,arrived,memo,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,memo,cancelled_at,created_at,updated_at";
 
+/** DB의 [{room, nights}] → [{roomId, nights}]. 모양이 이상하거나 박수 합이 안 맞으면 이동 없음 */
+function segsFromRow(v: unknown, nights: number | null): RoomSegment[] | null {
+  if (!Array.isArray(v) || v.length < 2 || !nights) return null;
+  const out = v.map((x) => ({ roomId: typeof x?.room === "string" ? x.room : "", nights: Number(x?.nights) || 0 }));
+  if (out.some((x) => !x.roomId || x.nights < 1) || out.reduce((n, x) => n + x.nights, 0) !== nights) return null;
+  return out;
+}
 export function fromRow(r: BookingRow): Booking {
   return {
     id: r.id,
@@ -50,6 +60,7 @@ export function fromRow(r: BookingRow): Booking {
     guestName: r.guest_name,
     typeId: r.type_id,
     roomId: r.room_id,
+    segments: segsFromRow(r.room_segments, r.nights),
     checkIn: r.check_in,
     nights: r.nights,
     startTime: r.start_time ? r.start_time.slice(0, 5) : null,
@@ -71,6 +82,8 @@ function toRow(b: Booking) {
     guest_name: b.guestName.trim(),
     type_id: b.typeId,
     room_id: b.roomId,
+    // 객실 이동: 박수·첫 방에 맞춰 보내요 (첫 구간 방 = room_id)
+    room_segments: stay ? (fitSegments(b.segments, b.roomId, b.nights)?.map((x) => ({ room: x.roomId, nights: x.nights })) ?? null) : null,
     check_in: b.checkIn,
     nights: stay ? b.nights : null,
     start_time: stay ? null : b.startTime,
@@ -188,9 +201,9 @@ export function useHotelData(hotelId: string) {
   const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status">>) => {
     const row: Record<string, unknown> = {};
     if (patch.arrived !== undefined) row.arrived = patch.arrived;
-    if (patch.roomId !== undefined) row.room_id = patch.roomId;
+    if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
     if (patch.status !== undefined) row.status = patch.status;
-    setBookings((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setBookings((list) => list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)));
     const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
     if (error) {
       void refresh();

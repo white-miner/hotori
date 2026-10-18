@@ -85,6 +85,10 @@ export function normalizeShopItems(raw: unknown): ShopItem[] {
     });
 }
 
+export interface RoomSegment {
+  roomId: string;
+  nights: number;
+}
 export interface Booking {
   id: string;
   kind: Kind;
@@ -93,7 +97,9 @@ export interface Booking {
   price: number; // 총액
   guestName: string;
   typeId: string; // 판 타입
-  roomId: string | null;
+  roomId: string | null; // 방 (객실 이동이 있으면 첫 방)
+  /** 객실 이동: 방별 박수 [{roomId: 301, nights: 1}, {roomId: 305, nights: 3}]. 없으면 roomId 한 방에 전부 */
+  segments?: RoomSegment[] | null;
   checkIn: string; // YYYY-MM-DD
   nights: number | null; // 숙박만
   startTime: string | null; // HH:MM (대실만)
@@ -340,6 +346,104 @@ export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights">, d
   if (b.kind !== "stay" || !b.nights) return false;
   return b.checkIn <= date && date < addDays(b.checkIn, b.nights);
 }
+// ---------- 객실 이동 (한 예약, 방 여러 개) ----------
+/** 한 방에 머무는 구간: 입실일·박수·방. 이동이 없으면 구간 하나 */
+export interface Leg {
+  roomId: string | null;
+  checkIn: string;
+  nights: number;
+  idx: number;
+}
+const segsValid = (segs: RoomSegment[] | null | undefined, nights: number | null): segs is RoomSegment[] =>
+  !!segs && segs.length >= 2 && !!nights && segs.every((x) => x.roomId && x.nights >= 1) && segs.reduce((n, x) => n + x.nights, 0) === nights;
+/** 숙박의 구간들 (대실·박수 없음이면 빈 배열) */
+export function legsOf(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): Leg[] {
+  if (b.kind !== "stay" || !b.nights) return [];
+  if (!segsValid(b.segments, b.nights)) return [{ roomId: b.roomId, checkIn: b.checkIn, nights: b.nights, idx: 0 }];
+  let d = b.checkIn;
+  return b.segments.map((x, idx) => {
+    const leg = { roomId: x.roomId, checkIn: d, nights: x.nights, idx };
+    d = addDays(d, x.nights);
+    return leg;
+  });
+}
+export const isMoved = (b: Pick<Booking, "kind" | "nights" | "segments">) => b.kind === "stay" && segsValid(b.segments, b.nights);
+/** 그 밤에 쓰는 방 (그 밤에 안 묵으면 undefined) */
+export function roomOnNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, date: string): string | null | undefined {
+  for (const l of legsOf(b)) if (l.checkIn <= date && date < addDays(l.checkIn, l.nights)) return l.roomId;
+  return undefined;
+}
+/** 묵는 방 전부 (순서대로, 겹치지 않게) */
+export function stayRoomIds(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): string[] {
+  const legs = legsOf(b);
+  const ids = (legs.length ? legs.map((l) => l.roomId) : [b.roomId]).filter((x): x is string => !!x);
+  return [...new Set(ids)];
+}
+/** 이웃한 같은 방은 합치고, 하나만 남으면 null (이동 없음) */
+export function normalizeSegments(segs: RoomSegment[] | null | undefined): RoomSegment[] | null {
+  if (!segs) return null;
+  const out: RoomSegment[] = [];
+  for (const x of segs) {
+    if (!x.roomId || x.nights < 1) continue;
+    const last = out[out.length - 1];
+    if (last && last.roomId === x.roomId) last.nights += x.nights;
+    else out.push({ roomId: x.roomId, nights: x.nights });
+  }
+  return out.length >= 2 ? out : null;
+}
+/**
+ * 박수·첫 방이 바뀌었을 때 구간을 맞춰요: 첫 구간 방 = roomId, 박수가 늘면 마지막 방에 더하고 줄면 뒤에서부터 덜어요.
+ * 방이 없거나 대실이면 이동 없음.
+ */
+export function fitSegments(segs: RoomSegment[] | null | undefined, roomId: string | null, nights: number | null): RoomSegment[] | null {
+  if (!segs || segs.length < 2 || !roomId || !nights) return null;
+  const out = segs.map((x) => ({ ...x }));
+  out[0].roomId = roomId;
+  let sum = out.reduce((n, x) => n + x.nights, 0);
+  if (sum < nights) out[out.length - 1].nights += nights - sum;
+  while (sum > nights && out.length) {
+    const last = out[out.length - 1];
+    const cut = Math.min(last.nights, sum - nights);
+    last.nights -= cut;
+    sum -= cut;
+    if (!last.nights) out.pop();
+  }
+  return normalizeSegments(out);
+}
+/** k박째(2..N) 밤부터 끝까지 roomId로 옮겨요. 결과 구간(이동이 없어지면 null) */
+export function moveStay(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, fromNight: number, roomId: string): RoomSegment[] | null {
+  const n = b.nights ?? 0;
+  if (b.kind !== "stay" || fromNight < 2 || fromNight > n || !b.roomId) return isMoved(b) ? b.segments! : null;
+  const keep: RoomSegment[] = [];
+  let left = fromNight - 1;
+  for (const l of legsOf(b)) {
+    if (left <= 0) break;
+    const take = Math.min(left, l.nights);
+    keep.push({ roomId: l.roomId!, nights: take });
+    left -= take;
+  }
+  return normalizeSegments([...keep, { roomId, nights: n - fromNight + 1 }]);
+}
+/** 이동 취소: idx번째 구간(1부터)을 앞 방으로 되돌려 합쳐요 */
+export function undoMove(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, idx: number): RoomSegment[] | null {
+  if (!isMoved(b) || idx < 1 || idx >= b.segments!.length) return isMoved(b) ? b.segments! : null;
+  const segs = b.segments!.map((x) => ({ ...x }));
+  segs[idx - 1].nights += segs[idx].nights;
+  segs.splice(idx, 1);
+  return normalizeSegments(segs);
+}
+/** 이 숙박(초안)의 구간 중 다른 정상 숙박과 같은 방·같은 밤이 겹치는 구간 */
+export function legConflicts(bookings: Booking[], draft: Booking): Leg[] {
+  if (draft.kind !== "stay") return [];
+  const mine = legsOf(draft).filter((l) => l.roomId);
+  const others = bookings.filter((b) => b.id !== draft.id && isActive(b) && b.kind === "stay").flatMap((b) => legsOf(b));
+  return mine.filter((m) => others.some((o) => legsClash(m, o)));
+}
+/** 구간 둘이 같은 방에서 밤이 겹치는지 */
+export function legsClash(a: Leg, b: Leg): boolean {
+  return !!a.roomId && a.roomId === b.roomId && a.checkIn < addDays(b.checkIn, b.nights) && b.checkIn < addDays(a.checkIn, a.nights);
+}
+
 export function nightsOverlap(
   a: Pick<Booking, "checkIn" | "nights">,
   b: Pick<Booking, "checkIn" | "nights">,
@@ -361,13 +465,15 @@ export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[
   const dateSet = new Set(dates);
   for (const b of bookings) {
     if (!isActive(b) || b.kind !== "stay" || !b.nights) continue;
-    if (buildingId && rooms.get(b.roomId ?? "")?.buildingId !== buildingId) continue;
-    const tid = effectiveTypeId(b, rooms);
-    const row = table.get(tid);
-    if (!row) continue;
-    for (let i = 0; i < b.nights; i++) {
-      const d = addDays(b.checkIn, i);
-      if (dateSet.has(d)) row.set(d, row.get(d)! - 1);
+    // 밤마다 그 밤에 실제로 쓰는 방의 타입에서 빼요 (객실 이동이면 구간마다 달라요)
+    for (const l of legsOf(b)) {
+      if (buildingId && rooms.get(l.roomId ?? "")?.buildingId !== buildingId) continue;
+      const row = table.get(effectiveTypeId({ typeId: b.typeId, roomId: l.roomId }, rooms));
+      if (!row) continue;
+      for (let i = 0; i < l.nights; i++) {
+        const d = addDays(l.checkIn, i);
+        if (dateSet.has(d)) row.set(d, row.get(d)! - 1);
+      }
     }
   }
   return table;
@@ -411,8 +517,10 @@ export function unassignedStays(s: HotelSettings, bookings: Booking[], dates: st
   const set = new Set(dates);
   return bookings.filter(
     (b) =>
-      isActive(b) && b.kind === "stay" && !!b.nights && !(b.roomId && rooms.has(b.roomId)) &&
-      Array.from({ length: b.nights }, (_, i) => addDays(b.checkIn, i)).some((d) => set.has(d)),
+      isActive(b) &&
+      legsOf(b).some(
+        (l) => !(l.roomId && rooms.has(l.roomId)) && Array.from({ length: l.nights }, (_, i) => addDays(l.checkIn, i)).some((d) => set.has(d)),
+      ),
   ).length;
 }
 
@@ -503,10 +611,12 @@ export function previewChange(
   const keys = new Map<string, { date: string; typeId: string }>();
   for (const b of [prev, draft]) {
     if (!b || !isActive(b) || b.kind !== "stay" || !b.nights) continue;
-    const tid = effectiveTypeId(b, rooms);
-    for (let i = 0; i < b.nights; i++) {
-      const d = addDays(b.checkIn, i);
-      keys.set(`${tid}@${d}`, { date: d, typeId: tid });
+    for (const l of legsOf(b)) {
+      const tid = effectiveTypeId({ typeId: b.typeId, roomId: l.roomId }, rooms);
+      for (let i = 0; i < l.nights; i++) {
+        const d = addDays(l.checkIn, i);
+        keys.set(`${tid}@${d}`, { date: d, typeId: tid });
+      }
     }
   }
   const out = [...keys.values()]
@@ -524,7 +634,7 @@ export function previewChange(
 export function boardEntryForRoom(bookings: Booking[], roomId: string, date: string): Booking | null {
   let cancelled: Booking | null = null;
   for (const b of bookings) {
-    if (b.roomId !== roomId || !occupiesNight(b, date)) continue;
+    if (b.kind !== "stay" || roomOnNight(b, date) !== roomId) continue;
     if (isActive(b)) return b;
     if (!cancelled || (b.cancelledAt ?? "") > (cancelled.cancelledAt ?? "")) cancelled = b;
   }
@@ -535,13 +645,15 @@ export function boardEntryForRoom(bookings: Booking[], roomId: string, date: str
  * 취소 예약이 보드에서 사라지는지: 그 자리(같은 방, 겹치는 밤)를 새 예약이 채웠으면 사라져요.
  * 방이 없던 취소는 같은 타입 숙박이 취소 뒤에 새로 들어와 겹치는 밤을 채우면 사라져요.
  */
-export function isCancelledRefilled(c: Booking, bookings: Booking[], rooms: Map<string, Room>): boolean {
+export function isCancelledRefilled(c: Booking, bookings: Booking[], rooms: Map<string, Room>, leg?: Leg): boolean {
   if (isActive(c)) return false;
+  // 객실 이동한 예약은 구간마다 따로 봐요 (구간을 안 주면 첫 구간)
+  const cl = c.kind === "stay" ? (leg ?? legsOf(c)[0]) : undefined;
   return bookings.some((b) => {
     if (b.id === c.id || !isActive(b) || b.kind !== c.kind) return false;
     if (c.kind === "stay") {
+      if (cl?.roomId) return legsOf(b).some((l) => legsClash(l, cl));
       if (!nightsOverlap(b, c)) return false;
-      if (c.roomId) return b.roomId === c.roomId;
       return (
         effectiveTypeId(b, rooms) === effectiveTypeId(c, rooms) &&
         b.createdAt > (c.cancelledAt ?? c.updatedAt)
@@ -577,16 +689,21 @@ export interface NightBoard {
   dayuse: Booking[]; // 그날 대실 (시간순)
   nightCount: number; // 그날 밤 살아 있는 숙박 수
 }
+const legOn = (b: Booking, date: string) => legsOf(b).find((l) => l.checkIn <= date && date < addDays(l.checkIn, l.nights));
 export function nightBoard(s: HotelSettings, bookings: Booking[], date: string): NightBoard {
   const rooms = roomMap(s);
   const byRoom = new Map<string, Booking>();
   for (const r of rooms.values()) {
     const b = boardEntryForRoom(bookings, r.id, date);
-    if (b && (isActive(b) || !isCancelledRefilled(b, bookings, rooms))) byRoom.set(r.id, b);
+    if (b && (isActive(b) || !isCancelledRefilled(b, bookings, rooms, legOn(b, date)))) byRoom.set(r.id, b);
   }
-  const visible = (b: Booking) => isActive(b) || !isCancelledRefilled(b, bookings, rooms);
+  const visible = (b: Booking) => isActive(b) || !isCancelledRefilled(b, bookings, rooms, legOn(b, date));
   const unassigned = bookings
-    .filter((b) => b.kind === "stay" && occupiesNight(b, date) && (!b.roomId || !rooms.has(b.roomId)) && visible(b))
+    .filter((b) => {
+      if (b.kind !== "stay" || !occupiesNight(b, date)) return false;
+      const rid = roomOnNight(b, date);
+      return (!rid || !rooms.has(rid)) && visible(b);
+    })
     .sort((a, b) => Number(!isActive(a)) - Number(!isActive(b)) || a.createdAt.localeCompare(b.createdAt));
   const dayuse = bookings
     .filter((b) => b.kind === "dayuse" && b.checkIn === date && visible(b))
@@ -605,7 +722,7 @@ export function freeRooms(
   for (const b of bookings) {
     if (b.id === draft.id || !isActive(b) || !b.roomId) continue;
     if (draft.kind === "stay") {
-      if (b.kind === "stay" && nightsOverlap(b, draft)) free.delete(b.roomId);
+      if (b.kind === "stay") for (const l of legsOf(b)) if (l.roomId && nightsOverlap(l, draft)) free.delete(l.roomId);
     } else if (b.kind === "dayuse" && b.checkIn === draft.checkIn && timesOverlap(b, draft as Booking)) {
       free.delete(b.roomId);
     }

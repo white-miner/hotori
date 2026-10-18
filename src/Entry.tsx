@@ -12,6 +12,14 @@ import {
   allRooms as placedRooms,
   dayLabel,
   freeRooms,
+  md,
+  daysBetween,
+  fitSegments,
+  legConflicts,
+  legsOf,
+  moveStay,
+  undoMove,
+  type RoomSegment,
   isActive,
   perNight,
   previewChange,
@@ -96,6 +104,9 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [price, setPrice] = useState(base ? String(base.price) : "");
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
+  // 객실 이동 구간 (첫 구간 방 = roomId). 저장할 때 같이 저장돼요
+  const [segs, setSegs] = useState<RoomSegment[] | null>(base?.segments ?? null);
+  const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
@@ -127,6 +138,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
     guestName,
     typeId,
     roomId,
+    segments: kind === "stay" ? fitSegments(segs, roomId, nights) : null,
     checkIn,
     nights: kind === "stay" ? nights : null,
     startTime: kind === "dayuse" ? startTime : null,
@@ -146,16 +158,30 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const table = useMemo(() => stockTable(s, others, nightDates), [s, others, nightDates]);
   const totals = useMemo(() => typeTotals(s), [s]);
   const minRemain = (tid: string) => Math.min(...nightDates.map((d) => table.get(tid)?.get(d) ?? 0));
+  const legs = legsOf(draft);
+  const moved = legs.length > 1;
+  // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요
+  const firstNights = moved ? legs[0].nights : nights;
   const free = useMemo(
-    () => freeRooms(s, data.bookings, draft),
+    () => freeRooms(s, data.bookings, { ...draft, nights: kind === "stay" ? firstNights : null }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s, data.bookings, draft.id, kind, checkIn, nights, startTime, endTime],
+    [s, data.bookings, draft.id, kind, checkIn, nights, firstNights, startTime, endTime],
   );
+  // 객실 이동: k박째부터 끝까지 비어 있는 방
+  const mvFree = useMemo(
+    () =>
+      mv && kind === "stay"
+        ? freeRooms(s, data.bookings, { id: draft.id, kind: "stay", checkIn: addDays(checkIn, mv.from - 1), nights: nights - mv.from + 1, startTime: null, endTime: null })
+        : new Set<string>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mv?.from, s, data.bookings, draft.id, kind, checkIn, nights],
+  );
+  const busyLegs = kind === "stay" ? legConflicts(data.bookings, draft) : [];
   const allRooms = placedRooms(s); // 건물 → 층 순서
   const bpre = (bid: string) => (L.multi ? <em className="bpre">{L.buildings.get(bid)?.name}</em> : null);
   const sameType = allRooms.filter((r) => r.typeId === typeId && (free.has(r.id) || r.id === roomId));
   const otherType = allRooms.filter((r) => r.typeId !== typeId && (free.has(r.id) || r.id === roomId));
-  const roomBusy = !!roomId && !free.has(roomId);
+  const roomBusy = kind === "stay" ? busyLegs.length > 0 : !!roomId && !free.has(roomId);
   const preview = kind === "stay" && status === "active" ? previewChange(s, data.bookings, draft) : [];
 
   async function save(again = false, override?: Status) {
@@ -166,13 +192,18 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
       !base ||
       !isActive(base) ||
       base.roomId !== draft.roomId ||
+      JSON.stringify(base.segments ?? null) !== JSON.stringify(draft.segments ?? null) ||
       base.checkIn !== draft.checkIn ||
       base.nights !== draft.nights ||
       base.startTime !== draft.startTime ||
       base.endTime !== draft.endTime ||
       base.kind !== draft.kind;
     if (roomBusy && isActive(draft) && slotChanged)
-      return setErr(`${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`);
+      return setErr(
+        kind === "stay" && busyLegs.length
+          ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
+          : `${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
+      );
     setBusy(true);
     setErr(null);
     try {
@@ -496,7 +527,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
         </div>
 
         <div className="fld">
-          <label>방 번호</label>
+          <label>{moved ? "첫 방" : "방 번호"}</label>
           <div className="chips">
             <button type="button" className={`rchip lt ${roomId === null ? "on" : ""}`} onClick={() => setRoomId(null)}>
               나중에 정하기
@@ -529,6 +560,110 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
             {!sameType.length && !otherRooms ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
           </div>
         </div>
+
+        {!isNew && kind === "stay" && nights >= 2 && roomId ? (
+          <div className="fld">
+            <label>객실 이동</label>
+            <div className="mvbox">
+              {moved ? (
+                <div className="mvlegs">
+                  {legs.map((l, i) => (
+                    <span className="mvleg" key={i}>
+                      {i > 0 ? (
+                        <button type="button" className="mvundo" title={`${md(l.checkIn)} 이동을 취소하고 ${L.roomLabel(legs[i - 1].roomId)}호에 계속 묵어요`} onClick={() => setSegs(undoMove(draft, i))}>
+                          <ArrowRight size={13} />
+                          <span>이동 취소</span>
+                        </button>
+                      ) : null}
+                      <span className={`mvroom ${busyLegs.some((x) => x.idx === l.idx) ? "busy" : ""}`}>
+                        <b>{L.roomLabel(l.roomId)}</b>
+                        <small>
+                          {md(l.checkIn)}~ {l.nights}박
+                        </small>
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {mv ? (
+                <div className="mvpanel">
+                  <div className="mvq">몇 박째부터</div>
+                  <div className="chips">
+                    {Array.from({ length: nights - 1 }, (_, i) => i + 2).map((k) => (
+                      <button type="button" key={k} className={`chip sm ${mv.from === k ? "on" : ""}`} onClick={() => setMv({ ...mv, from: k, room: null })}>
+                        {k}박째 {dayLabel(addDays(checkIn, k - 1))} 밤부터
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mvq">옮길 방 <span className="muted">· {dayLabel(addDays(checkIn, mv.from - 1))} 밤 ~ {dayLabel(addDays(checkIn, nights))} 퇴실</span></div>
+                  {(() => {
+                    const cur = legs.find((l) => l.checkIn <= addDays(checkIn, mv.from - 1) && addDays(checkIn, mv.from - 1) < addDays(l.checkIn, l.nights))?.roomId;
+                    const list = allRooms.filter((r) => r.id !== cur);
+                    const same = list.filter((r) => r.typeId === typeId);
+                    const other = list.filter((r) => r.typeId !== typeId);
+                    const chip = (r: (typeof allRooms)[number], showType: boolean) => (
+                      <button
+                        type="button"
+                        key={r.id}
+                        className={`rchip ${showType ? "other" : ""} ${mv.room === r.id ? "on" : ""} ${mvFree.has(r.id) ? "" : "busy"}`}
+                        title={`${L.roomLabel(r.id) ?? r.no}${mvFree.has(r.id) ? "" : " · 그 기간에 다른 예약이 있어요"}`}
+                        onClick={() => setMv({ ...mv, room: r.id })}
+                      >
+                        {bpre(r.buildingId)}
+                        {r.no}
+                        {showType ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
+                      </button>
+                    );
+                    return (
+                      <div className="chips">
+                        {same.map((r) => chip(r, false))}
+                        {mv.other || (mv.room && L.rooms.get(mv.room)?.typeId !== typeId)
+                          ? other.map((r) => chip(r, true))
+                          : other.length ? (
+                              <button type="button" className="rchip lt" onClick={() => setMv({ ...mv, other: true })}>
+                                다른 타입 방 +{other.length}
+                              </button>
+                            ) : null}
+                      </div>
+                    );
+                  })()}
+                  {mv.room && !mvFree.has(mv.room) ? (
+                    <div className="mvwarn">{L.roomLabel(mv.room)}호는 그 기간에 다른 예약이 있어요. 옮기면 겹쳐서 저장할 수 없어요.</div>
+                  ) : null}
+                  <div className="mvact">
+                    <button type="button" className="btn sm line" onClick={() => setMv(null)}>
+                      그만두기
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm dark"
+                      disabled={!mv.room}
+                      onClick={() => {
+                        if (!mv.room) return;
+                        setSegs(moveStay(draft, mv.from, mv.room));
+                        setMv(null);
+                      }}
+                    >
+                      {mv.room ? `${mv.from}박째부터 ${L.roomLabel(mv.room)}호로 옮기기` : "방을 골라 주세요"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn sm line mvbtn"
+                  onClick={() => {
+                    const k = Math.min(nights, Math.max(2, daysBetween(checkIn, today) + 1));
+                    setMv({ from: k, room: null, other: false });
+                  }}
+                >
+                  <ArrowRight size={14} /> 객실 이동{moved ? " 더하기" : ""}
+                </button>
+              )}
+              {!mv ? <span className="muted sm mvnote">{moved ? "예약은 하나 그대로예요 · 저장해야 반영돼요" : "중간에 방을 옮기면 몇 박째부터 어느 방인지 남겨요"}</span> : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="fld">
           <label>입실 · 메모</label>

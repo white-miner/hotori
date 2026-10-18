@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { type Booking, addDays, dayLabel, isActive, perNight, typeLabel, usableTypes, won } from "../shared/ledger";
+import { type Booking, addDays, dayLabel, isActive, isMoved, legsOf, perNight, stayRoomIds, typeLabel, usableTypes, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryShopSales } from "./data";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
@@ -64,7 +64,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
     if (st === "void" && isActive(b)) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
-      const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.roomLabel(b.roomId)].join(" ").toLowerCase();
+      const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -191,7 +191,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
                   <TypeBadge t={L.types.get(b.typeId)} />
                 </span>
                 <span className="c-len">{b.kind === "stay" ? `${b.nights}박` : `${b.startTime}~${b.endTime}`}</span>
-                <span className="c-room" title={L.roomLabel(b.roomId) ?? undefined}>{b.roomId ? (L.roomLabel(b.roomId) ?? "?") : "—"}</span>
+                <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
+                  {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
+                </span>
                 <span className="c-price r">
                   {won(b.price)}
                   {per ? <small>1박 {won(per)}</small> : null}

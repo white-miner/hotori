@@ -868,3 +868,31 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 /* 좁은 막대의 입실 완료: ◯ 대신 왼쪽 굵은 선 */
 .cbar.arr { box-shadow: inset 3px 0 0 var(--ink); border-top-left-radius: 4px; border-bottom-left-radius: 4px; padding-left: 7px; }
 .cbar.arr.cf { box-shadow: inset 3px 0 0 var(--ink), 0 0 0 2px var(--red-s); }
+
+/* ---------- 객실 이동 (예약 수정 창) ---------- */
+.btn.dark { background: var(--ink); color: #fff; }
+.btn.dark:hover { background: #333; }
+.btn.dark:disabled { background: var(--panel); color: var(--ink4); }
+.mvbox { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.mvbtn { display: inline-flex; align-items: center; gap: 5px; }
+.mvnote { font-size: 11.5px; }
+.mvlegs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.mvleg { display: inline-flex; align-items: center; gap: 4px; }
+.mvroom { display: inline-flex; align-items: baseline; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--ink); color: #fff; align-items: center; }
+.mvroom b { font-family: var(--num); font-size: 13.5px; }
+.mvroom small { font-size: 11px; color: rgba(255, 255, 255, 0.72); }
+.mvroom.busy { box-shadow: 0 0 0 2px var(--red); }
+.mvundo { display: inline-flex; flex-direction: column; align-items: center; gap: 0; font-size: 9.5px; color: var(--ink3); padding: 1px 5px; border-radius: 8px; line-height: 1.1; }
+.mvundo:hover { background: var(--red-s); color: var(--red-d); }
+.mvundo:hover svg { opacity: 0.4; }
+.mvpanel { width: 100%; background: var(--panel2); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.mvq { font-size: 12.5px; font-weight: 700; color: var(--ink2); }
+.mvq .muted { font-weight: 500; }
+.mvwarn { font-size: 12.5px; font-weight: 650; color: var(--red-d); background: var(--red-s); border-radius: 10px; padding: 6px 10px; }
+.mvact { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+/* 객실 이동: 막대 앞뒤에 옮겨 온 방 · 옮겨 갈 방 */
+.cb-mv { flex: none; font-family: var(--num); font-size: 10.5px; font-weight: 800; color: var(--ink3); }
+.cbar.mvi { border-left-style: dashed; }
+.cbar.mvo { border-right-style: dashed; }
+.c-room.mv { font-size: 12px; letter-spacing: -0.02em; white-space: nowrap; }
+.up.mvt { font-family: var(--num); }

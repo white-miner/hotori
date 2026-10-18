@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { type Booking, normalizeSettings } from "./ledger";
+import { type Booking, legsOf, normalizeSettings } from "./ledger";
 import { barSpan, calendarLayout, markConflicts, stackLanes, type Bar } from "./calendar";
 
 const S = normalizeSettings({
@@ -31,7 +31,7 @@ test("막대 칸: 범위 밖으로 나가면 잘라서 표시", () => {
   assert.equal(barSpan("2026-11-01", 1, "2026-10-18", "2026-10-31"), null);
 });
 
-const bar = (b: Booking, start: number, len: number): Bar => ({ b, span: { start, len, clipL: false, clipR: false }, conflict: false });
+const bar = (b: Booking, start: number, len: number): Bar => ({ b, span: { start, len, clipL: false, clipR: false }, conflict: false, leg: legsOf(b)[0] ?? { roomId: null, checkIn: b.checkIn, nights: 1, idx: 0 } });
 
 test("같은 방 겹침: 정상 숙박끼리만, 퇴실일 = 다음 입실일은 겹침 아님", () => {
   const a = bar(bk({ checkIn: "2026-10-18", nights: 2 }), 0, 2);

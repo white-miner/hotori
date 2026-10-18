@@ -1,6 +1,6 @@
-import type { Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
+import type { Booking, Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
 import { CalendarDays } from "lucide-react";
-import { dayLabel, defaultBuildingName, isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
+import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
 
 export const PALETTE: { name: string; value: string | null }[] = [
   { name: "기본", value: null },
@@ -95,7 +95,21 @@ export function lookups(s: HotelSettings) {
   );
   /** "201" 또는 (건물 2개 이상) "별관 201" */
   const roomLabel = (id: string | null | undefined) => (id ? (rooms.get(id)?.label ?? null) : null);
-  return { types, plats, rooms, roomLabel, multi, buildings: bmap };
+  /** 숙박의 방: 객실 이동이면 "301→305" */
+  const stayRoomLabel = (b: Booking) => {
+    const legs = legsOf(b);
+    if (legs.length < 2) return roomLabel(b.roomId);
+    // 같은 건물 안에서 옮기면 뒤 방은 번호만 (본관 207→209)
+    return legs
+      .map((l, i) => {
+        const r = l.roomId ? rooms.get(l.roomId) : undefined;
+        const prev = i > 0 && legs[i - 1].roomId ? rooms.get(legs[i - 1].roomId!) : undefined;
+        if (!r) return "?";
+        return i > 0 && prev && prev.building?.id === r.building?.id ? r.no : r.label;
+      })
+      .join("→");
+  };
+  return { types, plats, rooms, roomLabel, stayRoomLabel, multi, buildings: bmap };
 }
 
 export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;

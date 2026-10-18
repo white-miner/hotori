@@ -91,6 +91,18 @@ for (let i = 0; i < 20; i++) for (const t of TYPES) {
 const freeToday = ROOMS.find((r) => r.c === "S" && !roomNight[r.no + "@" + TODAY]);
 BK.push({ kind: "stay", p: "p2", name: "오지훈", t: TID.S, d: DAY(TODAY), n: 1, price: 85000, room: freeToday?.id ?? null, ok: false, status: "cancelled", memo: "고객 요청 취소" });
 BK.push({ kind: "stay", p: "p3", name: "Emma Wilson", t: TID.T, d: DAY(TODAY), n: 2, price: 190000, room: null, ok: false, status: "noshow" });
+// 객실 이동 예시: 4박 손님이 첫날은 한 방, 둘째 밤부터 다른 스탠다드 방으로 옮겨요 (예약은 하나, 장부 한 줄)
+{
+  const S_ROOMS = ROOMS.filter((r) => r.c === "S");
+  const freeOn = (r, from, n) => Array.from({ length: n }, (_, j) => !roomNight[r.no + "@" + (from + j)]).every(Boolean);
+  const a = S_ROOMS.find((r) => freeOn(r, TODAY, 1));
+  const b = S_ROOMS.find((r) => r !== a && freeOn(r, TODAY + 1, 3));
+  if (a && b) {
+    roomNight[a.no + "@" + TODAY] = 1;
+    for (let j = 1; j < 4; j++) roomNight[b.no + "@" + (TODAY + j)] = 1;
+    BK.push({ kind: "stay", p: "p7", name: "문지호", t: TID.S, d: DAY(TODAY), n: 4, price: 300000, room: a.id, ok: true, memo: "예시 · 객실 이동", segs: [{ room: a.id, nights: 1 }, { room: b.id, nights: 3 }] });
+  }
+}
 const D = DAY(TODAY);
 const DAYUSE = [
   ["11:00","14:00","p8","정우성","S","207",35000,true],
@@ -108,12 +120,12 @@ DAYUSE.push(["14:00","17:00","p8","오세린","T","a104",40000,false]);
 const q = (v) => (v === null || v === undefined ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 let ts = Date.parse(D0 + "T01:00:00Z");
 const rows = BK.map((b) => { ts += 600e3; const c = new Date(ts).toISOString();
-  return `(${q(HOTEL)},'stay',${q(b.status ?? "active")},${q(b.p)},${b.price},${q(b.name)},${q(b.t)},${q(b.room)},${q(b.d)},${b.n},null,null,${b.ok},${q(b.memo ?? null)},${q(c)},${q(c)})`; });
+  return `(${q(HOTEL)},'stay',${q(b.status ?? "active")},${q(b.p)},${b.price},${q(b.name)},${q(b.t)},${q(b.room)},${b.segs ? q(JSON.stringify(b.segs)) + "::jsonb" : "null"},${q(b.d)},${b.n},null,null,${b.ok},${q(b.memo ?? null)},${q(c)},${q(c)})`; });
 for (const [s, e, p, name, c, no, price, ok] of DAYUSE) { ts += 600e3; const cr = new Date(ts).toISOString();
-  rows.push(`(${q(HOTEL)},'dayuse','active',${q(p)},${price},${q(name)},${q(TID[c])},${q(no ? "r-" + no : null)},${q(D)},null,${q(s)},${q(e)},${ok},null,${q(cr)},${q(cr)})`); }
+  rows.push(`(${q(HOTEL)},'dayuse','active',${q(p)},${price},${q(name)},${q(TID[c])},${q(no ? "r-" + no : null)},null,${q(D)},null,${q(s)},${q(e)},${ok},null,${q(cr)},${q(cr)})`); }
 console.log(`begin;
 update public.hotels set settings = ${q(JSON.stringify(settings))}::jsonb where id = ${q(HOTEL)};
 delete from public.bookings where hotel_id = ${q(HOTEL)};
-insert into public.bookings (hotel_id,kind,status,platform_id,price,guest_name,type_id,room_id,check_in,nights,start_time,end_time,arrived,memo,created_at,updated_at) values
+insert into public.bookings (hotel_id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,memo,created_at,updated_at) values
 ${rows.join(",\n")};
 commit;`);

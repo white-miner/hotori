@@ -1,5 +1,5 @@
 // 객실 캘린더: 방마다 한 줄, 날짜마다 한 칸. 숙박은 입실일부터 N박만큼 막대 (퇴실일 칸은 비어 있어요).
-import { type Booking, type HotelSettings, addDays, checkOut, daysBetween, isActive, isCancelledRefilled, roomMap } from "./ledger";
+import { type Booking, type HotelSettings, type Leg, addDays, daysBetween, isActive, isCancelledRefilled, legsOf, roomMap } from "./ledger";
 
 export interface Span {
   start: number; // 보이는 범위 안에서 시작 칸 (0부터)
@@ -21,6 +21,9 @@ export interface Bar {
   b: Booking;
   span: Span;
   conflict: boolean; // 같은 방에서 다른 정상 숙박과 밤이 겹쳐요
+  leg: Leg; // 객실 이동이면 그 방에 묵는 구간
+  prev?: string | null; // 앞 구간 방 (이동해 들어왔으면)
+  next?: string | null; // 다음 구간 방 (이동해 나가면)
 }
 export interface CalendarLayout {
   rooms: Map<string, Bar[]>; // roomId → 막대들
@@ -30,11 +33,11 @@ export interface CalendarLayout {
   conflicts: number; // 겹치는 숙박 쌍 수
 }
 
-const overlapNights = (a: Bar, b: Bar) => a.b.checkIn < checkOut(b.b) && b.b.checkIn < checkOut(a.b);
+const overlapNights = (a: Bar, b: Bar) => a.leg.checkIn < addDays(b.leg.checkIn, b.leg.nights) && b.leg.checkIn < addDays(a.leg.checkIn, a.leg.nights);
 
 /** 방 미배정 막대를 줄에 나눠 담아요: 시작이 빠른 것부터, 들어갈 수 있는 첫 줄에 */
 export function stackLanes(bars: Bar[]): Bar[][] {
-  const sorted = [...bars].sort((a, b) => a.span.start - b.span.start || b.span.len - a.span.len || a.b.id.localeCompare(b.b.id));
+  const sorted = [...bars].sort((a, b) => a.span.start - b.span.start || b.span.len - a.span.len || a.b.id.localeCompare(b.b.id) || a.leg.idx - b.leg.idx);
   const lanes: Bar[][] = [];
   const ends: number[] = []; // 줄마다 마지막 막대가 끝난 다음 칸
   for (const bar of sorted) {
@@ -56,7 +59,7 @@ export function markConflicts(bars: Bar[]): number {
   const act = bars.filter((x) => isActive(x.b));
   for (let i = 0; i < act.length; i++)
     for (let j = i + 1; j < act.length; j++)
-      if (overlapNights(act[i], act[j])) {
+      if (act[i].b.id !== act[j].b.id && overlapNights(act[i], act[j])) {
         act[i].conflict = act[j].conflict = true;
         n++;
       }
@@ -72,25 +75,30 @@ export function calendarLayout(s: HotelSettings, bookings: Booking[], from: stri
   const near = bookings.filter((b) =>
     b.kind === "stay" ? !!b.nights && b.checkIn <= to && addDays(b.checkIn, b.nights - 1) >= from : b.checkIn >= from && b.checkIn <= to,
   );
-  const visible = (b: Booking) => isActive(b) || !isCancelledRefilled(b, near, rooms);
   const out: CalendarLayout = { rooms: new Map(), dayuse: new Map(), lanes: [], lanesDayuse: new Map(), conflicts: 0 };
   const loose: Bar[] = [];
   for (const b of near) {
-    if (!visible(b)) continue;
-    const room = b.roomId ? rooms.get(b.roomId) : undefined;
-    if (room && buildingId && room.buildingId !== buildingId) continue;
-    if (!room && buildingId) continue;
     if (b.kind === "dayuse") {
+      if (!isActive(b) && isCancelledRefilled(b, near, rooms)) continue;
+      const room = b.roomId ? rooms.get(b.roomId) : undefined;
+      if (buildingId && room?.buildingId !== buildingId) continue;
       const i = daysBetween(from, b.checkIn);
       const m = room ? (out.dayuse.get(room.id) ?? out.dayuse.set(room.id, new Map()).get(room.id)!) : out.lanesDayuse;
       m.set(i, [...(m.get(i) ?? []), b]);
       continue;
     }
-    const span = barSpan(b.checkIn, b.nights!, from, to);
-    if (!span) continue;
-    const bar: Bar = { b, span, conflict: false };
-    if (room) out.rooms.set(room.id, [...(out.rooms.get(room.id) ?? []), bar]);
-    else loose.push(bar);
+    // 숙박: 방 구간마다 막대 하나 (객실 이동이면 여러 개)
+    const legs = legsOf(b);
+    legs.forEach((leg, k) => {
+      if (!isActive(b) && isCancelledRefilled(b, near, rooms, leg)) return;
+      const room = leg.roomId ? rooms.get(leg.roomId) : undefined;
+      if (buildingId && room?.buildingId !== buildingId) return;
+      const span = barSpan(leg.checkIn, leg.nights, from, to);
+      if (!span) return;
+      const bar: Bar = { b, span, conflict: false, leg, prev: k > 0 ? legs[k - 1].roomId : undefined, next: k < legs.length - 1 ? legs[k + 1].roomId : undefined };
+      if (room) out.rooms.set(room.id, [...(out.rooms.get(room.id) ?? []), bar]);
+      else loose.push(bar);
+    });
   }
   for (const bars of out.rooms.values()) {
     out.conflicts += markConflicts(bars);

@@ -29,6 +29,7 @@ import {
   typeTotals,
   weekday,
   won,
+  legsOf,
 } from "../shared/ledger";
 import { type HotelData, WINDOW_BACK, queryStays } from "./data";
 import RoomCalendar from "./RoomCalendar";
@@ -334,6 +335,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const nth = Math.round((Date.parse(selDate) - Date.parse(b.checkIn)) / 864e5) + 1;
     const cancelled = !isActive(b);
     const sold = b.typeId !== r.typeId ? L.types.get(b.typeId) : null;
+    // 객실 이동: 이 방 구간 앞뒤 방을 짧게 (예: 301→ · →305)
+    const legs = legsOf(b);
+    const li = legs.findIndex((l) => l.roomId === r.id && l.checkIn <= selDate && selDate < addDays(l.checkIn, l.nights));
+    const no = (id: string | null | undefined) => (id ? (L.rooms.get(id)?.no ?? "?") : "?");
+    const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${no(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${no(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
     return (
       <div key={r.id} {...act} className={`cell bk ${cancelled ? "cx" : ""} ${readOnly ? "ro" : ""}`} onClick={() => onOpen(b)}>
         {head}
@@ -344,7 +350,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         <div className="r3 rp">
           {readOnly ? <span /> : <span className="pr">{won(b.price)}</span>}
-          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
+          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
