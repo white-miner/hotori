@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Minus, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
   TYPE_NAME_MAX,
@@ -14,7 +14,7 @@ import {
   typeTotals,
   usableTypes,
 } from "../shared/ledger";
-import type { HotelData } from "./data";
+import { type HotelData, type ShareState, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { FitText, PALETTE, PlatBadge, TypeBadge, TypeLine, uid } from "./ui";
 
 interface Props {
@@ -28,7 +28,94 @@ const josa = (w: string, a: string, b: string) => {
   if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 ? a : b;
   return /[0-9lmnLMN136780]$/.test(w.trim()) ? a : b;
 };
-const NO_TYPE = "__none"; // '타입 없음'으로 칠하기
+const NO_TYPE = "__none";
+
+/** 현황 공유 링크 (Pro): 직원이 로그인 없이 현황판을 보기만 해요 */
+function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | "pro"; notify: (m: string) => void }) {
+  const pro = plan === "pro";
+  const [st, setSt] = useState<ShareState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pro) return;
+    shareStatus(hotelId)
+      .then(setSt)
+      .catch((e) => setErr(e instanceof Error && /not allowed/.test(e.message) ? "호텔 주인 계정만 공유 링크를 관리할 수 있어요." : "공유 상태를 불러오지 못했어요."));
+  }, [hotelId, pro]);
+  const run = async (f: () => Promise<unknown>, ok: string) => {
+    setBusy(true);
+    try {
+      await f();
+      setSt(await shareStatus(hotelId));
+      setErr(null);
+      notify(ok);
+    } catch {
+      setErr("처리하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const url = st?.enabled && st.token ? shareUrl(st.token) : null;
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify("공유 링크를 복사했어요");
+    } catch {
+      notify("복사하지 못했어요. 링크를 길게 눌러 복사해 주세요.");
+    }
+  };
+  return (
+    <section className={`card share ${pro ? "" : "locked"}`} id="set-share">
+      <h3>
+        현황 공유 링크 <span className={`tag ${pro ? "" : "pro"}`}>Pro</span>
+      </h3>
+      <div className="sub">직원이 로그인 없이 객실 현황·객실 배치·대실·방 미배정 목록을 볼 수 있어요. 보기만 되고, 판매 가격과 메모는 보이지 않아요.</div>
+      {!pro ? (
+        <>
+          <div className="share-lock">현황 공유 링크는 Pro에서 쓸 수 있어요.</div>
+          <button className="btn line sm" disabled>
+            <Link2 size={14} />
+            링크 만들기
+          </button>
+        </>
+      ) : url ? (
+        <>
+          <div className="share-url">
+            <input className="inp sm" readOnly value={url} onFocus={(e) => e.currentTarget.select()} aria-label="공유 링크" />
+            <button className="btn red sm" onClick={() => void copy()}>
+              <Copy size={14} />
+              복사
+            </button>
+          </div>
+          <div className="share-act">
+            <button
+              className="btn line sm"
+              disabled={busy}
+              onClick={() => confirm("새 링크를 만들까요? 지금 링크는 바로 열리지 않게 돼요.") && void run(() => shareCreate(hotelId), "새 링크를 만들었어요. 직원에게 새 링크를 보내 주세요.")}
+            >
+              <RefreshCw size={14} />
+              새 링크 만들기
+            </button>
+            <button className="btn danger sm" disabled={busy} onClick={() => void run(() => shareDisable(hotelId), "공유를 껐어요. 지금 링크는 더 이상 열리지 않아요.")}>
+              공유 끄기
+            </button>
+          </div>
+          <p className="fine">링크를 아는 사람은 누구나 볼 수 있어요. 직원이 바뀌면 '새 링크 만들기'를 눌러 주세요.</p>
+        </>
+      ) : (
+        <>
+          <div className="share-lock">지금은 공유가 꺼져 있어요.</div>
+          <button className="btn red sm" disabled={busy || !st} onClick={() => void run(() => shareCreate(hotelId), "공유 링크를 만들었어요")}>
+            <Link2 size={14} />
+            링크 만들기
+          </button>
+        </>
+      )}
+      {err ? <div className="share-err">{err}</div> : null}
+    </section>
+  );
+} // '타입 없음'으로 칠하기
 const move = <T,>(a: T[], i: number, d: number): T[] => {
   const j = i + d;
   if (j < 0 || j >= a.length) return a;
@@ -196,6 +283,7 @@ export default function Settings({ data, email, notify }: Props) {
           {[
             ["rooms", "객실·타입"],
             ["plats", "플랫폼"],
+            ["share", "현황 공유"],
             ["plan", "요금제"],
           ].map(([id, l]) => (
             <a key={id} className="chip" href={`#/settings`} onClick={(e) => (e.preventDefault(), document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth" }))}>
@@ -602,6 +690,8 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
         </section>
 
+        <ShareCard hotelId={hotel.id} plan={hotel.plan} notify={notify} />
+
         <section className="card" id="set-plan">
           <h3>
             요금제 <span className="tag red">결제는 준비 중</span>
@@ -612,7 +702,7 @@ export default function Settings({ data, email, notify }: Props) {
               <b>Free {hotel.plan === "free" ? <span className="tag">사용 중</span> : null}</b>
               <ul>
                 <li>객실 20실까지</li>
-                <li>직원 1명 · 기기 1대</li>
+                <li>여러 기기 동시 사용 (PC·태블릿·휴대폰)</li>
                 <li>장부 최근 3개월</li>
               </ul>
             </div>
@@ -623,6 +713,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>직원 여러 명 동시 사용</li>
                 <li>장부 무기한 · 엑셀 내보내기</li>
                 <li>월별 플랫폼 합계 · 수정 기록</li>
+                <li>현황 공유 링크 (직원은 로그인 없이 보기)</li>
               </ul>
             </div>
           </div>

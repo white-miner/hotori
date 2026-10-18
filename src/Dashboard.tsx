@@ -29,6 +29,11 @@ interface Props {
   onOpen: (b: Booking) => void;
   onNew: (preset: Partial<Booking>) => void;
   notify: (m: string) => void;
+  /** 현황 공유 링크: 보기만 해요 (고치기·입실 표시·방 배정·가격 없음) */
+  readOnly?: boolean;
+  /** 공유 보기에서 고를 수 있는 날짜 범위 */
+  minDate?: string;
+  maxDate?: string;
 }
 const DAYS = 14;
 const nowLabel = () =>
@@ -42,7 +47,11 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
-export default function Dashboard({ data, today, selDate, setSelDate, onOpen, onNew, notify }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, notify, readOnly = false, minDate, maxDate }: Props) {
+  const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
+  const onOpen = readOnly ? () => {} : openRaw;
+  const onNew = readOnly ? () => {} : newRaw;
+  const act = readOnly ? {} : { role: "button" as const, tabIndex: 0 };
   const s = data.hotel!.settings;
   const { bookings } = data;
   const L = useMemo(() => lookups(s), [s]);
@@ -70,9 +79,11 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         <div className="empty-setup">
           <h1>먼저 우리 호텔 객실을 등록해 주세요</h1>
           <p>설정에서 층, 방 번호, 객실 타입, 플랫폼을 한 번만 적으면 바로 장부를 쓸 수 있어요.</p>
-          <a className="btn red" href="#/settings">
-            설정으로 가기
-          </a>
+          {readOnly ? null : (
+            <a className="btn red" href="#/settings">
+              설정으로 가기
+            </a>
+          )}
         </div>
       </main>
     );
@@ -120,9 +131,8 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
       return (
         <div
           key={r.id}
-          role="button"
-          tabIndex={0}
-          className="cell em"
+          {...act}
+          className={`cell em ${readOnly ? "ro" : ""}`}
           onClick={() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined })}
         >
           {head}
@@ -135,7 +145,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
     const cancelled = !isActive(b);
     const sold = b.typeId !== r.typeId ? L.types.get(b.typeId) : null;
     return (
-      <div key={r.id} role="button" tabIndex={0} className={`cell bk ${cancelled ? "cx" : ""}`} onClick={() => onOpen(b)}>
+      <div key={r.id} {...act} className={`cell bk ${cancelled ? "cx" : ""} ${readOnly ? "ro" : ""}`} onClick={() => onOpen(b)}>
         {head}
         {tline}
         <div className="nm">
@@ -143,12 +153,14 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
           <span>{b.guestName}</span>
         </div>
         <div className="r3 rp">
-          <span className="pr">{won(b.price)}</span>
+          {readOnly ? <span /> : <span className="pr">{won(b.price)}</span>}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
-          {cancelled ? null : (
+          {cancelled ? null : readOnly ? (
+            <Ring on={b.arrived} size={17} />
+          ) : (
             <button
               className="ringbtn"
               aria-label="입실 표시"
@@ -244,7 +256,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
 
         <div className="bdh">
           <h2>
-            {dayLabel(selDate)} 밤 객실 배치 <span>칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요</span>
+            {dayLabel(selDate)} 밤 객실 배치 <span>{readOnly ? "보기 전용 · ◯는 입실 완료" : "칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요"}</span>
           </h2>
           <div className="dnav">
             <span className="cnt-m">
@@ -327,7 +339,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         <div className="lst">
           {board.dayuse.length ? (
             board.dayuse.map((d) => (
-              <div key={d.id} role="button" tabIndex={0} className={`it ${isActive(d) ? "" : "cx"}`} onClick={() => onOpen(d)}>
+              <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"}`} onClick={() => onOpen(d)}>
                 <span className="tm">
                   {d.startTime}~{d.endTime}
                 </span>
@@ -338,11 +350,13 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
                   </b>
                   <span>
-                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"} ·{" "}
-                    {won(d.price)}원
+                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"}
+                    {readOnly ? null : ` · ${won(d.price)}원`}
                   </span>
                 </div>
-                {isActive(d) ? (
+                {isActive(d) && readOnly ? (
+                  <Ring on={d.arrived} />
+                ) : isActive(d) ? (
                   <button
                     className="ringbtn"
                     aria-label="입실 표시"
@@ -359,9 +373,11 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
           ) : (
             <div className="it muted">이날 대실 기록이 없어요</div>
           )}
-          <button className="add" onClick={() => onNew({ kind: "dayuse", checkIn: selDate })}>
-            + 대실 기록
-          </button>
+          {readOnly ? null : (
+            <button className="add" onClick={() => onNew({ kind: "dayuse", checkIn: selDate })}>
+              + 대실 기록
+            </button>
+          )}
         </div>
 
         <h3>
@@ -381,7 +397,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               return (
                 <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
                   <div className="itr">
-                    <div className="md" role="button" tabIndex={0} onClick={() => onOpen(b)}>
+                    <div className="md" {...act} onClick={() => onOpen(b)}>
                       <b>
                         <TypeBadge t={t} />
                         <PlatBadge p={L.plats.get(b.platformId)} />
@@ -389,10 +405,10 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                         {isActive(b) ? null : <span className="cxt">{STATUS[b.status]}</span>}
                       </b>
                       <span>
-                        {b.nights}박 · {won(b.price)}원{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
+                        {b.nights}박{readOnly ? "" : ` · ${won(b.price)}원`}{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
                       </span>
                     </div>
-                    {isActive(b) ? (
+                    {isActive(b) && !readOnly ? (
                       <button className="btn line sm" onClick={() => setAssigning(open ? null : b.id)}>
                         {open ? "닫기" : "방 배정"}
                       </button>
@@ -428,10 +444,12 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               {board.nightCount}실 / {roomCount}실
             </b>
           </div>
-          <div>
-            <span>이날 입실 예약 금액</span>
-            <b>{won(dayTotal)}원</b>
-          </div>
+          {readOnly ? null : (
+            <div>
+              <span>이날 입실 예약 금액</span>
+              <b>{won(dayTotal)}원</b>
+            </div>
+          )}
         </div>
       </aside>
     </main>

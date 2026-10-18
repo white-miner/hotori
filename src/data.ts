@@ -229,3 +229,46 @@ export async function queryLedger(hotelId: string, from: string, to: string): Pr
   if (error) throw error;
   return (data as BookingRow[]).map(fromRow);
 }
+
+// ---------- 현황 공유 링크 (Pro) ----------
+export interface ShareState {
+  plan: "free" | "pro";
+  enabled: boolean;
+  token: string | null;
+  updatedAt: string | null;
+}
+export const shareUrl = (token: string) => `${location.origin}/s/${token}`;
+export async function shareStatus(hotelId: string): Promise<ShareState> {
+  const { data, error } = await supabase.rpc("share_link_status", { hid: hotelId });
+  if (error) throw error;
+  return data as ShareState;
+}
+export async function shareCreate(hotelId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("share_link_create", { hid: hotelId });
+  if (error) throw error;
+  return data as string;
+}
+export async function shareDisable(hotelId: string): Promise<void> {
+  const { error } = await supabase.rpc("share_link_disable", { hid: hotelId });
+  if (error) throw error;
+}
+export interface SharedStatus {
+  name: string;
+  today: string;
+  settings: HotelSettings;
+  bookings: Booking[];
+}
+/** 로그인 없이 링크로 보기. 꺼졌거나 바뀐 링크면 null */
+export async function fetchShared(token: string): Promise<SharedStatus | null> {
+  const { data, error } = await supabase.rpc("get_shared_status", { share_token: token });
+  if (error) throw error;
+  if (!data) return null;
+  const d = data as { name: string; today: string; settings: unknown; bookings: Omit<BookingRow, "price" | "memo" | "cancelled_at" | "created_at" | "updated_at">[] };
+  return {
+    name: d.name,
+    today: d.today,
+    settings: normalizeSettings(d.settings),
+    // 공유 보기에는 판매 가격·메모가 오지 않아요
+    bookings: d.bookings.map((r) => fromRow({ ...r, price: 0, memo: null, cancelled_at: null, created_at: "", updated_at: "" })),
+  };
+}
