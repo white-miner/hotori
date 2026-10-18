@@ -3,6 +3,8 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, md, orderedFloors, typeLabel, usedLabel, weekday, won } from "../shared/ledger";
 import { type Bar, calendarLayout } from "../shared/calendar";
+import { clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
+import type { StayTimes } from "../shared/tiers";
 import { paint } from "../shared/platform";
 import { pastelColor } from "../shared/floorColor";
 import { lookups } from "./ui";
@@ -33,8 +35,12 @@ function tip(b: Booking, L: L, readOnly: boolean): string {
   return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${mv}${st}${eo}`;
 }
 
-const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { bar: Bar; cw: number; L: L; readOnly: boolean; onOpen: (b: Booking) => void; typeCode?: string }) {
+const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode, times, warn }: { bar: Bar; cw: number; L: L; readOnly: boolean; onOpen: (b: Booking) => void; typeCode?: string; times: StayTimes; warn?: string }) {
   const { b, span } = bar;
+  // 빠른 입실은 첫 구간 왼쪽 끝, 늦은 퇴실은 마지막 구간 오른쪽 끝에만
+  const legsN = legsOf(b).length;
+  const eIn = isActive(b) && bar.leg.idx === 0 && !span.clipL && clampHours(b.earlyIn) ? inTimeOf({ stayTimes: times }, b) : null;
+  const lOut = isActive(b) && bar.leg.idx === legsN - 1 && !span.clipR && !isEarlyOut(b) && clampHours(b.lateOut) ? outTimeOf({ stayTimes: times }, b) : null;
   const cx = !isActive(b);
   const p = L.plats.get(b.platformId);
   const px = span.len * cw;
@@ -50,7 +56,7 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
         ["--pb" as string]: c.b,
         ["--pt" as string]: c.t,
       }}
-      title={tip(b, L, readOnly)}
+      title={`${tip(b, L, readOnly)}${eIn ? ` · 빠른 입실 ${eIn}` : ""}${lOut ? ` · 늦은 퇴실 ${lOut}` : ""}${warn ? ` · ⚠ ${warn}` : ""}`}
       {...(readOnly ? {} : { role: "button", tabIndex: 0 })}
       onClick={readOnly ? undefined : (e) => (e.stopPropagation(), onOpen(b))}
       onKeyDown={readOnly ? undefined : (e) => e.key === "Enter" && onOpen(b)}
@@ -62,7 +68,10 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
       {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
       {bar.prev !== undefined ? <span className="cb-mv" title={`${L.roomLabel(bar.prev) ?? "?"}호에서 옮겨 왔어요`}>{L.rooms.get(bar.prev ?? "")?.no ?? "?"}→</span> : null}
       {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
+      {warn ? <span className="ttag warn cb-w">!</span> : null}
+      {eIn && px >= 76 ? <span className="ttag">{px >= 130 ? `빠른 ${eIn}` : eIn}</span> : null}
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
+      {lOut && px >= 76 ? <span className={`ttag ${eIn && px < 150 ? "hide" : ""}`}>{px >= 130 ? `늦은 ${lOut}` : lOut}</span> : null}
       {bar.next !== undefined ? <span className="cb-mv nx" title={`다음 날 ${L.roomLabel(bar.next) ?? "?"}호로 옮겨요`}>→{L.rooms.get(bar.next ?? "")?.no ?? "?"}</span> : null}
       {px >= 96 ? <span className="cb-p">{p?.abbr ?? "?"}</span> : null}
         </>
@@ -96,6 +105,12 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
   const from = dates[0];
   const to = dates[dates.length - 1];
   const lay = useMemo(() => calendarLayout(s, bookings, from, to, scopeId), [s, bookings, from, to, scopeId]);
+  // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실 겹침 경고 (예약 id → 글자)
+  const warns = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of turnoverWarnings(s, bookings)) m.set(w.id, m.has(w.id) ? `${m.get(w.id)} · ${w.text}` : w.text);
+    return m;
+  }, [s, bookings]);
 
   // 칸 너비: 화면에 다 들어가면 늘리고, 넘치면 최소 너비로 옆으로 밀어요
   const wrap = useRef<HTMLDivElement>(null);
@@ -234,7 +249,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
                       }
                     >
                       {(lay.rooms.get(r.id) ?? []).map((bar) => (
-                        <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} />
+                        <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} times={s.stayTimes} warn={warns.get(bar.b.id)} />
                       ))}
                       <Marks m={lay.dayuse.get(r.id)} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} />
                     </div>
@@ -257,7 +272,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
                   </div>
                   <div className="cal-t ro">
                     {lane.map((bar) => (
-                      <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} typeCode={typeLabel(L.types.get(bar.b.typeId ?? "")) || undefined} />
+                      <BarEl key={`${bar.b.id}:${bar.leg.idx}`} bar={bar} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} typeCode={typeLabel(L.types.get(bar.b.typeId ?? "")) || undefined} times={s.stayTimes} warn={warns.get(bar.b.id)} />
                     ))}
                     {i === 0 ? <Marks m={lay.lanesDayuse} cw={cw} L={L} readOnly={readOnly} onOpen={onOpen} /> : null}
                   </div>

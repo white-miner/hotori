@@ -1,6 +1,6 @@
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
-import { type StayTimes, type SurchargeTier, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
+import { DEFAULT_HOUR_FEE, type StayTimes, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -73,6 +73,8 @@ export interface HotelSettings {
   specialDates: string[];
   /** 기본 입실 · 퇴실 시간 (없으면 16:00 · 12:00) */
   stayTimes: StayTimes;
+  /** 빠른 입실 · 늦은 퇴실 1시간 추가 요금 (없으면 10,000원) */
+  extraHourFee: number;
 }
 export interface ShopItem {
   id: string;
@@ -131,6 +133,12 @@ export interface Booking {
   guests?: number | null;
   /** 판매 가격(price)에 들어 있는 추가 인원 금액 */
   extraFee?: number | null;
+  /** 빠른 입실: 기본 입실 시간보다 몇 시간 일찍 (숙박만) */
+  earlyIn?: number | null;
+  /** 늦은 퇴실: 기본 퇴실 시간보다 몇 시간 늦게 (숙박만) */
+  lateOut?: number | null;
+  /** 판매 가격(price)에 들어 있는 시간 추가 금액 (0 + 시간 있음 = 서비스) */
+  timeFee?: number | null;
   /** 단체 예약 묶음 (같은 단체의 방들은 같은 값) */
   groupId?: string | null;
   groupName?: string | null;
@@ -148,7 +156,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined) };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -191,6 +199,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     surchargeTiers: normalizeTiers((s as { surchargeTiers?: unknown }).surchargeTiers),
     specialDates: normalizeSpecialDates((s as { specialDates?: unknown }).specialDates),
     stayTimes: normalizeStayTimes((s as { stayTimes?: unknown }).stayTimes),
+    extraHourFee: normalizeHourFee((s as { extraHourFee?: unknown }).extraHourFee),
   };
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -44,9 +44,9 @@ import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
-import { PAY_KIND_LABEL, isOnsite, validatePayment } from "../shared/payment";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
-import { PAY_LABEL, type PayMethod } from "../shared/shop";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, isOnsite, paySplit, splitLine, validatePayment } from "../shared/payment";
+import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
 
 interface Props {
   data: HotelData;
@@ -136,9 +136,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [extraFee, setExtraFee] = useState<number>(base?.extraFee ?? 0);
   const [xManual, setXManual] = useState(false);
   const [xEdit, setXEdit] = useState(false);
+  // 빠른 입실 · 늦은 퇴실: 시간 수 + 금액 (판매 가격에 들어 있어요). 서비스 = 시간은 두고 0원
+  const [earlyIn, setEarlyIn] = useState(clampHours(base?.earlyIn));
+  const [lateOut, setLateOut] = useState(clampHours(base?.lateOut));
+  const [timeFee, setTimeFee] = useState<number>(base && hasExtraTime(base) ? Math.max(0, base.timeFee ?? 0) : 0);
+  const [tMode, setTMode] = useState<"auto" | "manual" | "service">(() => {
+    if (!base || !hasExtraTime(base)) return "auto";
+    if (!base.timeFee) return "service";
+    return base.timeFee === autoTimeFee(s, clampHours(base.earlyIn), clampHours(base.lateOut)) ? "auto" : "manual";
+  });
+  const [tEdit, setTEdit] = useState(false);
   // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
-  const [dep, setDep] = useState<{ amount: string; method: PayMethod; date: string }>({ amount: "", method: "card", date: today });
-  const [bal, setBal] = useState<{ method: PayMethod; amount: string } | null>(null);
+  const [dep, setDep] = useState<{ amount: string; method: BookPayMethod; date: string }>({ amount: "", method: "card", date: today });
+  const [bal, setBal] = useState<{ method: BookPayMethod; amount: string } | null>(null);
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
   // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
@@ -248,6 +258,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     memo: memo || null,
     guests,
     extraFee: extraFee || null,
+    earlyIn: kind === "stay" && earlyIn ? earlyIn : null,
+    lateOut: kind === "stay" && lateOut ? lateOut : null,
+    timeFee: kind === "stay" && (earlyIn || lateOut) ? timeFee : null,
     cancelledAt: base?.cancelledAt ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -283,6 +296,34 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setExtraFee(n);
     setXManual(manual);
   };
+  // 시간 추가 금액: 바뀐 만큼 판매 가격에 더하고 빼요
+  const setTFee = (v: number, mode: "auto" | "manual" | "service") => {
+    const n = Math.max(0, Math.min(SURCHARGE_MAX, Math.round(v)));
+    const delta = n - timeFee;
+    if (delta) setPrice((x) => String(Math.max(0, Number(x || 0) + delta)));
+    setTimeFee(n);
+    setTMode(mode);
+  };
+  const stepTime = (which: "in" | "out", d: number) => {
+    const e = which === "in" ? clampHours(earlyIn + d) : earlyIn;
+    const l = which === "out" ? clampHours(lateOut + d) : lateOut;
+    setEarlyIn(e);
+    setLateOut(l);
+    if (!e && !l) return setTFee(0, "auto");
+    if (tMode === "auto") setTFee(autoTimeFee(s, e, l), "auto");
+  };
+  // 대실로 바꾸면 시간 추가는 빼요
+  useEffect(() => {
+    if (kind !== "stay" && (earlyIn || lateOut)) {
+      setEarlyIn(0);
+      setLateOut(0);
+      setTFee(0, "auto");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+  const tAuto = autoTimeFee(s, earlyIn, lateOut);
+  // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
+  const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
   const stepGuests = (d: number) => {
     gTouched.current = true;
     setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
@@ -304,7 +345,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       await data.addPayment(base.id, { kind: "balance", method: bal.method, amount, bizDate: today });
       setBal(null);
       const left = Math.max(0, payDue - payPaid - amount);
-      notify(`${guestName} 님 잔금 ${won(amount)}원 받음 (${PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`);
+      notify(`${guestName} 님 잔금 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`);
     } catch (e) {
       setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
     } finally {
@@ -392,7 +433,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       if (depAmt > 0 && isActive(saved)) {
         try {
           await data.addPayment(saved.id, { kind: "deposit", method: dep.method, amount: depAmt, bizDate: dep.date });
-          depNote = ` · 선금 ${won(depAmt)}원(${PAY_LABEL[dep.method]})`;
+          depNote = ` · 선금 ${won(depAmt)}원(${BOOK_PAY_LABEL[dep.method]})`;
         } catch (e) {
           depNote = ` · 선금은 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
         }
@@ -727,7 +768,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <Plus size={16} />
               </button>
               <span className="rng">
-                <b>{dayLabel(checkIn)} {s.stayTimes.checkIn}</b> 입실 → <b>{dayLabel(addDays(checkIn, nights))} {s.stayTimes.checkOut}</b> 퇴실 · 퇴실날은 다시 팔 수 있어요
+                <b>{dayLabel(checkIn)} {inTimeOf(s, { earlyIn, lateOut })}</b> 입실 → <b>{dayLabel(addDays(checkIn, nights))} {outTimeOf(s, { earlyIn, lateOut })}</b> 퇴실 · 퇴실날은 다시 팔 수 있어요
               </span>
             </div>
           </div>
@@ -905,6 +946,86 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         </div>
 
+        {kind === "stay" ? (
+          <div className="fld tfld">
+            <label>시간</label>
+            <div className="payb">
+              <div className="xtchips">
+                {(
+                  [
+                    ["in", "빠른 입실", earlyIn, inTimeOf(s, { earlyIn })],
+                    ["out", "늦은 퇴실", lateOut, outTimeOf(s, { lateOut })],
+                  ] as const
+                ).map(([w, label, h, t]) => (
+                  <div key={w} className={`xtchip ${h ? "on" : ""}`}>
+                    <span className="tl">{label}</span>
+                    <button type="button" className="sb" aria-label={`${label} 1시간 줄이기`} disabled={!h} onClick={() => stepTime(w, -1)}>
+                      <Minus size={14} />
+                    </button>
+                    <span className="tv">{h ? `${h}시간` : "없음"}</span>
+                    <button type="button" className="sb" aria-label={`${label} 1시간 늘리기`} disabled={h >= EXTRA_HOURS_MAX} onClick={() => stepTime(w, 1)}>
+                      <Plus size={14} />
+                    </button>
+                    <span className="tt num">{t}</span>
+                  </div>
+                ))}
+              </div>
+              {earlyIn || lateOut ? (
+                <div className="xfee">
+                  <span>
+                    {tMode === "service" ? (
+                      <>
+                        <b>서비스</b> · {timeLine({ earlyIn, lateOut })} · 0원
+                      </>
+                    ) : (
+                      <>
+                        판매 가격에 <b>시간 추가 {won(timeFee)}원</b> 포함{tMode === "manual" ? " · 직접 고침" : ` · ${timeLine({ earlyIn, lateOut })}`}
+                      </>
+                    )}
+                  </span>
+                  {tMode !== "service" ? (
+                    tEdit ? (
+                      <label className="inp price sm">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          aria-label="시간 추가 금액"
+                          autoFocus
+                          value={timeFee ? won(timeFee) : ""}
+                          onChange={(e) => setTFee(Number(e.target.value.replace(/\D/g, "").slice(0, 8) || 0), "manual")}
+                          onBlur={() => setTEdit(false)}
+                        />
+                        원
+                      </label>
+                    ) : (
+                      <button type="button" className="auto" onClick={() => setTEdit(true)}>
+                        금액 바꾸기
+                      </button>
+                    )
+                  ) : null}
+                  {tMode === "manual" && timeFee !== tAuto ? (
+                    <button type="button" className="auto" onClick={() => setTFee(tAuto, "auto")}>
+                      자동 계산 {won(tAuto)}원으로
+                    </button>
+                  ) : null}
+                  <button type="button" className={`chip sm svc ${tMode === "service" ? "on" : ""}`} aria-pressed={tMode === "service"} onClick={() => (tMode === "service" ? setTFee(tAuto, "auto") : setTFee(0, "service"))}>
+                    서비스
+                  </button>
+                </div>
+              ) : (
+                <span className="muted sm">
+                  기본 입실 {s.stayTimes.checkIn} · 퇴실 {s.stayTimes.checkOut} · 1시간 {won(s.extraHourFee)}원
+                </span>
+              )}
+              {turnWarns.map((w) => (
+                <div className="twarn" key={w.other + w.date}>
+                  <AlertTriangle size={13} /> {w.text} <span className="muted">· {dayLabel(w.date)} · 저장은 돼요</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="fld pay">
           <label>결제</label>
           <div className="payb">
@@ -916,12 +1037,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <div className="payrow" key={x.id}>
                     <b>{PAY_KIND_LABEL[x.kind]}</b>
                     <span className="num">{won(x.amount)}원</span>
-                    <span className="muted">{PAY_LABEL[x.method]} · {dayLabel(x.bizDate)}</span>
+                    <span className="muted">{BOOK_PAY_LABEL[x.method]} · {dayLabel(x.bizDate)}</span>
                     <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
                       <X size={14} />
                     </button>
                   </div>
                 ))}
+                {livePays.length > 1 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
                 {!livePays.length ? (
                   <div className="paydep">
                     <span className="pl">선금</span>
@@ -937,9 +1059,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       원
                     </label>
                     <div className="seg sm">
-                      {(["card", "cash"] as const).map((m) => (
+                      {BOOK_PAY_METHODS.map((m) => (
                         <button type="button" key={m} className={dep.method === m ? "on" : ""} onClick={() => setDep({ ...dep, method: m })}>
-                          {PAY_LABEL[m]}
+                          {BOOK_PAY_LABEL[m]}
                         </button>
                       ))}
                     </div>
@@ -968,9 +1090,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {bal ? (
                   <div className="paybal">
                     <div className="seg sm">
-                      {(["card", "cash"] as const).map((m) => (
+                      {BOOK_PAY_METHODS.map((m) => (
                         <button type="button" key={m} className={bal.method === m ? "on" : ""} onClick={() => setBal({ ...bal, method: m })}>
-                          {PAY_LABEL[m]}
+                          {BOOK_PAY_LABEL[m]}
                         </button>
                       ))}
                     </div>

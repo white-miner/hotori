@@ -15,7 +15,8 @@ import {
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 import type { Expense } from "../shared/expense";
-import type { PayKind, Payment } from "../shared/payment";
+import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
+import { clampHours } from "../shared/extratime";
 import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
 
 export interface Hotel {
@@ -46,6 +47,9 @@ interface BookingRow {
   memo: string | null;
   guests?: number | null; // 인원
   extra_fee?: number | null; // 판매 가격에 들어 있는 추가 인원 금액
+  early_in_hours?: number | null; // 빠른 입실 시간 수
+  late_out_hours?: number | null; // 늦은 퇴실 시간 수
+  time_fee?: number | null; // 판매 가격에 들어 있는 시간 추가 금액
   group_id?: string | null; // 단체 예약 묶음
   group_name?: string | null;
   cancelled_at: string | null;
@@ -57,7 +61,7 @@ interface PaymentRow {
   id: string;
   booking_id?: string;
   kind: PayKind;
-  method: PayMethod;
+  method: BookPayMethod;
   amount: number;
   biz_date: string;
   created_at: string;
@@ -67,13 +71,13 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
   bookingId: r.booking_id ?? bookingId ?? "",
   kind: r.kind === "balance" ? "balance" : "deposit",
-  method: r.method === "cash" ? "cash" : "card",
+  method: isBookPayMethod(r.method) ? r.method : "card",
   amount: r.amount,
   bizDate: r.biz_date,
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -149,6 +153,9 @@ export function fromRow(r: BookingRow): Booking {
     memo: r.memo,
     guests: r.guests ?? null,
     extraFee: r.extra_fee ?? null,
+    earlyIn: r.early_in_hours ?? null,
+    lateOut: r.late_out_hours ?? null,
+    timeFee: r.time_fee ?? null,
     groupId: r.group_id ?? null,
     groupName: r.group_name ?? null,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -180,6 +187,9 @@ function toRow(b: Booking) {
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
     guests: b.guests && b.guests >= 1 ? Math.min(99, Math.round(b.guests)) : null,
     extra_fee: b.extraFee && b.extraFee > 0 ? Math.min(Math.round(b.extraFee), Math.round(b.price)) : null,
+    early_in_hours: stay && clampHours(b.earlyIn) ? clampHours(b.earlyIn) : null,
+    late_out_hours: stay && clampHours(b.lateOut) ? clampHours(b.lateOut) : null,
+    time_fee: stay && (clampHours(b.earlyIn) || clampHours(b.lateOut)) ? Math.min(Math.max(0, Math.round(b.timeFee ?? 0)), Math.round(b.price)) : null,
     group_id: b.groupId && b.groupName?.trim() ? b.groupId : null,
     group_name: b.groupId && b.groupName?.trim() ? b.groupName.trim().slice(0, 40) : null,
   };
@@ -311,7 +321,7 @@ export function useHotelData(hotelId: string) {
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
   }, [refresh]);
   // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
-  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: PayMethod; amount: number; bizDate: string }) => {
+  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: BookPayMethod; amount: number; bizDate: string }) => {
     const { data, error } = await supabase
       .from("booking_payments")
       .insert({ booking_id: bookingId, kind: p.kind, method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate })
@@ -447,7 +457,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
   const addGroupPayment = useCallback(
-    async (id: string, p: { method: PayMethod; amount: number; bizDate: string }) => {
+    async (id: string, p: { method: BookPayMethod; amount: number; bizDate: string }) => {
       if (!groups.has(id)) {
         const r = await supabase.from("booking_groups").upsert({ id, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
         if (r.error) throw r.error;

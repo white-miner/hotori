@@ -1,9 +1,9 @@
 // 단체 정산서: 타입별 소계 → 추가 인원 · 추가 항목 · 환불/취소 → 받은 돈 → 최종 결제액. 인쇄(이미지/PDF)용 모양도 같이.
+import { hasExtraTime, isTimeService, timeTags } from "../shared/extratime";
 import { useState } from "react";
 import { Check, Plus, Printer, X } from "lucide-react";
 import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledger";
-import { PAY_LABEL, type PayMethod } from "../shared/shop";
-import { validatePayment } from "../shared/payment";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
 import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
@@ -25,6 +25,11 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
   const first = members[0];
   const plat = first ? L.plats.get(first.platformId) : undefined;
   const st = settle(members, info, plat);
+  // 빠른 입실 · 늦은 퇴실한 방: '601 빠른 14:00 · 602 늦은 15:00 서비스'
+  const timeRooms = members
+    .filter((b) => b.status !== "cancelled" && hasExtraTime(b))
+    .map((b) => `${L.rooms.get(b.roomId ?? "")?.no ?? "?"} ${timeTags(s, b).join(" ")}${isTimeService(b) ? " 서비스" : ""}`)
+    .join(" · ");
   const tord = new Map(s.types.map((t, i) => [t.id, i]));
   st.lines.sort((a, b) => (tord.get(a.typeId) ?? 0) - (tord.get(b.typeId) ?? 0));
   const name = first?.groupName ?? first?.guestName ?? "단체";
@@ -33,7 +38,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [extra, setExtra] = useState({ name: "", amount: "" });
-  const [take, setTake] = useState<{ method: PayMethod; amount: string } | null>(null);
+  const [take, setTake] = useState<{ method: BookPayMethod; amount: string } | null>(null);
   const [editPayer, setEditPayer] = useState(false);
   const [pf, setPf] = useState({ payMode: info.payMode, dueOn: info.dueOn ?? addDays(checkIn, nights), company: info.payerCompany ?? "", name: info.payerName ?? "", phone: info.payerPhone ?? "" });
 
@@ -83,7 +88,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
       await data.addGroupPayment(groupId, { method: take.method, amount, bizDate: today });
       const left = Math.max(0, st.left - amount);
       setTake(null);
-      notify(`단체 ${name} ${won(amount)}원 받음 (${PAY_LABEL[take.method]})${left ? ` · 남은 금액 ${won(left)}원` : " · 정산 완료"}`);
+      notify(`단체 ${name} ${won(amount)}원 받음 (${BOOK_PAY_LABEL[take.method]})${left ? ` · 남은 금액 ${won(left)}원` : " · 정산 완료"}`);
     });
   };
   const delPay = (id: string) => {
@@ -196,6 +201,14 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                   <td className="r num">+{won(st.extraGuests)}</td>
                 </tr>
               ) : null}
+              {timeRooms ? (
+                <tr>
+                  <td colSpan={4}>
+                    빠른 입실 · 늦은 퇴실 <span className="muted">· {timeRooms}</span>
+                  </td>
+                  <td className="r num">{st.extraTime ? `+${won(st.extraTime)}` : "서비스 0"}</td>
+                </tr>
+              ) : null}
               {info.extras.map((x, i) => (
                 <tr key={`x${i}`}>
                   <td colSpan={4}>
@@ -241,7 +254,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               {info.payments.map((p) => (
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
-                    받은 돈 · {dayLabel(p.bizDate)} · {PAY_LABEL[p.method]}
+                    받은 돈 · {dayLabel(p.bizDate)} · {BOOK_PAY_LABEL[p.method]}
                     <button type="button" className="ic noprint" aria-label="받은 돈 지우기" disabled={busy} onClick={() => delPay(p.id)}>
                       <X size={13} />
                     </button>
@@ -253,26 +266,34 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
                     {p.kind === "deposit" ? "선금" : "받은 돈"} · {p.room ? `${p.room}호 · ` : ""}
-                    {dayLabel(p.bizDate)} · {PAY_LABEL[p.method]}
+                    {dayLabel(p.bizDate)} · {BOOK_PAY_LABEL[p.method]}
                   </td>
                   <td className="r num">−{won(p.amount)}</td>
                 </tr>
               ))}
+              {info.payments.length + memberPays.length > 1 ? (
+                <tr className="paid psum">
+                  <td colSpan={4}>
+                    받은 돈 합계 <span className="muted">· {splitLine(paySplit([...info.payments, ...memberPays]))}</span>
+                  </td>
+                  <td className="r num">−{won(st.paid)}</td>
+                </tr>
+              ) : null}
               <tr className={`left ${st.total - st.paid > 0 ? "due" : ""}`}>
                 <td colSpan={4}>{st.settled ? "남은 금액 · 정산 완료" : "남은 금액"}</td>
                 <td className="r num">{won(Math.max(0, st.total - st.paid))}원</td>
               </tr>
             </tfoot>
           </table>
-          <div className="sh-foot">매출은 입실일 기준 그대로, 받은 돈은 받은 날 현금 시재에 들어가요 · {dayLabel(today)} 기준</div>
+          <div className="sh-foot">매출은 입실일 기준 그대로, 현금으로 받은 돈만 받은 날 현금 시재에 들어가요 (카드·이체는 빠져요) · {dayLabel(today)} 기준</div>
         </div>
 
         {take ? (
           <div className="paybal noprint">
             <div className="seg sm">
-              {(["card", "cash"] as const).map((m) => (
+              {BOOK_PAY_METHODS.map((m) => (
                 <button type="button" key={m} className={take.method === m ? "on" : ""} onClick={() => setTake({ ...take, method: m })}>
-                  {PAY_LABEL[m]}
+                  {BOOK_PAY_LABEL[m]}
                 </button>
               ))}
             </div>

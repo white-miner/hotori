@@ -1,3 +1,4 @@
+import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
@@ -258,6 +259,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     w.scrollLeft = Math.max(0, x - 3 * th.offsetWidth); // 오늘 앞 사흘도 보이게
   }, [view.from, view.to, tab]);
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
+  // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
+  const turn = useMemo(() => {
+    const m = new Map<string, TurnWarn[]>();
+    for (const w of turnoverWarnings(s, bookings)) m.set(w.id, [...(m.get(w.id) ?? []), w]);
+    return m;
+  }, [s, bookings]);
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
   const [assigning, setAssigning] = useState<string | null>(null);
@@ -449,9 +456,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled || b.groupId ? 0 : payState(b, L.plats.get(b.platformId)).left)}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
-        <div className="r3">
-          <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
-        </div>
+        {((tags, ws) => (
+          <div className="r3">
+            {ws.length ? (
+              <span className="ttag warn" title={ws.map((w) => `${w.text} (${dayLabel(w.date)})`).join(" · ")}>
+                {ws[0].text}
+              </span>
+            ) : (
+              <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
+            )}
+            {tags.length ? (
+              <span className="ttags">
+                {tags.map((x) => (
+                  <span key={x} className="ttag">
+                    {x}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </div>
+        ))(
+          cancelled
+            ? []
+            : [
+                ...(nth === 1 && clampHours(b.earlyIn) ? [`빠른 ${inTimeOf(s, b)}`] : []),
+                ...(nth === b.nights && !isEarlyOut(b) && clampHours(b.lateOut) ? [`늦은 ${outTimeOf(s, b)}`] : []),
+              ],
+          cancelled ? [] : (turn.get(b.id) ?? []).filter((w) => w.date === selDate || w.date === addDays(selDate, 1)),
+        )}
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>
     );

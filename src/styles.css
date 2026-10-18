@@ -1307,3 +1307,30 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .stimes label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--ink3); font-weight: 650; }
 .stimes input { font-family: var(--num); font-size: 16px; font-weight: 750; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); min-width: 132px; }
 .stimes input:focus { outline: none; border-color: var(--ink2); }
+/* 빠른 입실 · 늦은 퇴실 */
+.xtchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.xtchip { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-size: 13px; color: var(--ink2); }
+.xtchip .tl { font-weight: 700; margin-right: 2px; }
+.xtchip .sb { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--ink2); background: var(--panel2); }
+.xtchip .sb:disabled { opacity: 0.35; }
+.xtchip .tv { min-width: 40px; text-align: center; font-weight: 700; color: var(--ink3); }
+.xtchip .tt { font-family: var(--num); font-size: 12.5px; font-weight: 750; color: var(--ink3); padding: 0 6px; }
+.xtchip.on { border-color: var(--ink); color: var(--ink); }
+.xtchip.on .tv, .xtchip.on .tt { color: var(--ink); }
+.xfee .chip.svc { height: 26px; padding: 0 10px; font-size: 12px; }
+.twarn { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--red); }
+.paysplit { margin: -2px 0 2px; }
+.ttag { font-family: var(--num); font-size: 10px; font-weight: 750; color: var(--ink2); background: rgba(0, 0, 0, 0.06); border-radius: 4px; padding: 0 4px; white-space: nowrap; line-height: 15px; }
+.ttag.warn { background: var(--red); color: #fff; }
+.stimes .hfee { display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink2); font-size: 14px; }
+.stimes .hfee input { border: 0; padding: 0; min-width: 0; width: 96px; text-align: right; }
+.stimes-f { margin-top: 10px; }
+.cell .r3 .ttags { display: inline-flex; gap: 3px; flex: none; }
+.cell .r3 .ttag.warn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cbar .ttag { flex: none; background: rgba(255, 255, 255, 0.9); }
+.cbar .ttag.hide { display: none; }
+.cbar .ttag.cb-w { background: var(--red); color: #fff; padding: 0 5px; }
+.cbar .cb-n + .ttag { margin-left: auto; }
+.cell .r3 .ttag.warn { white-space: normal; overflow: visible; line-height: 1.25; padding: 1px 4px; text-align: left; flex: 1 1 auto; }
+.cell .r3:has(.ttag.warn) { white-space: normal; align-items: flex-start; }
+.cell .r3 .ttag.warn { word-break: keep-all; }

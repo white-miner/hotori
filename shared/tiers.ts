@@ -69,3 +69,10 @@ export function shiftTime(time: string, hours: number): { time: string; days: nu
   const t = ((total % 1440) + 1440) % 1440;
   return { time: `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`, days };
 }
+
+/** 빠른 입실 · 늦은 퇴실 1시간 요금 (0원 ~ 100만 원, 없으면 1만 원) */
+export const DEFAULT_HOUR_FEE = 10_000;
+export const HOUR_FEE_MAX = 1_000_000;
+export function normalizeHourFee(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(HOUR_FEE_MAX, Math.round(v)) : DEFAULT_HOUR_FEE;
+}

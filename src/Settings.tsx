@@ -25,6 +25,7 @@ import {
   typeLabel,
   typeTotals,
   usableTypes,
+  won,
 } from "../shared/ledger";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { canAddShopItem } from "../shared/shop";
@@ -702,7 +703,21 @@ export default function Settings({ data, email, notify }: Props) {
               <span>퇴실 시간</span>
               <input type="time" step={1800} value={s.stayTimes.checkOut} aria-label="퇴실 시간" onChange={(e) => e.target.value && update((x) => ({ ...x, stayTimes: { ...x.stayTimes, checkOut: e.target.value.slice(0, 5) } }))} />
             </label>
+            <label>
+              <span>1시간 추가 요금</span>
+              <span className="inp price hfee">
+                <input
+                  className="num"
+                  inputMode="numeric"
+                  aria-label="1시간 추가 요금"
+                  value={won(s.extraHourFee)}
+                  onChange={(e) => update((x) => ({ ...x, extraHourFee: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) }))}
+                />
+                원
+              </span>
+            </label>
           </div>
+          <div className="sub stimes-f">빠른 입실 · 늦은 퇴실 1시간마다 이 금액을 판매 가격에 더해요. 예약 창에서 금액을 바꾸거나 서비스(0원)로 할 수 있어요.</div>
         </section>
 
         <section className="card" id="set-surcharge">

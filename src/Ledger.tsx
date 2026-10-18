@@ -5,7 +5,8 @@ import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
-import { bookingCash, payState } from "../shared/payment";
+import { bookingCash, paySplit, payState } from "../shared/payment";
+import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
@@ -57,6 +58,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
+  const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -82,8 +84,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   useEffect(() => {
     let alive = true;
     queryPayments(hotelId, from, to)
-      .then((r) => alive && setPayCash(bookingCash(r, from, to)))
-      .catch(() => alive && setPayCash(0));
+      .then((r) => {
+        if (!alive) return;
+        setPayCash(bookingCash(r, from, to));
+        setPaySum(paySplit(r, from, to));
+      })
+      .catch(() => {
+        if (!alive) return;
+        setPayCash(0);
+        setPaySum(null);
+      });
     return () => {
       alive = false;
     };
@@ -168,6 +178,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
                   {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
                   {b.guests ? <small className="gcount"> · {b.guests}명</small> : null}
+                  {timeTags(s, b).length ? <small className="gcount" title={`${timeLine(b)}${isTimeService(b) ? " · 서비스" : b.timeFee ? ` · ${won(b.timeFee)}원 포함` : ""}`}> · {timeTags(s, b).join(" · ")}</small> : null}
                 </span>
                 <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
                   {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
@@ -353,7 +364,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             </span>
             <span
               className={`cash ${money.cash < 0 ? "neg" : ""}`}
-              title="현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금, 받은 날 기준) − 현금 지출. 플랫폼이 받은 예약 금액과 카드는 빠져요"
+              title="현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금, 받은 날 기준) − 현금 지출. 플랫폼이 받은 예약 금액과 카드·이체는 빠져요"
             >
               현금 시재<b>{won(money.cash)}원</b>
               <i className="muted">
@@ -362,6 +373,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
               </i>
             </span>
           </div>
+          {tab === "bookings" && paySum && paySum.total > 0 ? (
+            <div className="lsum-f muted paysum" title="받은 날 기준 예약 선금·잔금 (단체 정산 포함). 이체는 현금 시재에 안 들어가요">
+              예약 받은 돈 {won(paySum.total)}원 · 카드 {won(paySum.card)} · 현금 {won(paySum.cash)} · 이체 {won(paySum.transfer)}
+            </div>
+          ) : null}
           {tab === "bookings" && dueTotal > 0 ? (
             <div className="lsum-f">
               <span className="dueamt">잔금 남음 {won(dueTotal)}원</span> <span className="muted">· 이 목록에서 아직 못 받은 돈</span>
