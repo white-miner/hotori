@@ -31,6 +31,7 @@ import {
   won,
 } from "../shared/ledger";
 import { type HotelData, WINDOW_BACK, queryStays } from "./data";
+import RoomCalendar from "./RoomCalendar";
 import { DateChip, FitText, PlatBadge, Ring, TypeBadge, TypeLine, lookups } from "./ui";
 
 interface Props {
@@ -59,7 +60,7 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
-/** 현황판 탭: 주소(#/board/stock · #/board/rooms)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 재고 현황 */
+/** 현황판 탭: 주소(#/board/stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 재고 현황 */
 const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
@@ -89,7 +90,8 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     const h = boardTabFromHash(location.hash);
     if (h) return h;
     try {
-      return localStorage.getItem(TAB_KEY) === "rooms" ? "rooms" : "stock";
+      const v = localStorage.getItem(TAB_KEY);
+      return v === "rooms" || v === "calendar" ? v : "stock";
     } catch {
       return "stock";
     }
@@ -108,6 +110,8 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
       if (/^(#\/?|#\/board\/?)?$/.test(location.hash)) history.replaceState(history.state, "", `${location.pathname}${location.search}#/board/${x}`);
     };
     fill(read());
+    const h0 = boardTabFromHash(location.hash);
+    if (h0) remember(h0); // 주소로 바로 들어와도 이 탭을 기억해요
     const on = () => {
       const h = boardTabFromHash(location.hash);
       if (h) {
@@ -386,6 +390,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
         객실 배치
       </button>
+      <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
+        객실 캘린더
+      </button>
     </div>
   );
   // 오버부킹이 하나라도 있으면 두 탭 모두 맨 위에 빨간 알림 (누르면 재고 현황)
@@ -433,6 +440,46 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     </div>
   ) : null;
 
+  // 재고 현황과 객실 캘린더는 보는 기간(14일·주·월·기간)을 함께 써요
+  const periodSeg = readOnly ? null : (
+    <div className="seg period" role="tablist" aria-label="보는 기간">
+      {PERIODS.map((p) => (
+        <button key={p.id} role="tab" aria-selected={period === p.id} className={period === p.id ? "on" : ""} onClick={() => setPeriod(p.id)}>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+  const rangeNav = readOnly ? null : (
+    <div className="rnav">
+      <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
+        <ChevronLeft size={16} />
+      </button>
+      {period === "range" ? (
+        <span className="rnav-r">
+          <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
+          <span className="muted">~</span>
+          <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
+        </span>
+      ) : (
+        <b className="rnav-l">{stockRangeLabel(period, view.from, view.to, today)}</b>
+      )}
+      <button className="ar" aria-label="다음" onClick={() => shift(1)}>
+        <ChevronRight size={16} />
+      </button>
+      <button className="btn sm" disabled={atToday} onClick={goToday}>
+        오늘
+      </button>
+      <span className="rnav-n muted">
+        {period === "range" ? `${viewDates.length}일` : null}
+        {viewLoading ? " 불러오는 중…" : null}
+      </span>
+      {viewOvers.length && !(period === "d14" && view.from === today) ? (
+        <span className="rnav-o">이 기간 오버부킹 {viewOvers.length}건</span>
+      ) : null}
+    </div>
+  );
+
   if (tab === "stock")
     return (
       <main className="page board-page one">
@@ -443,15 +490,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <div>
               <div className="hl-t">
                 <h1>재고 현황</h1>
-                {readOnly ? null : (
-                  <div className="seg period" role="tablist" aria-label="보는 기간">
-                    {PERIODS.map((p) => (
-                      <button key={p.id} role="tab" aria-selected={period === p.id} className={period === p.id ? "on" : ""} onClick={() => setPeriod(p.id)}>
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {periodSeg}
               </div>
               <div className="when">
                 {nowLabel()} · 남은 객실{scopeId ? ` · ${bName(scopeId)}만` : ""}
@@ -474,35 +513,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
 
-          {readOnly ? null : (
-            <div className="rnav">
-              <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
-                <ChevronLeft size={16} />
-              </button>
-              {period === "range" ? (
-                <span className="rnav-r">
-                  <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
-                  <span className="muted">~</span>
-                  <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
-                </span>
-              ) : (
-                <b className="rnav-l">{stockRangeLabel(period, view.from, view.to, today)}</b>
-              )}
-              <button className="ar" aria-label="다음" onClick={() => shift(1)}>
-                <ChevronRight size={16} />
-              </button>
-              <button className="btn sm" disabled={atToday} onClick={goToday}>
-                오늘
-              </button>
-              <span className="rnav-n muted">
-                {period === "range" ? `${viewDates.length}일` : null}
-                {viewLoading ? " 불러오는 중…" : null}
-              </span>
-              {viewOvers.length && !(period === "d14" && view.from === today) ? (
-                <span className="rnav-o">이 기간 오버부킹 {viewOvers.length}건</span>
-              ) : null}
-            </div>
-          )}
+          {rangeNav}
           {buildingTabs}
           {scopeId && unassigned ? (
             <div className="b-note">방을 안 정한 숙박 {unassigned}건은 어느 건물인지 몰라서 '전체'에만 들어가요.</div>
@@ -543,6 +554,50 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           <p className="stock-hint">날짜나 숫자를 누르면 그날 밤 객실 배치로 가요</p>
+        </div>
+      </main>
+    );
+
+  if (tab === "calendar")
+    return (
+      <main className="page board-page one">
+        <div className="main">
+          {tabs}
+          {banner}
+          <div className="hl">
+            <div>
+              <div className="hl-t">
+                <h1>객실 캘린더</h1>
+                {periodSeg}
+              </div>
+              <div className="when">
+                {nowLabel()} · 방마다 숙박 막대{scopeId ? ` · ${bName(scopeId)}만` : ""}
+              </div>
+            </div>
+            <div className="lg cal-lg">
+              <span><i className="lg-bar" />숙박</span>
+              <span><i className="lg-bar cx" />취소·노쇼</span>
+              <span><i className="lg-dot" />대실</span>
+              <span><Ring on size={13} />입실 완료</span>
+            </div>
+          </div>
+          {rangeNav}
+          {buildingTabs}
+          {scopeId && unassigned ? (
+            <div className="b-note">방을 안 정한 숙박 {unassigned}건은 어느 건물인지 몰라서 '전체'에만 보여요.</div>
+          ) : null}
+          <RoomCalendar
+            s={s}
+            L={L}
+            bookings={viewBookings}
+            dates={viewDates}
+            today={today}
+            scopeId={scopeId}
+            multi={multi}
+            readOnly={readOnly}
+            onOpen={onOpen}
+            onNew={onNew}
+          />
         </div>
       </main>
     );

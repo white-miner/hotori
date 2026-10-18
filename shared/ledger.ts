@@ -484,10 +484,10 @@ export function stockRangeLabel(period: StockPeriod, from: string, to: string, t
 }
 
 // ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
-export type BoardTab = "stock" | "rooms";
+export type BoardTab = "stock" | "rooms" | "calendar";
 /** '#/board/rooms' → rooms, '#/board/stock' → stock, 그 밖에는 null (기기에 남긴 탭을 써요) */
 export function boardTabFromHash(hash: string): BoardTab | null {
-  const m = /^#\/board\/(stock|rooms)\/?$/.exec(hash);
+  const m = /^#\/board\/(stock|rooms|calendar)\/?$/.exec(hash);
   return m ? (m[1] as BoardTab) : null;
 }
 

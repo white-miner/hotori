@@ -379,6 +379,7 @@ test("현황판 탭 주소: #/board/stock · #/board/rooms", async () => {
   assert.equal(boardTabFromHash("#/board/stock"), "stock");
   assert.equal(boardTabFromHash("#/board/rooms"), "rooms");
   assert.equal(boardTabFromHash("#/board/rooms/"), "rooms");
+  assert.equal(boardTabFromHash("#/board/calendar"), "calendar");
   assert.equal(boardTabFromHash("#/board"), null);
   assert.equal(boardTabFromHash("#/ledger"), null);
   assert.equal(boardTabFromHash(""), null);
