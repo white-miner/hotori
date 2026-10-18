@@ -232,6 +232,22 @@ export function moveFloor(s: HotelSettings, floorId: string, dir: -1 | 1): Hotel
   [floors[a], floors[b]] = [floors[b], floors[a]];
   return { ...s, floors };
 }
+/** 새 층 이름: 그 건물 층 이름의 가장 큰 숫자 + 1 (숫자가 없으면 층 수 + 1) */
+export function nextFloorName(s: HotelSettings, buildingId: string): string {
+  const fl = floorsOf(s, buildingId);
+  const nums = fl.map((f) => Number(/(\d+)/.exec(f.name)?.[1])).filter((n) => Number.isFinite(n));
+  return `${nums.length ? Math.max(...nums) + 1 : fl.length + 1}층`;
+}
+/** 층 추가: 새 층은 그 건물의 맨 위(목록·현황판 첫 줄)에 들어가요 */
+export function addFloorOnTop(s: HotelSettings, buildingId: string, id: string): HotelSettings {
+  const floor: Floor = { id, name: nextFloorName(s, buildingId), buildingId, color: null, rooms: [] };
+  const top = floorsOf(s, buildingId)[0];
+  const at = top ? s.floors.findIndex((x) => x.id === top.id) : -1;
+  const floors = s.floors.slice();
+  if (at < 0) floors.push(floor);
+  else floors.splice(at, 0, floor);
+  return { ...s, floors };
+}
 /** 건물 지우기: 그 건물의 층·방도 같이 지워요 (마지막 건물은 못 지워요) */
 export function removeBuilding(s: HotelSettings, buildingId: string): HotelSettings {
   if (s.buildings.length <= 1) return s;

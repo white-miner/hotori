@@ -8,6 +8,7 @@ import {
   firstOverbooking,
   TYPE_CODE_MAX,
   addRoomsToFloor,
+  addFloorOnTop,
   allRooms,
   duplicateRoomNos,
   floorsOf,
@@ -297,4 +298,23 @@ test("객실 타입 약자는 12글자까지", () => {
   const s2 = normalizeSettings({ ...M, types: [...M.types, t] });
   assert.equal(s2.types.at(-1)?.code, t.code, "저장·불러오기에서 잘리지 않아요");
   assert.equal(validateBooking(bk({ typeId: "long" }), s2), null);
+});
+
+test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1", () => {
+  const two = normalizeSettings({
+    ...M,
+    floors: [{ id: "fm5", name: "5층", buildingId: "b-main", rooms: [] }, ...M.floors],
+  });
+  const before = floorsOf(two, "b-main").map((f) => f.id);
+  const added = addFloorOnTop(two, "b-main", "fnew");
+  const main = floorsOf(added, "b-main");
+  assert.deepEqual(main.map((f) => f.id), ["fnew", ...before], "본관 맨 위에 생겨요");
+  assert.equal(main[0].name, "6층");
+  assert.deepEqual(floorsOf(added, "b-annex").map((f) => f.id), floorsOf(two, "b-annex").map((f) => f.id), "별관은 그대로");
+  const annex = floorsOf(addFloorOnTop(two, "b-annex", "fa3"), "b-annex");
+  assert.equal(annex[0].id, "fa3");
+  assert.deepEqual(orderedFloors(moveFloor(added, "fnew", 1)).filter((f) => f.buildingId === "b-main")[1].id, "fnew", "이동 버튼도 그대로");
+  const empty = normalizeSettings({ buildings: [{ id: "x", name: "A동" }], floors: [] });
+  const first = addFloorOnTop(empty, "x", "f1");
+  assert.equal(first.floors[0].name, "1층");
 });

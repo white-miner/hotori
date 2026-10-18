@@ -6,6 +6,7 @@ import {
   TYPE_NAME_MAX,
   addRoomsToFloor,
   floorsOf,
+  addFloorOnTop,
   isMultiBuilding,
   moveFloor,
   parseRoomInput,
@@ -131,7 +132,7 @@ export default function Settings({ data, email, notify }: Props) {
   };
   const addFloor = (buildingId: string) => {
     const id = uid("f");
-    update((x) => ({ ...x, floors: [...x.floors, { id, name: `${floorsOf(x, buildingId).length + 1}층`, buildingId, color: null, rooms: [] }] }));
+    update((x) => addFloorOnTop(x, buildingId, id));
     setSelFloor(id);
     setSelRoom(null);
     setSelBuilding(null);
