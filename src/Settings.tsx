@@ -22,6 +22,12 @@ interface Props {
   email: string;
   notify: (m: string) => void;
 }
+/** 받침이 있으면 a(과·은·이), 없으면 b(와·는·가) */
+const josa = (w: string, a: string, b: string) => {
+  const c = w.trim().slice(-1).charCodeAt(0);
+  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 ? a : b;
+  return /[0-9lmnLMN136780]$/.test(w.trim()) ? a : b;
+};
 const NO_TYPE = "__none"; // '타입 없음'으로 칠하기
 const move = <T,>(a: T[], i: number, d: number): T[] => {
   const j = i + d;
@@ -129,9 +135,9 @@ export default function Settings({ data, email, notify }: Props) {
   const paintTarget = paint === NO_TYPE ? null : paint;
   const paintFloor = (f: Floor) => {
     const n = f.rooms.filter((r) => (r.typeId ?? null) !== paintTarget).length;
-    if (!n) return notify(`${f.name}은 이미 모두 ${paintTarget ? typeLabel(typeOf(paintTarget)) : "타입 없음"}이에요`);
+    if (!n) return notify(paintTarget ? `${f.name}은 이미 모두 ${typeLabel(typeOf(paintTarget))} 타입이에요` : `${f.name}은 이미 모두 타입이 없어요`);
     setFloor(f.id, (x) => ({ ...x, rooms: x.rooms.map((r) => ({ ...r, typeId: paintTarget })) }));
-    notify(`${f.name} ${n}실을 ${paintTarget ? typeLabel(typeOf(paintTarget)) : "타입 없음"}(으)로 바꿨어요`);
+    notify(`${f.name} ${n}실을 ${paintTarget ? `${typeLabel(typeOf(paintTarget))} 타입으로` : "타입 없음으로"} 바꿨어요`);
   };
   const choosePaint = (id: string) => {
     setPaint(id);
@@ -148,7 +154,7 @@ export default function Settings({ data, email, notify }: Props) {
     update((x) => addRoomsToFloor(x, fid, addVal, paint === NO_TYPE ? null : (paint ?? usableTypes(x.types)[0]?.id ?? null), () => uid("r")).settings);
     setAddVal("");
     setAdding(null);
-    notify(`${res.added.length}개 방을 추가했어요${res.skipped.length ? ` · 이미 있는 ${res.skipped.length}개는 건너뛰었어요` : ""}`);
+    notify(`방 ${res.added.length}개를 추가했어요${res.skipped.length ? ` · 이미 있는 ${res.skipped.length}개는 건너뛰었어요` : ""}`);
   };
   const addFloor = (buildingId: string) => {
     const id = uid("f");
@@ -180,7 +186,7 @@ export default function Settings({ data, email, notify }: Props) {
     <main className="page settings">
       <div className="ph">
         <div>
-          <h1>설정 · 우리 호텔 객실</h1>
+          <h1>설정</h1>
           <div className="sub">처음 한 번만 등록하면 돼요. 화이트보드처럼 층과 방 번호를 적고, 방마다 타입을 정해요.</div>
         </div>
         <div className="chips">
@@ -205,7 +211,7 @@ export default function Settings({ data, email, notify }: Props) {
             객실 배치 <span className="tag">총 {roomTotal}실{hotel.isDemo ? " · 예시 배정" : ""}</span>
           </h3>
           <div className="sub">
-            층 줄에 방을 추가하고(예: <b>601~610</b>), 층 이름을 누르면 번호줄 색을 고를 수 있어요.
+            층 줄의 +를 눌러 방을 추가하고(예: <b>601~610</b>), 층 이름을 누르면 번호줄 색을 바꿀 수 있어요.
           </div>
           <div className="stools">
             <span className="push" />
@@ -219,7 +225,7 @@ export default function Settings({ data, email, notify }: Props) {
             </button>
           </div>
           <div className={`paint ${paint ? "active" : ""}`} id="set-paint">
-            <span className="pl">방 타입 지정</span>
+            <span className="pl">객실 타입 지정</span>
             <div className="pchips">
               {usableTypes(s.types).map((t) => (
                 <button
@@ -248,7 +254,7 @@ export default function Settings({ data, email, notify }: Props) {
                 "아래 '객실 타입'에서 타입을 먼저 만들어 주세요"
               ) : paint ? (
                 <>
-                  <b>{paint === NO_TYPE ? "타입 없음" : typeLabel(typeOf(paint))}</b> 고름 · 방을 누르면 바로 바뀌어요 · 층 이름을 누르면 그 층 전체
+                  <b>{paint === NO_TYPE ? "타입 없음" : typeLabel(typeOf(paint))}</b> 선택됨 · 방을 누르면 바로 바뀌고, 층 이름을 누르면 그 층 전체가 바뀌어요
                 </>
               ) : (
                 "타입을 고른 뒤 방을 누르면 한꺼번에 지정돼요"
@@ -359,7 +365,7 @@ export default function Settings({ data, email, notify }: Props) {
                   onClick={() => {
                     const fl = floorsOf(s, building.id);
                     const n = fl.reduce((k, f) => k + f.rooms.length, 0);
-                    if (n && !confirm(`${building.name}과 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방을 아직 안 정한 숙박'으로 옮겨져요.`)) return;
+                    if (n && !confirm(`${building.name}${josa(building.name, "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
                     update((x) => removeBuilding(x, building.id));
                     setSelBuilding(null);
                   }}
@@ -393,7 +399,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <button
                   className="btn sm ghost"
                   onClick={() => {
-                    if (floor.rooms.length && !confirm(`${floor.name}과 방 ${floor.rooms.length}개를 지울까요? 기존 예약은 '방을 아직 안 정한 숙박'으로 옮겨져요.`)) return;
+                    if (floor.rooms.length && !confirm(`${floor.name}${josa(floor.name, "과", "와")} 방 ${floor.rooms.length}개를 지울까요? 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
                     update((x) => ({ ...x, floors: x.floors.filter((f) => f.id !== floor.id) }));
                     setSelFloor(null);
                   }}
@@ -472,7 +478,7 @@ export default function Settings({ data, email, notify }: Props) {
                 </button>
               </div>
               <div className="ed-row">
-                <label>방 색 (특수객실)</label>
+                <label>방 색 (특수 객실)</label>
                 <Swatches value={room.r.color} noneLabel="층 색" onChange={(c) => setRoom(room.r.id, (r) => ({ ...r, color: c }))} />
               </div>
             </div>
@@ -483,7 +489,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">방 칸과 현황표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
+          <div className="sub">방 칸과 객실 현황 표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">
@@ -521,7 +527,7 @@ export default function Settings({ data, email, notify }: Props) {
                 className="ic"
                 aria-label="타입 지우기"
                 onClick={() => {
-                  if (used.t.has(t.id)) return notify("예약 기록에 쓰인 타입은 지울 수 없어요. 타입 글자를 바꿔 주세요.");
+                  if (used.t.has(t.id)) return notify("예약에 쓰인 타입은 지울 수 없어요. 이름을 바꿔 주세요.");
                   update((x) => ({
                     ...x,
                     types: x.types.filter((y) => y.id !== t.id),
@@ -546,7 +552,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             플랫폼 <span className="tag">{s.platforms.length}개</span>
           </h3>
-          <div className="sub">한 글자 약자는 화이트보드 메모처럼 방 칸에 보여요. 순서대로 단축키 1~9가 붙어요.</div>
+          <div className="sub">동그라미 속 한 글자는 화이트보드 메모처럼 방 칸에 보여요. 위에서부터 단축키 1~9가 붙어요.</div>
           {s.platforms.map((p, i) => (
             <div className="trow" key={p.id}>
               <span className="ord">
@@ -561,7 +567,7 @@ export default function Settings({ data, email, notify }: Props) {
                 className="pb pbin"
                 value={p.abbr}
                 maxLength={1}
-                aria-label="약자"
+                aria-label="한 글자 표시"
                 onChange={(e) => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, abbr: e.target.value } : y)) }))}
               />
               <input
@@ -576,7 +582,7 @@ export default function Settings({ data, email, notify }: Props) {
                 className="ic"
                 aria-label="플랫폼 지우기"
                 onClick={() => {
-                  if (used.p.has(p.id)) return notify("예약 기록에 쓰인 플랫폼은 지울 수 없어요. 타입 글자를 바꿔 주세요.");
+                  if (used.p.has(p.id)) return notify("예약에 쓰인 플랫폼은 지울 수 없어요. 이름을 바꿔 주세요.");
                   update((x) => ({ ...x, platforms: x.platforms.filter((y) => y.id !== p.id) }));
                 }}
               >
@@ -600,7 +606,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             요금제 <span className="tag red">결제는 준비 중</span>
           </h3>
-          <div className="sub">지금은 표시만 해요. 결제는 검증이 끝난 뒤에 붙여요.</div>
+          <div className="sub">지금은 요금제 표시만 해요. 결제 기능은 곧 추가돼요.</div>
           <div className="plan">
             <div className={hotel.plan === "free" ? "now" : ""}>
               <b>Free {hotel.plan === "free" ? <span className="tag">사용 중</span> : null}</b>

@@ -187,7 +187,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
           : override === "noshow"
             ? `${saved.guestName} 님 노쇼로 표시했어요 · 남은 객실이 늘었어요`
-            : `${saved.guestName} 님 ${isNew ? "기록" : "수정"}했어요${tail}`,
+            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
     } catch (e) {
@@ -201,7 +201,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
     setBusy(true);
     try {
       await data.deleteBooking(base.id);
-      onSaved(`${base.guestName} 님 기록을 지웠어요`);
+      onSaved(`${base.guestName} 님 예약을 지웠어요`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "지우지 못했어요");
       setBusy(false);
@@ -276,7 +276,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
               대실
             </button>
           </div>
-          {!isActive(draft) ? <span className="cxt big">{status === "noshow" ? "노쇼" : "취소"}된 예약</span> : null}
+          {!isActive(draft) ? <span className="cxt big">{status === "noshow" ? "노쇼 처리된" : "취소된"} 예약</span> : null}
           <button type="button" className="x" onClick={onClose}>
             <kbd>Esc</kbd>닫기
           </button>
@@ -382,7 +382,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
         ) : (
           <div className="fld">
             <label>
-              이용시간<em>*</em>
+              이용 시간<em>*</em>
             </label>
             <div className="times">
               <span className="tbox">
@@ -396,7 +396,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                   onChange={(e) => setStartRaw(e.target.value)}
                   onBlur={() => startTime && setStartRaw(startTime)}
                   aria-label="시작 시간"
-                  title="1330 처럼 숫자만 적어도 돼요"
+                  title="1330처럼 숫자만 적어도 돼요"
                 />
                 <TimePick value={startTime} label="시작 시간 고르기" onPick={(v) => setStartRaw(v)} />
               </span>
@@ -488,7 +488,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                 placeholder={kind === "stay" ? "총액" : "금액"}
                 value={price ? won(Number(price)) : ""}
                 onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                aria-label="판매가격"
+                aria-label="판매 가격"
               />
               원{per ? <small>1박 평균 {won(per)}원</small> : null}
             </label>
@@ -542,7 +542,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
 
         <div className="pv">
           {kind === "dayuse" ? (
-            <div className="pt">대실은 남은 객실 계산에 들어가지 않아요. 이용시간만 따로 보여 줘요.</div>
+            <div className="pt">대실은 남은 객실에 포함되지 않아요. 이용 시간만 따로 보여 줘요.</div>
           ) : !isActive(draft) ? (
             <div className="pt">취소·노쇼는 장부에 줄을 그어 남기고, 남은 객실은 다시 늘어나요.</div>
           ) : preview.length ? (
@@ -571,7 +571,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                   </div>
                 );
               })}
-              {preview.length > 4 ? <div className="pt more">외 {preview.length - 4}개 밤도 같이 바뀌어요</div> : null}
+              {preview.length > 4 ? <div className="pt more">외 {preview.length - 4}박도 함께 바뀌어요</div> : null}
             </>
           ) : (
             <div className="pt">남은 객실 숫자는 그대로예요.</div>
@@ -619,7 +619,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                 </button>
               ) : (
                 <button type="button" className="btn sm ghost" onClick={() => setConfirmDel(true)}>
-                  기록 지우기
+                  예약 지우기
                 </button>
               )}
             </div>

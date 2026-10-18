@@ -74,7 +74,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
           <input value={query} placeholder="이름·플랫폼·메모·방 번호" onChange={(e) => setQuery(e.target.value)} />
         </label>
         <label className="fdate">
-          입실
+          입실일
           <input type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} />~
           <input type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} />
         </label>
@@ -95,14 +95,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
           ))}
         </select>
         <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="종류">
-          <option value="">숙박·대실</option>
+          <option value="">숙박·대실 전체</option>
           <option value="stay">숙박</option>
           <option value="dayuse">대실</option>
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} aria-label="정렬">
           <option value="in-desc">입실 날짜 늦은 순</option>
           <option value="in-asc">입실 날짜 이른 순</option>
-          <option value="rec">최근 적은·고친 순</option>
+          <option value="rec">최근 기록·수정 순</option>
         </select>
         <div className="seg">
           {(
@@ -121,7 +121,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
       {err ? <div className="ferr">{err}</div> : null}
       <div className="ltable">
         <div className="lrow lhead">
-          <span>입실</span>
+          <span>입실일</span>
           <span>종류</span>
           <span>플랫폼</span>
           <span>이름</span>
@@ -134,7 +134,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
         {rows === null ? (
           <div className="lempty">불러오는 중…</div>
         ) : list.length === 0 ? (
-          <div className="lempty">조건에 맞는 기록이 없어요</div>
+          <div className="lempty">조건에 맞는 예약이 없어요</div>
         ) : (
           list.map((b) => {
             const p = L.plats.get(b.platformId);

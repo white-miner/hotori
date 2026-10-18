@@ -526,14 +526,14 @@ export function nowRounded(d: Date = new Date(), step = 5): string {
 export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.platforms.some((p) => p.id === b.platformId)) return "플랫폼을 골라 주세요.";
   if (!s.types.some((t) => t.id === b.typeId && typeLabel(t))) return "객실 타입을 골라 주세요.";
-  if (!b.guestName.trim()) return "이름을 적어 주세요.";
-  if (!Number.isFinite(b.price) || b.price < 0) return "판매가격을 적어 주세요.";
+  if (!b.guestName.trim()) return "손님 이름을 적어 주세요.";
+  if (!Number.isFinite(b.price) || b.price < 0) return "판매 가격을 적어 주세요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
-    if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박이에요.";
+    if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";
   } else {
     if (!b.startTime || !b.endTime || !TIME_RE.test(b.startTime) || !TIME_RE.test(b.endTime))
-      return "대실은 이용시간을 꼭 적어 주세요. 예: 12:00~14:00";
+      return "대실은 이용 시간을 꼭 적어 주세요. 예: 12:00~14:00";
     if (b.startTime === b.endTime) return "대실 시작과 끝 시간이 같아요.";
   }
   return null;

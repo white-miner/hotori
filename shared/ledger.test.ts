@@ -194,9 +194,9 @@ test("총액으로 적고 1박 평균은 자동 계산", () => {
   assert.equal(perNight({ price: 80000, nights: 1 }), null);
 });
 
-test("대실은 이용시간이 꼭 있어야 저장돼요", () => {
+test("대실은 이용 시간이 꼭 있어야 저장돼요", () => {
   const d = bk({ kind: "dayuse", nights: null, startTime: null, endTime: null });
-  assert.match(validateBooking(d, S) ?? "", /이용시간/);
+  assert.match(validateBooking(d, S) ?? "", /이용 시간/);
   assert.equal(validateBooking({ ...d, startTime: "12:00", endTime: "14:00" }, S), null);
   assert.equal(validateBooking(bk({ nights: 2 }), S), null);
 });

@@ -30,7 +30,7 @@ export default function App() {
     return () => data.subscription.unsubscribe();
   }, []);
   if (!configured)
-    return <div className="center-msg">Supabase 설정(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)이 없어요.</div>;
+    return <div className="center-msg">서버 연결 설정이 없어요. 관리자에게 알려 주세요.</div>;
   if (session === undefined) return <div className="center-msg">불러오는 중…</div>;
   if (!session) return <AuthScreen />;
   return <HotelGate session={session} />;

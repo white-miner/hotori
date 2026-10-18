@@ -7,7 +7,14 @@ const MSG: Record<string, string> = {
   "Email not confirmed": "메일함에서 인증 링크를 먼저 눌러 주세요.",
   "User already registered": "이미 가입된 이메일이에요. 로그인해 주세요.",
 };
-const ko = (m: string) => MSG[m] ?? (m.includes("Password") ? "비밀번호는 6자 이상이어야 해요." : m);
+const ko = (m: string) => {
+  if (MSG[m]) return MSG[m];
+  if (/password/i.test(m)) return "비밀번호는 6자 이상이어야 해요.";
+  if (/rate limit|too many/i.test(m)) return "잠시 뒤에 다시 시도해 주세요.";
+  if (/email/i.test(m) && /invalid|valid/i.test(m)) return "이메일 주소를 다시 확인해 주세요.";
+  if (/fetch|network/i.test(m)) return "인터넷 연결을 확인해 주세요.";
+  return /[가-힣]/.test(m) ? m : `문제가 생겼어요. 잠시 뒤 다시 시도해 주세요. (${m})`;
+};
 
 export default function AuthScreen() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -46,7 +53,7 @@ export default function AuthScreen() {
     <div className="auth">
       <form className="auth-card" onSubmit={submit}>
         <Brand />
-        <h1>{mode === "login" ? "예약 장부에 로그인" : "우리 호텔 장부 만들기"}</h1>
+        <h1>{mode === "login" ? "호토리 로그인" : "우리 호텔 장부 만들기"}</h1>
         <p className="sub">여러 플랫폼 예약을 한 장부에 적고, 남은 객실을 한눈에 봐요.</p>
         <div className="seg wide">
           <button type="button" className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>

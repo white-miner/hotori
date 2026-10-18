@@ -86,7 +86,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         setAssigning(null);
         notify(`${b.guestName} 님 → ${L.roomLabel(roomId)}호`);
       })
-      .catch(() => notify("방을 정하지 못했어요"));
+      .catch(() => notify("방을 배정하지 못했어요"));
 
   const stockCell = (typeId: string, d: string) => {
     const r = table.get(typeId)?.get(d) ?? 0;
@@ -144,10 +144,10 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         </div>
         <div className="r3 rp">
           <span className="pr">{won(b.price)}</span>
-          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">판매 {typeLabel(sold)}</span> : null}
+          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">
-          <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}번째`}</span>
+          <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
           {cancelled ? null : (
             <button
               className="ringbtn"
@@ -182,19 +182,18 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
       <div className="main">
         <div className="hl">
           <div>
-            <div className="when">{nowLabel()} · 앞으로 14일</div>
-            <h1>
-              {over ? (
-                <>
-                  <b>
-                    {dayLabel(over.date)} {typeLabel(over.type)} {over.over}실 초과
-                  </b>
-                  <span className="hl-tail"> — 메인 플랫폼에서 마감해 주세요</span>
-                </>
-              ) : (
-                "오버부킹 없어요"
-              )}
-            </h1>
+            <h1>객실 현황</h1>
+            <div className="when">{nowLabel()} · 오늘부터 14일</div>
+            {over ? (
+              <div className="hl-alert" role="alert">
+                <b>
+                  {dayLabel(over.date)} {typeLabel(over.type)} {over.over}실 초과
+                </b>
+                <span className="hl-tail"> — 메인 플랫폼에서 마감해 주세요</span>
+              </div>
+            ) : (
+              <div className="hl-ok">오버부킹 없음</div>
+            )}
           </div>
           <div className="lg">
             <span>
@@ -207,7 +206,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               <i className="lv-full">0</i>만실
             </span>
             <span>
-              <i className="lv-over">−1</i>초과 = 오버부킹
+              <i className="lv-over">−1</i>초과 (오버부킹)
             </span>
           </div>
         </div>
@@ -215,7 +214,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         <div className="stock-wrap">
           <div className="stock" style={{ ["--days" as string]: DAYS }}>
             <div className="srow">
-              <div className="th lab">남은 객실</div>
+              <div className="th lab">객실 타입</div>
               {dates.map((d) => (
                 <button key={d} className={`th ${d === selDate ? "sel" : ""}`} onClick={() => setSelDate(d)}>
                   <b>{md(d)}</b>
@@ -233,7 +232,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               </div>
             ))}
             <div className="srow total">
-              <div className="tn"><span className="tl-l">전체 남은 방</span><span className="tl-s">전체</span></div>
+              <div className="tn"><span className="tl-l">합계</span><span className="tl-s">합계</span></div>
               {dates.map((d) => (
                 <button key={d} className={`sc ${d === selDate ? "selc" : ""}`} onClick={() => setSelDate(d)}>
                   {s.types.reduce((n, t) => n + Math.max(0, table.get(t.id)?.get(d) ?? 0), 0)}
@@ -245,7 +244,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
 
         <div className="bdh">
           <h2>
-            {dayLabel(selDate)} 밤 · 방 배치 <span>칸을 누르면 고치고, ◯는 한 번 눌러 입실 표시해요</span>
+            {dayLabel(selDate)} 밤 객실 배치 <span>칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요</span>
           </h2>
           <div className="dnav">
             <span className="cnt-m">
@@ -323,7 +322,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
 
       <aside className={`side ${floorTab === "dayuse" ? "show-m" : ""}`}>
         <h3>
-          {dayLabel(selDate)} 대실 <small>{activeDayuse}건 · 남은 객실 계산에는 안 들어가요</small>
+          {dayLabel(selDate)} 대실 <small>{activeDayuse}건 · 남은 객실에 포함되지 않아요</small>
         </h3>
         <div className="lst">
           {board.dayuse.length ? (
@@ -339,7 +338,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
                   </b>
                   <span>
-                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미정"} · {typeLabel(L.types.get(d.typeId)) || "?"} ·{" "}
+                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"} ·{" "}
                     {won(d.price)}원
                   </span>
                 </div>
@@ -366,7 +365,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         </div>
 
         <h3>
-          방을 아직 안 정한 숙박 <small>{board.unassigned.filter(isActive).length}건</small>
+          방 미배정 숙박 <small>{board.unassigned.filter(isActive).length}건</small>
         </h3>
         <div className="lst">
           {board.unassigned.length ? (
@@ -395,7 +394,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     </div>
                     {isActive(b) ? (
                       <button className="btn line sm" onClick={() => setAssigning(open ? null : b.id)}>
-                        {open ? "닫기" : "방 정하기"}
+                        {open ? "닫기" : "방 배정"}
                       </button>
                     ) : null}
                   </div>
@@ -418,7 +417,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               );
             })
           ) : (
-            <div className="it muted">모두 방이 정해졌어요</div>
+            <div className="it muted">모든 숙박에 방이 배정됐어요</div>
           )}
         </div>
 
@@ -430,7 +429,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
             </b>
           </div>
           <div>
-            <span>이날 입실 기록 합계</span>
+            <span>이날 입실 예약 금액</span>
             <b>{won(dayTotal)}원</b>
           </div>
         </div>

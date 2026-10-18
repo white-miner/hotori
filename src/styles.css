@@ -117,6 +117,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .hl .when { font-size: 13px; color: var(--ink3); font-weight: 500; margin-bottom: 6px; }
 .hl h1 { font-size: 24px; font-weight: 750; letter-spacing: -0.035em; line-height: 1.3; }
 .hl h1 b { color: var(--red-d); font-weight: 800; }
+.hl h1 + .when { margin: 4px 0 0; }
+.hl-ok { margin-top: 6px; font-size: 12.5px; color: var(--ink3); font-weight: 600; }
+.hl-alert { margin-top: 8px; font-size: 16px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.4; color: var(--ink); }
+.hl-alert b { color: var(--red-d); font-weight: 800; }
 .lg { display: flex; gap: 14px; font-size: 12px; color: var(--ink3); font-weight: 550; align-items: center; flex-wrap: wrap; }
 .lg span { display: inline-flex; align-items: center; gap: 6px; }
 .lg i { width: 22px; height: 16px; border-radius: 5px; display: inline-block; font-style: normal; font-family: var(--num); font-size: 10px; font-weight: 800; text-align: center; line-height: 16px; }
@@ -489,6 +493,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .hl { margin: 0 6px 12px; }
   .hl .when { font-size: 12px; margin-bottom: 3px; }
   .hl h1 { font-size: 19px; font-weight: 800; }
+  .hl-alert { font-size: 14.5px; }
   .hl-tail, .lg { display: none; }
   .stock-wrap { border-radius: 20px; }
   .stock { padding: 10px 8px 8px; min-width: 0; width: max-content; }
