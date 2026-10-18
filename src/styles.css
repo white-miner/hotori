@@ -341,9 +341,31 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .tag { font-size: 10.5px; font-weight: 700; background: var(--panel); color: var(--ink2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 .card .tag { background: #fff; }
 .tag.red { background: var(--red-s) !important; color: var(--red-d); }
-.paint { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-size: 12.5px; color: var(--ink3); flex-wrap: wrap; }
+.stools { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.stools .push { margin-left: auto; }
+.paint { position: sticky; top: 64px; z-index: 5; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 12px; margin: 0 -6px 12px; padding: 10px 12px; border-radius: 16px; background: var(--panel); font-size: 12.5px; color: var(--ink3); }
+.paint .pl { font-weight: 700; color: var(--ink2); white-space: nowrap; }
+.paint .pchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .paint .chip:not(.on) { background: #fff; }
-.paint .push { margin-left: auto; }
+.paint .chip.on { box-shadow: 0 0 0 2px var(--red-s), inset 0 0 0 1.5px var(--red); background: var(--ink); }
+.paint .chip.none:not(.on) { color: var(--ink3); }
+.paint .pdone { margin-left: 2px; }
+.paint .chip i { display: inline; }
+.paint .phint { grid-column: 2; color: var(--ink4); font-size: 12px; font-weight: 550; }
+.paint .phint b { color: var(--ink); font-weight: 750; }
+.paint.active { background: #fff; box-shadow: inset 0 0 0 1.5px var(--line), 0 6px 18px rgba(0, 0, 0, 0.06); }
+.rboxes.painting .rbox { cursor: pointer; }
+.rboxes.painting .rbox:hover { box-shadow: inset 0 0 0 2px var(--red); }
+.rboxes.painting .rbox.same, .rboxes.painting .rbox.same:hover { box-shadow: inset 0 0 0 2px var(--ink); }
+.paint.active .chip:not(.on) { background: var(--panel); }
+.cntb { margin-left: auto; min-width: 4.4em; justify-content: flex-end; display: inline-flex; align-items: baseline; gap: 1px; padding: 4px 8px; border-radius: 10px; color: var(--ink4); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cntb b { font-family: var(--num); font-weight: 800; color: var(--ink2); font-size: 13px; }
+.cntb:hover:not(:disabled) { background: var(--panel); color: var(--ink2); }
+.cntb:disabled { opacity: 0.5; }
+@media (max-width: 760px) {
+  .paint { top: 58px; grid-template-columns: minmax(0, 1fr); }
+  .paint .phint { grid-column: 1; }
+}
 .sfl { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 6px; margin-bottom: 6px; align-items: start; }
 .flbtn { height: 46px; border-radius: 12px; padding: 0 6px; justify-content: flex-start; }
 .flbtn:hover, .flbtn.on { background: #fff; color: var(--ink); }

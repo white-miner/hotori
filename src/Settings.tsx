@@ -22,6 +22,7 @@ interface Props {
   email: string;
   notify: (m: string) => void;
 }
+const NO_TYPE = "__none"; // '타입 없음'으로 칠하기
 const move = <T,>(a: T[], i: number, d: number): T[] => {
   const j = i + d;
   if (j < 0 || j >= a.length) return a;
@@ -100,6 +101,12 @@ export default function Settings({ data, email, notify }: Props) {
     timer.current = setTimeout(() => void flush(), 700);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!paint) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPaint(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [paint]);
 
   const totals = useMemo(() => typeTotals(s), [s]);
   const roomTotal = s.floors.reduce((n, f) => n + f.rooms.length, 0);
@@ -119,14 +126,26 @@ export default function Settings({ data, email, notify }: Props) {
     update((x) => ({ ...x, floors: x.floors.map((f) => ({ ...f, rooms: f.rooms.map((r) => (r.id === rid ? fn(r) : r)) })) }));
 
   const multi = isMultiBuilding(s);
+  const paintTarget = paint === NO_TYPE ? null : paint;
+  const paintFloor = (f: Floor) => {
+    const n = f.rooms.filter((r) => (r.typeId ?? null) !== paintTarget).length;
+    if (!n) return notify(`${f.name}은 이미 모두 ${paintTarget ? typeLabel(typeOf(paintTarget)) : "타입 없음"}이에요`);
+    setFloor(f.id, (x) => ({ ...x, rooms: x.rooms.map((r) => ({ ...r, typeId: paintTarget })) }));
+    notify(`${f.name} ${n}실을 ${paintTarget ? typeLabel(typeOf(paintTarget)) : "타입 없음"}(으)로 바꿨어요`);
+  };
+  const choosePaint = (id: string) => {
+    setPaint(id);
+    setSelRoom(null);
+    document.getElementById("set-paint")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const addRooms = (fid: string) => {
     // 같은 건물 안에서만 번호가 겹치지 않으면 돼요 (본관 201 · 별관 201 가능)
-    const res = addRoomsToFloor(s, fid, addVal, paint ?? s.types[0]?.id ?? null, () => uid("r"));
+    const res = addRoomsToFloor(s, fid, addVal, paint === NO_TYPE ? null : (paint ?? usableTypes(s.types)[0]?.id ?? null), () => uid("r"));
     if (!res.added.length) {
       if (res.skipped.length) notify(`이미 있는 방 번호예요: ${res.skipped.slice(0, 5).join(", ")}`);
       return setAdding(null);
     }
-    update((x) => addRoomsToFloor(x, fid, addVal, paint ?? x.types[0]?.id ?? null, () => uid("r")).settings);
+    update((x) => addRoomsToFloor(x, fid, addVal, paint === NO_TYPE ? null : (paint ?? usableTypes(x.types)[0]?.id ?? null), () => uid("r")).settings);
     setAddVal("");
     setAdding(null);
     notify(`${res.added.length}개 방을 추가했어요${res.skipped.length ? ` · 이미 있는 ${res.skipped.length}개는 건너뛰었어요` : ""}`);
@@ -186,16 +205,9 @@ export default function Settings({ data, email, notify }: Props) {
             객실 배치 <span className="tag">총 {roomTotal}실{hotel.isDemo ? " · 예시 배정" : ""}</span>
           </h3>
           <div className="sub">
-            층 줄에 방을 추가하고(예: <b>601~610</b>), 위에서 타입을 고른 뒤 방을 누르면 그 타입으로 바뀌어요. 층 이름을 누르면 번호줄 색을 고를 수 있어요.
+            층 줄에 방을 추가하고(예: <b>601~610</b>), 층 이름을 누르면 번호줄 색을 고를 수 있어요.
           </div>
-          <div className="paint">
-            칠할 타입
-            {usableTypes(s.types).map((t) => (
-              <button key={t.id} className={`chip sm ${paint === t.id ? "on" : ""}`} onClick={() => setPaint(paint === t.id ? null : t.id)}>
-                <TypeBadge t={t} />
-              </button>
-            ))}
-            {!usableTypes(s.types).length ? <span className="muted">아래 '객실 타입'에서 타입을 먼저 추가해 주세요</span> : null}
+          <div className="stools">
             <span className="push" />
             {!multi ? (
               <button className="btn line sm" onClick={() => addFloor(s.buildings[0].id)}>
@@ -205,6 +217,43 @@ export default function Settings({ data, email, notify }: Props) {
             <button className="btn line sm" onClick={addBuilding} title="본관·별관처럼 건물이 나뉘어 있을 때">
               <Building2 size={14} />건물 추가
             </button>
+          </div>
+          <div className={`paint ${paint ? "active" : ""}`} id="set-paint">
+            <span className="pl">방 타입 지정</span>
+            <div className="pchips">
+              {usableTypes(s.types).map((t) => (
+                <button
+                  key={t.id}
+                  className={`chip sm ${paint === t.id ? "on" : ""}`}
+                  aria-pressed={paint === t.id}
+                  onClick={() => setPaint(paint === t.id ? null : t.id)}
+                >
+                  {typeLabel(t)}
+                  <i>{totals.get(t.id) ?? 0}</i>
+                </button>
+              ))}
+              {usableTypes(s.types).length ? (
+                <button className={`chip sm none ${paint === NO_TYPE ? "on" : ""}`} aria-pressed={paint === NO_TYPE} onClick={() => setPaint(paint === NO_TYPE ? null : NO_TYPE)}>
+                  타입 없음
+                </button>
+              ) : null}
+              {paint ? (
+                <button className="btn line sm pdone" onClick={() => setPaint(null)}>
+                  끝내기
+                </button>
+              ) : null}
+            </div>
+            <div className="phint">
+              {!usableTypes(s.types).length ? (
+                "아래 '객실 타입'에서 타입을 먼저 만들어 주세요"
+              ) : paint ? (
+                <>
+                  <b>{paint === NO_TYPE ? "타입 없음" : typeLabel(typeOf(paint))}</b> 고름 · 방을 누르면 바로 바뀌어요 · 층 이름을 누르면 그 층 전체
+                </>
+              ) : (
+                "타입을 고른 뒤 방을 누르면 한꺼번에 지정돼요"
+              )}
+            </div>
           </div>
           {s.buildings.map((bd) => (
             <div className={multi ? "sbld" : undefined} key={bd.id}>
@@ -226,20 +275,23 @@ export default function Settings({ data, email, notify }: Props) {
               ) : null}
               {floorsOf(s, bd.id).map((f) => (
             <div className="sfl" key={f.id}>
-              <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={f.name} onClick={() => (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null))}>
+              <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={paint ? `${f.name} 전체를 이 타입으로` : f.name} onClick={() => (paint ? paintFloor(f) : (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null)))}>
                 <span className="fdot" style={f.color ? { background: f.color } : undefined} />
                 {f.name}
               </button>
-              <div className="rboxes">
+              <div className={`rboxes ${paint ? "painting" : ""}`}>
                 {f.rooms.map((r) => {
                   const strip = r.color ?? f.color;
                   return (
                     <button
                       key={r.id}
-                      className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id ? "sel" : ""}`}
+                      className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""}`}
                       style={strip ? { background: strip } : undefined}
                       onClick={() => {
-                        if (paint) setRoom(r.id, (x) => ({ ...x, typeId: paint }));
+                        if (paint) {
+                          // 이미 그 타입이면 아무것도 안 해요
+                          if ((r.typeId ?? null) !== paintTarget) setRoom(r.id, (x) => ({ ...x, typeId: paintTarget }));
+                        }
                         else {
                           setSelRoom(selRoom === r.id ? null : r.id);
                           setSelFloor(null);
@@ -431,7 +483,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">방 칸과 현황표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자)</div>
+          <div className="sub">방 칸과 현황표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">
@@ -457,8 +509,14 @@ export default function Settings({ data, email, notify }: Props) {
                 }}
               />
               <span className="tfill" />
-              <span className="cnt">{totals.get(t.id) ?? 0}</span>
-              <span className="mut">실</span>
+              <button
+                className="cntb"
+                title="방에 지정된 개수 · 누르면 위 객실 배치에서 방을 골라 지정해요"
+                disabled={!typeLabel(t)}
+                onClick={() => choosePaint(t.id)}
+              >
+                <b>{totals.get(t.id) ?? 0}</b>실
+              </button>
               <button
                 className="ic"
                 aria-label="타입 지우기"
