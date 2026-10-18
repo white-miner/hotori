@@ -758,3 +758,41 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .b-note { font-size: 12.5px; color: var(--ink2); background: var(--panel); border-radius: 12px; padding: 8px 12px; margin: 0 0 10px; font-weight: 550; }
 .board-page.one .btabs { margin-bottom: 12px; }
 @media (max-width: 760px) { .b-note { margin: 0 6px 10px; } }
+
+/* ---------- 재고 현황 기간: 14일 · 주 · 월 · 기간 ---------- */
+.hl-t { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.seg.period { padding: 3px; }
+.seg.period button { padding: 5px 14px; font-size: 13px; }
+.rnav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -4px 0 12px; }
+.rnav .ar { width: 34px; height: 34px; border-radius: 50%; background: var(--panel); display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); }
+.rnav .ar:hover { background: var(--hover); }
+.rnav-l { font-family: var(--num), "PV"; font-size: 16px; font-weight: 800; min-width: 150px; text-align: center; white-space: nowrap; }
+.rnav-r { display: inline-flex; align-items: center; gap: 6px; }
+.rnav-r .datechip { min-width: 8.4em; height: 34px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.rnav-n { font-size: 12.5px; }
+.rnav-o { font-size: 12.5px; font-weight: 750; color: var(--red-d); background: var(--red-s); border-radius: 999px; padding: 4px 10px; }
+/* 표: 넓으면 옆으로 밀고, 객실 타입 열·날짜 줄은 붙어 있어요 */
+.stock-wrap.big .stock { width: max-content; min-width: 100%; }
+.stock-wrap.big .srow > :first-child { position: sticky; left: 0; z-index: 2; background: var(--panel2); align-self: stretch; display: flex; align-items: center; padding-left: 4px; }
+.stock-wrap.big .shead { position: sticky; top: 0; z-index: 3; background: var(--panel2); }
+.stock-wrap.big .shead > :first-child { z-index: 4; }
+.stock-wrap.big.wide { max-height: calc(100vh - 220px); overflow: auto; overscroll-behavior-x: contain; }
+.stock-wrap.big.wide .srow { grid-template-columns: 150px repeat(var(--days, 14), minmax(44px, 1fr)); }
+.stock-wrap.big.wide .srow .th b { font-size: 14px; }
+.stock-wrap.big.wide .sc { font-size: 19px; height: 46px; }
+.srow .th.we:not(.sel) { background: var(--panel); }
+.srow.total .sc.we { background: var(--panel); }
+.srow .th.td:not(.sel) { box-shadow: inset 0 0 0 1.5px var(--ink); }
+@media (max-width: 760px) {
+  .hl-t { gap: 10px; }
+  .seg.period { display: flex; width: 100%; }
+  .seg.period button { flex: 1; padding: 6px 0; }
+  .rnav { margin: 0 6px 10px; gap: 5px; }
+  .rnav-l { font-size: 14.5px; min-width: 0; flex: 1; }
+  .rnav-r { flex: 1 1 100%; order: 5; }
+  .rnav-r .datechip { flex: 1; min-width: 0; }
+  .stock-wrap.big.wide { max-height: calc(100vh - 250px); }
+  .stock-wrap.big.wide .srow { grid-template-columns: 44px repeat(var(--days, 14), 44px); }
+  .stock-wrap.big.wide .sc { font-size: 17px; height: 40px; }
+  .stock-wrap.big.wide .srow .th b { font-size: 12.5px; }
+}

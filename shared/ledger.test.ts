@@ -415,3 +415,39 @@ test("건물별 재고: 그 건물 방에서 그 건물에 배정된 숙박만 �
   assert.equal(unassignedStays(M, list, dates), 1);
   assert.equal(unassignedStays(M, list, ["2026-10-19"]), 0);
 });
+
+test("재고 현황 기간: 주는 월~일, 월은 달 길이, 14일은 오늘부터", async () => {
+  const L = await import("./ledger");
+  assert.equal(L.weekStart("2026-10-19"), "2026-10-19", "월요일은 그대로");
+  assert.equal(L.weekStart("2026-10-25"), "2026-10-19", "일요일은 그 주 월요일");
+  assert.equal(L.weekStart("2026-10-21"), "2026-10-19");
+  assert.equal(L.weekStart("2026-11-01"), "2026-10-26", "달을 넘는 주");
+  assert.deepEqual(L.stockRange("week", "2026-10-18"), { from: "2026-10-12", to: "2026-10-18" });
+  assert.deepEqual(L.stockRange("d14", "2026-10-18"), { from: "2026-10-18", to: "2026-10-31" });
+  assert.deepEqual(L.stockRange("month", "2026-02-10"), { from: "2026-02-01", to: "2026-02-28" });
+  assert.deepEqual(L.stockRange("month", "2028-02-10"), { from: "2028-02-01", to: "2028-02-29" }, "윤년");
+  assert.equal(L.monthEnd("2026-04-03"), "2026-04-30");
+  assert.equal(L.monthEnd("2026-12-31"), "2026-12-31");
+  assert.equal(L.dateList("2026-10-30", "2026-11-02").length, 4);
+});
+
+test("‹ › 이동: 14일·주·월", async () => {
+  const L = await import("./ledger");
+  assert.equal(L.shiftStockAnchor("d14", "2026-10-18", 1), "2026-11-01");
+  assert.equal(L.shiftStockAnchor("week", "2026-10-21", -1), "2026-10-12");
+  assert.equal(L.shiftStockAnchor("month", "2026-01-31", 1), "2026-02-01", "1/31 다음 달은 2월 (3월로 넘어가지 않아요)");
+  assert.equal(L.shiftStockAnchor("month", "2026-01-15", -1), "2025-12-01");
+  assert.equal(L.shiftStockAnchor("range", "x", 1, { from: "2026-10-01", to: "2026-10-10" }), "2026-10-11");
+});
+
+test("기간 고르기: 끝 < 시작이면 바꾸고, 92일까지만", async () => {
+  const L = await import("./ledger");
+  assert.deepEqual(L.clampRange("2026-10-10", "2026-10-01"), { from: "2026-10-01", to: "2026-10-10", swapped: true, capped: false });
+  const c = L.clampRange("2026-01-01", "2026-12-31");
+  assert.equal(c.capped, true);
+  assert.equal(L.dateList(c.from, c.to).length, L.STOCK_RANGE_MAX);
+  assert.equal(L.clampRange("2026-01-01", L.addDays("2026-01-01", 91)).capped, false, "딱 92일은 그대로");
+  assert.equal(L.stockRangeLabel("month", "2026-10-01", "2026-10-31", "2026-10-18"), "2026년 10월");
+  assert.equal(L.stockRangeLabel("week", "2026-10-19", "2026-10-25", "2026-10-18"), "10/19(월) ~ 10/25(일)");
+  assert.equal(L.stockRangeLabel("range", "2026-12-28", "2027-01-03", "2026-10-18"), "2026. 12/28(월) ~ 2027. 1/3(일)");
+});

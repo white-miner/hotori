@@ -416,6 +416,73 @@ export function unassignedStays(s: HotelSettings, bookings: Booking[], dates: st
   ).length;
 }
 
+// ---------- 재고 현황 기간 (14일 · 주 · 월 · 기간) ----------
+export type StockPeriod = "d14" | "week" | "month" | "range";
+export const STOCK_RANGE_MAX = 92; // 기간으로 볼 수 있는 최대 일수 (약 3개월)
+export const isStockPeriod = (v: unknown): v is StockPeriod => v === "d14" || v === "week" || v === "month" || v === "range";
+/** 그 주 월요일 (월~일) */
+export function weekStart(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=일
+  return addDays(date, dow === 0 ? -6 : 1 - dow);
+}
+export function monthStart(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+export function monthEnd(date: string): string {
+  const [y, m] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+export function dateList(from: string, to: string): string[] {
+  const n = daysBetween(from, to);
+  return Array.from({ length: Math.max(0, n) + 1 }, (_, i) => addDays(from, i));
+}
+/** 기간 고르기: 끝이 시작보다 앞이면 바꾸고, 너무 길면 시작부터 최대 일수까지만 */
+export function clampRange(from: string, to: string, max = STOCK_RANGE_MAX): { from: string; to: string; swapped: boolean; capped: boolean } {
+  let a = from;
+  let b = to;
+  const swapped = b < a;
+  if (swapped) [a, b] = [b, a];
+  const capped = daysBetween(a, b) + 1 > max;
+  if (capped) b = addDays(a, max - 1);
+  return { from: a, to: b, swapped, capped };
+}
+/**
+ * 보이는 날짜 범위. anchor: 14일은 시작 날짜, 주·월은 그 안의 아무 날짜.
+ * 기간은 custom [from, to]를 그대로(정리해서) 써요.
+ */
+export function stockRange(period: StockPeriod, anchor: string, custom?: { from: string; to: string }): { from: string; to: string } {
+  if (period === "week") {
+    const a = weekStart(anchor);
+    return { from: a, to: addDays(a, 6) };
+  }
+  if (period === "month") return { from: monthStart(anchor), to: monthEnd(anchor) };
+  if (period === "range" && custom) {
+    const c = clampRange(custom.from, custom.to);
+    return { from: c.from, to: c.to };
+  }
+  return { from: anchor, to: addDays(anchor, 13) };
+}
+/** ‹ › 한 번: 14일은 14일, 주는 7일, 월은 한 달, 기간은 같은 길이만큼 */
+export function shiftStockAnchor(period: StockPeriod, anchor: string, dir: 1 | -1, custom?: { from: string; to: string }): string {
+  if (period === "week") return addDays(weekStart(anchor), 7 * dir);
+  if (period === "month") {
+    const [y, m] = anchor.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1 + dir, 1)).toISOString().slice(0, 10);
+  }
+  if (period === "range" && custom) return addDays(custom.from, (daysBetween(custom.from, custom.to) + 1) * dir);
+  return addDays(anchor, 14 * dir);
+}
+/** '2026년 10월' 또는 '10/19(월) ~ 10/25(일)' (해가 다르면 연도도) */
+export function stockRangeLabel(period: StockPeriod, from: string, to: string, today: string): string {
+  if (period === "month") return `${from.slice(0, 4)}년 ${Number(from.slice(5, 7))}월`;
+  const fy = from.slice(0, 4);
+  const ty = to.slice(0, 4);
+  const a = (fy !== today.slice(0, 4) || fy !== ty ? `${fy}. ` : "") + dayLabel(from);
+  const b = (ty !== fy ? `${ty}. ` : "") + dayLabel(to);
+  return `${a} ~ ${b}`;
+}
+
 // ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
 export type BoardTab = "stock" | "rooms";
 /** '#/board/rooms' → rooms, '#/board/stock' → stock, 그 밖에는 null (기기에 남긴 탭을 써요) */

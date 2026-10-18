@@ -92,7 +92,7 @@ export async function createHotel(name: string): Promise<string> {
 }
 
 /** 현황판에 필요한 범위: 영업일 120일 전 입실 ~ (장기 숙박도 포함) */
-const WINDOW_BACK = 120;
+export const WINDOW_BACK = 120; // 현황판이 늘 들고 있는 예약: 입실일이 오늘 − 120일 이후
 
 export function useHotelData(hotelId: string) {
   const [hotel, setHotel] = useState<Hotel | null>(null);
@@ -428,4 +428,18 @@ export async function hasShopSales(hotelId: string, itemId: string): Promise<boo
     .eq("item_id", itemId);
   if (error) throw error;
   return (count ?? 0) > 0;
+}
+
+/** 재고 현황에서 오래전 기간을 볼 때만: 그 기간에 걸친 숙박 (최대 90박이라 입실일 90일 앞부터) */
+export async function queryStays(hotelId: string, from: string, to: string): Promise<Booking[]> {
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(COLS)
+    .eq("hotel_id", hotelId)
+    .eq("kind", "stay")
+    .gte("check_in", addDays(from, -90))
+    .lte("check_in", to)
+    .limit(20000);
+  if (error) throw error;
+  return (data as BookingRow[]).map(fromRow);
 }

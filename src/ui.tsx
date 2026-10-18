@@ -1,5 +1,6 @@
 import type { Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
-import { defaultBuildingName, isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
+import { CalendarDays } from "lucide-react";
+import { dayLabel, defaultBuildingName, isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
 
 export const PALETTE: { name: string; value: string | null }[] = [
   { name: "기본", value: null },
@@ -108,5 +109,45 @@ export function isTypingTarget(el: EventTarget | null): boolean {
     tag === "TEXTAREA" ||
     tag === "SELECT" ||
     (tag === "INPUT" && !["checkbox", "radio", "button"].includes((e as HTMLInputElement).type))
+  );
+}
+
+/**
+ * 날짜 칩: 눌러서 달력(showPicker)으로 고르거나 숫자로 적어요. Esc는 칸만 빠져나가요 (창은 그대로).
+ * 예약 기록의 '날짜 고르기'와 같은 방식이에요.
+ */
+export function DateChip({ value, onChange, label, min, max }: { value: string; onChange: (v: string) => void; label: string; min?: string; max?: string }) {
+  const open = (el: HTMLInputElement) => {
+    try {
+      el.showPicker?.();
+    } catch {
+      /* 이미 열려 있거나 지원하지 않는 브라우저 */
+    }
+  };
+  return (
+    <label className="chip datechip on-line">
+      <CalendarDays size={15} />
+      <span className="dl">{dayLabel(value)}</span>
+      <input
+        type="date"
+        min={min ?? "2020-01-01"}
+        max={max ?? "2099-12-31"}
+        value={value}
+        aria-label={label}
+        title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+        onChange={(e) => e.target.value && onChange(e.target.value)}
+        onClick={(e) => open(e.currentTarget)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            open(e.currentTarget);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
   );
 }
