@@ -33,6 +33,25 @@ export function TypeBadge({ t, className = "" }: { t?: RoomType | null; classNam
     </span>
   );
 }
+/** 글자 폭 단위: 한글·한자 등 넓은 글자 1, 영문·숫자 약 0.62 */
+export function textUnits(s: string): number {
+  let u = 0;
+  for (const ch of s) u += /[\u1100-\u11ff\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/.test(ch) ? 1 : ch === " " ? 0.3 : 0.62;
+  return Math.max(1, u);
+}
+/** 칸 너비에 맞춰 글자 크기를 줄여요(최대 → 최소), 그래도 넘치면 … 으로. 칸에 container-type: inline-size 가 있어야 해요 */
+export function FitText({ text, className = "", title }: { text: string; className?: string; title?: string }) {
+  return (
+    <span className={`fit ${className}`} style={{ ["--u" as string]: textUnits(text).toFixed(2) }} title={title ?? text}>
+      {text}
+    </span>
+  );
+}
+/** 방 칸 둘째 줄: 타입 이름 (칩 없이, 칸 너비 전체) */
+export function TypeLine({ t }: { t?: RoomType | null }) {
+  const label = typeLabel(t);
+  return label ? <FitText className="tl" text={label} /> : <span className="tl none">타입 없음</span>;
+}
 export function PlatBadge({ p }: { p?: Platform | null }) {
   return (
     <span className="pb" title={p?.name}>

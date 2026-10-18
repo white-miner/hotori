@@ -15,7 +15,7 @@ import {
   usableTypes,
 } from "../shared/ledger";
 import type { HotelData } from "./data";
-import { PALETTE, PlatBadge, TypeBadge, uid } from "./ui";
+import { FitText, PALETTE, PlatBadge, TypeBadge, TypeLine, uid } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -299,8 +299,8 @@ export default function Settings({ data, email, notify }: Props) {
                         }
                       }}
                     >
-                      {r.no}
-                      <TypeBadge t={typeOf(r.typeId)} />
+                      <FitText className="no" text={r.no} />
+                      <TypeLine t={typeOf(r.typeId)} />
                     </button>
                   );
                 })}

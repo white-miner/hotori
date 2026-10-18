@@ -19,7 +19,7 @@ import {
   won,
 } from "../shared/ledger";
 import type { HotelData } from "./data";
-import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
+import { FitText, PlatBadge, Ring, TypeBadge, TypeLine, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -107,10 +107,10 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
     const k = /^\d+$/.test(r.no) ? "" : "k";
     const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
-        <span className={`no ${k}`}>{r.no}</span>
-        <TypeBadge t={t} />
+        <FitText className={`no ${k}`} text={r.no} />
       </div>
     );
+    const tline = <TypeLine t={t} />;
     const duTags = du.map((d) => (
       <span key={d.id} className="du">
         대실 {d.startTime}~{d.endTime}
@@ -126,6 +126,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
           onClick={() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined })}
         >
           {head}
+          {tline}
           <div className="emt">빈 방</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
@@ -136,6 +137,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
     return (
       <div key={r.id} role="button" tabIndex={0} className={`cell bk ${cancelled ? "cx" : ""}`} onClick={() => onOpen(b)}>
         {head}
+        {tline}
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span>{b.guestName}</span>
