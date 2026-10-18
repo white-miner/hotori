@@ -137,6 +137,18 @@ test("오버부킹은 마이너스, 가장 가까운 날짜를 알려 줘요", (
   assert.deepEqual([o?.date, o?.type.name, o?.over], ["2026-10-20", "BG", 1]);
 });
 
+test("오버부킹 전부 세기 (탭의 빨간 숫자)", async () => {
+  const { allOverbookings } = await import("./ledger");
+  const list = [
+    bk({ typeId: "bg", checkIn: "2026-10-20", nights: 2 }),
+    bk({ typeId: "bg", checkIn: "2026-10-20", nights: 2 }),
+  ];
+  const dates = [0, 1, 2, 3].map((i) => addDays("2026-10-18", i));
+  const all = allOverbookings(S, stockTable(S, list, dates), dates);
+  assert.deepEqual(all.map((x) => x.date), ["2026-10-20", "2026-10-21"]);
+  assert.deepEqual(allOverbookings(S, stockTable(S, [], dates), dates), []);
+});
+
 test("표시 단계: 여유 / 적음 / 만실 / 초과", () => {
   assert.equal(stockLevel(5, 14, 2), "ok");
   assert.equal(stockLevel(2, 14, 2), "low");
@@ -360,4 +372,46 @@ test("대실 시간: 사람이 적은 그대로 알아들어요", () => {
   assert.equal(nowRounded(new Date(2026, 9, 18, 13, 32)), "13:30");
   assert.equal(nowRounded(new Date(2026, 9, 18, 13, 33)), "13:35");
   assert.equal(nowRounded(new Date(2026, 9, 18, 23, 58)), "00:00");
+});
+
+test("현황판 탭 주소: #/board/stock · #/board/rooms", async () => {
+  const { boardTabFromHash } = await import("./ledger");
+  assert.equal(boardTabFromHash("#/board/stock"), "stock");
+  assert.equal(boardTabFromHash("#/board/rooms"), "rooms");
+  assert.equal(boardTabFromHash("#/board/rooms/"), "rooms");
+  assert.equal(boardTabFromHash("#/board"), null);
+  assert.equal(boardTabFromHash("#/ledger"), null);
+  assert.equal(boardTabFromHash(""), null);
+});
+
+test("이름 없는 건물은 순서대로 A동·B동… (이름 있는 건물은 그대로)", async () => {
+  const { buildingName, defaultBuildingName } = await import("./ledger");
+  assert.equal(defaultBuildingName(0), "A동");
+  assert.equal(defaultBuildingName(2), "C동");
+  assert.equal(defaultBuildingName(26), "27동");
+  const x = normalizeSettings({
+    buildings: [{ id: "b1", name: "본관" }, { id: "b2", name: "" }, { id: "b3" }],
+    floors: [{ id: "f", name: "1층", buildingId: "b2", rooms: [{ id: "r1", no: "101", typeId: null }] }],
+  });
+  assert.deepEqual(x.buildings.map((b) => b.name), ["본관", "", ""], "저장은 빈 이름 그대로");
+  assert.deepEqual(["b1", "b2", "b3"].map((id) => buildingName(x, id)), ["본관", "B동", "C동"]);
+  assert.equal(roomLabel(x, "r1"), "B동 101");
+});
+
+test("건물별 재고: 그 건물 방에서 그 건물에 배정된 숙박만 빼요, 방 미배정은 전체에만", async () => {
+  const { unassignedStays, typeTotals } = await import("./ledger");
+  const dates = ["2026-10-18"];
+  const main = typeTotals(M, "b-main");
+  const annex = typeTotals(M, "b-annex");
+  const all = typeTotals(M);
+  for (const t of M.types) assert.equal((main.get(t.id) ?? 0) + (annex.get(t.id) ?? 0), all.get(t.id), "건물 합 = 전체");
+  const list = [bk({ typeId: "s", roomId: "ra201" }), bk({ typeId: "s", roomId: null })];
+  const tAll = stockTable(M, list, dates);
+  const tAnnex = stockTable(M, list, dates, "b-annex");
+  const tMain = stockTable(M, list, dates, "b-main");
+  assert.equal(tAll.get("s")!.get("2026-10-18"), (all.get("s") ?? 0) - 2);
+  assert.equal(tAnnex.get("s")!.get("2026-10-18"), (annex.get("s") ?? 0) - 1, "별관 201 배정만 빠져요");
+  assert.equal(tMain.get("s")!.get("2026-10-18"), main.get("s") ?? 0, "미배정은 본관에서 안 빠져요");
+  assert.equal(unassignedStays(M, list, dates), 1);
+  assert.equal(unassignedStays(M, list, ["2026-10-19"]), 0);
 });

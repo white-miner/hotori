@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import {
+  type BoardTab,
   type Booking,
   addDays,
+  allOverbookings,
+  boardTabFromHash,
+  isMultiBuilding,
+  unassignedStays,
   dayLabel,
   allRooms,
   firstOverbooking,
@@ -47,22 +52,94 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
+/** 현황판 탭: 주소(#/board/stock · #/board/rooms)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 재고 현황 */
+const TAB_KEY = "hotori.boardTab";
+const B_KEY = "hotori.boardBuilding";
+function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
+  const read = (): BoardTab => {
+    const h = boardTabFromHash(location.hash);
+    if (h) return h;
+    try {
+      return localStorage.getItem(TAB_KEY) === "rooms" ? "rooms" : "stock";
+    } catch {
+      return "stock";
+    }
+  };
+  const [tab, setTabState] = useState<BoardTab>(read);
+  const remember = (x: BoardTab) => {
+    try {
+      localStorage.setItem(TAB_KEY, x);
+    } catch {
+      /* 개인 정보 보호 모드 */
+    }
+  };
+  useEffect(() => {
+    // 주소에 탭이 없으면(#/ · #/board) 지금 탭을 주소에 붙여 둬요 → 뒤로 가기가 탭 사이를 오가요
+    const fill = (x: BoardTab) => {
+      if (/^(#\/?|#\/board\/?)?$/.test(location.hash)) history.replaceState(history.state, "", `${location.pathname}${location.search}#/board/${x}`);
+    };
+    fill(read());
+    const on = () => {
+      const h = boardTabFromHash(location.hash);
+      if (h) {
+        setTabState(h);
+        remember(h);
+      } else fill(read());
+    };
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+  const setTab = (x: BoardTab) => {
+    setTabState(x);
+    remember(x);
+    const want = `#/board/${x}`;
+    if (location.hash !== want) location.hash = want; // 뒤로 가기로 탭을 돌아가요
+    window.scrollTo({ top: 0 });
+  };
+  return [tab, setTab];
+}
+
 export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, notify, readOnly = false, minDate, maxDate }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
   const act = readOnly ? {} : { role: "button" as const, tabIndex: 0 };
+  const [tab, setTab] = useBoardTab();
   const s = data.hotel!.settings;
   const { bookings } = data;
   const L = useMemo(() => lookups(s), [s]);
   const dates = useMemo(() => Array.from({ length: DAYS }, (_, i) => addDays(today, i)), [today]);
-  const table = useMemo(() => stockTable(s, bookings, dates), [s, bookings, dates]);
-  const totals = useMemo(() => typeTotals(s), [s]);
+  // 건물 탭(전체·건물별): 두 탭이 같이 쓰고, 이 기기에서 마지막으로 고른 건물을 기억해요
+  const [bTab, setBTabState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(B_KEY) ?? "all";
+    } catch {
+      return "all";
+    }
+  });
+  const setBTab = (id: string) => {
+    setBTabState(id);
+    try {
+      localStorage.setItem(B_KEY, id);
+    } catch {
+      /* 개인 정보 보호 모드 */
+    }
+  };
+  const multi = isMultiBuilding(s);
+  const bScope = multi && s.buildings.some((x) => x.id === bTab) ? bTab : "all";
+  const scopeId = bScope === "all" ? null : bScope;
+  const tableAll = useMemo(() => stockTable(s, bookings, dates), [s, bookings, dates]);
+  const table = useMemo(() => (scopeId ? stockTable(s, bookings, dates, scopeId) : tableAll), [s, bookings, dates, scopeId, tableAll]);
+  const totals = useMemo(() => typeTotals(s, scopeId), [s, scopeId]);
   const over = firstOverbooking(s, table, dates);
+  const overs = useMemo(() => allOverbookings(s, table, dates), [s, table, dates]);
+  // 건물 하나를 보는 중이어도 호텔 전체에 오버부킹이 있으면 알려 줘요 (방 미배정 숙박 때문일 수 있어요)
+  const overAll = scopeId ? firstOverbooking(s, tableAll, dates) : over;
+  const oversAll = useMemo(() => (scopeId ? allOverbookings(s, tableAll, dates) : overs), [s, tableAll, dates, scopeId, overs]);
+  const unassigned = useMemo(() => (scopeId ? unassignedStays(s, bookings, dates) : 0), [s, bookings, dates, scopeId]);
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
-  const [bTab, setBTab] = useState<string>("all"); // 건물 2개 이상일 때: 전체 또는 건물 id
   const [assigning, setAssigning] = useState<string | null>(null);
   const dayuseByRoom = useMemo(() => {
     const m = new Map<string, Booking[]>();
@@ -88,6 +165,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </main>
     );
 
+  const goRooms = (d: string) => {
+    setSelDate(d);
+    setTab("rooms");
+  };
   const toggleArrived = (b: Booking) =>
     data.patchBooking(b.id, { arrived: !b.arrived }).catch(() => notify("입실 표시를 저장하지 못했어요"));
   const assign = (b: Booking, roomId: string) =>
@@ -103,7 +184,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const r = table.get(typeId)?.get(d) ?? 0;
     const lv = stockLevel(r, totals.get(typeId) ?? 0, s.lowThreshold);
     return (
-      <button key={d} className={`sc lv-${lv} ${d === selDate ? "selc" : ""}`} onClick={() => setSelDate(d)}>
+      <button key={d} className={`sc lv-${lv} ${d === selDate ? "selc" : ""}`} onClick={() => goRooms(d)} title={`${dayLabel(d)} 밤 객실 배치 보기`}>
         {r < 0 ? `−${-r}` : r}
         {lv === "over" ? <small>초과</small> : lv === "full" ? <small>만실</small> : null}
       </button>
@@ -178,8 +259,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
   };
 
-  const multi = L.multi;
-  const bScope = multi && s.buildings.some((x) => x.id === bTab) ? bTab : "all";
   const scopeFloors = orderedFloors(s).filter((f) => f.rooms.length && (bScope === "all" || f.buildingId === bScope));
   const floors = scopeFloors.filter((f) => floorTab === "all" || floorTab === f.id);
   const groups = (multi ? s.buildings : s.buildings.slice(0, 1))
@@ -189,75 +268,145 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
+  const tabs = (
+    <div className="boardtabs seg" role="tablist" aria-label="현황판">
+      <button role="tab" aria-selected={tab === "stock"} className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}>
+        재고 현황
+        {(over ? overs : oversAll).length ? (
+          <span className="obdot num" aria-label={`오버부킹 ${(over ? overs : oversAll).length}건`}>
+            {(over ? overs : oversAll).length}
+          </span>
+        ) : null}
+      </button>
+      <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
+        객실 배치
+      </button>
+    </div>
+  );
+  // 오버부킹이 하나라도 있으면 두 탭 모두 맨 위에 빨간 알림 (누르면 재고 현황)
+  const bName = (id: string) => (id === "all" ? "전체" : (L.buildings.get(id)?.name ?? ""));
+  const shownOver = over ?? overAll;
+  const shownOvers = over ? overs : oversAll;
+  const banner = shownOver ? (
+    <button
+      className="ob-banner"
+      role="alert"
+      onClick={() => {
+        if (!over) setBTab("all"); // 이 건물엔 없고 전체에 있으면 전체로
+        setTab("stock");
+      }}
+    >
+      <TriangleAlert size={18} strokeWidth={2.4} />
+      <span>
+        <b>
+          {scopeId ? `${bName(over ? bScope : "all")} · ` : ""}
+          {dayLabel(shownOver.date)} {typeLabel(shownOver.type)} {shownOver.over}실 초과
+        </b>
+        {shownOvers.length > 1 ? <span className="ob-more"> 외 {shownOvers.length - 1}건</span> : null}
+        <span className="hl-tail"> — 메인 플랫폼에서 마감해 주세요</span>
+      </span>
+    </button>
+  ) : null;
+  const buildingTabs = multi ? (
+    <div className="btabs" role="tablist" aria-label="건물">
+      {["all", ...s.buildings.map((x) => x.id)].map((id) => (
+        <button
+          key={id}
+          role="tab"
+          aria-selected={bScope === id}
+          className={bScope === id ? "on" : ""}
+          title={bName(id)}
+          onClick={() => {
+            setBTab(id);
+            if (floorTab !== "dayuse") setFloorTab("all");
+          }}
+        >
+          <span className="bn">{bName(id)}</span>
+          {id !== "all" ? <small>{roomsIn(orderedFloors(s).filter((f) => f.buildingId === id))}</small> : null}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (tab === "stock")
+    return (
+      <main className="page board-page one">
+        <div className="main">
+          {tabs}
+          {banner}
+          <div className="hl">
+            <div>
+              <h1>재고 현황</h1>
+              <div className="when">
+                {nowLabel()} · 오늘부터 14일 남은 객실{scopeId ? ` · ${bName(scopeId)}만` : ""}
+              </div>
+              {over ? null : <div className="hl-ok">오버부킹 없음</div>}
+            </div>
+            <div className="lg">
+              <span>
+                <i className="lv-ok bordered">5</i>여유
+              </span>
+              <span>
+                <i className="lv-low">2</i>적음 ({s.lowThreshold}실 이하)
+              </span>
+              <span>
+                <i className="lv-full">0</i>만실
+              </span>
+              <span>
+                <i className="lv-over">−1</i>초과 (오버부킹)
+              </span>
+            </div>
+          </div>
+
+          {buildingTabs}
+          {scopeId && unassigned ? (
+            <div className="b-note">방을 안 정한 숙박 {unassigned}건은 어느 건물인지 몰라서 '전체'에만 들어가요.</div>
+          ) : null}
+          <div className="stock-wrap big">
+            <div className="stock" style={{ ["--days" as string]: DAYS }}>
+              <div className="srow">
+                <div className="th lab">객실 타입</div>
+                {dates.map((d) => (
+                  <button key={d} className={`th ${d === selDate ? "sel" : ""}`} onClick={() => goRooms(d)} title={`${dayLabel(d)} 밤 객실 배치 보기`}>
+                    <b>{md(d)}</b>
+                    {d === today ? "오늘" : weekday(d)}
+                  </button>
+                ))}
+              </div>
+              {s.types.filter((t) => (totals.get(t.id) ?? 0) > 0 || (!scopeId && typeLabel(t))).map((t) => (
+                <div className="srow" key={t.id}>
+                  <div className="tn">
+                    <TypeBadge t={t} />
+                    <small>{totals.get(t.id) ?? 0}실</small>
+                  </div>
+                  {dates.map((d) => stockCell(t.id, d))}
+                </div>
+              ))}
+              <div className="srow total">
+                <div className="tn"><span className="tl-l">합계</span><span className="tl-s">합계</span></div>
+                {dates.map((d) => (
+                  <button key={d} className={`sc ${d === selDate ? "selc" : ""}`} onClick={() => goRooms(d)}>
+                    {s.types.reduce((n, t) => n + Math.max(0, table.get(t.id)?.get(d) ?? 0), 0)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="stock-hint">날짜나 숫자를 누르면 그날 밤 객실 배치로 가요</p>
+        </div>
+      </main>
+    );
+
   return (
     <main className="page board-page">
       <div className="main">
-        <div className="hl">
-          <div>
-            <h1>객실 현황</h1>
-            <div className="when">{nowLabel()} · 오늘부터 14일</div>
-            {over ? (
-              <div className="hl-alert" role="alert">
-                <b>
-                  {dayLabel(over.date)} {typeLabel(over.type)} {over.over}실 초과
-                </b>
-                <span className="hl-tail"> — 메인 플랫폼에서 마감해 주세요</span>
-              </div>
-            ) : (
-              <div className="hl-ok">오버부킹 없음</div>
-            )}
-          </div>
-          <div className="lg">
-            <span>
-              <i className="lv-ok bordered">5</i>여유
-            </span>
-            <span>
-              <i className="lv-low">2</i>적음 ({s.lowThreshold}실 이하)
-            </span>
-            <span>
-              <i className="lv-full">0</i>만실
-            </span>
-            <span>
-              <i className="lv-over">−1</i>초과 (오버부킹)
-            </span>
-          </div>
-        </div>
-
-        <div className="stock-wrap">
-          <div className="stock" style={{ ["--days" as string]: DAYS }}>
-            <div className="srow">
-              <div className="th lab">객실 타입</div>
-              {dates.map((d) => (
-                <button key={d} className={`th ${d === selDate ? "sel" : ""}`} onClick={() => setSelDate(d)}>
-                  <b>{md(d)}</b>
-                  {d === today ? "오늘" : weekday(d)}
-                </button>
-              ))}
-            </div>
-            {s.types.filter((t) => typeLabel(t) || (totals.get(t.id) ?? 0) > 0).map((t) => (
-              <div className="srow" key={t.id}>
-                <div className="tn">
-                  <TypeBadge t={t} />
-                  <small>{totals.get(t.id) ?? 0}실</small>
-                </div>
-                {dates.map((d) => stockCell(t.id, d))}
-              </div>
-            ))}
-            <div className="srow total">
-              <div className="tn"><span className="tl-l">합계</span><span className="tl-s">합계</span></div>
-              {dates.map((d) => (
-                <button key={d} className={`sc ${d === selDate ? "selc" : ""}`} onClick={() => setSelDate(d)}>
-                  {s.types.reduce((n, t) => n + Math.max(0, table.get(t.id)?.get(d) ?? 0), 0)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
+        {tabs}
+        {banner}
         <div className="bdh">
-          <h2>
-            {dayLabel(selDate)} 밤 객실 배치 <span>{readOnly ? "보기 전용 · ◯는 입실 완료" : "칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요"}</span>
-          </h2>
+          <div>
+            <h1>객실 배치 현황</h1>
+            <div className="bdh-s">{readOnly ? "보기 전용 · ◯는 입실 완료" : "칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요"}</div>
+          </div>
           <div className="dnav">
             <span className="cnt-m">
               숙박 {board.nightCount}/{roomCount}
@@ -265,34 +414,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <button className="ar" aria-label="전날" onClick={() => setSelDate(addDays(selDate, -1))}>
               <ChevronLeft size={16} />
             </button>
-            <button className="btn sm" onClick={() => setSelDate(today)}>
-              오늘
-            </button>
+            <span className="dn-day">{dayLabel(selDate)} 밤</span>
             <button className="ar" aria-label="다음날" onClick={() => setSelDate(addDays(selDate, 1))}>
               <ChevronRight size={16} />
             </button>
+            <button className="btn sm" disabled={selDate === today} onClick={() => setSelDate(today)}>
+              오늘
+            </button>
           </div>
         </div>
-        {multi ? (
-          <div className="btabs" role="tablist" aria-label="건물">
-            {[{ id: "all", name: "전체" }, ...s.buildings].map((bd) => (
-              <button
-                key={bd.id}
-                role="tab"
-                aria-selected={bScope === bd.id}
-                className={bScope === bd.id ? "on" : ""}
-                title={bd.name}
-                onClick={() => {
-                  setBTab(bd.id);
-                  if (floorTab !== "dayuse") setFloorTab("all");
-                }}
-              >
-                <span className="bn">{bd.name}</span>
-                {bd.id !== "all" ? <small>{roomsIn(orderedFloors(s).filter((f) => f.buildingId === bd.id))}</small> : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        {buildingTabs}
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
             전체
@@ -312,7 +443,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <section className={multi ? "bsec" : undefined} key={g.bd.id}>
                 {multi ? (
                   <div className="bsh">
-                    <b title={g.bd.name}>{g.bd.name}</b>
+                    <b title={bName(g.bd.id)}>{bName(g.bd.id)}</b>
                     <span>
                       숙박 {nightIn(g.floors)}/{roomsIn(g.floors)}
                     </span>

@@ -7,6 +7,8 @@ import {
   SHOP_NAME_MAX,
   TYPE_NAME_MAX,
   addRoomsToFloor,
+  buildingName,
+  defaultBuildingName,
   floorsOf,
   addFloorOnTop,
   isMultiBuilding,
@@ -74,7 +76,7 @@ function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | 
       <h3>
         현황 공유 링크 <span className={`tag ${pro ? "" : "pro"}`}>Pro</span>
       </h3>
-      <div className="sub">직원이 로그인 없이 객실 현황·객실 배치·대실·방 미배정 목록을 볼 수 있어요. 보기만 되고, 판매 가격과 메모는 보이지 않아요.</div>
+      <div className="sub">직원이 로그인 없이 재고 현황·객실 배치(대실·방 미배정 목록 포함)를 볼 수 있어요. 보기만 되고, 판매 가격과 메모는 보이지 않아요.</div>
       {!pro ? (
         <>
           <div className="share-lock">현황 공유 링크는 Pro에서 쓸 수 있어요.</div>
@@ -129,8 +131,6 @@ const move = <T,>(a: T[], i: number, d: number): T[] => {
 };
 // "601~610" 범위 입력은 shared/ledger.ts의 parseRoomInput 그대로예요.
 export { parseRoomInput };
-const nextBuildingName = (bs: Building[]) =>
-  ["별관", "신관", "A동", "B동", "C동"].find((n) => !bs.some((b) => b.name === n)) ?? `건물 ${bs.length + 1}`;
 
 function Swatches({ value, onChange, noneLabel = "기본" }: { value: string | null | undefined; onChange: (c: string | null) => void; noneLabel?: string }) {
   return (
@@ -274,13 +274,13 @@ export default function Settings({ data, email, notify }: Props) {
     const id = uid("b");
     update((x) => ({
       ...x,
-      buildings: [...x.buildings, { id, name: nextBuildingName(x.buildings) }],
+      buildings: [...x.buildings, { id, name: "" }], // 이름은 비워 두고 A동·B동… 으로 보여요
       floors: [...x.floors, { id: uid("f"), name: "1층", buildingId: id, color: null, rooms: [] }],
     }));
     setSelBuilding(id);
     setSelFloor(null);
     setSelRoom(null);
-    notify("건물을 추가했어요. 이름을 바꾸고 층에 방을 추가해 주세요");
+    notify(`${defaultBuildingName(s.buildings.length)}을 추가했어요. 이름을 적고 층에 방을 추가해 주세요`);
   };
   const setBuilding = (bid: string, fn: (b: Building) => Building) =>
     update((x) => ({ ...x, buildings: x.buildings.map((b) => (b.id === bid ? fn(b) : b)) }));
@@ -380,7 +380,7 @@ export default function Settings({ data, email, notify }: Props) {
                     onClick={() => (setSelBuilding(selBuilding === bd.id ? null : bd.id), setSelFloor(null), setSelRoom(null))}
                   >
                     <Building2 size={14} />
-                    <span>{bd.name}</span>
+                    <span>{buildingName(s, bd.id)}</span>
                   </button>
                   <span className="tag">{bRooms(bd.id)}실</span>
                   <button className="btn line sm push" onClick={() => addFloor(bd.id)}>
@@ -457,7 +457,7 @@ export default function Settings({ data, email, notify }: Props) {
                   className="inp sm"
                   value={building.name}
                   maxLength={12}
-                  placeholder="예: 본관, 별관, A동"
+                  placeholder={defaultBuildingName(s.buildings.findIndex((b) => b.id === building.id))}
                   onChange={(e) => setBuilding(building.id, (b) => ({ ...b, name: e.target.value }))}
                 />
                 <button className="btn line sm" onClick={() => update((x) => ({ ...x, buildings: move(x.buildings, x.buildings.findIndex((b) => b.id === building.id), -1) }))}>
@@ -474,7 +474,7 @@ export default function Settings({ data, email, notify }: Props) {
                   onClick={() => {
                     const fl = floorsOf(s, building.id);
                     const n = fl.reduce((k, f) => k + f.rooms.length, 0);
-                    if (n && !confirm(`${building.name}${josa(building.name, "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
+                    if (n && !confirm(`${buildingName(s, building.id)}${josa(buildingName(s, building.id), "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
                     update((x) => removeBuilding(x, building.id));
                     setSelBuilding(null);
                   }}
@@ -533,7 +533,7 @@ export default function Settings({ data, email, notify }: Props) {
                   >
                     {s.buildings.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.name}
+                        {buildingName(s, b.id)}
                       </option>
                     ))}
                   </select>
@@ -549,7 +549,7 @@ export default function Settings({ data, email, notify }: Props) {
           {room ? (
             <div className="editor">
               <div className="ed-h">
-                <b>{multi ? `${s.buildings.find((b) => b.id === room.f.buildingId)?.name ?? ""} ` : ""}{room.r.no}호 고치기</b>
+                <b>{multi ? `${buildingName(s, room.f.buildingId)} ` : ""}{room.r.no}호 고치기</b>
                 <button className="ic" aria-label="닫기" onClick={() => setSelRoom(null)}>
                   <X size={16} />
                 </button>
@@ -598,7 +598,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">방 칸과 객실 현황 표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
+          <div className="sub">방 칸과 재고 현황 표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">

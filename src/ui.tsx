@@ -1,5 +1,5 @@
 import type { Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
-import { isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
+import { defaultBuildingName, isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
 
 export const PALETTE: { name: string; value: string | null }[] = [
   { name: "기본", value: null },
@@ -82,7 +82,8 @@ export function lookups(s: HotelSettings) {
   const types = new Map(s.types.map((t) => [t.id, t]));
   const plats = new Map(s.platforms.map((p) => [p.id, p]));
   const multi = isMultiBuilding(s);
-  const bmap = new Map(s.buildings.map((b) => [b.id, b]));
+  // 이름을 안 적은 건물은 A동·B동… 으로 보여요
+  const bmap = new Map(s.buildings.map((b, i) => [b.id, { ...b, name: b.name.trim() || defaultBuildingName(i) }]));
   const rooms = new Map<string, Room & { floor: Floor; building: Building | undefined; label: string }>(
     orderedFloors(s).flatMap((f) =>
       f.rooms.map((r) => {

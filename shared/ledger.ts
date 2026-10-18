@@ -121,7 +121,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
   const buildings = (Array.isArray(s.buildings) ? s.buildings : []).filter(
     (b): b is Building =>
       !!b && typeof b === "object" && typeof b.id === "string" && !!b.id && !seen.has(b.id) && !!seen.add(b.id),
-  ).map((b) => ({ id: b.id, name: typeof b.name === "string" && b.name.trim() ? b.name : "건물" }));
+  ).map((b) => ({ id: b.id, name: typeof b.name === "string" ? b.name : "" })); // 비어 있으면 화면에는 A동·B동…
   if (!buildings.length) buildings.push({ ...DEFAULT_BUILDING });
   const first = buildings[0].id;
   return {
@@ -191,6 +191,16 @@ export function checkOut(b: Pick<Booking, "checkIn" | "nights">): string {
 }
 
 // ---------- 건물·층·방 ----------
+/** 이름을 안 적은 건물은 순서대로 A동, B동, C동… (26개 넘으면 27동…) */
+export function defaultBuildingName(index: number): string {
+  return index < 26 ? `${String.fromCharCode(65 + index)}동` : `${index + 1}동`;
+}
+/** 화면에 보이는 건물 이름 */
+export function buildingName(s: Pick<HotelSettings, "buildings">, buildingId: string | null | undefined): string {
+  const i = s.buildings.findIndex((b) => b.id === buildingId);
+  if (i < 0) return "";
+  return s.buildings[i].name.trim() || defaultBuildingName(i);
+}
 export const isMultiBuilding = (s: Pick<HotelSettings, "buildings">) => (s.buildings?.length ?? 0) > 1;
 /** 건물 순서 → 그 건물 안의 층 순서 (건물을 모르는 층은 첫 건물로) */
 export function orderedFloors(s: HotelSettings): Floor[] {
@@ -212,8 +222,8 @@ export function roomLabel(s: HotelSettings, roomId: string | null | undefined): 
   const r = allRooms(s).find((x) => x.id === roomId);
   if (!r) return null;
   if (!isMultiBuilding(s)) return r.no;
-  const b = s.buildings.find((x) => x.id === r.buildingId);
-  return b ? `${b.name} ${r.no}` : r.no;
+  const n = buildingName(s, r.buildingId);
+  return n ? `${n} ${r.no}` : r.no;
 }
 /** "601~610, 701" → ["601", ..., "610", "701"] */
 export function parseRoomInput(v: string): string[] {
@@ -311,9 +321,11 @@ export function removeBuilding(s: HotelSettings, buildingId: string): HotelSetti
 export function roomMap(s: HotelSettings) {
   return new Map(allRooms(s).map((r) => [r.id, r]));
 }
-export function typeTotals(s: HotelSettings): Map<string, number> {
+/** 타입별 방 수. buildingId를 주면 그 건물 방만 세요 */
+export function typeTotals(s: HotelSettings, buildingId?: string | null): Map<string, number> {
   const m = new Map<string, number>(s.types.map((t) => [t.id, 0]));
-  for (const r of allRooms(s)) if (r.typeId && m.has(r.typeId)) m.set(r.typeId, m.get(r.typeId)! + 1);
+  for (const r of allRooms(s))
+    if (r.typeId && m.has(r.typeId) && (!buildingId || r.buildingId === buildingId)) m.set(r.typeId, m.get(r.typeId)! + 1);
   return m;
 }
 /** 재고를 빼는 타입: 방을 정했으면 그 방의 타입, 아니면 판 타입 */
@@ -337,14 +349,19 @@ export function nightsOverlap(
 
 // ---------- 남은 객실 ----------
 export type StockTable = Map<string, Map<string, number>>; // typeId -> date -> remaining
-export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[]): StockTable {
-  const totals = typeTotals(s);
+/**
+ * 남은 객실 표. buildingId를 주면 그 건물만: 그 건물 방 수에서 그 건물 방에 배정된 숙박만 빼요.
+ * 방을 안 정한 숙박은 어느 건물인지 모르니 '전체'에서만 빠져요.
+ */
+export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[], buildingId?: string | null): StockTable {
+  const totals = typeTotals(s, buildingId);
   const rooms = roomMap(s);
   const table: StockTable = new Map();
   for (const t of s.types) table.set(t.id, new Map(dates.map((d) => [d, totals.get(t.id) ?? 0])));
   const dateSet = new Set(dates);
   for (const b of bookings) {
     if (!isActive(b) || b.kind !== "stay" || !b.nights) continue;
+    if (buildingId && rooms.get(b.roomId ?? "")?.buildingId !== buildingId) continue;
     const tid = effectiveTypeId(b, rooms);
     const row = table.get(tid);
     if (!row) continue;
@@ -375,6 +392,36 @@ export function firstOverbooking(s: HotelSettings, table: StockTable, dates: str
       if (r < 0) return { date: d, type: t, over: -r };
     }
   return null;
+}
+
+/** 14일 안의 오버부킹 전부 (날짜·타입마다 한 칸) — 탭의 빨간 숫자 */
+export function allOverbookings(s: HotelSettings, table: StockTable, dates: string[]) {
+  const out: { date: string; type: RoomType; over: number }[] = [];
+  for (const d of dates)
+    for (const t of s.types) {
+      const r = table.get(t.id)?.get(d) ?? 0;
+      if (r < 0) out.push({ date: d, type: t, over: -r });
+    }
+  return out;
+}
+
+/** 이 날짜들 중 하룻밤이라도 걸친, 방을 안 정한 숙박 수 (건물별 표에는 빠져요) */
+export function unassignedStays(s: HotelSettings, bookings: Booking[], dates: string[]): number {
+  const rooms = roomMap(s);
+  const set = new Set(dates);
+  return bookings.filter(
+    (b) =>
+      isActive(b) && b.kind === "stay" && !!b.nights && !(b.roomId && rooms.has(b.roomId)) &&
+      Array.from({ length: b.nights }, (_, i) => addDays(b.checkIn, i)).some((d) => set.has(d)),
+  ).length;
+}
+
+// ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
+export type BoardTab = "stock" | "rooms";
+/** '#/board/rooms' → rooms, '#/board/stock' → stock, 그 밖에는 null (기기에 남긴 탭을 써요) */
+export function boardTabFromHash(hash: string): BoardTab | null {
+  const m = /^#\/board\/(stock|rooms)\/?$/.exec(hash);
+  return m ? (m[1] as BoardTab) : null;
 }
 
 /** 저장 전 미리보기: 바뀌는 밤마다 '남은 객실 4 → 3' */
