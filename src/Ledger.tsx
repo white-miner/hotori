@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { type Booking, addDays, dayLabel, isActive, perNight, typeLabel, usableTypes, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryShopSales } from "./data";
-import { ledgerSummary } from "../shared/shop";
+import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
 
 interface Props {
@@ -28,7 +28,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [shopSum, setShopSum] = useState<{ amount: number; count: number } | null>(null);
+  const [shopSum, setShopSum] = useState<{ amount: number; count: number; pay: PaySplit } | null>(null);
   const [shopTick, setShopTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => document.visibilityState === "visible" && setShopTick((n) => n + 1), 15000);
@@ -38,7 +38,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   useEffect(() => {
     let alive = true;
     queryShopSales(hotelId, from, to)
-      .then((r) => alive && setShopSum({ amount: r.reduce((n, x) => n + x.unitPrice * x.qty, 0), count: r.reduce((n, x) => n + x.qty, 0) }))
+      .then((r) => alive && setShopSum(shopTotals(r)))
       .catch(() => alive && setShopSum(null));
     return () => {
       alive = false;
@@ -93,7 +93,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
             {sumUp.shop === null ? null : (
               <span>
                 매점<b>{won(sumUp.shop)}원</b>
-                {shopSum ? <i className="muted"> · {shopSum.count}개</i> : null}
+                {shopSum ? <i className="muted"> · {shopSum.count}개 · {payLine(shopSum.pay, won)}</i> : null}
               </span>
             )}
             <span className="tot">

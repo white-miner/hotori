@@ -8,7 +8,7 @@ import {
   type ShopItem,
   normalizeSettings,
 } from "../shared/ledger";
-import type { ShopSale } from "../shared/shop";
+import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 
 export interface Hotel {
   id: string;
@@ -284,8 +284,9 @@ interface ShopSaleRow {
   qty: number;
   biz_date: string;
   created_at: string;
+  payment_method: string | null;
 }
-const SHOP_COLS = "id,item_id,item_name,unit_price,qty,biz_date,created_at";
+const SHOP_COLS = "id,item_id,item_name,unit_price,qty,biz_date,created_at,payment_method";
 const fromShopRow = (r: ShopSaleRow): ShopSale => ({
   id: r.id,
   itemId: r.item_id,
@@ -294,6 +295,7 @@ const fromShopRow = (r: ShopSaleRow): ShopSale => ({
   qty: r.qty,
   bizDate: r.biz_date,
   createdAt: r.created_at,
+  method: isPayMethod(r.payment_method) ? r.payment_method : null,
 });
 export async function queryShopSales(hotelId: string, from: string, to: string): Promise<ShopSale[]> {
   const { data, error } = await supabase
@@ -365,7 +367,7 @@ export function useShopSales(hotelId: string, from: string, to: string) {
 
   /** 1개 팔기: 화면에는 바로 보이고, 저장은 뒤에서 해요 */
   const sell = useCallback(
-    async (item: ShopItem, bizDate: string): Promise<void> => {
+    async (item: ShopItem, bizDate: string, method: PayMethod): Promise<void> => {
       const tmp = `tmp-${Math.random().toString(36).slice(2)}`;
       const optimistic: ShopSale = {
         id: tmp,
@@ -375,12 +377,13 @@ export function useShopSales(hotelId: string, from: string, to: string) {
         qty: 1,
         bizDate,
         createdAt: new Date().toISOString(),
+        method,
       };
       setSales((cur) => [...(cur ?? []), optimistic]);
       const p = (async () => {
         const { data, error } = await supabase
           .from("shop_sales")
-          .insert({ hotel_id: hotelId, item_id: item.id, item_name: optimistic.itemName, unit_price: item.price, qty: 1, biz_date: bizDate })
+          .insert({ hotel_id: hotelId, item_id: item.id, item_name: optimistic.itemName, unit_price: item.price, qty: 1, biz_date: bizDate, payment_method: method })
           .select(SHOP_COLS)
           .single();
         if (error) throw error;

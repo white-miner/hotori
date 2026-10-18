@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Minus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import { type ShopItem, addDays, dayLabel, won } from "../shared/ledger";
-import { addMonths, lastSaleOf, monthRange, onDay, shopGroups, shopTotals } from "../shared/shop";
+import { type PayMethod, PAY_LABEL, addMonths, lastSaleOf, monthRange, onDay, payLine, shopGroups, shopTotals } from "../shared/shop";
 import { type HotelData, useShopSales } from "./data";
 
 interface Props {
@@ -29,14 +29,15 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
   const shown = new Set(groups.flatMap((g) => g.items.map((i) => i.id)));
   const extra = [...dayT.byItem.entries()].filter(([id]) => !shown.has(id));
 
-  const sell = (it: ShopItem) => {
-    notify(`${it.name} 1개 +${won(it.price)}원`);
-    shop.sell(it, day).catch((e) => notify(`저장하지 못했어요: ${e instanceof Error ? e.message : "연결을 확인해 주세요"}`));
+  const sell = (it: ShopItem, m: PayMethod) => {
+    notify(`${it.name} 1개 +${won(it.price)}원 · ${PAY_LABEL[m]}`);
+    shop.sell(it, day, m).catch((e) => notify(`저장하지 못했어요: ${e instanceof Error ? e.message : "연결을 확인해 주세요"}`));
   };
-  const undo = (id: string, name: string) => {
-    const last = lastSaleOf(sales, id, day);
+  // − 는 그 결제 방법으로 판 것 중 가장 최근 1건만 지워요
+  const undo = (id: string, name: string, m: PayMethod) => {
+    const last = lastSaleOf(sales, id, day, m);
     if (!last) return;
-    notify(`${name} 1개 취소 −${won(last.unitPrice)}원`);
+    notify(`${name} 1개 취소 −${won(last.unitPrice)}원 · ${PAY_LABEL[m]}`);
     shop.undo(last).catch(() => notify("취소하지 못했어요. 다시 눌러 주세요"));
   };
   const setDaySafe = (d: string) => setDay(d > today ? today : d);
@@ -48,10 +49,12 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
         {mode === "day" ? (
           <div className="sub shop-sum">
             {isToday ? "오늘" : dayLabel(day)} 매점 매출 <b className="num">{won(dayT.amount)}원</b> · {dayT.count}개
+            <span className="paysplit num">{payLine(dayT.pay, won)}</span>
           </div>
         ) : (
           <div className="sub shop-sum">
             {Number(ym.slice(5))}월 매점 매출 <b className="num">{won(shopTotals(sales).amount)}원</b> · {shopTotals(sales).count}개
+            <span className="paysplit num">{payLine(shopTotals(sales).pay, won)}</span>
           </div>
         )}
       </div>
@@ -120,8 +123,8 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
 
   if (mode === "month") {
     const all = shopTotals(sales);
-    const byDay = new Map<string, number>();
-    for (const s of sales) byDay.set(s.bizDate, (byDay.get(s.bizDate) ?? 0) + s.unitPrice * s.qty);
+    const days = [...new Set(sales.map((s) => s.bizDate))].sort((a, b) => b.localeCompare(a));
+    const byDay = new Map(days.map((d) => [d, shopTotals(sales, onDay(d))]));
     const rows = [...all.byItem.entries()].sort((a, b) => b[1].amount - a[1].amount);
     return (
       <main className="page shop">
@@ -138,13 +141,21 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
               <div className="smt">
                 {rows.map(([id, r]) => (
                   <div key={id} className="smr">
-                    <span className="n">{r.name}</span>
+                    <span className="n">
+                      {r.name}
+                      <small className="num">
+                        카드 {r.card} · 현금 {r.cash}
+                        {r.count - r.card - r.cash ? ` · 미지정 ${r.count - r.card - r.cash}` : ""}
+                      </small>
+                    </span>
                     <span className="num c">{r.count}개</span>
                     <span className="num a">{won(r.amount)}원</span>
                   </div>
                 ))}
                 <div className="smr tot">
-                  <span className="n">합계</span>
+                  <span className="n">
+                    합계<small className="num">{payLine(all.pay, won)}</small>
+                  </span>
                   <span className="num c">{all.count}개</span>
                   <span className="num a">{won(all.amount)}원</span>
                 </div>
@@ -157,14 +168,15 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
               <div className="lempty">—</div>
             ) : (
               <div className="smt">
-                {[...byDay.entries()]
-                  .sort((a, b) => b[0].localeCompare(a[0]))
-                  .map(([d, v]) => (
-                    <button key={d} className="smr link" onClick={() => (setDay(d), setMode("day"))}>
-                      <span className="n">{dayLabel(d)}</span>
-                      <span className="num a">{won(v)}원</span>
-                    </button>
-                  ))}
+                {[...byDay.entries()].map(([d, v]) => (
+                  <button key={d} className="smr link" onClick={() => (setDay(d), setMode("day"))}>
+                    <span className="n">
+                      {dayLabel(d)}
+                      <small className="num">{payLine(v.pay, won)}</small>
+                    </span>
+                    <span className="num a">{won(v.amount)}원</span>
+                  </button>
+                ))}
               </div>
             )}
           </section>
@@ -173,20 +185,38 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
     );
   }
 
+  /** 물품 칸: 이름·가격, 그리고 현금·카드 줄마다 − 개수 + */
+  const payRows = (id: string, name: string, it: ShopItem | null, r?: { card: number; cash: number }) =>
+    (["cash", "card"] as const).map((m) => {
+      const n = r?.[m] ?? 0;
+      return (
+        <div key={m} className={`st-row ${n ? "has" : ""}`}>
+          <span className="st-m">{PAY_LABEL[m]}</span>
+          <button className="st-b" disabled={!n} aria-label={`${name} ${PAY_LABEL[m]} 1개 취소`} onClick={() => undo(id, name, m)}>
+            <Minus size={18} strokeWidth={2.6} />
+          </button>
+          <span className="st-q num">{n}</span>
+          <button
+            className="st-b st-add"
+            disabled={!it}
+            aria-label={`${name} ${PAY_LABEL[m]} 1개 팔기`}
+            onClick={() => it && sell(it, m)}
+          >
+            <Plus size={18} strokeWidth={2.6} />
+          </button>
+        </div>
+      );
+    });
   const tile = (it: ShopItem) => {
-    const n = dayT.byItem.get(it.id)?.count ?? 0;
+    const r = dayT.byItem.get(it.id);
     return (
-      <div key={it.id} className={`stile ${n ? "has" : ""}`}>
-        <button className="st-main" onClick={() => sell(it)}>
+      <div key={it.id} className={`stile ${r?.count ? "has" : ""}`}>
+        <div className="st-h">
           <span className="st-n">{it.name}</span>
           <span className="st-p num">{won(it.price)}</span>
-          <span className="st-c num">{n ? `${n}개` : ""}</span>
-        </button>
-        {n ? (
-          <button className="st-x" aria-label={`${it.name} 1개 취소`} onClick={() => undo(it.id, it.name)}>
-            <Minus size={16} strokeWidth={2.6} />
-          </button>
-        ) : null}
+        </div>
+        <div className="st-t num">{r?.count ? `${r.count}개 · ${won(r.amount)}원` : "\u00a0"}</div>
+        {payRows(it.id, it.name, it, r)}
       </div>
     );
   };
@@ -208,20 +238,20 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
           <div className="stiles">
             {extra.map(([id, r]) => (
               <div key={id} className="stile has off">
-                <div className="st-main">
+                <div className="st-h">
                   <span className="st-n">{r.name}</span>
-                  <span className="st-p num">숨김</span>
-                  <span className="st-c num">{r.count}개</span>
+                  <span className="st-p">숨김</span>
                 </div>
-                <button className="st-x" aria-label={`${r.name} 1개 취소`} onClick={() => undo(id, r.name)}>
-                  <Minus size={16} strokeWidth={2.6} />
-                </button>
+                <div className="st-t num">
+                  {r.count}개 · {won(r.amount)}원
+                </div>
+                {payRows(id, r.name, null, r)}
               </div>
             ))}
           </div>
         </section>
       ) : null}
-      <p className="shop-hint muted">물품을 누르면 1개 팔린 걸로 바로 기록돼요. 잘못 눌렀으면 − 를 눌러 주세요.</p>
+      <p className="shop-hint muted">현금·카드 줄의 + 를 누르면 그 방법으로 1개 팔린 걸로 바로 기록돼요. 잘못 눌렀으면 같은 줄의 − 를 눌러 주세요.</p>
     </main>
   );
 }

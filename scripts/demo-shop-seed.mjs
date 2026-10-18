@@ -33,15 +33,17 @@ for (let back = 40; back >= 0; back--) {
   for (const t of times) {
     const it = pick();
     const utc = new Date(Date.parse(`${d}T00:00:00Z`) + (t - 9 * 60) * 60e3 + Math.floor(rnd() * 60) * 1e3).toISOString();
-    rows.push(`(${q(HOTEL)},${q(it.id)},${q(it.name)},${it.price},1,${q(d)},${q(utc)})`);
+    // 결제는 카드가 많고, 생수·과자·컵라면은 현금도 꽤 있어요 (예시)
+    const cash = rnd() < (["i-water", "i-snack", "i-ramen"].includes(it.id) ? 0.45 : 0.3);
+    rows.push(`(${q(HOTEL)},${q(it.id)},${q(it.name)},${it.price},1,${q(d)},${q(utc)},${q(cash ? "cash" : "card")})`);
   }
 }
 console.log(`begin;
 update public.hotels set settings = settings || jsonb_build_object('shopItems', ${q(JSON.stringify(SHOP_ITEMS))}::jsonb) where id = ${q(HOTEL)} and is_demo;
 delete from public.shop_sales where hotel_id = ${q(HOTEL)} and (select is_demo from public.hotels where id = ${q(HOTEL)});
-insert into public.shop_sales (hotel_id,item_id,item_name,unit_price,qty,biz_date,created_at)
-select v.hotel_id::uuid, v.item_id, v.item_name, v.unit_price, v.qty::smallint, v.biz_date::date, v.created_at::timestamptz from (values
+insert into public.shop_sales (hotel_id,item_id,item_name,unit_price,qty,biz_date,created_at,payment_method)
+select v.hotel_id::uuid, v.item_id, v.item_name, v.unit_price, v.qty::smallint, v.biz_date::date, v.created_at::timestamptz, v.payment_method from (values
 ${rows.join(",\n")}
-) as v(hotel_id,item_id,item_name,unit_price,qty,biz_date,created_at)
+) as v(hotel_id,item_id,item_name,unit_price,qty,biz_date,created_at,payment_method)
 where (select is_demo from public.hotels where id = v.hotel_id::uuid);
 commit;`);

@@ -623,17 +623,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sgroup h3 { font-size: 13px; font-weight: 700; color: var(--ink3); margin: 0 4px 8px; }
 .stiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .stile { position: relative; }
-.st-main { width: 100%; min-height: 112px; border-radius: 22px; background: var(--panel); display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 16px 18px 14px; text-align: left; transition: background 0.08s, transform 0.06s; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; }
-button.st-main:hover { background: var(--hover); }
-button.st-main:active { transform: scale(0.97); background: var(--dark); }
-.st-n { font-size: 17px; font-weight: 750; line-height: 1.25; word-break: keep-all; padding-right: 30px; }
-.st-p { font-size: 15px; font-weight: 700; color: var(--ink3); }
-.st-c { position: absolute; right: 16px; bottom: 13px; font-size: 20px; font-weight: 800; color: var(--red-d); }
-.stile.has .st-main { background: #fff; box-shadow: inset 0 0 0 1.5px var(--dark); }
-.stile.has button.st-main:hover { background: var(--panel2); }
-.stile.off .st-main { background: var(--panel2); color: var(--ink3); box-shadow: none; }
-.st-x { position: absolute; top: 9px; right: 9px; width: 34px; height: 34px; border-radius: 50%; background: var(--panel); color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; touch-action: manipulation; }
-.st-x:hover { background: var(--hover); color: var(--ink); }
 .shop-hint { font-size: 12.5px; margin: 8px 4px 0; }
 .shop-month { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 .shop-month h3 { font-size: 15px; font-weight: 750; margin-bottom: 10px; }
@@ -666,8 +655,6 @@ button.st-main:active { transform: scale(0.97); background: var(--dark); }
   .dn-d { min-width: 0; flex: 1; }
   .daynav { flex: 1; }
   .stiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .st-main { min-height: 96px; padding: 14px 14px 12px; border-radius: 18px; }
-  .st-n { font-size: 16px; }
   .shop-month { grid-template-columns: minmax(0, 1fr); }
   .smr { grid-template-columns: minmax(0, 1fr) 54px 96px; }
 }
@@ -682,3 +669,41 @@ button.st-main:active { transform: scale(0.97); background: var(--dark); }
 .sh-h.on { color: var(--red-d); background: var(--red-s); }
 .lsum i { font-style: normal; font-size: 12px; }
 @media (max-width: 760px) { .board-page { padding-bottom: 76px; } }
+
+/* 매점 물품 칸: 이름·가격 + 현금·카드 줄 (− 개수 +) */
+.stile { background: var(--panel); border-radius: 22px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 6px; }
+.stile.has { background: #fff; box-shadow: inset 0 0 0 1.5px var(--dark); }
+.stile.off { background: var(--panel2); box-shadow: none; color: var(--ink3); }
+.st-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.st-n { font-size: 17px; font-weight: 750; line-height: 1.25; word-break: keep-all; min-width: 0; }
+.st-p { font-size: 15px; font-weight: 700; color: var(--ink3); white-space: nowrap; }
+.st-t { font-size: 12px; font-weight: 650; color: var(--ink3); padding: 0 4px; min-height: 16px; }
+.stile.has .st-t { color: var(--red-d); }
+.st-row { display: grid; grid-template-columns: 1fr 44px 40px 44px; align-items: center; gap: 4px; background: var(--panel2); border-radius: 14px; padding: 3px 3px 3px 12px; }
+.stile:not(.has) .st-row { background: #fff; }
+.st-m { font-size: 13.5px; font-weight: 700; color: var(--ink2); }
+.st-q { text-align: center; font-size: 19px; font-weight: 800; color: var(--ink4); }
+.st-row.has .st-q { color: var(--ink); }
+.st-b { width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; background: #fff; color: var(--ink2); box-shadow: 0 0 0 1px var(--line); touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; transition: transform 0.06s, background 0.08s; }
+.st-b:hover:not(:disabled) { background: var(--hover); }
+.st-b:active:not(:disabled) { transform: scale(0.92); }
+.st-b:disabled { opacity: 0.35; }
+.st-b.st-add { background: var(--ink); color: #fff; box-shadow: none; }
+.st-b.st-add:hover:not(:disabled) { background: #000; }
+.paysplit { display: inline-block; margin-left: 10px; font-size: 13px; font-weight: 650; color: var(--ink3); }
+.smr .n small { display: block; font-size: 11.5px; font-weight: 550; color: var(--ink3); margin-top: 2px; }
+.stiles { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+@media (max-width: 1180px) and (min-width: 761px) { .stiles { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); } }
+@media (max-width: 760px) {
+  .stiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stile { padding: 11px 8px 8px; border-radius: 18px; gap: 5px; }
+  .st-h { flex-direction: column; gap: 1px; }
+  .st-n { font-size: 15.5px; }
+  .st-p { font-size: 13.5px; }
+  .st-row { grid-template-columns: 1fr 40px 26px 40px; padding: 3px 3px 3px 8px; gap: 2px; border-radius: 12px; }
+  .st-m { font-size: 12.5px; }
+  .st-b { width: 40px; height: 40px; border-radius: 11px; }
+  .st-q { font-size: 17px; }
+  .paysplit { display: block; margin: 3px 0 0; }
+}
+@media (max-width: 360px) { .st-row { grid-template-columns: 1fr 36px 22px 36px; } .st-b { width: 36px; height: 36px; } }

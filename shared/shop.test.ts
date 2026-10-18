@@ -1,9 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FREE_SHOP_ITEM_LIMIT, businessDate, normalizeSettings, normalizeShopItems } from "./ledger";
-import { addMonths, canAddShopItem, inRange, lastSaleOf, ledgerSummary, monthRange, onDay, shopGroups, shopTotals, type ShopSale } from "./shop";
+import { addMonths, canAddShopItem, payLine, inRange, lastSaleOf, ledgerSummary, monthRange, onDay, shopGroups, shopTotals, type ShopSale } from "./shop";
 
-const sale = (id: string, itemId: string, price: number, bizDate: string, createdAt: string, name = itemId): ShopSale => ({
+const sale = (
+  id: string,
+  itemId: string,
+  price: number,
+  bizDate: string,
+  createdAt: string,
+  name = itemId,
+  method: ShopSale["method"] = "card",
+): ShopSale => ({
+  method,
   id,
   itemId,
   itemName: name,
@@ -95,4 +104,33 @@ test("Free는 물품 10개까지", () => {
   assert.equal(canAddShopItem("free", 9, FREE_SHOP_ITEM_LIMIT), true);
   assert.equal(canAddShopItem("free", 10, FREE_SHOP_ITEM_LIMIT), false);
   assert.equal(canAddShopItem("pro", 50, FREE_SHOP_ITEM_LIMIT), true);
+});
+
+test("카드·현금 따로 합계, 미지정(예전 기록)은 0이 아닐 때만", () => {
+  const s = [
+    sale("1", "ramen", 3000, "2026-10-18", "a", "컵라면", "card"),
+    sale("2", "ramen", 3000, "2026-10-18", "b", "컵라면", "cash"),
+    sale("3", "beer", 4500, "2026-10-18", "c", "맥주", "card"),
+    sale("4", "cola", 2000, "2026-10-18", "d", "콜라", null),
+  ];
+  const t = shopTotals(s);
+  assert.deepEqual(t.pay, { card: 7500, cash: 3000, none: 2000 });
+  assert.equal(t.pay.card + t.pay.cash + t.pay.none, t.amount);
+  assert.equal(t.byItem.get("ramen")?.card, 1);
+  assert.equal(t.byItem.get("ramen")?.cash, 1);
+  const won = (v: number) => v.toLocaleString("ko-KR");
+  assert.equal(payLine(t.pay, won), "카드 7,500 · 현금 3,000 · 미지정 2,000");
+  assert.equal(payLine({ card: 18000, cash: 9500, none: 0 }, won), "카드 18,000 · 현금 9,500");
+});
+
+test("− 는 그 결제 방법으로 판 것 중 가장 최근 1건만", () => {
+  const s = [
+    sale("a", "ramen", 3000, "2026-10-18", "2026-10-18T10:00:00Z", "컵라면", "cash"),
+    sale("b", "ramen", 3000, "2026-10-18", "2026-10-18T11:00:00Z", "컵라면", "card"),
+    sale("c", "ramen", 3000, "2026-10-18", "2026-10-18T12:00:00Z", "컵라면", null),
+  ];
+  assert.equal(lastSaleOf(s, "ramen", "2026-10-18", "cash")?.id, "a");
+  assert.equal(lastSaleOf(s, "ramen", "2026-10-18", "card")?.id, "b");
+  assert.equal(lastSaleOf(s.slice(1), "ramen", "2026-10-18", "cash"), null); // 현금 0개면 지울 게 없어요
+  assert.equal(lastSaleOf(s, "ramen", "2026-10-18")?.id, "c");
 });
