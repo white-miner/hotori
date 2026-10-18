@@ -1188,3 +1188,58 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .xfee .auto { font-size: 12px; text-decoration: underline; color: var(--ink3); }
 .gcount { font-size: 10.5px; color: var(--ink3); font-weight: 700; white-space: nowrap; }
 .xfee .inp input:focus, .paydep .inp input:focus, .paybal .inp input:focus { outline: none; }
+
+/* ---------- 단체 예약 ---------- */
+.modal.grp { max-width: 760px; }
+.gtop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.gsum { font-size: 13px; font-weight: 650; color: var(--ink2); }
+.gsum b { color: var(--ink); font-weight: 850; }
+.auto { font-size: 12px; text-decoration: underline; color: var(--ink3); }
+.gcounts { display: flex; flex-wrap: wrap; gap: 6px; }
+.gcnt { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 14px; padding: 5px 6px 5px 10px; }
+.gcnt.on { background: #fff; box-shadow: inset 0 0 0 1.5px var(--ink); }
+.step.sm { display: inline-flex; align-items: center; gap: 2px; }
+.step.sm .sb { width: 28px; height: 28px; }
+.step.sm .gin { width: 34px; }
+.gnote { flex-basis: 100%; }
+.gboard { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow: auto; background: var(--panel2); border-radius: 14px; padding: 8px; }
+.gboard.mini { max-height: 190px; }
+.gboard.mini .groom { cursor: default; }
+.gfloor { display: flex; align-items: flex-start; gap: 8px; }
+.gfl { font-size: 11px; font-weight: 700; color: var(--ink3); width: 54px; flex: none; padding-top: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grooms { display: flex; flex-wrap: wrap; gap: 4px; }
+.groom { position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 46px; height: 38px; padding: 0 6px; border-radius: 10px; background: #fff; border: 1.5px solid var(--line, #e6e6e6); font-size: 12px; line-height: 1.1; }
+.groom b { font-family: var(--num); font-weight: 800; color: var(--ink); }
+.groom span { font-size: 9.5px; color: var(--ink3); font-weight: 650; }
+.groom.on { background: var(--ink); border-color: var(--ink); }
+.groom.on b, .groom.on span { color: #fff; }
+.groom.busy { background: repeating-linear-gradient(135deg, var(--panel), var(--panel) 4px, #fff 4px, #fff 8px); border-style: dashed; opacity: 0.55; }
+.groom.busy b { color: var(--ink4); }
+.gck { position: absolute; top: 2px; right: 3px; color: #fff; }
+/* 단체 표시 (장부 · 객실 배치 · 캘린더) */
+.grptag { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; color: var(--ink2); background: #fff; border: 1px solid var(--ink3); border-radius: 6px; padding: 0 4px; line-height: 15px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.lrow.grow { cursor: pointer; background: #fff; box-shadow: inset 3px 0 0 var(--ink); }
+.lrow.grow .gname { font-weight: 850; display: inline-flex; align-items: center; gap: 6px; }
+.lrow.grow .gchev { transition: transform 0.15s; color: var(--ink3); }
+.lrow.grow.open .gchev { transform: rotate(90deg); }
+.lrow.gmem { margin-left: 18px; background: var(--panel2); }
+.gacts { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0 10px 18px; }
+.gedit { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: #fff; border-radius: 14px; padding: 10px; margin: 0 0 10px 18px; border: 1.5px solid var(--ink); }
+.gedit .inp { height: 34px; }
+@media (max-width: 760px) {
+  .gfl { width: 40px; }
+  .lrow.gmem { margin-left: 8px; }
+}
+.btn.red-t { color: var(--red); }
+.c-type.gts { font-size: 11.5px; font-weight: 750; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nm .grptag, .cbar .grptag { margin-left: 2px; flex: none; }
+.cell .r3 > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cell .r3 .gcount { flex: none; }
+.cell .nm .grptag { order: -1; }
+@media (max-width: 760px) {
+  .cell.grp .nm .pb { display: none; }
+  .cell .nm .grptag { font-size: 8.5px; padding: 0 2px; line-height: 13px; border-radius: 4px; }
+  .cell .r3 .gcount { font-size: 9.5px; }
+}
+.cell .r1 .gcount { flex: none; font-size: 10px; font-weight: 750; color: var(--ink2); padding-right: 2px; }
+.cell.grp .nm .pb { display: none; }

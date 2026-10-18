@@ -9,7 +9,7 @@
     "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outdir=dist-server --log-level=warning",
     "start": "node dist-server/index.js",
     "preview": "npm run build && npm start",
-    "test": "tsx --test shared/ledger.test.ts shared/shop.test.ts shared/calendar.test.ts shared/move.test.ts shared/expense.test.ts shared/platform.test.ts shared/boardmove.test.ts shared/earlyout.test.ts shared/payment.test.ts shared/surcharge.test.ts server/app.test.ts",
+    "test": "tsx --test shared/ledger.test.ts shared/shop.test.ts shared/calendar.test.ts shared/move.test.ts shared/expense.test.ts shared/platform.test.ts shared/boardmove.test.ts shared/earlyout.test.ts shared/payment.test.ts shared/surcharge.test.ts shared/group.test.ts server/app.test.ts",
     "seed:demo": "node scripts/demo-seed.mjs"
   },
   "dependencies": {

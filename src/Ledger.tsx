@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Check, ChevronRight, Search } from "lucide-react";
+import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
 import { bookingCash, payState } from "../shared/payment";
@@ -49,6 +50,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [kind, setKind] = useState("");
   const [st, setSt] = useState<StatusF>("all");
   const [dueOnly, setDueOnly] = useState(false);
+  const [gOpen, setGOpen] = useState<Set<string>>(new Set());
+  const [gEdit, setGEdit] = useState<{ id: string; name: string; checkIn: string; nights: number } | null>(null);
+  const [gBusy, setGBusy] = useState(false);
   const [payCash, setPayCash] = useState(0);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
@@ -103,7 +107,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (dueOnly && payState(b, L.plats.get(b.platformId)).left <= 0) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
-      const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
+      const hay = [b.guestName, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -125,6 +129,168 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const revAll = roomRevenue(rows ?? [], from, to);
   const roomsAll = revAll.net;
   const exT = expenseTotals(ex.list ?? []);
+  const renderRow = (b: Booking, gm = false) => {
+            const p = L.plats.get(b.platformId);
+            const per = perNight(b);
+            const eo = isActive(b) && isEarlyOut(b);
+            const ps = payState(b, p);
+            return (
+              <div key={b.id} role="button" tabIndex={0} className={`lrow ${gm ? "gmem" : ""} ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
+                <span className="c-date">{dayLabel(b.checkIn)}</span>
+                <span className="c-kind">{b.kind === "stay" ? "숙박" : "대실"}</span>
+                <span className="c-plat">
+                  <PlatBadge p={p} />
+                  <span className="pn">{p?.name ?? "?"}</span>
+                </span>
+                <span className="c-name">
+                  <span className="gn">{b.guestName}</span>
+                  {b.groupId && !gm ? <span className="grptag" title="단체 예약">단체 {b.groupName}</span> : null}
+                  {STATUS[b.status] ? <span className={b.status === "noshow" ? "nst" : "cxt"} title={b.status === "noshow" ? "결제한 금액은 매출에 남아요" : "전액 환불 · 매출에서 빠져요"}>{STATUS[b.status]}</span> : null}
+                  {b.memo ? <span className="memo">{b.memo}</span> : null}
+                </span>
+                <span className="c-type">
+                  <TypeBadge t={L.types.get(b.typeId)} />
+                </span>
+                <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
+                  {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
+                  {b.guests ? <small className="gcount"> · {b.guests}명</small> : null}
+                </span>
+                <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
+                  {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
+                </span>
+                <span className="c-price r">
+                  {won(b.price)}
+                  {eo && b.refund ? <small className="rf">환불 −{won(b.refund)}</small> : per ? <small>1박 {won(per)}</small> : null}
+                  {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
+                </span>
+                <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
+              </div>
+            );
+  };
+
+  // 단체 예약: 장부에서는 한 줄로 묶고, 누르면 방마다 펼쳐요
+  const groups = groupSummaries(list);
+  const ledgerItems: { b?: Booking; g?: GroupSummary }[] = [];
+  {
+    const seen = new Set<string>();
+    for (const b of list) {
+      if (!b.groupId || (groups.get(b.groupId)?.members.length ?? 0) < 2) ledgerItems.push({ b });
+      else if (!seen.has(b.groupId)) {
+        seen.add(b.groupId);
+        ledgerItems.push({ g: groups.get(b.groupId)! });
+      }
+    }
+  }
+  const groupAct = async (g: GroupSummary, what: "in" | "cancel") => {
+    if (gBusy) return;
+    if (what === "cancel" && !window.confirm(`단체 ${g.name} ${g.rooms}실을 모두 취소할까요?\n전액 환불로 보고 매출에서 빠지고, 방과 남은 객실이 다시 비어요.`)) return;
+    setGBusy(true);
+    try {
+      const r = await data.patchGroup(g.groupId, what === "in" ? { arrived: true } : { status: "cancelled" });
+      notify(what === "in" ? `단체 ${g.name} ${r.length}실 모두 입실 완료` : `단체 ${g.name} ${r.length}실을 취소했어요`);
+    } catch (e) {
+      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setGBusy(false);
+    }
+  };
+  const saveGroupEdit = async (g: GroupSummary) => {
+    if (!gEdit || gBusy) return;
+    const nm = gEdit.name.trim();
+    if (!nm) return notify("단체명을 적어 주세요");
+    const dateChanged = gEdit.checkIn !== g.checkIn || gEdit.nights !== g.nights;
+    if (dateChanged) {
+      const block = groupDateBlock(data.hotel!.settings, data.bookings, g.members, gEdit.checkIn, gEdit.nights);
+      if (block) return notify(block);
+    }
+    setGBusy(true);
+    try {
+      await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name, ...(dateChanged ? { checkIn: gEdit.checkIn, nights: gEdit.nights } : {}) });
+      notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}`);
+      setGEdit(null);
+    } catch (e) {
+      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setGBusy(false);
+    }
+  };
+  const renderGroup = (g: GroupSummary) => {
+    const open = gOpen.has(g.groupId);
+    const first = g.members[0];
+    const p = L.plats.get(first.platformId);
+    const tcount = new Map<string, number>();
+    for (const b of g.active) tcount.set(b.typeId, (tcount.get(b.typeId) ?? 0) + 1);
+    const tord = new Map(data.hotel!.settings.types.map((t, i) => [t.id, i]));
+    const tsum = [...tcount.entries()].sort((a, b) => (tord.get(a[0]) ?? 0) - (tord.get(b[0]) ?? 0)).map(([t, n]) => `${typeLabel(L.types.get(t))} ${n}`).join(" · ");
+    const cancelled = g.rooms === 0;
+    const toggleOpen = () => setGOpen((x) => { const y = new Set(x); if (y.has(g.groupId)) y.delete(g.groupId); else y.add(g.groupId); return y; });
+    return (
+      <div key={`g-${g.groupId}`} className="lgroup">
+        <div role="button" tabIndex={0} aria-expanded={open} className={`lrow grow ${open ? "open" : ""} ${cancelled ? "cx" : ""}`} onClick={toggleOpen} onKeyDown={(e) => e.key === "Enter" && toggleOpen()}>
+          <span className="c-date">{dayLabel(g.checkIn)}</span>
+          <span className="c-kind">단체</span>
+          <span className="c-plat">
+            <PlatBadge p={p} />
+            <span className="pn">{p?.name ?? "?"}</span>
+          </span>
+          <span className="c-name">
+            <span className="gname">
+              <ChevronRight size={15} className="gchev" />
+              {g.name}
+            </span>
+            <span className="grptag">{g.rooms}실</span>
+            {g.members.length > g.rooms ? <span className="cxt">취소 {g.members.length - g.rooms}</span> : null}
+          </span>
+          <span className="c-type gts">{tsum}</span>
+          <span className="c-len">{g.nights}박</span>
+          <span className="c-room">{g.members.length}개 방</span>
+          <span className="c-price r">
+            {won(g.total)}
+            <small>단체 합계</small>
+          </span>
+          <span className="c-ring">{g.arrived && g.rooms ? <span className="intag">{g.arrived === g.rooms ? "완료" : `${g.arrived}/${g.rooms}`}</span> : null}</span>
+        </div>
+        {open ? (
+          <>
+            {g.rooms ? (
+              <div className="gacts">
+                <button type="button" className="btn sm dark" disabled={gBusy || g.arrived === g.rooms} onClick={() => void groupAct(g, "in")}>
+                  <Check size={14} strokeWidth={2.6} /> 모두 입실
+                </button>
+                <button type="button" className="btn sm line" disabled={gBusy} onClick={() => setGEdit(gEdit?.id === g.groupId ? null : { id: g.groupId, name: g.name, checkIn: g.checkIn, nights: g.nights })}>
+                  이름·날짜 바꾸기
+                </button>
+                <button type="button" className="btn sm line red-t" disabled={gBusy} onClick={() => void groupAct(g, "cancel")}>
+                  단체 취소
+                </button>
+              </div>
+            ) : null}
+            {gEdit?.id === g.groupId ? (
+              <div className="gedit">
+                <input className="inp" aria-label="단체명" maxLength={40} value={gEdit.name} onChange={(e) => setGEdit({ ...gEdit, name: e.target.value })} />
+                <input className="inp" type="date" aria-label="단체 입실일" value={gEdit.checkIn} onChange={(e) => e.target.value && setGEdit({ ...gEdit, checkIn: e.target.value })} />
+                <span className="step sm">
+                  <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setGEdit({ ...gEdit, nights: Math.max(1, gEdit.nights - 1) })}>
+                    −
+                  </button>
+                  <b className="num">{gEdit.nights}박</b>
+                  <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setGEdit({ ...gEdit, nights: Math.min(90, gEdit.nights + 1) })}>
+                    +
+                  </button>
+                </span>
+                <span className="muted sm">모든 방에 같이 적용돼요 · 가격은 그대로</span>
+                <button type="button" className="btn sm dark" disabled={gBusy} onClick={() => void saveGroupEdit(g)}>
+                  저장
+                </button>
+              </div>
+            ) : null}
+            {[...g.members].sort((a, b) => (L.roomLabel(a.roomId) ?? "").localeCompare(L.roomLabel(b.roomId) ?? "", "ko", { numeric: true })).map((b) => renderRow(b, true))}
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
   const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
 
@@ -302,43 +468,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
         ) : list.length === 0 ? (
           <div className="lempty">조건에 맞는 예약이 없어요</div>
         ) : (
-          list.map((b) => {
-            const p = L.plats.get(b.platformId);
-            const per = perNight(b);
-            const eo = isActive(b) && isEarlyOut(b);
-            const ps = payState(b, p);
-            return (
-              <div key={b.id} role="button" tabIndex={0} className={`lrow ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
-                <span className="c-date">{dayLabel(b.checkIn)}</span>
-                <span className="c-kind">{b.kind === "stay" ? "숙박" : "대실"}</span>
-                <span className="c-plat">
-                  <PlatBadge p={p} />
-                  <span className="pn">{p?.name ?? "?"}</span>
-                </span>
-                <span className="c-name">
-                  <span className="gn">{b.guestName}</span>
-                  {STATUS[b.status] ? <span className={b.status === "noshow" ? "nst" : "cxt"} title={b.status === "noshow" ? "결제한 금액은 매출에 남아요" : "전액 환불 · 매출에서 빠져요"}>{STATUS[b.status]}</span> : null}
-                  {b.memo ? <span className="memo">{b.memo}</span> : null}
-                </span>
-                <span className="c-type">
-                  <TypeBadge t={L.types.get(b.typeId)} />
-                </span>
-                <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
-                  {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
-                  {b.guests ? <small className="gcount"> · {b.guests}명</small> : null}
-                </span>
-                <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
-                  {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
-                </span>
-                <span className="c-price r">
-                  {won(b.price)}
-                  {eo && b.refund ? <small className="rf">환불 −{won(b.refund)}</small> : per ? <small>1박 {won(per)}</small> : null}
-                  {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
-                </span>
-                <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
-              </div>
-            );
-          })
+          ledgerItems.map((it) => (it.g ? renderGroup(it.g) : renderRow(it.b!, false)))
         )}
       </div>
       <p className="fine pad">엑셀 내보내기는 Pro에서 제공할 예정이에요.</p>

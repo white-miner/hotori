@@ -129,6 +129,9 @@ export interface Booking {
   guests?: number | null;
   /** 판매 가격(price)에 들어 있는 추가 인원 금액 */
   extraFee?: number | null;
+  /** 단체 예약 묶음 (같은 단체의 방들은 같은 값) */
+  groupId?: string | null;
+  groupName?: string | null;
   /** 받은 돈 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
   payments?: Payment[];
   cancelledAt: string | null;

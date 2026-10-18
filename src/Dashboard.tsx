@@ -1,3 +1,4 @@
+import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import {
@@ -380,11 +381,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const du = dayuseByRoom.get(r.id) ?? [];
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
-    const head = (
+    const headOf = (extra?: React.ReactNode) => (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
         <FitText className={`no ${k}`} text={r.no} />
+        {extra}
       </div>
     );
+    const head = headOf();
     const tline = <TypeLine t={t} />;
     const duTags = du.map((d) => (
       <span key={d.id} className="du">
@@ -424,7 +427,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <div
         key={r.id}
         {...mvAttr}
-        className={`cell bk ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => onOpen(b, selDate))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -435,11 +438,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {du.length > 1 ? <em> +{du.length - 1}</em> : null}
           </span>
         ) : null}
-        {head}
+        {headOf(b.guests && !cancelled ? <span className="gcount" title={`인원 ${b.guests}명`}>{b.guests}명</span> : null)}
         {tline}
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span>{b.guestName}</span>
+          {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
         </div>
         <div className="r3 rp">
           {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled ? 0 : payState(b, L.plats.get(b.platformId)).left)}
@@ -447,7 +451,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
-          {b.guests ? <span className="gcount">{b.guests}명</span> : null}
         </div>
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>

@@ -43,6 +43,7 @@ import {
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
+import GroupEntry from "./GroupEntry";
 import { PAY_KIND_LABEL, isOnsite, validatePayment } from "../shared/payment";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import { PAY_LABEL, type PayMethod } from "../shared/shop";
@@ -96,6 +97,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const p = req.preset ?? {};
   const isNew = !base;
   const [kind, setKind] = useState<Kind>(base?.kind ?? p.kind ?? "stay");
+  // 단체 예약: 새로 적을 때만 '단체'로 바꿔서 여러 방을 한 번에
+  const [group, setGroup] = useState(false);
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
@@ -428,6 +431,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 단축키: 입력 칸 밖에서는 그대로, 입력 칸 안에서는 Alt와 함께
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (group) {
+        if (e.key === "Escape" && !(e.target instanceof HTMLInputElement && e.target.type === "date")) onClose();
+        return;
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         // 날짜 칸에서 Esc는 날짜 고르기만 닫고, 적던 예약은 그대로 둬요
@@ -473,6 +480,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   ];
   const custom = !dateChips.some((c) => c.d === checkIn);
 
+  if (group)
+    return (
+      <GroupEntry
+        data={data}
+        today={today}
+        init={{ platformId, checkIn, nights }}
+        onBack={() => setGroup(false)}
+        onClose={onClose}
+        onSaved={(m) => onSaved(m)}
+      />
+    );
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
@@ -492,6 +510,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <button type="button" className={kind === "dayuse" ? "on" : ""} onClick={() => setKind("dayuse")}>
               대실
             </button>
+            {isNew ? (
+              <button type="button" onClick={() => setGroup(true)} title="여러 방을 한 번에 (단체·워크숍)">
+                단체
+              </button>
+            ) : null}
           </div>
           {!isActive(draft) ? <span className="cxt big">{status === "noshow" ? "노쇼 처리된" : "취소된"} 예약</span> : null}
           <button type="button" className="x" onClick={onClose}>

@@ -61,6 +61,7 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode }: { 
         <>
       {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
       {bar.prev !== undefined ? <span className="cb-mv" title={`${L.roomLabel(bar.prev) ?? "?"}호에서 옮겨 왔어요`}>{L.rooms.get(bar.prev ?? "")?.no ?? "?"}→</span> : null}
+      {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
       {bar.next !== undefined ? <span className="cb-mv nx" title={`다음 날 ${L.roomLabel(bar.next) ?? "?"}호로 옮겨요`}>→{L.rooms.get(bar.next ?? "")?.no ?? "?"}</span> : null}
       {px >= 96 ? <span className="cb-p">{p?.abbr ?? "?"}</span> : null}

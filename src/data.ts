@@ -45,6 +45,8 @@ interface BookingRow {
   memo: string | null;
   guests?: number | null; // 인원
   extra_fee?: number | null; // 판매 가격에 들어 있는 추가 인원 금액
+  group_id?: string | null; // 단체 예약 묶음
+  group_name?: string | null;
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
@@ -70,7 +72,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -102,6 +104,8 @@ export function fromRow(r: BookingRow): Booking {
     memo: r.memo,
     guests: r.guests ?? null,
     extraFee: r.extra_fee ?? null,
+    groupId: r.group_id ?? null,
+    groupName: r.group_name ?? null,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     cancelledAt: r.cancelled_at,
     createdAt: r.created_at,
@@ -131,6 +135,8 @@ function toRow(b: Booking) {
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
     guests: b.guests && b.guests >= 1 ? Math.min(99, Math.round(b.guests)) : null,
     extra_fee: b.extraFee && b.extraFee > 0 ? Math.min(Math.round(b.extraFee), Math.round(b.price)) : null,
+    group_id: b.groupId && b.groupName?.trim() ? b.groupId : null,
+    group_name: b.groupId && b.groupName?.trim() ? b.groupName.trim().slice(0, 40) : null,
   };
 }
 
@@ -308,6 +314,58 @@ export function useHotelData(hotelId: string) {
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
     return saved;
   }, [refresh]);
+  // 단체 예약: 여러 줄을 한 번에 (한 문장이라 모두 되거나 모두 안 돼요)
+  const saveGroup = useCallback(
+    async (list: Booking[]): Promise<Booking[]> => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert(list.map((b) => ({ ...toRow(b), hotel_id: hotelId })))
+        .select(COLS);
+      if (error) throw error;
+      const saved = (data as BookingRow[]).map(fromRow);
+      setBookings((x) => [...x, ...saved]);
+      return saved;
+    },
+    [hotelId],
+  );
+  // 단체 한꺼번에: 모두 입실 · 단체 취소 · 이름/날짜 (정상 예약만, 한 문장)
+  const patchGroup = useCallback(
+    async (groupId: string, patch: { arrived?: boolean; status?: "cancelled"; groupName?: string; oldName?: string; checkIn?: string; nights?: number }): Promise<Booking[]> => {
+      const row: Record<string, unknown> = {};
+      if (patch.arrived !== undefined) row.arrived = patch.arrived;
+      if (patch.status) row.status = patch.status;
+      if (patch.groupName !== undefined) row.group_name = patch.groupName.trim().slice(0, 40);
+      if (patch.checkIn !== undefined) row.check_in = patch.checkIn;
+      if (patch.nights !== undefined) row.nights = patch.nights;
+      let q = supabase.from("bookings").update(row).eq("hotel_id", hotelId).eq("group_id", groupId);
+      // 이름만 바꿀 때는 취소된 방도 같이 (묶음 이름은 하나), 나머지는 정상 예약만
+      if (patch.groupName === undefined || patch.checkIn !== undefined || patch.nights !== undefined) q = q.eq("status", "active");
+      const { data, error } = await q.select(COLS);
+      if (error) {
+        void refresh();
+        throw error;
+      }
+      let saved = (data as BookingRow[]).map(fromRow);
+      // 손님 이름을 단체명 그대로 둔 방만 새 이름으로 (방마다 적은 손님 이름은 그대로)
+      if (patch.groupName !== undefined && patch.oldName && patch.oldName !== patch.groupName.trim()) {
+        const r2 = await supabase
+          .from("bookings")
+          .update({ guest_name: patch.groupName.trim().slice(0, 60) })
+          .eq("hotel_id", hotelId)
+          .eq("group_id", groupId)
+          .eq("guest_name", patch.oldName)
+          .select(COLS);
+        if (!r2.error) {
+          const m2 = new Map((r2.data as BookingRow[]).map((r) => [r.id, fromRow(r)]));
+          saved = saved.map((b) => m2.get(b.id) ?? b);
+        }
+      }
+      const m = new Map(saved.map((b) => [b.id, b]));
+      setBookings((x) => x.map((b) => m.get(b.id) ?? b));
+      return saved;
+    },
+    [hotelId, refresh],
+  );
   const deleteBooking = useCallback(async (id: string) => {
     const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) throw error;
@@ -322,7 +380,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 
