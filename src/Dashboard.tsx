@@ -13,6 +13,7 @@ import {
   orderedFloors,
   stockLevel,
   stockTable,
+  typeLabel,
   typeTotals,
   weekday,
   won,
@@ -141,7 +142,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
         </div>
         <div className="r3 rp">
           <span className="pr">{won(b.price)}</span>
-          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">판매 {sold.code}</span> : null}
+          {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : sold ? <span className="up">판매 {typeLabel(sold)}</span> : null}
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}번째`}</span>
@@ -184,7 +185,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               {over ? (
                 <>
                   <b>
-                    {dayLabel(over.date)} {over.type.name} {over.over}실 초과
+                    {dayLabel(over.date)} {typeLabel(over.type)} {over.over}실 초과
                   </b>
                   <span className="hl-tail"> — 메인 플랫폼에서 마감해 주세요</span>
                 </>
@@ -220,11 +221,10 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                 </button>
               ))}
             </div>
-            {s.types.map((t) => (
+            {s.types.filter((t) => typeLabel(t) || (totals.get(t.id) ?? 0) > 0).map((t) => (
               <div className="srow" key={t.id}>
                 <div className="tn">
                   <TypeBadge t={t} />
-                  <span className="tname">{t.name}</span>
                   <small>{totals.get(t.id) ?? 0}실</small>
                 </div>
                 {dates.map((d) => stockCell(t.id, d))}
@@ -337,7 +337,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
                   </b>
                   <span>
-                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미정"} · {L.types.get(d.typeId)?.name ?? "?"} ·{" "}
+                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미정"} · {typeLabel(L.types.get(d.typeId)) || "?"} ·{" "}
                     {won(d.price)}원
                   </span>
                 </div>
@@ -404,7 +404,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                           <button key={r.id} className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => void assign(b, r.id)}>
                             {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
                             {r.no}
-                            {r.typeId !== b.typeId ? <i>{L.types.get(r.typeId ?? "")?.code}</i> : null}
+                            {r.typeId !== b.typeId ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
                           </button>
                         ))
                       ) : (

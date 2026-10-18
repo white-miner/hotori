@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Minus, Plus, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
-  TYPE_CODE_MAX,
   TYPE_NAME_MAX,
   addRoomsToFloor,
   floorsOf,
@@ -11,7 +10,9 @@ import {
   moveFloor,
   parseRoomInput,
   removeBuilding,
+  typeLabel,
   typeTotals,
+  usableTypes,
 } from "../shared/ledger";
 import type { HotelData } from "./data";
 import { PALETTE, PlatBadge, TypeBadge, uid } from "./ui";
@@ -189,13 +190,12 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
           <div className="paint">
             칠할 타입
-            {s.types.map((t) => (
+            {usableTypes(s.types).map((t) => (
               <button key={t.id} className={`chip sm ${paint === t.id ? "on" : ""}`} onClick={() => setPaint(paint === t.id ? null : t.id)}>
                 <TypeBadge t={t} />
-                {t.name}
               </button>
             ))}
-            {!s.types.length ? <span className="muted">아래 '객실 타입'에서 타입을 먼저 추가해 주세요</span> : null}
+            {!usableTypes(s.types).length ? <span className="muted">아래 '객실 타입'에서 타입을 먼저 추가해 주세요</span> : null}
             <span className="push" />
             {!multi ? (
               <button className="btn line sm" onClick={() => addFloor(s.buildings[0].id)}>
@@ -397,9 +397,9 @@ export default function Settings({ data, email, notify }: Props) {
                   aria-label="객실 타입"
                 >
                   <option value="">타입 없음</option>
-                  {s.types.map((t) => (
+                  {s.types.filter((t) => typeLabel(t) || t.id === room.r.typeId).map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.code} {t.name}
+                      {typeLabel(t) || "(이름 없음)"}
                     </option>
                   ))}
                 </select>
@@ -431,7 +431,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">약자는 칩과 방 칸에 그대로 보여요 (최대 {TYPE_CODE_MAX}글자)</div>
+          <div className="sub">방 칸과 현황표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자)</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">
@@ -444,27 +444,26 @@ export default function Settings({ data, email, notify }: Props) {
               </span>
               <input
                 className="tb tbin"
-                value={t.code}
-                maxLength={TYPE_CODE_MAX}
-                size={Math.min(TYPE_CODE_MAX, Math.max(2, t.code.length + 1))}
-                title={t.code}
-                aria-label="타입 약자"
-                onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, code: e.target.value.toUpperCase() } : y)) }))}
-              />
-              <input
-                className="nin"
                 value={t.name}
+                placeholder="객실 타입"
                 maxLength={TYPE_NAME_MAX}
-                aria-label="타입 이름"
-                onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, name: e.target.value } : y)) }))}
+                size={Math.min(TYPE_NAME_MAX + 2, Math.max(7, t.name.length + 2))}
+                title={t.name || "객실 타입"}
+                aria-label="객실 타입"
+                autoFocus={!t.name && i === s.types.length - 1}
+                onChange={(e) => {
+                  const v = e.target.value.slice(0, TYPE_NAME_MAX);
+                  update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, code: v, name: v } : y)) }));
+                }}
               />
+              <span className="tfill" />
               <span className="cnt">{totals.get(t.id) ?? 0}</span>
               <span className="mut">실</span>
               <button
                 className="ic"
                 aria-label="타입 지우기"
                 onClick={() => {
-                  if (used.t.has(t.id)) return notify("예약 기록에 쓰인 타입은 지울 수 없어요. 이름을 바꿔 주세요.");
+                  if (used.t.has(t.id)) return notify("예약 기록에 쓰인 타입은 지울 수 없어요. 타입 글자를 바꿔 주세요.");
                   update((x) => ({
                     ...x,
                     types: x.types.filter((y) => y.id !== t.id),
@@ -478,7 +477,7 @@ export default function Settings({ data, email, notify }: Props) {
           ))}
           <button
             className="add"
-            onClick={() => update((x) => ({ ...x, types: [...x.types, { id: uid("t"), code: "N", name: "새 타입" }] }))}
+            onClick={() => update((x) => ({ ...x, types: [...x.types, { id: uid("t"), code: "", name: "" }] }))}
           >
             <Plus size={14} />
             타입 추가
@@ -519,7 +518,7 @@ export default function Settings({ data, email, notify }: Props) {
                 className="ic"
                 aria-label="플랫폼 지우기"
                 onClick={() => {
-                  if (used.p.has(p.id)) return notify("예약 기록에 쓰인 플랫폼은 지울 수 없어요. 이름을 바꿔 주세요.");
+                  if (used.p.has(p.id)) return notify("예약 기록에 쓰인 플랫폼은 지울 수 없어요. 타입 글자를 바꿔 주세요.");
                   update((x) => ({ ...x, platforms: x.platforms.filter((y) => y.id !== p.id) }));
                 }}
               >

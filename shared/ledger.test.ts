@@ -6,7 +6,9 @@ import {
   addDays,
   businessDate,
   firstOverbooking,
-  TYPE_CODE_MAX,
+  TYPE_NAME_MAX,
+  typeLabel,
+  usableTypes,
   addRoomsToFloor,
   addFloorOnTop,
   allRooms,
@@ -128,7 +130,7 @@ test("오버부킹은 마이너스, 가장 가까운 날짜를 알려 줘요", (
   const t = stockTable(S, list, dates);
   assert.equal(t.get("bg")!.get("2026-10-20"), -1);
   const o = firstOverbooking(S, t, dates);
-  assert.deepEqual([o?.date, o?.type.code, o?.over], ["2026-10-20", "BG", 1]);
+  assert.deepEqual([o?.date, o?.type.name, o?.over], ["2026-10-20", "BG", 1]);
 });
 
 test("표시 단계: 여유 / 적음 / 만실 / 초과", () => {
@@ -291,13 +293,34 @@ test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 �
   assert.equal(removeBuilding(gone, "b-main"), gone, "마지막 건물은 지울 수 없어요");
 });
 
-test("객실 타입 약자는 12글자까지", () => {
-  assert.equal(TYPE_CODE_MAX, 12);
-  const t = { id: "long", code: "스탠다드디럭스오션뷰트윈", name: "스탠다드 디럭스 오션뷰 트윈" };
-  assert.equal(t.code.length, 12);
-  const s2 = normalizeSettings({ ...M, types: [...M.types, t] });
-  assert.equal(s2.types.at(-1)?.code, t.code, "저장·불러오기에서 잘리지 않아요");
+test("객실 타입은 이름 하나(최대 12글자) — 옛 약자 데이터는 화면에 보이던 약자를 이름으로", () => {
+  assert.equal(TYPE_NAME_MAX, 12);
+  const long = { id: "long", name: "스탠다드디럭스오션뷰트윈" };
+  assert.equal(long.name.length, 12);
+  const s2 = normalizeSettings({
+    ...M,
+    types: [
+      ...M.types,
+      long,
+      { id: "old1", code: "스탠다드", name: "새 타입" },
+      { id: "old2", code: "N", name: "새 타입" },
+      { id: "old3", code: "", name: "트윈" },
+      { id: "old4", code: "", name: "새 타입" },
+      { id: "new", name: "" },
+    ],
+  });
+  const byId = new Map(s2.types.map((t) => [t.id, t]));
+  assert.equal(byId.get("long")?.name, long.name, "저장·불러오기에서 잘리지 않아요");
+  assert.equal(byId.get("sd")?.name, "SD", "약자가 있던 타입은 보이던 약자 그대로");
+  assert.equal(byId.get("old1")?.name, "스탠다드");
+  assert.equal(byId.get("old2")?.name, "N");
+  assert.equal(byId.get("old3")?.name, "트윈", "약자가 없으면 예전 이름");
+  assert.equal(byId.get("old4")?.name, "", "'새 타입' 기본값은 비워서 '객실 타입' 안내가 보이게");
+  assert.equal(normalizeSettings(s2).types.find((t) => t.id === "sd")?.name, "SD", "다시 불러와도 그대로");
+  assert.deepEqual(usableTypes(s2.types).map((t) => t.id).includes("new"), false, "빈 타입은 고를 수 없어요");
+  assert.equal(typeLabel(byId.get("old1")), "스탠다드");
   assert.equal(validateBooking(bk({ typeId: "long" }), s2), null);
+  assert.equal(validateBooking(bk({ typeId: "new" }), s2), "객실 타입을 골라 주세요.");
 });
 
 test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1", () => {

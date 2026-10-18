@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { type Booking, addDays, dayLabel, isActive, perNight, won } from "../shared/ledger";
+import { type Booking, addDays, dayLabel, isActive, perNight, typeLabel, usableTypes, won } from "../shared/ledger";
 import { type HotelData, queryLedger } from "./data";
 import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
 
@@ -88,9 +88,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
         </select>
         <select value={type} onChange={(e) => setType(e.target.value)} aria-label="객실 타입">
           <option value="">타입 전체</option>
-          {s.types.map((t) => (
+          {usableTypes(s.types).map((t) => (
             <option key={t.id} value={t.id}>
-              {t.code} {t.name}
+              {typeLabel(t)}
             </option>
           ))}
         </select>

@@ -1,5 +1,5 @@
 import type { Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
-import { isMultiBuilding, orderedFloors } from "../shared/ledger";
+import { isMultiBuilding, orderedFloors, typeLabel } from "../shared/ledger";
 
 export const PALETTE: { name: string; value: string | null }[] = [
   { name: "기본", value: null },
@@ -26,9 +26,9 @@ export function Brand({ sub }: { sub?: string }) {
 }
 
 export function TypeBadge({ t, className = "" }: { t?: RoomType | null; className?: string }) {
-  const code = t?.code?.trim() || "?";
+  const code = typeLabel(t) || "?";
   return (
-    <span className={`tb ${className}`} title={t ? (t.name && t.name !== code ? `${code} · ${t.name}` : code) : undefined}>
+    <span className={`tb ${className}`} title={t ? code : undefined}>
       {code}
     </span>
   );

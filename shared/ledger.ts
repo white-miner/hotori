@@ -7,13 +7,26 @@
 export type Kind = "stay" | "dayuse";
 export type Status = "active" | "cancelled" | "noshow";
 
-export const TYPE_CODE_MAX = 12; // 타입 약자(방 칸에 보이는 글자) 최대 글자 수
-export const TYPE_NAME_MAX = 20;
+export const TYPE_NAME_MAX = 12; // 객실 타입 이름 최대 글자 수
+/** @deprecated TYPE_NAME_MAX와 같아요 */
+export const TYPE_CODE_MAX = TYPE_NAME_MAX;
 export interface RoomType {
   id: string;
-  code: string; // 최대 12글자, 예: S, SD, 스위트
-  name: string;
+  name: string; // 객실 타입 이름(최대 12글자). 칩·방 칸·현황표·장부에 그대로 보여요. 예: S, SD, 스탠다드 디럭스
+  /** @deprecated 예전 '약자' 칸. 옛 데이터를 불러올 때만 읽고, 저장할 때는 name과 같은 값으로 맞춰 둬요 */
+  code?: string;
 }
+const OLD_DEFAULT_TYPE_NAME = "새 타입";
+/** 옛 데이터 → 이름 하나로: 화면에 보이던 약자가 있으면 그걸, 없으면 이름('새 타입'은 빼고) */
+export function migrateTypeName(t: { code?: unknown; name?: unknown }): string {
+  const code = typeof t.code === "string" ? t.code.trim() : "";
+  const name = typeof t.name === "string" ? t.name.trim() : "";
+  return (code || (name === OLD_DEFAULT_TYPE_NAME ? "" : name)).slice(0, TYPE_NAME_MAX);
+}
+/** 화면에 보이는 객실 타입 이름 */
+export const typeLabel = (t?: Pick<RoomType, "name"> | null): string => t?.name?.trim() ?? "";
+/** 이름이 비어 있지 않아 예약·방 배정에 쓸 수 있는 타입 */
+export const usableTypes = <T extends Pick<RoomType, "name">>(types: T[]): T[] => types.filter((t) => typeLabel(t) !== "");
 export interface Room {
   id: string; // 호텔 안에서 유일 (건물이 달라도 같은 번호를 쓸 수 있어서 번호가 아니라 id로 구분해요)
   no: string; // 방 번호 또는 이름 (예: 601, 펜션1)
@@ -92,7 +105,14 @@ export function normalizeSettings(raw: unknown): HotelSettings {
           rooms: Array.isArray(f.rooms) ? f.rooms : [],
         }))
       : [],
-    types: Array.isArray(s.types) ? s.types : [],
+    types: Array.isArray(s.types)
+      ? s.types
+          .filter((t) => t && typeof t.id === "string")
+          .map((t) => {
+            const name = migrateTypeName(t);
+            return { ...t, name, code: name };
+          })
+      : [],
     platforms: Array.isArray(s.platforms) ? s.platforms : [],
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
   };
@@ -458,7 +478,7 @@ export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.platforms.some((p) => p.id === b.platformId)) return "플랫폼을 골라 주세요.";
-  if (!s.types.some((t) => t.id === b.typeId)) return "객실 타입을 골라 주세요.";
+  if (!s.types.some((t) => t.id === b.typeId && typeLabel(t))) return "객실 타입을 골라 주세요.";
   if (!b.guestName.trim()) return "이름을 적어 주세요.";
   if (!Number.isFinite(b.price) || b.price < 0) return "판매가격을 적어 주세요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";

@@ -14,7 +14,9 @@ import {
   previewChange,
   stockLevel,
   stockTable,
+  typeLabel,
   typeTotals,
+  usableTypes,
   validateBooking,
   won,
 } from "../shared/ledger";
@@ -47,11 +49,13 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const base = req.booking;
+  // 이름이 빈 타입은 고를 수 없어요 (고치는 예약에 이미 붙은 타입은 그대로 보여요)
+  const pickTypes = s.types.filter((t) => typeLabel(t) || t.id === base?.typeId);
   const p = req.preset ?? {};
   const isNew = !base;
   const [kind, setKind] = useState<Kind>(base?.kind ?? p.kind ?? "stay");
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
-  const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? s.types[0]?.id ?? "");
+  const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
   const [nights, setNights] = useState(base?.nights ?? p.nights ?? 1);
   const [startTime, setStart] = useState(base?.startTime ?? "");
@@ -135,7 +139,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
       const t = L.types.get(saved.typeId);
       const tail =
         kind === "stay" && isActive(saved) && preview[0]
-          ? ` · ${L.types.get(preview[0].typeId)?.code} 남은 객실 ${preview[0].after}`
+          ? ` · ${L.types.get(preview[0].typeId)?.name} 남은 객실 ${preview[0].after}`
           : "";
       onSaved(
         override === "cancelled"
@@ -187,9 +191,9 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
         return;
       }
       const ti = TYPE_KEYS.indexOf(e.code);
-      if (ti >= 0 && s.types[ti]) {
+      if (ti >= 0 && pickTypes[ti]) {
         e.preventDefault();
-        setTypeId(s.types[ti].id);
+        setTypeId(pickTypes[ti].id);
         return;
       }
       if (kind === "stay" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
@@ -255,14 +259,13 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
             객실 타입<em>*</em>
           </label>
           <div className="chips scroll">
-            {s.types.map((t, k) => {
+            {pickTypes.map((t, k) => {
               const r = minRemain(t.id);
               const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
               return (
                 <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)}>
                   <span className="t1">
                     <TypeBadge t={t} />
-                    <span className="tname">{t.name}</span>
                   </span>
                   {kind === "stay" ? (
                     <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
@@ -406,7 +409,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                   >
                     {bpre(r.buildingId)}
                     {r.no}
-                    <i>{L.types.get(r.typeId ?? "")?.code}</i>
+                    <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
                   </button>
                 ))
               : otherType.length ? (
