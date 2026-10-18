@@ -446,7 +446,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
         </div>
         <div className="r3 rp">
-          {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled ? 0 : payState(b, L.plats.get(b.platformId)).left)}
+          {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled || b.groupId ? 0 : payState(b, L.plats.get(b.platformId)).left)}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         <div className="r3">

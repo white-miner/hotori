@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
+import { settle, settleBadge } from "../shared/settle";
+import GroupSettle from "./GroupSettle";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
 import { bookingCash, payState } from "../shared/payment";
@@ -53,6 +55,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [gOpen, setGOpen] = useState<Set<string>>(new Set());
   const [gEdit, setGEdit] = useState<{ id: string; name: string; checkIn: string; nights: number } | null>(null);
   const [gBusy, setGBusy] = useState(false);
+  const [settleId, setSettleId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
@@ -96,6 +99,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     };
   }, [hotelId, from, to, data.syncedAt, data.bookings]);
 
+  // 단체 정산: 방들의 지금 상태로 (방마다 잔금은 안 보이고 단체 줄에 한 번에)
+  const allGroups = useMemo(() => groupSummaries(rows ?? []), [rows]);
+  const groupSettle = (id: string) => {
+    const g = allGroups.get(id);
+    if (!g) return null;
+    return settle(g.members, data.groups.get(id), L.plats.get(g.members[0].platformId));
+  };
+  const leftOf = (b: Booking) => (b.groupId ? (groupSettle(b.groupId)?.left ?? 0) : payState(b, L.plats.get(b.platformId)).left);
   const q = query.trim().toLowerCase();
   // 조건(플랫폼·타입·종류·검색·상태)만 거른 목록: 기간 밖 입실이라도 기간 안에 중도 퇴실 환불이 있으면 매출 계산에 들어가요
   const matched = (rows ?? []).filter((b) => {
@@ -104,7 +115,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (kind && b.kind !== kind) return false;
     if (st === "active" && !isActive(b)) return false;
     if (st === "void" && isActive(b)) return false;
-    if (dueOnly && payState(b, L.plats.get(b.platformId)).left <= 0) return false;
+    if (dueOnly && leftOf(b) <= 0) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
       const hay = [b.guestName, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
@@ -123,7 +134,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
   // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
   const filtered = !!(plat || type || kind || q || st === "void" || dueOnly);
-  const dueTotal = list.reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0);
+  const dueTotal =
+    list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0) +
+    [...new Set(list.map((b) => b.groupId).filter((x): x is string => !!x))].reduce((n, id) => n + (groupSettle(id)?.left ?? 0), 0);
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
   // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
   const revAll = roomRevenue(rows ?? [], from, to);
@@ -133,7 +146,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             const p = L.plats.get(b.platformId);
             const per = perNight(b);
             const eo = isActive(b) && isEarlyOut(b);
-            const ps = payState(b, p);
+            // 단체 방은 결제자가 하나라 방마다 잔금을 안 보여요 (단체 줄에서)
+            const ps = b.groupId ? { left: 0, full: false } : payState(b, p);
             return (
               <div key={b.id} role="button" tabIndex={0} className={`lrow ${gm ? "gmem" : ""} ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
                 <span className="c-date">{dayLabel(b.checkIn)}</span>
@@ -223,6 +237,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     const tord = new Map(data.hotel!.settings.types.map((t, i) => [t.id, i]));
     const tsum = [...tcount.entries()].sort((a, b) => (tord.get(a[0]) ?? 0) - (tord.get(b[0]) ?? 0)).map(([t, n]) => `${typeLabel(L.types.get(t))} ${n}`).join(" · ");
     const cancelled = g.rooms === 0;
+    const gst = groupSettle(g.groupId);
+    const badge = gst ? settleBadge(gst, data.groups.get(g.groupId)) : null;
     const toggleOpen = () => setGOpen((x) => { const y = new Set(x); if (y.has(g.groupId)) y.delete(g.groupId); else y.add(g.groupId); return y; });
     return (
       <div key={`g-${g.groupId}`} className="lgroup">
@@ -245,8 +261,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           <span className="c-len">{g.nights}박</span>
           <span className="c-room">{g.members.length}개 방</span>
           <span className="c-price r">
-            {won(g.total)}
-            <small>단체 합계</small>
+            {won(gst?.total ?? g.total)}
+            {badge ? <small className={badge.due ? "dueamt" : "paidtag"}>{badge.text}</small> : <small>단체 합계</small>}
           </span>
           <span className="c-ring">{g.arrived && g.rooms ? <span className="intag">{g.arrived === g.rooms ? "완료" : `${g.arrived}/${g.rooms}`}</span> : null}</span>
         </div>
@@ -260,11 +276,20 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <button type="button" className="btn sm line" disabled={gBusy} onClick={() => setGEdit(gEdit?.id === g.groupId ? null : { id: g.groupId, name: g.name, checkIn: g.checkIn, nights: g.nights })}>
                   이름·날짜 바꾸기
                 </button>
+                <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
+                  정산하기
+                </button>
                 <button type="button" className="btn sm line red-t" disabled={gBusy} onClick={() => void groupAct(g, "cancel")}>
                   단체 취소
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <div className="gacts">
+                <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
+                  정산서 보기
+                </button>
+              </div>
+            )}
             {gEdit?.id === g.groupId ? (
               <div className="gedit">
                 <input className="inp" aria-label="단체명" maxLength={40} value={gEdit.name} onChange={(e) => setGEdit({ ...gEdit, name: e.target.value })} />
@@ -474,6 +499,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       <p className="fine pad">엑셀 내보내기는 Pro에서 제공할 예정이에요.</p>
         </>
       )}
+      {settleId && allGroups.get(settleId) ? (
+        <GroupSettle data={data} today={today} groupId={settleId} members={allGroups.get(settleId)!.members} onClose={() => setSettleId(null)} notify={notify} />
+      ) : null}
     </main>
   );
 }

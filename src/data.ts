@@ -16,6 +16,7 @@ import {
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 import type { Expense } from "../shared/expense";
 import type { PayKind, Payment } from "../shared/payment";
+import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
 
 export interface Hotel {
   id: string;
@@ -75,6 +76,50 @@ const COLS_BASE =
   "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
+
+// 단체 정산
+interface GroupRow {
+  id: string;
+  pay_mode: string;
+  due_on: string | null;
+  payer_company: string | null;
+  payer_name: string | null;
+  payer_phone: string | null;
+  rates: unknown;
+  extras: unknown;
+  booking_payments?: PaymentRow[];
+}
+const GROUP_COLS = `id,pay_mode,due_on,payer_company,payer_name,payer_phone,rates,extras,booking_payments(${PAY_COLS})`;
+function groupFromRow(r: GroupRow): GroupInfo {
+  const rates: Record<string, number> = {};
+  if (r.rates && typeof r.rates === "object") for (const [k, v] of Object.entries(r.rates as Record<string, unknown>)) if (Number.isFinite(Number(v))) rates[k] = Number(v);
+  const extras = Array.isArray(r.extras)
+    ? (r.extras as { name?: unknown; amount?: unknown }[]).filter((x) => x && typeof x.name === "string").map((x) => ({ name: String(x.name), amount: Math.max(0, Math.round(Number(x.amount) || 0)) }))
+    : [];
+  return {
+    id: r.id,
+    payMode: r.pay_mode === "postpaid" ? "postpaid" : "prepaid",
+    dueOn: r.due_on,
+    payerCompany: r.payer_company,
+    payerName: r.payer_name,
+    payerPhone: r.payer_phone,
+    rates: Object.keys(rates).length ? rates : null,
+    extras,
+    payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+  };
+}
+const t = (v: string | null | undefined, max: number) => (v && v.trim() ? v.trim().slice(0, max) : null);
+function groupToRow(g: Omit<GroupInfo, "payments">) {
+  return {
+    pay_mode: g.payMode,
+    due_on: g.payMode === "postpaid" ? g.dueOn : null,
+    payer_company: t(g.payerCompany, 60),
+    payer_name: t(g.payerName, 40),
+    payer_phone: t(g.payerPhone, 30),
+    rates: g.rates && Object.keys(g.rates).length ? g.rates : null,
+    extras: g.extras.slice(0, 50).map((x) => ({ name: x.name.trim().slice(0, 30), amount: Math.round(x.amount) })),
+  };
+}
 
 /** DB의 [{room, nights}] → [{roomId, nights}]. 모양이 이상하거나 박수 합이 안 맞으면 이동 없음 */
 function segsFromRow(v: unknown, nights: number | null): RoomSegment[] | null {
@@ -159,6 +204,8 @@ export function useHotelData(hotelId: string) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [syncedAt, setSyncedAt] = useState<number>(0);
+  // 단체 정산 정보 (id = group_id)
+  const [groups, setGroups] = useState<Map<string, GroupInfo>>(new Map());
   const busy = useRef(false);
   const again = useRef(false);
 
@@ -170,7 +217,7 @@ export function useHotelData(hotelId: string) {
     busy.current = true;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
-      const [h, b] = await Promise.all([
+      const [h, b, g] = await Promise.all([
         supabase.from("hotels").select("id,name,plan,is_demo,settings").eq("id", hotelId).single(),
         supabase
           .from("bookings")
@@ -179,6 +226,7 @@ export function useHotelData(hotelId: string) {
           .gte("check_in", since)
           .order("check_in")
           .limit(10000),
+        supabase.from("booking_groups").select(GROUP_COLS).eq("hotel_id", hotelId).limit(5000),
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
@@ -190,6 +238,8 @@ export function useHotelData(hotelId: string) {
         settings: normalizeSettings(h.data.settings),
       });
       setBookings((b.data as BookingRow[]).map(fromRow));
+      // 정산 표를 못 읽어도 예약 화면은 그대로 (정산 정보만 비어요)
+      if (!g.error) setGroups(new Map((g.data as unknown as GroupRow[]).map((r) => [r.id, groupFromRow(r)])));
       setError(null);
       setSyncedAt(Date.now());
     } catch (e) {
@@ -215,6 +265,7 @@ export function useHotelData(hotelId: string) {
       .channel(`hotel-${hotelId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `hotel_id=eq.${hotelId}` }, soon)
       .on("postgres_changes", { event: "*", schema: "public", table: "hotels", filter: `id=eq.${hotelId}` }, soon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "booking_groups", filter: `hotel_id=eq.${hotelId}` }, soon)
       .subscribe();
     const poll = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
@@ -316,12 +367,28 @@ export function useHotelData(hotelId: string) {
   }, [refresh]);
   // 단체 예약: 여러 줄을 한 번에 (한 문장이라 모두 되거나 모두 안 돼요)
   const saveGroup = useCallback(
-    async (list: Booking[]): Promise<Booking[]> => {
+    async (list: Booking[], info?: Omit<GroupInfo, "payments">): Promise<Booking[]> => {
+      // 정산 정보를 먼저 만들고, 예약이 안 되면 다시 지워요 (모두 되거나 모두 안 돼요)
+      if (info) {
+        const r = await supabase.from("booking_groups").insert({ ...groupToRow(info), id: info.id, hotel_id: hotelId }).select(GROUP_COLS).single();
+        if (r.error) throw r.error;
+        setGroups((m) => new Map(m).set(info.id, groupFromRow(r.data as unknown as GroupRow)));
+      }
       const { data, error } = await supabase
         .from("bookings")
         .insert(list.map((b) => ({ ...toRow(b), hotel_id: hotelId })))
         .select(COLS);
-      if (error) throw error;
+      if (error) {
+        if (info) {
+          await supabase.from("booking_groups").delete().eq("id", info.id);
+          setGroups((m) => {
+            const n = new Map(m);
+            n.delete(info.id);
+            return n;
+          });
+        }
+        throw error;
+      }
       const saved = (data as BookingRow[]).map(fromRow);
       setBookings((x) => [...x, ...saved]);
       return saved;
@@ -366,6 +433,52 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId, refresh],
   );
+  // 단체 정산 정보 저장 (없으면 만들어요)
+  const saveGroupInfo = useCallback(
+    async (id: string, info: Omit<GroupInfo, "payments" | "id">): Promise<void> => {
+      const { data, error } = await supabase
+        .from("booking_groups")
+        .upsert({ ...groupToRow({ ...info, id }), id, hotel_id: hotelId }, { onConflict: "id" })
+        .select(GROUP_COLS)
+        .single();
+      if (error) throw error;
+      setGroups((m) => new Map(m).set(id, groupFromRow(data as unknown as GroupRow)));
+    },
+    [hotelId],
+  );
+  const addGroupPayment = useCallback(
+    async (id: string, p: { method: PayMethod; amount: number; bizDate: string }) => {
+      if (!groups.has(id)) {
+        const r = await supabase.from("booking_groups").upsert({ id, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
+        if (r.error) throw r.error;
+      }
+      const { data, error } = await supabase
+        .from("booking_payments")
+        .insert({ group_id: id, kind: "balance", method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate })
+        .select(PAY_COLS)
+        .single();
+      if (error) throw error;
+      const saved = payFromRow(data as PaymentRow, id);
+      setGroups((m) => {
+        const n = new Map(m);
+        const g = n.get(id) ?? emptyGroupInfo(id);
+        n.set(id, { ...g, payments: [...g.payments, saved] });
+        return n;
+      });
+      return saved;
+    },
+    [hotelId, groups],
+  );
+  const deleteGroupPayment = useCallback(async (id: string, payId: string) => {
+    const { error } = await supabase.from("booking_payments").delete().eq("id", payId);
+    if (error) throw error;
+    setGroups((m) => {
+      const n = new Map(m);
+      const g = n.get(id);
+      if (g) n.set(id, { ...g, payments: g.payments.filter((x) => x.id !== payId) });
+      return n;
+    });
+  }, []);
   const deleteBooking = useCallback(async (id: string) => {
     const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) throw error;
@@ -380,7 +493,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup, groups, saveGroupInfo, addGroupPayment, deleteGroupPayment };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 

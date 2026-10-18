@@ -1243,3 +1243,53 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 }
 .cell .r1 .gcount { flex: none; font-size: 10px; font-weight: 750; color: var(--ink2); padding-right: 2px; }
 .cell.grp .nm .pb { display: none; }
+
+/* ---------- 단체 정산 ---------- */
+.grates { display: flex; flex-wrap: wrap; gap: 6px; }
+.grate { display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border-radius: 14px; padding: 5px 6px 5px 10px; }
+.grate .inp.price { width: 130px; height: 32px; background: #fff; }
+.grate .inp input:focus, .sh-add .inp input:focus { outline: none; }
+.gtotal { display: block; font-size: 13px; }
+.gtotal b { font-size: 15px; font-weight: 850; color: var(--ink); }
+.gpayer { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gpayer .inp.sm { height: 34px; width: 150px; flex: none; }
+.gpl { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink3); font-weight: 650; }
+.modal.settle { max-width: 680px; }
+.sh-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.sh-k { font-size: 11.5px; color: var(--ink3); font-weight: 700; letter-spacing: 0.02em; }
+.sh-top h2 { font-size: 22px; font-weight: 850; margin: 2px 0; }
+.sh-sub { font-size: 12.5px; color: var(--ink2); font-weight: 600; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.sh-mode { font-size: 12px; font-weight: 800; border: 1.5px solid var(--ink); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+.sh-done { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 850; color: #fff; background: var(--ink); border-radius: 999px; padding: 5px 12px; white-space: nowrap; }
+.sh-payer { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 13px; color: var(--ink2); background: var(--panel2); border-radius: 14px; padding: 10px 12px; margin-bottom: 12px; }
+.sh-payer b { color: var(--ink); font-weight: 800; }
+.sh-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.sh-tbl th { font-size: 11.5px; color: var(--ink3); font-weight: 700; text-align: left; padding: 6px 8px; border-bottom: 1.5px solid var(--ink); }
+.sh-tbl td { padding: 8px; border-bottom: 1px solid #ececec; vertical-align: middle; }
+.sh-tbl .r { text-align: right; white-space: nowrap; }
+.sh-tbl tbody td { font-weight: 650; }
+.sh-tbl tr.sub td { font-weight: 800; border-top: 1.5px solid var(--ink); }
+.sh-tbl tr.total td { font-size: 16px; font-weight: 900; border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink); padding: 11px 8px; }
+.sh-tbl tr.paid td { color: var(--ink2); }
+.sh-tbl tr.left td { font-weight: 850; font-size: 15px; border-bottom: 0; }
+.sh-tbl tr.left.due td { color: var(--red); }
+.sh-tbl tr.muted td { color: var(--ink4); }
+.sh-tbl .ic { margin-left: 6px; vertical-align: middle; }
+.sh-tbl .nst.sm { font-size: 10.5px; margin-left: 6px; }
+.sh-add { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sh-add .inp.sm { height: 32px; flex: 1; min-width: 160px; }
+.sh-add .inp.price.sm { flex: none; width: 130px; }
+.sh-foot { font-size: 11px; color: var(--ink4); margin: 10px 0 12px; }
+.modal.settle .paybal { margin-bottom: 12px; }
+@media print {
+  @page { size: A4; margin: 14mm; }
+  body * { visibility: hidden !important; }
+  .settle-print, .settle-print * { visibility: visible !important; }
+  .settle-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
+  .modal.settle { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; }
+  .settle-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; }
+  .settle-print .noprint, .noprint { display: none !important; }
+  .sh-payer { background: none; border: 1px solid #bbb; }
+  .sh-tbl td, .sh-tbl th { color: #000 !important; }
+  .sh-tbl tr.left.due td { color: #000 !important; }
+}
