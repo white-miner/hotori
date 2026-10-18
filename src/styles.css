@@ -1152,3 +1152,39 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .paydep .inp.price, .paybal .inp.price { width: 140px; }
   .paydep input[type="date"].inp { width: 140px; }
 }
+
+/* ---------- 인원 추가금 ---------- */
+.tguest { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink3); white-space: nowrap; }
+.gin { width: 30px; height: 26px; border: 0; background: var(--panel); border-radius: 8px; text-align: center; font-weight: 750; font-size: 12.5px; color: var(--ink); }
+.gin:focus, .tsel:focus { box-shadow: inset 0 0 0 1.5px var(--ink); outline: none; background: #fff; }
+.tsel { height: 26px; border: 0; background: var(--panel); border-radius: 8px; padding: 0 6px; font-size: 12px; font-weight: 650; color: var(--ink2); margin-left: 4px; }
+.tierhead { display: grid; grid-template-columns: minmax(0, 1fr) 118px 118px 28px; gap: 8px; font-size: 11.5px; color: var(--ink4); font-weight: 650; padding: 0 10px 4px; }
+.tierrow { display: grid; grid-template-columns: minmax(0, 1fr) 118px 118px 28px; }
+.tierin { display: flex; align-items: center; gap: 3px; background: var(--panel); border-radius: 8px; padding: 0 8px; height: 30px; font-size: 12px; color: var(--ink3); }
+.tierin input { width: 100%; min-width: 0; border: 0; background: transparent; text-align: right; font-weight: 750; font-size: 13px; color: var(--ink); }
+.tierin:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); background: #fff; }
+.tierin input:focus { outline: none; }
+.sp-h { font-size: 13.5px; font-weight: 800; margin: 16px 0 8px; }
+.spcal { background: #fff; border-radius: 14px; padding: 10px 12px; max-width: 340px; }
+.spnav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 13.5px; }
+.spgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; margin-bottom: 8px; }
+.spgrid .w { text-align: center; font-size: 11px; color: var(--ink4); font-weight: 650; padding: 2px 0; }
+.spgrid .d { height: 32px; border-radius: 9px; font-size: 12.5px; font-weight: 650; color: var(--ink2); font-family: var(--num); }
+.spgrid .d:hover { background: var(--panel); }
+.spgrid .d.wk { color: var(--ink); background: var(--bg, #f6f6f6); }
+.spgrid .d.on { background: var(--red); color: #fff; font-weight: 800; }
+.spgrid .d.td { box-shadow: inset 0 0 0 1.5px var(--ink); }
+@media (max-width: 760px) {
+  #set-surcharge .tierhead, .tierrow { grid-template-columns: minmax(0, 1fr) 92px 92px 26px; }
+  .trow:has(.tguest) { flex-wrap: wrap; }
+  .trow .tguest { order: 9; flex-basis: 100%; padding-left: 22px; }
+}
+/* 예약 창 인원 */
+.gstep .sv { min-width: 48px; }
+.gline { font-size: 12.5px; color: var(--ink2); font-weight: 650; }
+.gline.warn { color: var(--red); }
+.xfee { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink3); }
+.xfee .inp.price { width: 150px; flex: none; height: 32px; }
+.xfee .auto { font-size: 12px; text-decoration: underline; color: var(--ink3); }
+.gcount { font-size: 10.5px; color: var(--ink3); font-weight: 700; white-space: nowrap; }
+.xfee .inp input:focus, .paydep .inp input:focus, .paybal .inp input:focus { outline: none; }

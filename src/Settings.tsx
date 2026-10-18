@@ -1,6 +1,8 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
 import { pastelColor, strongColor } from "../shared/floorColor";
 import { isOnsite } from "../shared/payment";
+import { GUESTS_MAX, typeGuests } from "../shared/surcharge";
+import { SpecialDates, TierSettings } from "./SurchargeSettings";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -11,6 +13,7 @@ import {
   SHOP_NAME_MAX,
   TYPE_NAME_MAX,
   addRoomsToFloor,
+  businessDate,
   buildingName,
   defaultBuildingName,
   floorsOf,
@@ -630,6 +633,30 @@ export default function Settings({ data, email, notify }: Props) {
                 }}
               />
               <span className="tfill" />
+              <span className="tguest" title="인원 추가금: 기본 인원을 넘으면 1명마다 등급 요금을 더해요. 최대 인원을 넘으면 경고만 해요">
+                {(() => {
+                  const g = typeGuests(t);
+                  const setG = (patch: { baseGuests?: number; maxGuests?: number }) =>
+                    update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, ...patch } : y)) }));
+                  const cl = (v: string) => Math.max(1, Math.min(GUESTS_MAX, Number(v.replace(/\D/g, "")) || 1));
+                  return (
+                    <>
+                      기본
+                      <input className="gin num" inputMode="numeric" aria-label={`${t.name} 기본 인원`} value={g.base} onChange={(e) => setG({ baseGuests: cl(e.target.value), maxGuests: Math.max(cl(e.target.value), g.max) })} />
+                      최대
+                      <input className="gin num" inputMode="numeric" aria-label={`${t.name} 최대 인원`} value={g.max} onChange={(e) => setG({ maxGuests: cl(e.target.value) })} />
+                      명
+                      <select className="tsel" aria-label={`${t.name} 추가 요금 등급`} value={t.tierId ?? s.surchargeTiers[0]?.id} onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, tierId: e.target.value } : y)) }))}>
+                        {s.surchargeTiers.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name || "이름 없는 등급"}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  );
+                })()}
+              </span>
               <button
                 className="cntb"
                 title="방에 지정된 개수 · 누르면 위 객실 배치에서 방을 골라 지정해요"
@@ -661,6 +688,14 @@ export default function Settings({ data, email, notify }: Props) {
             <Plus size={14} />
             타입 추가
           </button>
+        </section>
+
+        <section className="card" id="set-surcharge">
+          <h3>인원 추가 요금</h3>
+          <div className="sub">객실 타입의 기본 인원을 넘으면 1명 1박마다 더해요. 금·토 밤과 특별일 밤은 오른쪽 요금이에요. 예약 창에서 금액을 바꿀 수 있어요.</div>
+          <TierSettings s={s} update={update} notify={notify} />
+          <h4 className="sp-h">특별일</h4>
+          <SpecialDates s={s} today={businessDate()} update={update} />
         </section>
 
         <section className="card" id="set-plats">

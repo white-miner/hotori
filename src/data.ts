@@ -43,6 +43,8 @@ interface BookingRow {
   early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
   refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
+  guests?: number | null; // 인원
+  extra_fee?: number | null; // 판매 가격에 들어 있는 추가 인원 금액
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
@@ -68,7 +70,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -98,6 +100,8 @@ export function fromRow(r: BookingRow): Booking {
     earlyOut: r.early_out_on ?? null,
     refund: r.refund_amount ?? null,
     memo: r.memo,
+    guests: r.guests ?? null,
+    extraFee: r.extra_fee ?? null,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     cancelledAt: r.cancelled_at,
     createdAt: r.created_at,
@@ -125,6 +129,8 @@ function toRow(b: Booking) {
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
+    guests: b.guests && b.guests >= 1 ? Math.min(99, Math.round(b.guests)) : null,
+    extra_fee: b.extraFee && b.extraFee > 0 ? Math.min(Math.round(b.extraFee), Math.round(b.price)) : null,
   };
 }
 

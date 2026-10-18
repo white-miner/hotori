@@ -447,6 +447,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
+          {b.guests ? <span className="gcount">{b.guests}명</span> : null}
         </div>
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>

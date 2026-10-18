@@ -44,6 +44,7 @@ import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import { PAY_KIND_LABEL, isOnsite, validatePayment } from "../shared/payment";
+import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import { PAY_LABEL, type PayMethod } from "../shared/shop";
 
 interface Props {
@@ -125,6 +126,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
+  // 인원 · 추가 인원 금액 (판매 가격에 들어 있어요)
+  const baseOf = (tid: string) => typeGuests(s.types.find((t) => t.id === tid)).base;
+  const [guests, setGuests] = useState<number>(base?.guests ?? baseOf(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? ""));
+  const gTouched = useRef(!!base?.guests);
+  const [extraFee, setExtraFee] = useState<number>(base?.extraFee ?? 0);
+  const [xManual, setXManual] = useState(false);
+  const [xEdit, setXEdit] = useState(false);
   // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
   const [dep, setDep] = useState<{ amount: string; method: PayMethod; date: string }>({ amount: "", method: "card", date: today });
   const [bal, setBal] = useState<{ method: PayMethod; amount: string } | null>(null);
@@ -235,11 +243,47 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     earlyOut: base?.earlyOut ?? null,
     refund: base?.refund ?? null,
     memo: memo || null,
+    guests,
+    extraFee: extraFee || null,
     cancelledAt: base?.cancelledAt ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   const draft = draftBase;
+  // 인원 추가금: 밤마다 그 밤 방의 타입으로 계산 → 자동이면 판매 가격에 차이만큼 더하고 빼요
+  const sur = surchargeOf(s, draftBase, guests);
+  const prevAuto = useRef<number | null>(null);
+  useEffect(() => {
+    // 처음 열 때: 저장된 금액이 자동 계산과 다르면 직접 고친 걸로 봐요
+    if (prevAuto.current === null) {
+      prevAuto.current = sur.total;
+      if (base && (base.extraFee ?? 0) !== sur.total && base.guests != null) setXManual(true);
+      return;
+    }
+    if (prevAuto.current === sur.total) return;
+    prevAuto.current = sur.total;
+    if (xManual) return;
+    const delta = sur.total - extraFee;
+    if (delta) setPrice((v) => String(Math.max(0, Number(v || 0) + delta)));
+    setExtraFee(sur.total);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sur.total]);
+  // 새 예약: 인원을 안 건드렸으면 타입을 바꿀 때 기본 인원으로
+  useEffect(() => {
+    if (!gTouched.current) setGuests(baseOf(typeId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeId]);
+  const setXFee = (v: number, manual: boolean) => {
+    const n = Math.max(0, Math.min(SURCHARGE_MAX, v));
+    const delta = n - extraFee;
+    if (delta) setPrice((x) => String(Math.max(0, Number(x || 0) + delta)));
+    setExtraFee(n);
+    setXManual(manual);
+  };
+  const stepGuests = (d: number) => {
+    gTouched.current = true;
+    setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
+  };
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
   const payTracked = isOnsite(L.plats.get(platformId)) || livePays.length > 0;
   const depAmt = payTracked && !livePays.length ? Number(dep.amount || 0) : 0;
@@ -777,6 +821,64 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               />
               원{per ? <small>1박 평균 {won(per)}원</small> : null}
             </label>
+          </div>
+        </div>
+
+        <div className="fld gfld">
+          <label>인원</label>
+          <div className="payb">
+            <div className="step gstep">
+              <button type="button" className="sb" aria-label="1명 줄이기" onClick={() => stepGuests(-1)}>
+                <Minus size={16} />
+              </button>
+              <span className="sv">
+                {guests}
+                <small>명</small>
+              </span>
+              <button type="button" className="sb" aria-label="1명 늘리기" onClick={() => stepGuests(1)}>
+                <Plus size={16} />
+              </button>
+              <span className="rng">
+                {sur.over ? (
+                  <span className="gline warn">최대 {sur.max}명을 넘었어요 · 저장은 돼요</span>
+                ) : sur.line ? (
+                  <span className="gline">{sur.line}</span>
+                ) : (
+                  <span className="muted">기본 {typeGuests(s.types.find((t) => t.id === typeId)).base}명 · 넘으면 1명마다 추가 요금</span>
+                )}
+              </span>
+            </div>
+            {sur.over && sur.line ? <span className="gline">{sur.line}</span> : null}
+            {extraFee > 0 || sur.total > 0 || xManual ? (
+              <div className="xfee">
+                <span>
+                  판매 가격에 <b>추가 인원 {won(extraFee)}원</b> 포함{xManual ? " · 직접 고침" : ""}
+                </span>
+                {xEdit ? (
+                  <label className="inp price sm">
+                    <input
+                      className="num"
+                      inputMode="numeric"
+                      aria-label="추가 인원 금액"
+                      autoFocus
+                      value={extraFee ? won(extraFee) : ""}
+                      onChange={(e) => setXFee(Number(e.target.value.replace(/\D/g, "").slice(0, 8) || 0), true)}
+                      onBlur={() => setXEdit(false)}
+                    />
+                    원
+                  </label>
+                ) : (
+                  <button type="button" className="auto" onClick={() => setXEdit(true)}>
+                    금액 바꾸기
+                  </button>
+                )}
+                {xManual && extraFee !== sur.total ? (
+                  <button type="button" className="auto" onClick={() => setXFee(sur.total, false)}>
+                    자동 계산 {won(sur.total)}원으로
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 

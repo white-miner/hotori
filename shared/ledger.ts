@@ -1,5 +1,6 @@
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
+import { type SurchargeTier, normalizeSpecialDates, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -17,6 +18,10 @@ export interface RoomType {
   name: string; // 객실 타입 이름(최대 12글자). 칩·방 칸·현황표·장부에 그대로 보여요. 예: S, SD, 스탠다드 디럭스
   /** @deprecated 예전 '약자' 칸. 옛 데이터를 불러올 때만 읽고, 저장할 때는 name과 같은 값으로 맞춰 둬요 */
   code?: string;
+  /** 인원 추가금: 기본 인원(안 적으면 2) · 최대 인원(넘으면 경고만) · 추가 요금 등급 id */
+  baseGuests?: number;
+  maxGuests?: number;
+  tierId?: string;
 }
 const OLD_DEFAULT_TYPE_NAME = "새 타입";
 /** 옛 데이터 → 이름 하나로: 화면에 보이던 약자가 있으면 그걸, 없으면 이름('새 타입'은 빼고) */
@@ -62,6 +67,10 @@ export interface HotelSettings {
   lowThreshold: number;
   shopItems: ShopItem[]; // 매점 물품 (위에서부터 매점 화면 순서)
   expenseCategories: ExpenseCategory[]; // 지출 분류 (없으면 기본: 비품·식자재·세탁·수리·공과금·기타)
+  /** 인원 추가 요금 등급 (없으면 기본: 일반 1만/2만 · 독채 2만/3만) */
+  surchargeTiers: SurchargeTier[];
+  /** 특별일: 주말 요금을 받는 날 (밤 기준 YYYY-MM-DD) */
+  specialDates: string[];
 }
 export interface ShopItem {
   id: string;
@@ -116,6 +125,10 @@ export interface Booking {
   /** 중도 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 중도 퇴실한 날짜에 빠져요 */
   refund?: number | null;
   memo: string | null;
+  /** 인원 (안 적었으면 없음) */
+  guests?: number | null;
+  /** 판매 가격(price)에 들어 있는 추가 인원 금액 */
+  extraFee?: number | null;
   /** 받은 돈 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
   payments?: Payment[];
   cancelledAt: string | null;
@@ -130,7 +143,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined) };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [] };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -170,6 +183,8 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
     shopItems: normalizeShopItems((s as { shopItems?: unknown }).shopItems),
     expenseCategories: normalizeExpenseCategories((s as { expenseCategories?: unknown }).expenseCategories),
+    surchargeTiers: normalizeTiers((s as { surchargeTiers?: unknown }).surchargeTiers),
+    specialDates: normalizeSpecialDates((s as { specialDates?: unknown }).specialDates),
   };
 }
 
