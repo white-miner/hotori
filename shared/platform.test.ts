@@ -62,3 +62,17 @@ test("설정 정리: 플랫폼 색은 #RRGGBB만 남겨요", () => {
   assert.equal("color" in s.platforms[1], false);
   assert.equal("color" in s.platforms[2], false);
 });
+
+test("층 색: 예전 파스텔은 같은 계열 진한 색, 진한 색은 그대로, 글자는 대비 큰 쪽", async () => {
+  const { strongColor, FLOOR_PALETTE } = await import("./floorColor");
+  assert.equal(strongColor("#DCE9F7"), "#2F7BEA");
+  assert.equal(strongColor("#dce9f7"), "#2F7BEA");
+  assert.equal(strongColor("#E2E2E2"), "#7A7A7A");
+  assert.equal(strongColor("#2F7BEA"), "#2F7BEA");
+  assert.equal(strongColor(null), null);
+  assert.equal(strongColor("bad"), null);
+  const c = strongColor("#FFE4F0")!; // 팔레트에 없는 옅은 분홍 → 진한 분홍
+  assert.ok(contrast(c, "#FFFFFF") > 2.5, c);
+  assert.equal(strongColor("#F0F0F0"), strongColor("#F0F0F0")); // 회색 계열은 회색
+  for (const x of FLOOR_PALETTE) assert.ok(contrast(x.value, textOn(x.value)) >= 3.5, `${x.name} 방 번호 대비`);
+});

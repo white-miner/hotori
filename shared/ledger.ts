@@ -443,6 +443,56 @@ export function undoMove(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomI
   segs.splice(idx, 1);
   return normalizeSegments(segs);
 }
+// ---------- 객실 배치에서 바로 옮기기 ----------
+/** 방 배정 상태 그대로 (되돌리기용) */
+export interface Placement {
+  roomId: string | null;
+  segments: RoomSegment[] | null;
+}
+export const placementOf = (b: Pick<Booking, "kind" | "nights" | "roomId" | "segments">): Placement => ({
+  roomId: b.roomId,
+  segments: isMoved(b) ? b.segments!.map((x) => ({ ...x })) : null,
+});
+/**
+ * 보는 밤(night)에서 옮길 때 어디부터 옮기나요:
+ * 보는 밤이 첫 밤(또는 그 앞)이면 숙박 전체, 아니면 그 밤부터 퇴실까지. 대실은 늘 전체.
+ * 돌려주는 값: k박째(1부터)와 옮기는 밤들(checkIn·nights)
+ */
+export function boardMoveWindow(b: Pick<Booking, "kind" | "checkIn" | "nights">, night: string): { from: number; whole: boolean; checkIn: string; nights: number } {
+  const n = b.kind === "stay" ? (b.nights ?? 0) : 0;
+  if (!n) return { from: 1, whole: true, checkIn: b.checkIn, nights: 0 };
+  const k = Math.min(n, Math.max(1, Math.round((Date.parse(night) - Date.parse(b.checkIn)) / 864e5) + 1));
+  return { from: k, whole: k === 1, checkIn: addDays(b.checkIn, k - 1), nights: n - k + 1 };
+}
+/** 객실 배치에서 roomId로 옮긴 결과 (첫 밤이면 방만 바꾸고, 중간 밤이면 그 밤에서 나눠요) */
+export function boardMove(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">, night: string, roomId: string): Placement {
+  const w = boardMoveWindow(b, night);
+  if (b.kind !== "stay" || w.whole || !b.roomId) return { roomId, segments: null };
+  const segs = moveStay(b, w.from, roomId);
+  return segs ? { roomId: segs[0].roomId, segments: segs } : { roomId, segments: null };
+}
+/**
+ * 옮길 수 있는 방: 숙박은 보는 밤부터 퇴실까지 내내 빈 방, 대실은 그날 그 시간에 빈 방이면서 그 밤 숙박도 없는 방.
+ * 지금 그 밤에 쓰는 방은 빼요.
+ */
+export function boardMoveTargets(s: HotelSettings, bookings: Booking[], b: Booking, night: string): Set<string> {
+  if (b.kind === "stay") {
+    const w = boardMoveWindow(b, night);
+    const free = freeRooms(s, bookings, { id: b.id, kind: "stay", checkIn: w.checkIn, nights: w.nights, startTime: null, endTime: null });
+    const cur = roomOnNight(b, w.checkIn);
+    if (cur) free.delete(cur);
+    return free;
+  }
+  const free = freeRooms(s, bookings, b);
+  for (const x of bookings) {
+    if (x.id === b.id || !isActive(x) || x.kind !== "stay") continue;
+    const r = roomOnNight(x, b.checkIn);
+    if (r) free.delete(r);
+  }
+  if (b.roomId) free.delete(b.roomId);
+  return free;
+}
+
 /** 이 숙박(초안)의 구간 중 다른 정상 숙박과 같은 방·같은 밤이 겹치는 구간 */
 export function legConflicts(bookings: Booking[], draft: Booking): Leg[] {
   if (draft.kind !== "stay") return [];

@@ -5,6 +5,8 @@ import {
   type HotelSettings,
   type RoomSegment,
   fitSegments,
+  normalizeSegments,
+  type Placement,
   addDays,
   businessDate,
   type ShopItem,
@@ -213,6 +215,24 @@ export function useHotelData(hotelId: string) {
     const saved = fromRow(data as BookingRow);
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
   }, [refresh]);
+  // 객실 배치에서 옮기기·되돌리기: room_id와 구간을 함께 (구간이 null이면 한 방)
+  const setPlacement = useCallback(async (id: string, p: Placement) => {
+    const segs = normalizeSegments(p.segments);
+    setBookings((list) => list.map((x) => (x.id === id ? { ...x, roomId: p.roomId, segments: segs } : x)));
+    const { data, error } = await supabase
+      .from("bookings")
+      .update({ room_id: p.roomId, room_segments: segs ? segs.map((x) => ({ room: x.roomId, nights: x.nights })) : null })
+      .eq("id", id)
+      .select(COLS)
+      .single();
+    if (error) {
+      void refresh();
+      throw error;
+    }
+    const saved = fromRow(data as BookingRow);
+    setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+    return saved;
+  }, [refresh]);
   const deleteBooking = useCallback(async (id: string) => {
     const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) throw error;
@@ -227,7 +247,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, deleteBooking, saveHotel };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, deleteBooking, saveHotel };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 

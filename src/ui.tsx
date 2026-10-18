@@ -1,18 +1,15 @@
 import type { Booking, Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
 import { CalendarDays } from "lucide-react";
+import { FLOOR_PALETTE, onStrong, strongColor } from "../shared/floorColor";
 import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
 
-export const PALETTE: { name: string; value: string | null }[] = [
-  { name: "기본", value: null },
-  { name: "하늘", value: "#DCE9F7" },
-  { name: "살구", value: "#F8E5D6" },
-  { name: "연두", value: "#E1F0DC" },
-  { name: "연보라", value: "#E9E3F5" },
-  { name: "연노랑", value: "#F6EFCF" },
-  { name: "분홍", value: "#F6DFE5" },
-  { name: "민트", value: "#D9F0EC" },
-  { name: "회색", value: "#E2E2E2" },
-];
+// 층·방 색 고르기 (진한 색). 예전 파스텔 값은 strongColor로 같은 계열 진한 색이 돼요.
+export const PALETTE: { name: string; value: string | null }[] = [{ name: "기본", value: null }, ...FLOOR_PALETTE.map(({ name, value }) => ({ name, value }))];
+/** 층·방 색 그리기용: 진한 바탕 + 잘 보이는 글자색 */
+export function floorPaint(raw: string | null | undefined): { bg: string; fg: string } | null {
+  const bg = strongColor(raw);
+  return bg ? { bg, fg: onStrong(bg) } : null;
+}
 
 export function Brand({ sub }: { sub?: string }) {
   return (

@@ -32,17 +32,22 @@ import {
   legsOf,
 } from "../shared/ledger";
 import { type HotelData, WINDOW_BACK, queryStays } from "./data";
+import type { BoardMove, ToastOpt } from "./App";
+import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import RoomCalendar from "./RoomCalendar";
-import { DateChip, FitText, PlatBadge, Ring, TypeBadge, TypeLine, lookups } from "./ui";
+import { DateChip, FitText, PlatBadge, Ring, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
   today: string;
   selDate: string;
   setSelDate: (d: string) => void;
-  onOpen: (b: Booking) => void;
+  onOpen: (b: Booking, night?: string) => void;
   onNew: (preset: Partial<Booking>) => void;
-  notify: (m: string) => void;
+  notify: (m: string, opt?: ToastOpt) => void;
+  /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
+  move?: BoardMove | null;
+  onMoveEnd?: () => void;
   /** 현황 공유 링크: 보기만 해요 (고치기·입실 표시·방 배정·가격 없음) */
   readOnly?: boolean;
   /** 공유 보기에서 고를 수 있는 날짜 범위 */
@@ -133,7 +138,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
   return [tab, setTab];
 }
 
-export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, notify, readOnly = false, minDate, maxDate }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveEnd = () => {} }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
@@ -251,6 +256,72 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
   const [assigning, setAssigning] = useState<string | null>(null);
+  // ---------- 객실 배치에서 옮기기 ----------
+  const mvB = !readOnly && move ? (bookings.find((x) => x.id === move.id && isActive(x)) ?? null) : null;
+  const mvNight = mvB ? (mvB.kind === "dayuse" ? mvB.checkIn : move!.night) : null;
+  const [pick, setPick] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+  const targets = useMemo(() => (mvB && mvNight ? boardMoveTargets(s, bookings, mvB, mvNight) : new Set<string>()), [s, bookings, mvB, mvNight]);
+  const mvFrom = mvB && mvNight ? (mvB.kind === "stay" ? roomOnNight(mvB, mvNight) : mvB.roomId) : null;
+  useEffect(() => {
+    if (!move) return setPick(null);
+    // 옮길 예약이 없어졌거나 취소됐으면 끝
+    if (!bookings.some((x) => x.id === move.id && isActive(x))) return onMoveEnd();
+    const b = bookings.find((x) => x.id === move.id)!;
+    setSelDate(b.kind === "dayuse" ? b.checkIn : move.night);
+    setTab("rooms");
+    setFloorTab((f) => (f === "dayuse" ? "all" : f));
+    setPick(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [move?.id, move?.night]);
+  useEffect(() => {
+    if (!mvB) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (pick) setPick(null);
+      else onMoveEnd();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mvB, pick, onMoveEnd]);
+  const roomName = (id: string | null | undefined) => {
+    if (!id) return "방 미배정";
+    const r = L.rooms.get(id);
+    const sameB = !multi || !mvFrom || L.rooms.get(mvFrom)?.building?.id === r?.building?.id;
+    return `${sameB ? (r?.no ?? "?") : (L.roomLabel(id) ?? "?")}호`;
+  };
+  const doMove = async () => {
+    if (!mvB || !mvNight || !pick || moving) return;
+    const b = mvB;
+    const to = pick;
+    const before = placementOf(b);
+    const after = boardMove(b, mvNight, to);
+    const toName = roomName(to);
+    const fromName = roomName(mvFrom);
+    setMoving(true);
+    try {
+      await data.setPlacement(b.id, after);
+      setPick(null);
+      onMoveEnd();
+      notify(`${toName}로 옮겼어요`, {
+        ms: 6000,
+        action: {
+          label: "되돌리기",
+          run: () =>
+            void data
+              .setPlacement(b.id, before)
+              .then(() => notify(`${b.guestName} 님을 ${fromName}로 되돌렸어요`))
+              .catch(() => notify("되돌리지 못했어요")),
+        },
+      });
+    } catch {
+      notify("옮기지 못했어요. 다시 해 주세요");
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const dayuseByRoom = useMemo(() => {
     const m = new Map<string, Booking[]>();
     for (const d of board.dayuse) if (d.roomId && isActive(d)) m.set(d.roomId, [...(m.get(d.roomId) ?? []), d]);
@@ -305,10 +376,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const du = dayuseByRoom.get(r.id) ?? [];
-    const strip = r.color ?? fColor ?? null;
+    const strip = floorPaint(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
     const head = (
-      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
+      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip.bg, color: strip.fg } : undefined}>
         <FitText className={`no ${k}`} text={r.no} />
       </div>
     );
@@ -318,17 +389,24 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         대실 {d.startTime}~{d.endTime}
       </span>
     ));
+    // 옮기는 중: 옮길 수 있는 빈 방(초록), 같은 타입은 더 진하게, 나머지는 흐리게
+    const mvOk = !!mvB && targets.has(r.id);
+    const mvSame = mvOk && r.typeId === mvB!.typeId;
+    const mvCls = mvB ? (mvOk ? `mvt ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}` : r.id === mvFrom ? "mvsrc" : "mvoff") : "";
+    const mvClick = mvB ? () => mvOk && setPick(r.id) : null;
+    const mvAttr = mvB ? (mvOk ? { role: "button" as const, tabIndex: 0, "aria-label": `${r.no}호로 옮기기` } : { "aria-disabled": true }) : act;
     if (!b)
       return (
         <div
           key={r.id}
-          {...act}
-          className={`cell em ${du.length ? "duc" : ""} ${readOnly ? "ro" : ""}`}
-          onClick={() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined })}
+          {...mvAttr}
+          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+          onClick={mvClick ?? (() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined }))}
+          onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
           {head}
           {tline}
-          <div className="emt">빈 방</div>
+          <div className="emt">{mvSame ? "같은 타입" : "빈 방"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
       );
@@ -343,9 +421,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return (
       <div
         key={r.id}
-        {...act}
-        className={`cell bk ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${readOnly ? "ro" : ""}`}
-        onClick={() => onOpen(b)}
+        {...mvAttr}
+        className={`cell bk ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        onClick={mvClick ?? (() => onOpen(b, selDate))}
+        onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
         {!cancelled && du.length ? (
           <span className="dumark" title={du.map((d) => `대실 ${d.startTime}~${d.endTime}`).join(" · ")}>
@@ -366,18 +445,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
-          {cancelled ? null : readOnly ? (
-            <Ring on={b.arrived} size={17} filled />
-          ) : (
+          {cancelled || readOnly ? null : (
             <button
-              className="ringbtn"
-              aria-label="입실 표시"
+              className={`ringbtn ${b.arrived ? "on" : ""}`}
+              aria-label={b.arrived ? "입실 표시 지우기" : "입실 표시"}
+              aria-pressed={b.arrived}
+              disabled={!!mvB}
               onClick={(e) => {
                 e.stopPropagation();
                 void toggleArrived(b);
               }}
             >
-              <Ring on={b.arrived} size={17} filled />
+              <Ring on={b.arrived} size={17} />
             </button>
           )}
         </div>
@@ -628,24 +707,64 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="bdh">
           <div>
             <h1>객실 배치 현황</h1>
-            <div className="bdh-s">{readOnly ? "보기 전용 · ◯는 입실 완료" : "칸을 누르면 예약을 고치고, ◯를 누르면 입실로 표시해요"}</div>
+            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실)" : "칸을 누르면 예약을 고치거나 객실을 옮기고, ◯를 누르면 입실로 표시해요 · 굵은 테두리는 입실 완료"}</div>
           </div>
           <div className="dnav">
             <span className="cnt-m">
               숙박 {board.nightCount}/{roomCount}
             </span>
-            <button className="ar" aria-label="전날" onClick={() => setSelDate(addDays(selDate, -1))}>
+            <button className="ar" aria-label="전날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, -1))}>
               <ChevronLeft size={16} />
             </button>
             <span className="dn-day">{dayLabel(selDate)} 밤</span>
-            <button className="ar" aria-label="다음날" onClick={() => setSelDate(addDays(selDate, 1))}>
+            <button className="ar" aria-label="다음날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, 1))}>
               <ChevronRight size={16} />
             </button>
-            <button className="btn sm" disabled={selDate === today} onClick={() => setSelDate(today)}>
+            <button className="btn sm" disabled={selDate === today || !!mvB} onClick={() => setSelDate(today)}>
               오늘
             </button>
           </div>
         </div>
+        {mvB && mvNight ? (
+          <div className={`mvbar ${pick ? "ask" : ""}`} role="status">
+            {pick ? (
+              <>
+                <span className="mvbq">
+                  <span>
+                    <b>{roomName(pick)}</b>로 이동할까요?
+                  </span>
+                </span>
+                <button className="btn green" disabled={moving} onClick={() => void doMove()} autoFocus>
+                  {moving ? "옮기는 중…" : "이동"}
+                </button>
+                <button className="btn line" disabled={moving} onClick={() => setPick(null)}>
+                  다른 방
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="mvbq">
+                  <span>
+                    <b>{mvB.guestName || "손님"}</b>님을 옮길 빈 방을 누르세요
+                  </span>
+                  <small>
+                    {mvB.kind === "dayuse"
+                      ? `대실 ${mvB.startTime}~${mvB.endTime} · ${roomName(mvFrom)}`
+                      : (() => {
+                          const w = boardMoveWindow(mvB, mvNight);
+                          return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 밤(${dayLabel(w.checkIn)})부터 ${w.nights}박`}`;
+                        })()}
+                    {" · "}
+                    {targets.size ? `빈 방 ${targets.size}곳` : "옮길 수 있는 빈 방이 없어요"}
+                  </small>
+                </span>
+                <button className="btn line" onClick={onMoveEnd}>
+                  취소 <kbd className="kbdh">Esc</kbd>
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
         {buildingTabs}
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
@@ -675,7 +794,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 {g.floors.map((f) => (
                   <div className="floor" key={f.id}>
                     <div className="fl" title={f.name}>
-                      <span className="fdot" style={f.color ? { background: f.color } : undefined} />
+                      <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
                       <span className="fln">{f.name}</span>
                     </div>
                     <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
@@ -693,7 +812,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="lst">
           {board.dayuse.length ? (
             board.dayuse.map((d) => (
-              <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"}`} onClick={() => onOpen(d)}>
+              <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"} ${mvB?.id === d.id ? "mvon" : ""}`} onClick={() => !mvB && onOpen(d, selDate)}>
                 <span className="tm">
                   {d.startTime}~{d.endTime}
                 </span>
@@ -751,7 +870,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               return (
                 <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
                   <div className="itr">
-                    <div className="md" {...act} onClick={() => onOpen(b)}>
+                    <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
                       <b>
                         <TypeBadge t={t} />
                         <PlatBadge p={L.plats.get(b.platformId)} />

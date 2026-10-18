@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, Clock, Minus, Plus } from "lucide-react";
+import { ArrowRight, ArrowRightLeft, CalendarDays, Clock, Minus, Plus } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -41,6 +41,8 @@ interface Props {
   req: EntryRequest;
   onClose: () => void;
   onSaved: (msg: string, again?: Partial<Booking>) => void;
+  /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
+  onBoardMove?: () => void;
 }
 const TYPE_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"];
 const TYPE_LABEL = "QWERTYUIO";
@@ -70,7 +72,7 @@ function TimePick({ value, label, onPick }: { value: string; label: string; onPi
   );
 }
 
-export default function Entry({ data, today, req, onClose, onSaved }: Props) {
+export default function Entry({ data, today, req, onClose, onSaved, onBoardMove }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const base = req.booking;
@@ -312,6 +314,13 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
             <kbd>Esc</kbd>닫기
           </button>
         </div>
+        {onBoardMove && base && isActive(base) ? (
+          <button type="button" className="bmove" onClick={onBoardMove}>
+            <ArrowRightLeft size={17} />
+            <b>객실 이동</b>
+            <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? " · 이 밤부터 옮겨요" : ""}</span>
+          </button>
+        ) : null}
 
         <div className="fld">
           <label>

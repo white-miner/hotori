@@ -73,6 +73,16 @@ export interface EntryRequest {
   booking?: Booking; // 수정
   preset?: Partial<Booking>; // 새로 적기
   n?: number;
+  night?: string; // 객실 배치에서 열었으면 그 밤 (위에 '객실 이동' 단추)
+}
+/** 객실 배치에서 빈 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
+export interface BoardMove {
+  id: string;
+  night: string;
+}
+export interface ToastOpt {
+  action?: { label: string; run: () => void };
+  ms?: number;
 }
 
 function Shell({ hotelId, email }: { hotelId: string; email: string }) {
@@ -83,7 +93,8 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
   const [selDate, setSelDate] = useState(today);
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
+  const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -100,9 +111,10 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setView(v);
     setMenu(false);
   };
-  const notify = useCallback((m: string) => {
-    setToast(m);
-    setTimeout(() => setToast((x) => (x === m ? null : x)), 2600);
+  const notify = useCallback((m: string, opt?: ToastOpt) => {
+    const n = Date.now() + Math.random();
+    setToast({ m, opt, n });
+    setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
   const openNew = useCallback((preset?: Partial<Booking>) => setEntry({ preset, n: Date.now() }), []);
 
@@ -186,9 +198,11 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           today={today}
           selDate={selDate}
           setSelDate={setSelDate}
-          onOpen={(b) => setEntry({ booking: b })}
+          onOpen={(b, night) => setEntry({ booking: b, night })}
           onNew={openNew}
           notify={notify}
+          move={boardMove}
+          onMoveEnd={() => setBoardMove(null)}
         />
       ) : view === "ledger" ? (
         <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b) => setEntry({ booking: b })} notify={notify} />
@@ -221,13 +235,40 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           today={today}
           req={entry}
           onClose={() => setEntry(null)}
+          onBoardMove={
+            entry.night && entry.booking && view === "board"
+              ? () => {
+                  setBoardMove({ id: entry.booking!.id, night: entry.night! });
+                  setEntry(null);
+                }
+              : undefined
+          }
           onSaved={(m, again) => {
             notify(m);
             setEntry(again ? { preset: again, n: Date.now() } : null);
           }}
         />
       ) : null}
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast ? (
+        <div className={`toast ${toast.opt?.action ? "act" : ""}`} role="status">
+          {toast.m}
+          {toast.opt?.action ? (
+            <>
+              <span className="tsep">·</span>
+              <button
+                type="button"
+                className="tact"
+                onClick={() => {
+                  toast.opt!.action!.run();
+                  setToast(null);
+                }}
+              >
+                {toast.opt.action.label}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

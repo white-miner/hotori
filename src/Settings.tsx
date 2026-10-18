@@ -1,4 +1,5 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
+import { strongColor } from "../shared/floorColor";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -23,7 +24,7 @@ import {
 } from "../shared/ledger";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { canAddShopItem } from "../shared/shop";
-import { FitText, PALETTE, PlatBadge, TypeBadge, TypeLine, uid } from "./ui";
+import { FitText, PALETTE, PlatBadge, floorPaint, TypeBadge, TypeLine, uid } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -141,7 +142,7 @@ function Swatches({ value, onChange, noneLabel = "기본" }: { value: string | n
         <button
           type="button"
           key={c.name}
-          className={`sw ${(value ?? null) === c.value ? "on" : ""} ${c.value ? "" : "none"}`}
+          className={`sw ${(strongColor(value) ?? null) === c.value ? "on" : ""} ${c.value ? "" : "none"}`}
           style={c.value ? { background: c.value } : undefined}
           title={c.value ? c.name : noneLabel}
           onClick={() => onChange(c.value)}
@@ -150,7 +151,7 @@ function Swatches({ value, onChange, noneLabel = "기본" }: { value: string | n
         </button>
       ))}
       <label className="sw custom" title="직접 고르기">
-        <input type="color" value={value ?? "#DCE9F7"} onChange={(e) => onChange(e.target.value.toUpperCase())} />
+        <input type="color" value={strongColor(value) ?? "#2F7BEA"} onChange={(e) => onChange(e.target.value.toUpperCase())} />
         <Plus size={12} />
       </label>
     </div>
@@ -395,17 +396,16 @@ export default function Settings({ data, email, notify }: Props) {
               {floorsOf(s, bd.id).map((f) => (
             <div className="sfl" key={f.id}>
               <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={paint ? `${f.name} 전체를 이 타입으로` : f.name} onClick={() => (paint ? paintFloor(f) : (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null)))}>
-                <span className="fdot" style={f.color ? { background: f.color } : undefined} />
+                <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
                 {f.name}
               </button>
               <div className={`rboxes ${paint ? "painting" : ""}`}>
                 {f.rooms.map((r) => {
-                  const strip = r.color ?? f.color;
+                  const strip = floorPaint(r.color ?? f.color);
                   return (
                     <button
                       key={r.id}
                       className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""}`}
-                      style={strip ? { background: strip } : undefined}
                       onClick={() => {
                         if (paint) {
                           // 이미 그 타입이면 아무것도 안 해요
@@ -418,7 +418,9 @@ export default function Settings({ data, email, notify }: Props) {
                         }
                       }}
                     >
-                      <FitText className="no" text={r.no} />
+                      <span className={`rpill ${strip ? "on" : ""}`} style={strip ? { background: strip.bg, color: strip.fg } : undefined}>
+                        <FitText className="no" text={r.no} />
+                      </span>
                       <TypeLine t={typeOf(r.typeId)} />
                     </button>
                   );
