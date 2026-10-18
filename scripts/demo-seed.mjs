@@ -1,6 +1,6 @@
 // 예시 호텔 데이터를 만드는 SQL을 출력해요 (화이트보드와 같은 방 번호, 손님·금액은 모두 예시).
 // 사용: node scripts/demo-seed.mjs <hotel-uuid> [기준날짜 YYYY-MM-DD] > seed.sql
-// 출력된 SQL은 Supabase SQL 편집기에서 실행해요. 그 호텔의 기존 예약은 지워지고 다시 만들어져요.
+// 출력된 SQL은 Supabase SQL 편집기에서 실행해요. 그 호텔의 기존 예약·지출은 지워지고 다시 만들어져요.
 import { SHOP_ITEMS } from "./demo-shop-items.mjs";
 
 const HOTEL = process.argv[2];
@@ -123,9 +123,15 @@ const rows = BK.map((b) => { ts += 600e3; const c = new Date(ts).toISOString();
   return `(${q(HOTEL)},'stay',${q(b.status ?? "active")},${q(b.p)},${b.price},${q(b.name)},${q(b.t)},${q(b.room)},${b.segs ? q(JSON.stringify(b.segs)) + "::jsonb" : "null"},${q(b.d)},${b.n},null,null,${b.ok},${q(b.memo ?? null)},${q(c)},${q(c)})`; });
 for (const [s, e, p, name, c, no, price, ok] of DAYUSE) { ts += 600e3; const cr = new Date(ts).toISOString();
   rows.push(`(${q(HOTEL)},'dayuse','active',${q(p)},${price},${q(name)},${q(TID[c])},${q(no ? "r-" + no : null)},null,${q(D)},null,${q(s)},${q(e)},${ok},null,${q(cr)},${q(cr)})`); }
+// 지출 예시 몇 건 (기준날짜에서 며칠 전)
+const EXP = [[0,"비품",32000,"cash","칫솔·면도기 2박스"],[0,"세탁",85000,"card","시트·수건 주간 세탁"],[-1,"식자재",24500,"cash","매점 음료 보충"],[-2,"수리",60000,"card","305호 샤워기 교체"],[-4,"공과금",412000,"card","전기요금"],[-21,"세탁",78000,"card","시트·수건 주간 세탁"],[-25,"비품",45000,"cash","휴지·물티슈"]];
+const exRows = EXP.map(([d, c, a, m, memo]) => `(${q(HOTEL)},${q(addDays(BASE, d))},${q(c)},${a},${q(m)},${q(memo)})`);
 console.log(`begin;
 update public.hotels set settings = ${q(JSON.stringify(settings))}::jsonb where id = ${q(HOTEL)};
 delete from public.bookings where hotel_id = ${q(HOTEL)};
 insert into public.bookings (hotel_id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,memo,created_at,updated_at) values
 ${rows.join(",\n")};
+delete from public.expenses where hotel_id = ${q(HOTEL)};
+insert into public.expenses (hotel_id,biz_date,category,amount,payment_method,memo) values
+${exRows.join(",\n")};
 commit;`);

@@ -1,3 +1,4 @@
+import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
@@ -304,6 +305,7 @@ export default function Settings({ data, email, notify }: Props) {
             ["rooms", "객실·타입"],
             ["plats", "플랫폼"],
             ["shop", "매점"],
+            ["exp", "지출 분류"],
             ["share", "현황 공유"],
             ["plan", "요금제"],
           ].map(([id, l]) => (
@@ -790,6 +792,46 @@ export default function Settings({ data, email, notify }: Props) {
           )}
         </section>
 
+        <section className="card" id="set-exp">
+          <h3>
+            지출 분류 <span className="tag">{s.expenseCategories.filter((c) => c.name.trim()).length}개</span>
+          </h3>
+          <div className="sub">장부 › 지출에서 이 순서대로 골라요. 이름을 바꾸거나 지워도 지난 지출은 그때 이름 그대로 남아요.</div>
+          {s.expenseCategories.map((c, i) => (
+            <div className="trow exrow" key={c.id}>
+              <span className="ord">
+                <button aria-label="위로" onClick={() => update((x) => ({ ...x, expenseCategories: move(x.expenseCategories, i, -1) }))}>
+                  <ArrowUp size={12} />
+                </button>
+                <button aria-label="아래로" onClick={() => update((x) => ({ ...x, expenseCategories: move(x.expenseCategories, i, 1) }))}>
+                  <ArrowDown size={12} />
+                </button>
+              </span>
+              <input
+                className="nin"
+                value={c.name}
+                placeholder="분류 이름"
+                maxLength={EXPENSE_CATEGORY_MAX}
+                aria-label="분류 이름"
+                autoFocus={!c.name && i === s.expenseCategories.length - 1}
+                onChange={(e) => {
+                  const name = e.target.value.slice(0, EXPENSE_CATEGORY_MAX);
+                  update((x) => ({ ...x, expenseCategories: x.expenseCategories.map((y) => (y.id === c.id ? { ...y, name } : y)) }));
+                }}
+              />
+              <button className="ic" aria-label="분류 지우기" onClick={() => update((x) => ({ ...x, expenseCategories: x.expenseCategories.filter((y) => y.id !== c.id) }))}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          {s.expenseCategories.length < 40 ? (
+            <button className="add" onClick={() => update((x) => ({ ...x, expenseCategories: [...x.expenseCategories, { id: uid("ec"), name: "" }] }))}>
+              <Plus size={14} />
+              분류 추가
+            </button>
+          ) : null}
+        </section>
+
         <ShareCard hotelId={hotel.id} plan={hotel.plan} notify={notify} />
 
         <section className="card" id="set-plan">
@@ -805,6 +847,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>여러 기기 동시 사용 (PC·태블릿·휴대폰)</li>
                 <li>장부 최근 3개월</li>
                 <li>매점 물품 {FREE_SHOP_ITEM_LIMIT}개까지 · 하루 매출</li>
+                <li>지출 기록 · 남은 금액 · 현금 시재</li>
               </ul>
             </div>
             <div className={hotel.plan === "pro" ? "now" : ""}>
@@ -815,6 +858,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>장부 무기한 · 엑셀 내보내기</li>
                 <li>월별 플랫폼 합계 · 수정 기록</li>
                 <li>매점 물품 제한 없음 · 월별 매점 매출</li>
+                <li>지출 월별 분류 합계 · 지출 엑셀 내보내기</li>
                 <li>현황 공유 링크 (직원은 로그인 없이 보기)</li>
               </ul>
             </div>

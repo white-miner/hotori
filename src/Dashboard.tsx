@@ -323,7 +323,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div
           key={r.id}
           {...act}
-          className={`cell em ${readOnly ? "ro" : ""}`}
+          className={`cell em ${du.length ? "duc" : ""} ${readOnly ? "ro" : ""}`}
           onClick={() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined })}
         >
           {head}
@@ -341,7 +341,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const no = (id: string | null | undefined) => (id ? (L.rooms.get(id)?.no ?? "?") : "?");
     const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${no(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${no(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
     return (
-      <div key={r.id} {...act} className={`cell bk ${cancelled ? "cx" : ""} ${readOnly ? "ro" : ""}`} onClick={() => onOpen(b)}>
+      <div
+        key={r.id}
+        {...act}
+        className={`cell bk ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${readOnly ? "ro" : ""}`}
+        onClick={() => onOpen(b)}
+      >
+        {!cancelled && du.length ? (
+          <span className="dumark" title={du.map((d) => `대실 ${d.startTime}~${d.endTime}`).join(" · ")}>
+            <i>대실 </i>
+            {du[0].startTime}
+            {du.length > 1 ? <em> +{du.length - 1}</em> : null}
+          </span>
+        ) : null}
         {head}
         {tline}
         <div className="nm">
@@ -355,7 +367,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="r3">
           <span>{b.nights === 1 ? "1박" : `${b.nights}박 중 ${nth}박째`}</span>
           {cancelled ? null : readOnly ? (
-            <Ring on={b.arrived} size={17} />
+            <Ring on={b.arrived} size={17} filled />
           ) : (
             <button
               className="ringbtn"
@@ -365,11 +377,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 void toggleArrived(b);
               }}
             >
-              <Ring on={b.arrived} size={17} />
+              <Ring on={b.arrived} size={17} filled />
             </button>
           )}
         </div>
-        {duTags.length ? <div className="dus">{duTags}</div> : null}
+        {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
       </div>
     );
   };

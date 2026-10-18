@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { type Booking, addDays, dayLabel, isActive, isMoved, legsOf, perNight, stayRoomIds, typeLabel, usableTypes, won } from "../shared/ledger";
-import { type HotelData, queryLedger, queryShopSales } from "./data";
+import { type HotelData, queryLedger, queryShopSales, useExpenses } from "./data";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
+import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
+import { ExpenseList, ExpenseModal } from "./Expenses";
 import { PlatBadge, Ring, TypeBadge, lookups } from "./ui";
 
 interface Props {
@@ -12,11 +14,31 @@ interface Props {
   query: string;
   setQuery: (q: string) => void;
   onOpen: (b: Booking) => void;
+  notify: (m: string) => void;
 }
+type LTab = "bookings" | "expenses";
+const LT_KEY = "hotori.ledgerTab";
 type StatusF = "all" | "active" | "void";
 const STATUS: Record<string, string> = { active: "", cancelled: "취소", noshow: "노쇼" };
 
-export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }: Props) {
+export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, notify }: Props) {
+  // 장부 탭: 예약 · 지출 (기기마다 마지막 탭 기억)
+  const [tab, setTabRaw] = useState<LTab>(() => {
+    try {
+      return localStorage.getItem(LT_KEY) === "expenses" ? "expenses" : "bookings";
+    } catch {
+      return "bookings";
+    }
+  });
+  const setTab = (x: LTab) => {
+    setTabRaw(x);
+    try {
+      localStorage.setItem(LT_KEY, x);
+    } catch {
+      /* 개인 정보 보호 모드 */
+    }
+  };
+  const [exEdit, setExEdit] = useState<Expense | "new" | null>(null);
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const [from, setFrom] = useState(addDays(today, -30));
@@ -29,6 +51,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [shopSum, setShopSum] = useState<{ amount: number; count: number; pay: PaySplit } | null>(null);
+  const ex = useExpenses(hotelId, from, to);
   const [shopTick, setShopTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => document.visibilityState === "visible" && setShopTick((n) => n + 1), 15000);
@@ -77,6 +100,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
   // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
   const filtered = !!(plat || type || kind || q || st === "void");
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
+  // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
+  const roomsAll = (rows ?? []).filter(isActive).reduce((n, b) => n + b.price, 0);
+  const exT = expenseTotals(ex.list ?? []);
+  const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT);
+  const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
 
   return (
     <main className="page ledger">
@@ -84,25 +112,95 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
         <div>
           <h1>장부</h1>
           <div className="sub">
-            {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 취소·노쇼 제외</span>
-          </div>
-          <div className="lsum">
-            <span>
-              숙박·대실<b>{won(sumUp.rooms)}원</b>
-            </span>
-            {sumUp.shop === null ? null : (
-              <span>
-                매점<b>{won(sumUp.shop)}원</b>
-                {shopSum ? <i className="muted"> · {shopSum.count}개 · {payLine(shopSum.pay, won)}</i> : null}
-              </span>
+            {tab === "bookings" ? (
+              <>
+                {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 취소·노쇼 제외</span>
+              </>
+            ) : (
+              <>
+                지출 {exT.count}건 <span className="muted">· {dayLabel(from)} ~ {dayLabel(to)}</span>
+              </>
             )}
-            <span className="tot">
-              {sumUp.shop === null ? "합계" : "총 합계"}
-              <b>{won(sumUp.total)}원</b>
+          </div>
+          <div className="lsum money">
+            <span title={`숙박·대실 ${won(money.sales - (shopSum?.amount ?? 0))}원 + 매점 ${won(shopSum?.amount ?? 0)}원`}>
+              매출<b>{won(money.sales)}원</b>
+              <i className="muted">
+                {" "}
+                · 숙박·대실 {won(roomsAll)} · 매점 {won(shopSum?.amount ?? 0)}
+              </i>
+            </span>
+            <span className="op">−</span>
+            <span>
+              지출<b>{won(money.expense)}원</b>
+            </span>
+            <span className="op">=</span>
+            <span className={`tot ${money.left < 0 ? "neg" : ""}`}>
+              남은 금액<b>{won(money.left)}원</b>
+            </span>
+            <span className={`cash ${money.cash < 0 ? "neg" : ""}`} title="숙박·대실은 결제 방법을 따로 적지 않아서 매점 현금만 넣어요">
+              현금 시재<b>{won(money.cash)}원</b>
+              <i className="muted">
+                {" "}
+                · 매점 현금 {won(money.cashIn)} − 현금 지출 {won(money.cashOut)}
+              </i>
             </span>
           </div>
+          {tab === "bookings" && sumUp.shop === null ? (
+            <div className="lsum-f muted">
+              조건에 맞는 예약 합계 <b>{won(sumUp.rooms)}원</b>
+            </div>
+          ) : tab === "bookings" && shopSum ? (
+            <div className="lsum-f muted">매점 {shopSum.count}개 · {payLine(shopSum.pay, won)}</div>
+          ) : null}
+        </div>
+        <div className="ltabs seg" role="tablist" aria-label="장부">
+          <button role="tab" aria-selected={tab === "bookings"} className={tab === "bookings" ? "on" : ""} onClick={() => setTab("bookings")}>
+            예약
+          </button>
+          <button role="tab" aria-selected={tab === "expenses"} className={tab === "expenses" ? "on" : ""} onClick={() => setTab("expenses")}>
+            지출
+          </button>
         </div>
       </div>
+      {exEdit ? (
+        <ExpenseModal
+          base={exEdit === "new" ? null : exEdit}
+          today={today}
+          categories={categories}
+          onClose={() => setExEdit(null)}
+          onSave={async (d) => {
+            const saved = await ex.save(d, exEdit === "new" ? undefined : exEdit.id);
+            setExEdit(null);
+            notify(`${saved.category} ${won(saved.amount)}원 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"} · ${saved.method === "cash" ? "현금" : "카드"}`);
+          }}
+          onDelete={async () => {
+            if (exEdit === "new") return;
+            try {
+              await ex.remove(exEdit.id);
+              setExEdit(null);
+              notify("지출을 지웠어요");
+            } catch (e) {
+              notify(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+            }
+          }}
+        />
+      ) : null}
+      {tab === "expenses" ? (
+        <ExpenseList
+          list={ex.list}
+          error={ex.error}
+          from={from}
+          to={to}
+          setFrom={setFrom}
+          setTo={setTo}
+          plan={data.hotel!.plan}
+          hotelName={data.hotel!.name}
+          onOpen={(e) => setExEdit(e)}
+          onAdd={() => setExEdit("new")}
+        />
+      ) : (
+        <>
       <div className="filters">
         <label className="search ls">
           <Search size={16} />
@@ -205,6 +303,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
         )}
       </div>
       <p className="fine pad">엑셀 내보내기는 Pro에서 제공할 예정이에요.</p>
+        </>
+      )}
     </main>
   );
 }

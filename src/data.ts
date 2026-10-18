@@ -11,6 +11,7 @@ import {
   normalizeSettings,
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
+import type { Expense } from "../shared/expense";
 
 export interface Hotel {
   id: string;
@@ -454,4 +455,106 @@ export async function queryStays(hotelId: string, from: string, to: string): Pro
     .limit(20000);
   if (error) throw error;
   return (data as BookingRow[]).map(fromRow);
+}
+
+// ---------- 지출 ----------
+interface ExpenseRow {
+  id: string;
+  biz_date: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  memo: string | null;
+  created_at: string;
+}
+const EXP_COLS = "id,biz_date,category,amount,payment_method,memo,created_at";
+const fromExpRow = (r: ExpenseRow): Expense => ({
+  id: r.id,
+  bizDate: r.biz_date,
+  category: r.category,
+  amount: r.amount,
+  method: r.payment_method === "cash" ? "cash" : "card",
+  memo: r.memo,
+  createdAt: r.created_at,
+});
+export async function queryExpenses(hotelId: string, from: string, to: string): Promise<Expense[]> {
+  const { data, error } = await supabase
+    .from("expenses")
+    .select(EXP_COLS)
+    .eq("hotel_id", hotelId)
+    .gte("biz_date", from)
+    .lte("biz_date", to)
+    .order("biz_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(20000);
+  if (error) throw error;
+  return (data as ExpenseRow[]).map(fromExpRow);
+}
+export type ExpenseDraft = Pick<Expense, "bizDate" | "category" | "amount" | "method" | "memo">;
+/** 지출: 기간(영업일)으로 불러오고, 다른 기기에서 적은 것도 실시간 + 15초마다 맞춰요 */
+export function useExpenses(hotelId: string, from: string, to: string) {
+  const [list, setList] = useState<Expense[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const listRef = useRef<Expense[]>([]);
+  listRef.current = list ?? [];
+  const range = useRef({ from, to });
+  range.current = { from, to };
+  const refresh = useCallback(async () => {
+    const want = `${from}~${to}`;
+    try {
+      const rows = await queryExpenses(hotelId, from, to);
+      if (want !== `${range.current.from}~${range.current.to}`) return;
+      setList(rows);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "불러오지 못했어요");
+    }
+  }, [hotelId, from, to]);
+  useEffect(() => {
+    void refresh();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void refresh(), 250);
+    };
+    const ch = supabase
+      .channel(`exp-${hotelId}-${from}-${to}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "expenses", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "expenses", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "expenses" }, (p) => {
+        const id = (p.old as { id?: string } | null)?.id;
+        if (id && listRef.current.some((x) => x.id === id)) soon();
+      })
+      .subscribe();
+    const poll = setInterval(() => document.visibilityState === "visible" && void refresh(), 15000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(poll);
+      void supabase.removeChannel(ch);
+    };
+  }, [hotelId, from, to, refresh]);
+  const save = useCallback(
+    async (d: ExpenseDraft, id?: string): Promise<Expense> => {
+      const row = { biz_date: d.bizDate, category: d.category.trim(), amount: Math.round(d.amount), payment_method: d.method, memo: d.memo?.trim() ? d.memo.trim().slice(0, 200) : null };
+      const q = id
+        ? supabase.from("expenses").update(row).eq("id", id).select(EXP_COLS).single()
+        : supabase.from("expenses").insert({ ...row, hotel_id: hotelId }).select(EXP_COLS).single();
+      const { data, error } = await q;
+      if (error) throw error;
+      const saved = fromExpRow(data as ExpenseRow);
+      const inRange = saved.bizDate >= range.current.from && saved.bizDate <= range.current.to;
+      setList((cur) => {
+        const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+        return (inRange ? [saved, ...rest] : rest).sort((a, b) => b.bizDate.localeCompare(a.bizDate) || b.createdAt.localeCompare(a.createdAt));
+      });
+      return saved;
+    },
+    [hotelId],
+  );
+  const remove = useCallback(async (id: string) => {
+    const { error } = await supabase.from("expenses").delete().eq("id", id);
+    if (error) throw error;
+    setList((cur) => (cur ?? []).filter((x) => x.id !== id));
+  }, []);
+  return { list, error, save, remove, refresh };
 }

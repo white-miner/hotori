@@ -1,3 +1,4 @@
+import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -56,6 +57,7 @@ export interface HotelSettings {
   platforms: Platform[];
   lowThreshold: number;
   shopItems: ShopItem[]; // 매점 물품 (위에서부터 매점 화면 순서)
+  expenseCategories: ExpenseCategory[]; // 지출 분류 (없으면 기본: 비품·식자재·세탁·수리·공과금·기타)
 }
 export interface ShopItem {
   id: string;
@@ -118,7 +120,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [] };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined) };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -150,6 +152,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     platforms: Array.isArray(s.platforms) ? s.platforms : [],
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
     shopItems: normalizeShopItems((s as { shopItems?: unknown }).shopItems),
+    expenseCategories: normalizeExpenseCategories((s as { expenseCategories?: unknown }).expenseCategories),
   };
 }
 

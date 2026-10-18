@@ -6,7 +6,7 @@
 :root {
   --bg: #fff; --panel: #f2f2f2; --panel2: #f7f7f8; --hover: #eaeaea; --line: #e6e6e6; --line2: #efefef;
   --ink: #1a1a1a; --ink2: #4a4a4a; --ink3: #6b6b6b; --ink4: #a3a3a3;
-  --red: #e0242f; --red-d: #c21a24; --red-s: #fdecec; --dark: #dcdcdc;
+  --red: #e0242f; --stay: #ff1f1f; --dayuse: #0a5cff; --red-d: #c21a24; --red-s: #fdecec; --dark: #dcdcdc;
   --num: "MR", "PV", system-ui, sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -170,10 +170,19 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .fdot { width: 8px; height: 8px; border-radius: 50%; background: var(--dark); flex: none; }
 .rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 7px; }
 .cell { border-radius: 16px; padding: 6px 7px 7px; min-height: 110px; display: flex; flex-direction: column; gap: 3px; min-width: 0; position: relative; cursor: pointer; text-align: left; }
-.cell.bk { background: var(--panel); }
-.cell.bk:hover { background: var(--hover); }
-.cell.em { background: #fff; border: 1.5px dashed var(--dark); }
+/* 객실 배치: 흰 바탕 + 테두리로 구분 (숙박 빨강 · 대실 파랑 · 빈 방 회색 점선) */
+.cell.bk { background: #fff; }
+.cell.bk.st { border: 2px solid var(--stay); }
+.cell.bk.st:hover { background: #fff7f7; }
+.cell.em { background: #fff; border: 1px dashed #c8c8c8; }
 .cell.em:hover { border-color: var(--ink4); }
+.cell.em.duc { border: 2px solid var(--dayuse); }
+.cell.em.duc:hover { background: #f6f9ff; border-color: var(--dayuse); }
+.cell.em.duc .emt { color: var(--ink3); }
+.cell .dumark { position: absolute; top: -8px; right: 8px; z-index: 1; font-family: var(--num); font-size: 10px; font-weight: 750; line-height: 1; color: #fff; background: var(--dayuse); border-radius: 6px; padding: 3px 5px; white-space: nowrap; letter-spacing: -0.02em; }
+.cell .dumark i { font-style: normal; font-family: "PV", system-ui, sans-serif; }
+.cell .dumark em { font-style: normal; opacity: 0.85; }
+.cell .ring.fill { filter: none; }
 .cell > * { flex-shrink: 0; }
 .cell .r1 { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 2px 3px; border-radius: 9px; margin: 0 0 1px; }
 .cell .r1.strip { padding: 3px 5px; }
@@ -197,12 +206,13 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .up { font-size: 10px; color: var(--ink3); background: #fff; border-radius: 6px; padding: 1px 5px; }
 .cell .dus { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 2px; }
 .du { font-size: 10px; color: var(--ink3); background: #fff; border-radius: 7px; padding: 2px 5px; letter-spacing: -0.02em; align-self: flex-start; white-space: nowrap; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.cell.em .du { background: var(--panel); }
+.cell.em .du { background: var(--panel); color: var(--ink); }
 .cell.em .emt { font-size: 12px; color: var(--ink4); font-weight: 550; margin-top: 4px; padding: 0 3px; }
 .cell.em .no { color: var(--ink3); }
 .cx .nm span, .cx .gn, .cx .pr, .lrow.cx .c-name .gn, .lrow.cx .c-price { text-decoration: line-through; text-decoration-thickness: 1.5px; color: var(--ink4) !important; }
 .cell.cx { background: #fafafa; border: 1.5px dashed var(--dark); }
 .cell.cx .pb { opacity: 0.6; }
+.cell.cx:hover { background: var(--hover); }
 
 .side { background: var(--panel2); border-radius: 24px 0 0 0; padding: 24px 22px; display: flex; flex-direction: column; gap: 14px; position: sticky; top: 64px; min-height: calc(100vh - 64px); max-height: calc(100vh - 64px); overflow-y: auto; }
 .side h3 { font-size: 15px; font-weight: 750; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 4px; }
@@ -530,6 +540,9 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .rp { display: none; }
   .cell .ring { width: 13px; height: 13px; }
   .cell .dus .du { font-size: 9px; padding: 1px 3px; }
+  .cell.bk.st, .cell.em.duc { border-width: 2px; }
+  .cell .dumark { top: -7px; right: 4px; font-size: 8.5px; padding: 2px 3px; border-radius: 4px; }
+  .cell .dumark i, .cell .dumark em { display: none; }
   .side { display: flex; margin: 14px 12px 0; padding: 18px 14px; border-radius: 20px; }
   .it .tm { width: 88px; font-size: 13px; }
   .dim { padding: 0; align-items: flex-end; }
@@ -593,8 +606,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .share-err { margin-top: 8px; font-size: 12.5px; color: var(--red-d); font-weight: 600; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cell.ro, .it.ro, .shared .cell { cursor: default; }
-.shared .cell.bk:hover { background: var(--panel); }
-.shared .cell.em:hover { border-color: var(--dark); }
+.shared .cell.bk:hover { background: #fff; }
+.shared .cell.cx:hover { background: #fafafa; }
+.shared .cell.em:hover { border-color: #c8c8c8; }
+.shared .cell.em.duc:hover { background: #fff; border-color: var(--dayuse); }
 .shared .top .demo { margin-left: 4px; }
 .shared .sync { font-size: 12px; }
 .spin { animation: spin 0.8s linear infinite; }
@@ -896,3 +911,66 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cbar.mvo { border-right-style: dashed; }
 .c-room.mv { font-size: 12px; letter-spacing: -0.02em; white-space: nowrap; }
 .up.mvt { font-family: var(--num); }
+
+/* ---------- 장부: 예약 · 지출 ---------- */
+.ltabs { align-self: flex-end; }
+.ltabs button { padding: 7px 20px; font-size: 14px; }
+.lsum.money { align-items: center; }
+.lsum.money .op { background: transparent; padding: 0 2px; font-family: var(--num); font-size: 16px; color: var(--ink3); }
+.lsum .tot.neg { background: var(--red); }
+.lsum .cash { background: #fff; box-shadow: inset 0 0 0 1px var(--line); margin-left: 6px; }
+.lsum .cash.neg b { color: var(--red-d); }
+.lsum-f { font-size: 12.5px; margin-top: 6px; }
+.lsum-f b { font-family: var(--num); color: var(--ink2); }
+.exadd { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 40px; padding: 0 16px; font-size: 13.5px; }
+.erow { display: grid; grid-template-columns: 96px 90px 56px minmax(120px, 1fr) 130px; gap: 10px; align-items: center; padding: 11px 14px; border-radius: 14px; font-size: 13.5px; cursor: pointer; }
+.erow + .erow { margin-top: 3px; }
+.erow:not(.lhead):not(.efoot) { background: #fff; }
+.erow:not(.lhead):not(.efoot):hover { background: var(--panel); }
+.erow.lhead { font-size: 12px; color: var(--ink3); font-weight: 650; cursor: default; padding: 6px 14px; }
+.erow.efoot { cursor: default; font-weight: 700; font-size: 13px; color: var(--ink2); padding-top: 10px; }
+.erow .r { text-align: right; }
+.erow .c-date { font-family: var(--num); font-weight: 700; white-space: nowrap; }
+.erow .c-cat { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erow .c-pay { justify-self: start; font-size: 11.5px; font-weight: 750; border-radius: 999px; padding: 2px 9px; background: var(--panel); color: var(--ink2); }
+.erow .c-pay.cash { background: #fff; box-shadow: inset 0 0 0 1px var(--dark); }
+.erow .c-memo { color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.erow .c-amt { font-family: var(--num); font-weight: 800; font-size: 15px; }
+.exmonth { margin-top: 18px; background: var(--panel2); border-radius: 22px; padding: 16px 18px; }
+.exm-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.exm-h h3 { font-size: 15px; font-weight: 800; }
+.exm-h .btn { display: inline-flex; align-items: center; gap: 5px; }
+.exm-wrap { overflow-x: auto; background: #fff; border-radius: 14px; }
+.exm { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+.exm th { font-size: 12px; color: var(--ink3); font-weight: 650; text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.exm td { padding: 9px 12px; border-bottom: 1px solid var(--line2); }
+.exm tr:last-child td { border-bottom: 0; }
+.exm .r { text-align: right; }
+.exm .num { font-family: var(--num); font-weight: 650; }
+.exm td.tot { font-weight: 800; }
+.exmonth .fine { margin-top: 8px; }
+.exlock { margin-top: 14px; }
+.exmodal { width: 560px; }
+.exmodal .mf .sp { flex: 1; }
+.seg.paym { justify-self: start; height: 44px; }
+.seg.paym button { padding: 0 22px; font-size: 14px; font-weight: 700; }
+@media (max-width: 760px) {
+  .ltabs { width: 100%; display: flex; }
+  .ltabs button { flex: 1; }
+  .lsum.money .op { display: none; }
+  .lsum .cash { margin-left: 0; }
+  .lsum i { display: none; }
+  .exadd { margin-left: 0; width: 100%; justify-content: center; }
+  .erow.lhead { display: none; }
+  .erow { grid-template-columns: auto 1fr auto; grid-template-areas: "date cat amt" "pay memo memo"; row-gap: 4px; padding: 10px 12px; }
+  .erow .c-date { grid-area: date; }
+  .erow .c-cat { grid-area: cat; }
+  .erow .c-amt { grid-area: amt; }
+  .erow .c-pay { grid-area: pay; }
+  .erow .c-memo { grid-area: memo; font-size: 12px; }
+  .erow.efoot { grid-template-areas: none; grid-template-columns: auto 1fr auto; }
+  .erow.efoot > span:nth-child(2), .erow.efoot > span:nth-child(3) { display: none; }
+  .erow.efoot .c-amt { grid-area: auto; }
+  .exmodal .two { grid-template-columns: 1fr; }
+}
+.exrow .nin { flex: 1; min-width: 0; }

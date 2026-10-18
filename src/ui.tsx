@@ -61,12 +61,13 @@ export function PlatBadge({ p }: { p?: Platform | null }) {
   );
 }
 
-export function Ring({ on, size = 18 }: { on: boolean; size?: number }) {
+// filled: 객실 배치 칸에서는 입실완료를 꽉 찬 동그라미로
+export function Ring({ on, size = 18, filled = false }: { on: boolean; size?: number; filled?: boolean }) {
   return on ? (
-    <svg className="ring" width={size} height={size} viewBox="0 0 20 20" aria-label="입실">
+    <svg className={`ring ${filled ? "fill" : ""}`} width={size} height={size} viewBox="0 0 20 20" aria-label="입실">
       <path
         d="M10.5 2.6c4.3.1 7.2 3.3 7 7.4-.2 4.2-3.6 7.3-7.8 7.2C5.5 17 2.6 13.9 2.8 9.8 3 6 5.8 3.3 9.4 2.9"
-        fill="none"
+        fill={filled ? "#1A1A1A" : "none"}
         stroke="#1A1A1A"
         strokeWidth="1.9"
         strokeLinecap="round"

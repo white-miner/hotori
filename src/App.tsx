@@ -191,7 +191,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           notify={notify}
         />
       ) : view === "ledger" ? (
-        <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b) => setEntry({ booking: b })} />
+        <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b) => setEntry({ booking: b })} notify={notify} />
       ) : view === "shop" ? (
         <Shop data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : (
