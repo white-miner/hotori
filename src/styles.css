@@ -1293,3 +1293,17 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .sh-tbl td, .sh-tbl th { color: #000 !important; }
   .sh-tbl tr.left.due td { color: #000 !important; }
 }
+/* 객실 캘린더 방 칸: 방 번호만 크게 (타입은 툴팁) */
+.cal-l.rm { gap: 7px; padding: 0 6px 0 9px; }
+.cal-l.rm b { font-size: 16px; font-weight: 850; max-width: none; overflow: visible; text-overflow: clip; letter-spacing: -0.02em; color: var(--ink); }
+.cal-h .cal-l { padding-left: 10px; }
+@media (max-width: 760px) {
+  .cal-l.rm { flex-direction: row; align-items: center; padding: 0 3px 0 9px; }
+  .cal-l.rm b { font-size: 14px; line-height: 1; max-width: none; }
+  .cal-h .cal-l { padding-left: 8px; }
+}
+/* 설정 · 입실 퇴실 시간 */
+.stimes { display: flex; gap: 12px; flex-wrap: wrap; }
+.stimes label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--ink3); font-weight: 650; }
+.stimes input { font-family: var(--num); font-size: 16px; font-weight: 750; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); min-width: 132px; }
+.stimes input:focus { outline: none; border-color: var(--ink2); }

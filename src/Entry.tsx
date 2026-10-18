@@ -527,7 +527,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <button type="button" className="bmove" onClick={onBoardMove}>
                 <ArrowRightLeft size={17} />
                 <b>객실 이동</b>
-                <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? " · 이 밤부터 옮겨요" : ""}</span>
+                <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? ` · ${dayLabel(req.night)}부터 옮겨요` : ""}</span>
               </button>
             ) : null}
             <button
@@ -559,7 +559,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <DoorOpen size={15} />
             <b>{dayLabel(live.earlyOut!)} 중도 퇴실</b>
             <span>
-              {usedLabel(live)} · {dayLabel(live.earlyOut!)} 밤부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
+              {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
             </span>
           </div>
         ) : null}
@@ -570,7 +570,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {eo.date === today ? "오늘 퇴실" : `${dayLabel(eo.date)} 퇴실`} · {live.nights}박 중 {daysBetween(live.checkIn, eo.date)}박 이용
               </b>
               <span>
-                {dayLabel(eo.date)} 밤부터 {live.nights! - daysBetween(live.checkIn, eo.date)}박은 바로 빈 방이 돼요
+                {dayLabel(eo.date)}부터 {live.nights! - daysBetween(live.checkIn, eo.date)}박은 바로 빈 방이 돼요
                 {L.roomLabel(roomOnNight(live, eo.date) ?? null) ? ` (${L.roomLabel(roomOnNight(live, eo.date) ?? null)}호)` : ""}
               </span>
             </div>
@@ -727,7 +727,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <Plus size={16} />
               </button>
               <span className="rng">
-                <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(addDays(checkIn, nights))}</b> 퇴실 · 퇴실날은 다시 팔 수 있어요
+                <b>{dayLabel(checkIn)} {s.stayTimes.checkIn}</b> 입실 → <b>{dayLabel(addDays(checkIn, nights))} {s.stayTimes.checkOut}</b> 퇴실 · 퇴실날은 다시 팔 수 있어요
               </span>
             </div>
           </div>
@@ -1069,11 +1069,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <div className="chips">
                     {Array.from({ length: nights - 1 }, (_, i) => i + 2).map((k) => (
                       <button type="button" key={k} className={`chip sm ${mv.from === k ? "on" : ""}`} onClick={() => setMv({ ...mv, from: k, room: null })}>
-                        {k}박째 {dayLabel(addDays(checkIn, k - 1))} 밤부터
+                        {k}박째 {dayLabel(addDays(checkIn, k - 1))}
                       </button>
                     ))}
                   </div>
-                  <div className="mvq">옮길 방 <span className="muted">· {dayLabel(addDays(checkIn, mv.from - 1))} 밤 ~ {dayLabel(addDays(checkIn, nights))} 퇴실</span></div>
+                  <div className="mvq">옮길 방 <span className="muted">· {dayLabel(addDays(checkIn, mv.from - 1))} ~ {dayLabel(addDays(checkIn, nights))} 퇴실</span></div>
                   {(() => {
                     const cur = legs.find((l) => l.checkIn <= addDays(checkIn, mv.from - 1) && addDays(checkIn, mv.from - 1) < addDays(l.checkIn, l.nights))?.roomId;
                     const list = allRooms.filter((r) => r.id !== cur);

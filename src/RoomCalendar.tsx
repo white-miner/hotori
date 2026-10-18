@@ -109,7 +109,13 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
     return () => ro.disconnect();
   }, []);
   const phone = w < 600;
-  const lw = phone ? 58 : 108;
+  // 방 칸: 방 번호만 크게. 가장 긴 번호(1001 · 펜션1)가 다 보이는 만큼만 넓혀요
+  const longest = useMemo(() => {
+    let m = 0;
+    for (const r of L.rooms.values()) m = Math.max(m, [...r.no].reduce((a, ch) => a + (/[가-힣]/.test(ch) ? 1.0 : /[0-9]/.test(ch) ? 0.62 : 0.6), 0));
+    return m;
+  }, [L]);
+  const lw = phone ? Math.min(96, Math.max(46, Math.ceil(longest * 14.5 + 18))) : Math.min(132, Math.max(64, Math.ceil(longest * 17 + 30)));
   const cw = Math.max(phone ? 40 : 44, Math.floor((w - lw) / dates.length));
   const wide = lw + cw * dates.length > w + 1;
 
@@ -210,10 +216,9 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
               {g.floors.map((f) =>
                 f.rooms.map((r) => (
                   <div className="cal-r" key={r.id}>
-                    <div className="cal-l rm" title={`${f.name} ${r.no}`}>
+                    <div className="cal-l rm" title={`${f.name} ${r.no}${typeLabel(L.types.get(r.typeId ?? "")) ? ` · ${typeLabel(L.types.get(r.typeId ?? ""))}` : ""}`}>
                       <i className="cal-fc" style={{ background: pastelColor(r.color ?? f.color) ?? "var(--line)" }} />
                       <b>{r.no}</b>
-                      <small>{typeLabel(L.types.get(r.typeId ?? ""))}</small>
                     </div>
                     <div
                       className={`cal-t ${readOnly ? "ro" : ""}`}

@@ -102,7 +102,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               <div className="sh-k">단체 정산서 · {data.hotel!.name}</div>
               <h2>{name}</h2>
               <div className="sh-sub">
-                {dayLabel(checkIn)} ~ {dayLabel(addDays(checkIn, nights))} · {nights}박 · {members.filter((b) => b.status !== "cancelled").length}실
+                {dayLabel(checkIn)} {s.stayTimes.checkIn} 입실 ~ {dayLabel(addDays(checkIn, nights))} {s.stayTimes.checkOut} 퇴실 · {nights}박 · {members.filter((b) => b.status !== "cancelled").length}실
                 {plat ? (
                   <>
                     {" · "}

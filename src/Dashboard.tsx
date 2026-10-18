@@ -744,7 +744,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       ? `대실 ${mvB.startTime}~${mvB.endTime} · ${roomName(mvFrom)}`
                       : (() => {
                           const w = boardMoveWindow(mvB, mvNight);
-                          return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 밤(${dayLabel(w.checkIn)})부터 ${w.nights}박`}`;
+                          return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 ${dayLabel(w.checkIn)}부터 ${w.nights}박`}`;
                         })()}
                     {" · "}
                     {targets.size ? `빈 방 ${targets.size}곳` : "옮길 수 있는 빈 방이 없어요"}

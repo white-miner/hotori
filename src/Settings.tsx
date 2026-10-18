@@ -690,6 +690,21 @@ export default function Settings({ data, email, notify }: Props) {
           </button>
         </section>
 
+        <section className="card" id="set-times">
+          <h3>입실 · 퇴실 시간</h3>
+          <div className="sub">예약 창과 정산서에 이 시간으로 보여요. 빠른 입실 · 늦은 퇴실은 이 시간에서 앞당기거나 미뤄요.</div>
+          <div className="stimes">
+            <label>
+              <span>입실 시간</span>
+              <input type="time" step={1800} value={s.stayTimes.checkIn} aria-label="입실 시간" onChange={(e) => e.target.value && update((x) => ({ ...x, stayTimes: { ...x.stayTimes, checkIn: e.target.value.slice(0, 5) } }))} />
+            </label>
+            <label>
+              <span>퇴실 시간</span>
+              <input type="time" step={1800} value={s.stayTimes.checkOut} aria-label="퇴실 시간" onChange={(e) => e.target.value && update((x) => ({ ...x, stayTimes: { ...x.stayTimes, checkOut: e.target.value.slice(0, 5) } }))} />
+            </label>
+          </div>
+        </section>
+
         <section className="card" id="set-surcharge">
           <h3>인원 추가 요금</h3>
           <div className="sub">객실 타입의 기본 인원을 넘으면 1명 1박마다 더해요. 금·토 밤과 특별일 밤은 오른쪽 요금이에요. 예약 창에서 금액을 바꿀 수 있어요.</div>

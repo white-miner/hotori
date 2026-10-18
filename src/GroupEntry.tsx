@@ -198,7 +198,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               <Plus size={16} />
             </button>
             <span className="rng">
-              <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOut)}</b> 퇴실 · 이 기간 내내 빈 방만 고를 수 있어요
+              <b>{dayLabel(checkIn)} {s.stayTimes.checkIn}</b> 입실 → <b>{dayLabel(checkOut)} {s.stayTimes.checkOut}</b> 퇴실 · 이 기간 내내 빈 방만 고를 수 있어요
             </span>
           </div>
         </div>
