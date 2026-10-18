@@ -6,8 +6,19 @@ import {
   addDays,
   businessDate,
   firstOverbooking,
+  TYPE_CODE_MAX,
+  addRoomsToFloor,
+  allRooms,
+  duplicateRoomNos,
+  floorsOf,
   freeRooms,
+  moveFloor,
   nightBoard,
+  normalizeSettings,
+  orderedFloors,
+  parseRoomInput,
+  removeBuilding,
+  roomLabel,
   perNight,
   previewChange,
   remaining,
@@ -16,7 +27,8 @@ import {
   validateBooking,
 } from "./ledger.ts";
 
-const S: HotelSettings = {
+// 건물 정보가 없던 예전 형식 그대로 (normalizeSettings가 '본관' 하나로 채워요)
+const S: HotelSettings = normalizeSettings({
   lowThreshold: 2,
   types: [
     { id: "s", code: "S", name: "스탠다드" },
@@ -40,7 +52,7 @@ const S: HotelSettings = {
     },
     { id: "f6", name: "6층", rooms: [{ id: "rbg", no: "방갈로", typeId: "bg" }] },
   ],
-};
+});
 
 let seq = 0;
 function bk(p: Partial<Booking>): Booking {
@@ -180,4 +192,109 @@ test("대실은 이용시간이 꼭 있어야 저장돼요", () => {
   assert.match(validateBooking(d, S) ?? "", /이용시간/);
   assert.equal(validateBooking({ ...d, startTime: "12:00", endTime: "14:00" }, S), null);
   assert.equal(validateBooking(bk({ nights: 2 }), S), null);
+});
+
+// ---------- 건물 (본관·별관) ----------
+/** 본관 2층(201~203) + 별관 2층(201·202): 방 번호가 건물마다 겹쳐요 */
+const M: HotelSettings = normalizeSettings({
+  lowThreshold: 2,
+  buildings: [
+    { id: "b-main", name: "본관" },
+    { id: "b-annex", name: "별관" },
+  ],
+  types: S.types,
+  platforms: S.platforms,
+  floors: [
+    { ...S.floors[0], buildingId: "b-main" },
+    {
+      id: "fa2",
+      name: "2층",
+      buildingId: "b-annex",
+      rooms: [
+        { id: "ra201", no: "201", typeId: "s" },
+        { id: "ra202", no: "202", typeId: "sd" },
+      ],
+    },
+  ],
+});
+
+test("건물 마이그레이션: 예전 설정은 그대로 두고 '본관' 하나에 모든 층을 넣어요", () => {
+  assert.deepEqual(S.buildings, [{ id: "b-main", name: "본관" }]);
+  assert.deepEqual(
+    S.floors.map((f) => [f.id, f.buildingId, f.rooms.length]),
+    [
+      ["f2", "b-main", 3],
+      ["f6", "b-main", 1],
+    ],
+  );
+  assert.equal(S.floors[0].color, "#DDE8F3", "층 색·방 정보는 그대로");
+  assert.equal(roomLabel(S, "r201"), "201", "건물이 하나면 예전처럼 번호만 보여요");
+  // DB 마이그레이션 결과(JSON)를 다시 읽어도 똑같아요
+  assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(S))), S);
+  // 모르는 건물을 가리키는 층은 첫 건물로
+  const odd = normalizeSettings({ buildings: [{ id: "x", name: "A동" }], floors: [{ id: "f", name: "1층", buildingId: "gone", rooms: [] }] });
+  assert.equal(odd.floors[0].buildingId, "x");
+  assert.deepEqual(normalizeSettings(null).buildings, [{ id: "b-main", name: "본관" }]);
+});
+
+test("건물이 달라도 같은 방 번호를 쓸 수 있고, 이름은 '별관 201'로 보여요", () => {
+  assert.deepEqual(duplicateRoomNos(M), []);
+  assert.equal(roomLabel(M, "r201"), "본관 201");
+  assert.equal(roomLabel(M, "ra201"), "별관 201");
+  assert.deepEqual(
+    allRooms(M).map((r) => `${r.buildingId}:${r.no}`),
+    ["b-main:201", "b-main:202", "b-main:203", "b-annex:201", "b-annex:202"],
+  );
+});
+
+test("방 추가(601~610 범위)는 그대로, 같은 건물 안 번호만 건너뛰어요", () => {
+  assert.deepEqual(parseRoomInput("601~610"), ["601", "602", "603", "604", "605", "606", "607", "608", "609", "610"]);
+  assert.deepEqual(parseRoomInput("201-203, 펜션1"), ["201", "202", "203", "펜션1"]);
+  let n = 0;
+  const id = () => `new${++n}`;
+  const a = addRoomsToFloor(M, "fa2", "201~204", "s", id);
+  assert.deepEqual(a.added, ["203", "204"], "별관에 이미 있는 201·202만 건너뛰어요 (본관 201~203과는 상관없어요)");
+  assert.deepEqual(a.skipped, ["201", "202"]);
+  assert.deepEqual(duplicateRoomNos(a.settings), []);
+  assert.equal(floorsOf(a.settings, "b-annex")[0].rooms.length, 4);
+  assert.equal(floorsOf(a.settings, "b-main")[0].rooms.length, 3, "본관은 그대로");
+});
+
+test("겹치는 예약 확인은 방 번호가 아니라 그 건물의 그 방 기준이에요", () => {
+  const main201 = bk({ roomId: "r201", nights: 2 });
+  const free = freeRooms(M, [main201], { id: "new", kind: "stay", checkIn: "2026-10-19", nights: 1, startTime: null, endTime: null });
+  assert.ok(!free.has("r201"), "본관 201은 찼어요");
+  assert.ok(free.has("ra201"), "별관 201은 비어 있어요");
+  const board = nightBoard(M, [main201], "2026-10-18");
+  assert.equal(board.byRoom.get("r201")?.id, main201.id);
+  assert.equal(board.byRoom.get("ra201"), undefined);
+  // 남은 객실은 건물과 상관없이 타입별 합계 (S: 본관 2 + 별관 1 = 3)
+  assert.equal(remaining(M, [], "s", "2026-10-18"), 3);
+  assert.equal(remaining(M, [main201], "s", "2026-10-18"), 2);
+  const annexSd = bk({ typeId: "s", roomId: "ra202" });
+  assert.equal(remaining(M, [annexSd], "sd", "2026-10-18"), 1, "별관 SD 방에 배정하면 SD에서 빠져요");
+});
+
+test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 그 층·방도 지워져요", () => {
+  const two = normalizeSettings({
+    ...M,
+    floors: [...M.floors, { id: "fm3", name: "3층", buildingId: "b-main", rooms: [] }],
+  });
+  assert.deepEqual(orderedFloors(two).map((f) => f.id), ["f2", "fm3", "fa2"], "건물 순서 → 층 순서");
+  const moved = moveFloor(two, "fm3", -1);
+  assert.deepEqual(orderedFloors(moved).map((f) => f.id), ["fm3", "f2", "fa2"]);
+  assert.deepEqual(orderedFloors(moveFloor(two, "fa2", -1)).map((f) => f.id), ["f2", "fm3", "fa2"], "다른 건물로 넘어가지 않아요");
+  const gone = removeBuilding(M, "b-annex");
+  assert.deepEqual(gone.buildings.map((b) => b.name), ["본관"]);
+  assert.equal(allRooms(gone).length, 3);
+  assert.equal(removeBuilding(gone, "b-main"), gone, "마지막 건물은 지울 수 없어요");
+});
+
+test("객실 타입 약자는 12글자까지", () => {
+  assert.equal(TYPE_CODE_MAX, 12);
+  const t = { id: "long", code: "스탠다드디럭스오션뷰트윈", name: "스탠다드 디럭스 오션뷰 트윈" };
+  assert.equal(t.code.length, 12);
+  const s2 = normalizeSettings({ ...M, types: [...M.types, t] });
+  assert.equal(s2.types.at(-1)?.code, t.code, "저장·불러오기에서 잘리지 않아요");
+  assert.equal(validateBooking(bk({ typeId: "long" }), s2), null);
 });

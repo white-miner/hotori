@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Minus, Plus, Trash2, X } from "lucide-react";
-import type { Floor, HotelSettings, Room } from "../shared/ledger";
-import { typeTotals } from "../shared/ledger";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Minus, Plus, Trash2, X } from "lucide-react";
+import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
+import {
+  TYPE_CODE_MAX,
+  TYPE_NAME_MAX,
+  addRoomsToFloor,
+  floorsOf,
+  isMultiBuilding,
+  moveFloor,
+  parseRoomInput,
+  removeBuilding,
+  typeTotals,
+} from "../shared/ledger";
 import type { HotelData } from "./data";
 import { PALETTE, PlatBadge, TypeBadge, uid } from "./ui";
 
@@ -17,19 +27,10 @@ const move = <T,>(a: T[], i: number, d: number): T[] => {
   [b[i], b[j]] = [b[j], b[i]];
   return b;
 };
-/** "601~610, 방갈로" → ["601", ..., "610", "방갈로"] */
-export function parseRoomInput(v: string): string[] {
-  const out: string[] = [];
-  for (const part of v.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)) {
-    const m = /^(\d{1,5})\s*[~-]\s*(\d{1,5})$/.exec(part);
-    if (m) {
-      const a = Number(m[1]);
-      const b = Number(m[2]);
-      if (b >= a && b - a < 60) for (let n = a; n <= b; n++) out.push(String(n));
-    } else out.push(part.slice(0, 12));
-  }
-  return out;
-}
+// "601~610" 범위 입력은 shared/ledger.ts의 parseRoomInput 그대로예요.
+export { parseRoomInput };
+const nextBuildingName = (bs: Building[]) =>
+  ["별관", "신관", "A동", "B동", "C동"].find((n) => !bs.some((b) => b.name === n)) ?? `건물 ${bs.length + 1}`;
 
 function Swatches({ value, onChange, noneLabel = "기본" }: { value: string | null | undefined; onChange: (c: string | null) => void; noneLabel?: string }) {
   return (
@@ -63,6 +64,7 @@ export default function Settings({ data, email, notify }: Props) {
   const [paint, setPaint] = useState<string | null>(null);
   const [selRoom, setSelRoom] = useState<string | null>(null);
   const [selFloor, setSelFloor] = useState<string | null>(null);
+  const [selBuilding, setSelBuilding] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [addVal, setAddVal] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -114,17 +116,44 @@ export default function Settings({ data, email, notify }: Props) {
   const setRoom = (rid: string, fn: (r: Room) => Room) =>
     update((x) => ({ ...x, floors: x.floors.map((f) => ({ ...f, rooms: f.rooms.map((r) => (r.id === rid ? fn(r) : r)) })) }));
 
+  const multi = isMultiBuilding(s);
   const addRooms = (fid: string) => {
-    const existing = new Set(s.floors.flatMap((f) => f.rooms.map((r) => r.no)));
-    const nos = parseRoomInput(addVal).filter((n) => !existing.has(n));
-    if (!nos.length) return setAdding(null);
-    setFloor(fid, (f) => ({ ...f, rooms: [...f.rooms, ...nos.map((no) => ({ id: uid("r"), no, typeId: paint ?? s.types[0]?.id ?? null, color: null }))] }));
+    // 같은 건물 안에서만 번호가 겹치지 않으면 돼요 (본관 201 · 별관 201 가능)
+    const res = addRoomsToFloor(s, fid, addVal, paint ?? s.types[0]?.id ?? null, () => uid("r"));
+    if (!res.added.length) {
+      if (res.skipped.length) notify(`이미 있는 방 번호예요: ${res.skipped.slice(0, 5).join(", ")}`);
+      return setAdding(null);
+    }
+    update((x) => addRoomsToFloor(x, fid, addVal, paint ?? x.types[0]?.id ?? null, () => uid("r")).settings);
     setAddVal("");
     setAdding(null);
-    notify(`${nos.length}개 방을 추가했어요`);
+    notify(`${res.added.length}개 방을 추가했어요${res.skipped.length ? ` · 이미 있는 ${res.skipped.length}개는 건너뛰었어요` : ""}`);
   };
+  const addFloor = (buildingId: string) => {
+    const id = uid("f");
+    update((x) => ({ ...x, floors: [...x.floors, { id, name: `${floorsOf(x, buildingId).length + 1}층`, buildingId, color: null, rooms: [] }] }));
+    setSelFloor(id);
+    setSelRoom(null);
+    setSelBuilding(null);
+  };
+  const addBuilding = () => {
+    const id = uid("b");
+    update((x) => ({
+      ...x,
+      buildings: [...x.buildings, { id, name: nextBuildingName(x.buildings) }],
+      floors: [...x.floors, { id: uid("f"), name: "1층", buildingId: id, color: null, rooms: [] }],
+    }));
+    setSelBuilding(id);
+    setSelFloor(null);
+    setSelRoom(null);
+    notify("건물을 추가했어요. 이름을 바꾸고 층에 방을 추가해 주세요");
+  };
+  const setBuilding = (bid: string, fn: (b: Building) => Building) =>
+    update((x) => ({ ...x, buildings: x.buildings.map((b) => (b.id === bid ? fn(b) : b)) }));
   const room = selRoom ? s.floors.flatMap((f) => f.rooms.map((r) => ({ r, f }))).find((x) => x.r.id === selRoom) : undefined;
   const floor = selFloor ? s.floors.find((f) => f.id === selFloor) : undefined;
+  const building = selBuilding ? s.buildings.find((b) => b.id === selBuilding) : undefined;
+  const bRooms = (bid: string) => floorsOf(s, bid).reduce((n, f) => n + f.rooms.length, 0);
 
   return (
     <main className="page settings">
@@ -166,21 +195,37 @@ export default function Settings({ data, email, notify }: Props) {
               </button>
             ))}
             {!s.types.length ? <span className="muted">아래 '객실 타입'에서 타입을 먼저 추가해 주세요</span> : null}
-            <button
-              className="btn line sm push"
-              onClick={() => {
-                const id = uid("f");
-                update((x) => ({ ...x, floors: [...x.floors, { id, name: `${x.floors.length + 1}층`, color: null, rooms: [] }] }));
-                setSelFloor(id);
-                setSelRoom(null);
-              }}
-            >
-              <Plus size={14} />층 추가
+            <span className="push" />
+            {!multi ? (
+              <button className="btn line sm" onClick={() => addFloor(s.buildings[0].id)}>
+                <Plus size={14} />층 추가
+              </button>
+            ) : null}
+            <button className="btn line sm" onClick={addBuilding} title="본관·별관처럼 건물이 나뉘어 있을 때">
+              <Building2 size={14} />건물 추가
             </button>
           </div>
-          {s.floors.map((f) => (
+          {s.buildings.map((bd) => (
+            <div className={multi ? "sbld" : undefined} key={bd.id}>
+              {multi ? (
+                <div className="sbh">
+                  <button
+                    className={`sbn ${selBuilding === bd.id ? "on" : ""}`}
+                    title="건물 이름·순서 고치기"
+                    onClick={() => (setSelBuilding(selBuilding === bd.id ? null : bd.id), setSelFloor(null), setSelRoom(null))}
+                  >
+                    <Building2 size={14} />
+                    <span>{bd.name}</span>
+                  </button>
+                  <span className="tag">{bRooms(bd.id)}실</span>
+                  <button className="btn line sm push" onClick={() => addFloor(bd.id)}>
+                    <Plus size={14} />층 추가
+                  </button>
+                </div>
+              ) : null}
+              {floorsOf(s, bd.id).map((f) => (
             <div className="sfl" key={f.id}>
-              <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} onClick={() => (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null))}>
+              <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={f.name} onClick={() => (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null))}>
                 <span className="fdot" style={f.color ? { background: f.color } : undefined} />
                 {f.name}
               </button>
@@ -197,6 +242,7 @@ export default function Settings({ data, email, notify }: Props) {
                         else {
                           setSelRoom(selRoom === r.id ? null : r.id);
                           setSelFloor(null);
+                          setSelBuilding(null);
                         }
                       }}
                     >
@@ -213,7 +259,7 @@ export default function Settings({ data, email, notify }: Props) {
                       addRooms(f.id);
                     }}
                   >
-                    <input autoFocus className="inp" placeholder="601~610 또는 방갈로" value={addVal} onChange={(e) => setAddVal(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setAdding(null)} />
+                    <input autoFocus className="inp" placeholder="예: 601~610 또는 701, 702" value={addVal} onChange={(e) => setAddVal(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setAdding(null)} />
                     <button className="btn red sm">추가</button>
                   </form>
                 ) : (
@@ -224,7 +270,53 @@ export default function Settings({ data, email, notify }: Props) {
               </div>
             </div>
           ))}
-          {!s.floors.length ? <div className="lempty">'층 추가'를 눌러 첫 층을 만들어 주세요</div> : null}
+              {multi && !floorsOf(s, bd.id).length ? <div className="lempty sm">'층 추가'를 눌러 이 건물의 첫 층을 만들어 주세요</div> : null}
+            </div>
+          ))}
+          {!s.floors.length && !multi ? <div className="lempty">'층 추가'를 눌러 첫 층을 만들어 주세요</div> : null}
+
+          {building ? (
+            <div className="editor">
+              <div className="ed-h">
+                <b>건물 고치기</b>
+                <button className="ic" aria-label="닫기" onClick={() => setSelBuilding(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="ed-row">
+                <label>이름</label>
+                <input
+                  className="inp sm"
+                  value={building.name}
+                  maxLength={12}
+                  placeholder="예: 본관, 별관, A동"
+                  onChange={(e) => setBuilding(building.id, (b) => ({ ...b, name: e.target.value }))}
+                />
+                <button className="btn line sm" onClick={() => update((x) => ({ ...x, buildings: move(x.buildings, x.buildings.findIndex((b) => b.id === building.id), -1) }))}>
+                  <ArrowUp size={14} />
+                  위로
+                </button>
+                <button className="btn line sm" onClick={() => update((x) => ({ ...x, buildings: move(x.buildings, x.buildings.findIndex((b) => b.id === building.id), 1) }))}>
+                  <ArrowDown size={14} />
+                  아래로
+                </button>
+                <button
+                  className="btn sm ghost"
+                  disabled={s.buildings.length <= 1}
+                  onClick={() => {
+                    const fl = floorsOf(s, building.id);
+                    const n = fl.reduce((k, f) => k + f.rooms.length, 0);
+                    if (n && !confirm(`${building.name}과 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방을 아직 안 정한 숙박'으로 옮겨져요.`)) return;
+                    update((x) => removeBuilding(x, building.id));
+                    setSelBuilding(null);
+                  }}
+                >
+                  <Trash2 size={14} />건물 지우기
+                </button>
+              </div>
+              <p className="fine">건물마다 같은 방 번호를 써도 돼요 (예: 본관 201 · 별관 201). 남은 객실은 건물과 상관없이 타입별로 합쳐서 계산해요.</p>
+            </div>
+          ) : null}
 
           {floor ? (
             <div className="editor">
@@ -237,11 +329,11 @@ export default function Settings({ data, email, notify }: Props) {
               <div className="ed-row">
                 <label>이름</label>
                 <input className="inp sm" value={floor.name} maxLength={12} onChange={(e) => setFloor(floor.id, (f) => ({ ...f, name: e.target.value }))} />
-                <button className="btn line sm" onClick={() => update((x) => ({ ...x, floors: move(x.floors, x.floors.indexOf(floor), -1) }))}>
+                <button className="btn line sm" onClick={() => update((x) => moveFloor(x, floor.id, -1))}>
                   <ArrowUp size={14} />
                   위로
                 </button>
-                <button className="btn line sm" onClick={() => update((x) => ({ ...x, floors: move(x.floors, x.floors.indexOf(floor), 1) }))}>
+                <button className="btn line sm" onClick={() => update((x) => moveFloor(x, floor.id, 1))}>
                   <ArrowDown size={14} />
                   아래로
                 </button>
@@ -256,6 +348,29 @@ export default function Settings({ data, email, notify }: Props) {
                   <Trash2 size={14} />층 지우기
                 </button>
               </div>
+              {multi ? (
+                <div className="ed-row">
+                  <label>건물</label>
+                  <select
+                    className="inp sm"
+                    aria-label="건물"
+                    value={floor.buildingId}
+                    onChange={(e) => {
+                      const to = e.target.value;
+                      const taken = new Set(floorsOf(s, to).flatMap((f) => f.rooms.map((r) => r.no)));
+                      const clash = floor.rooms.filter((r) => taken.has(r.no)).map((r) => r.no);
+                      if (clash.length) return notify(`옮길 건물에 같은 방 번호가 있어요: ${clash.slice(0, 5).join(", ")}`);
+                      setFloor(floor.id, (f) => ({ ...f, buildingId: to }));
+                    }}
+                  >
+                    {s.buildings.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div className="ed-row">
                 <label>번호줄 색</label>
                 <Swatches value={floor.color} onChange={(c) => setFloor(floor.id, (f) => ({ ...f, color: c }))} />
@@ -266,7 +381,7 @@ export default function Settings({ data, email, notify }: Props) {
           {room ? (
             <div className="editor">
               <div className="ed-h">
-                <b>{room.r.no}호 고치기</b>
+                <b>{multi ? `${s.buildings.find((b) => b.id === room.f.buildingId)?.name ?? ""} ` : ""}{room.r.no}호 고치기</b>
                 <button className="ic" aria-label="닫기" onClick={() => setSelRoom(null)}>
                   <X size={16} />
                 </button>
@@ -315,7 +430,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">코드는 칩과 방 칸에 그대로 보여요 (최대 3글자)</div>
+          <div className="sub">약자는 칩과 방 칸에 그대로 보여요 (최대 {TYPE_CODE_MAX}글자)</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">
@@ -329,14 +444,16 @@ export default function Settings({ data, email, notify }: Props) {
               <input
                 className="tb tbin"
                 value={t.code}
-                maxLength={3}
-                aria-label="타입 코드"
+                maxLength={TYPE_CODE_MAX}
+                size={Math.min(TYPE_CODE_MAX, Math.max(2, t.code.length + 1))}
+                title={t.code}
+                aria-label="타입 약자"
                 onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, code: e.target.value.toUpperCase() } : y)) }))}
               />
               <input
                 className="nin"
                 value={t.name}
-                maxLength={20}
+                maxLength={TYPE_NAME_MAX}
                 aria-label="타입 이름"
                 onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, name: e.target.value } : y)) }))}
               />

@@ -34,7 +34,7 @@ svg { display: block; flex: none; }
 .demo.warn { color: var(--red-d); background: var(--red-s); }
 
 /* ---------- 배지 ---------- */
-.tb { display: inline-flex; align-items: center; justify-content: center; font-family: var(--num); font-weight: 800; font-size: 11px; min-width: 25px; height: 19px; padding: 0 6px; border-radius: 7px; line-height: 1; flex: none; background: #fff; color: var(--ink2); border: 1px solid var(--line); white-space: nowrap; }
+.tb { display: inline-block; text-align: center; font-family: var(--num); font-weight: 800; font-size: 11px; min-width: 25px; max-width: 8.5em; height: 19px; line-height: 17px; padding: 0 6px; border-radius: 7px; flex: 0 1 auto; background: #fff; color: var(--ink2); border: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
 .pb { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 1px solid var(--line); font-size: 11px; font-weight: 750; color: var(--ink2); flex: none; line-height: 1; }
 .ring { flex: none; }
 .ringbtn { display: inline-flex; padding: 2px; margin: -2px; border-radius: 50%; }
@@ -179,6 +179,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .nm span { overflow: hidden; text-overflow: ellipsis; }
 .cell .r3 { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 11.5px; color: var(--ink3); font-weight: 550; white-space: nowrap; padding: 0 3px; }
 .cell .r3 .pr { font-family: var(--num); font-weight: 650; color: var(--ink2); font-size: 12px; }
+.cell .r1 .tb { max-width: none; min-width: 18px; flex: 0 1 auto; }
+.cell .r1 .no { flex: 0 0 auto; max-width: 72%; }
+.rbox .tb { min-width: 0; flex: 0 1 auto; padding: 0 4px; }
+.rbox > :not(.tb) { flex: none; }
+.rbox { overflow: hidden; }
 .cell .up { font-size: 10px; color: var(--ink3); background: #fff; border-radius: 6px; padding: 1px 5px; }
 .cell .dus { margin-top: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 2px; }
 .du { font-size: 10px; color: var(--ink3); background: #fff; border-radius: 7px; padding: 2px 5px; letter-spacing: -0.02em; align-self: flex-start; white-space: nowrap; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
@@ -232,6 +237,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .tchip { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 12px; border-radius: 16px; background: var(--panel); min-width: 96px; }
 .tchip:hover { background: var(--hover); }
 .tchip .t1 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.tchip .tname { max-width: 11em; overflow: hidden; text-overflow: ellipsis; }
 .tchip .t2 { font-size: 11px; color: var(--ink3); font-weight: 550; }
 .tchip .t2 b { font-family: var(--num); color: var(--ink); font-size: 12px; }
 .tchip .kk { font-family: var(--num); }
@@ -293,13 +299,37 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lrow .c-name { display: flex; gap: 6px; align-items: center; font-weight: 650; min-width: 0; white-space: nowrap; }
 .lrow .c-name .gn { overflow: hidden; text-overflow: ellipsis; }
 .lrow .memo { font-size: 11.5px; color: var(--ink3); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
-.lrow .c-len, .lrow .c-room { font-family: var(--num); font-weight: 650; color: var(--ink2); white-space: nowrap; }
+.lrow .c-len, .lrow .c-room { font-family: var(--num); font-weight: 650; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lrow .c-type { min-width: 0; display: flex; }
 .lrow .c-price { font-family: var(--num); font-weight: 750; display: flex; flex-direction: column; align-items: flex-end; }
 .lrow .c-price small { font-size: 10.5px; color: var(--ink3); font-weight: 550; }
 .lrow.cx { background: #fafafa !important; }
 .lempty { padding: 30px; text-align: center; color: var(--ink3); }
 .fine { font-size: 12px; color: var(--ink3); line-height: 1.6; }
 .fine.pad { padding: 12px 6px; }
+
+/* ---------- 건물 (2개 이상일 때만 보여요) ---------- */
+.btabs { display: flex; gap: 5px; margin: 0 0 12px; overflow-x: auto; }
+.btabs button { height: 32px; padding: 0 14px; border-radius: 999px; background: var(--panel); font-size: 13px; font-weight: 700; color: var(--ink3); white-space: nowrap; flex: none; display: inline-flex; align-items: center; gap: 6px; max-width: 14em; }
+.btabs button .bn { overflow: hidden; text-overflow: ellipsis; }
+.btabs button small { font-family: var(--num); font-size: 11px; font-weight: 600; color: var(--ink4); }
+.btabs button.on { background: var(--ink); color: #fff; }
+.btabs button.on small { color: rgba(255, 255, 255, 0.6); }
+.bsec + .bsec { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.bsh { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; }
+.bsh b { font-size: 14.5px; font-weight: 750; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bsh span { font-family: var(--num); font-size: 12px; color: var(--ink3); font-weight: 600; white-space: nowrap; }
+.fl .fln { overflow: hidden; text-overflow: ellipsis; }
+.rchip .bpre { font-family: "PV"; font-style: normal; font-size: 10.5px; font-weight: 650; color: var(--ink3); margin-right: 1px; }
+.rchip.on .bpre { color: rgba(255, 255, 255, 0.7); }
+.sbld + .sbld { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sbh { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.sbh .push { margin-left: auto; }
+.sbn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; background: #fff; font-size: 13.5px; font-weight: 750; max-width: 16em; }
+.sbn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbn:hover { background: var(--hover); }
+.sbn.on { background: var(--ink); color: #fff; }
+.lempty.sm { padding: 12px; font-size: 12.5px; }
 
 /* ---------- 설정 ---------- */
 .sgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
@@ -343,7 +373,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .trow .ord { display: flex; flex-direction: column; color: var(--ink4); }
 .trow .ord button { padding: 1px; border-radius: 4px; }
 .trow .ord button:hover { color: var(--ink); background: var(--panel); }
-.tbin { width: 46px; text-transform: uppercase; height: 26px; font-size: 12px; text-align: center; }
+.tbin { width: auto; min-width: 46px; max-width: 9.5em; padding: 0 6px; text-transform: uppercase; height: 26px; font-size: 12px; text-align: center; }
 .pbin { width: 26px; height: 26px; text-align: center; padding: 0; }
 .nin { flex: 1; min-width: 0; border: 0; background: transparent; font-weight: 650; font-size: 13.5px; padding: 6px 4px; border-radius: 8px; }
 .nin:focus, .tbin:focus, .pbin:focus { box-shadow: inset 0 0 0 1.5px var(--ink); background: #fff; }
@@ -495,6 +525,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .sfl { grid-template-columns: minmax(0, 1fr); }
   .flbtn { height: 30px; }
   .rboxes { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
+  .rbox { padding: 0 7px; }
   .addroom { grid-column: 1 / -1; }
   .plan { flex-direction: column; }
   .ed-row > label { width: 100%; }

@@ -4,11 +4,13 @@ import {
   type Booking,
   addDays,
   dayLabel,
+  allRooms,
   firstOverbooking,
   freeRooms,
   isActive,
   md,
   nightBoard,
+  orderedFloors,
   stockLevel,
   stockTable,
   typeTotals,
@@ -50,6 +52,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
+  const [bTab, setBTab] = useState<string>("all"); // 건물 2개 이상일 때: 전체 또는 건물 id
   const [assigning, setAssigning] = useState<string | null>(null);
   const dayuseByRoom = useMemo(() => {
     const m = new Map<string, Booking[]>();
@@ -80,7 +83,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
       .patchBooking(b.id, { roomId })
       .then(() => {
         setAssigning(null);
-        notify(`${b.guestName} 님 → ${L.rooms.get(roomId)?.no}호`);
+        notify(`${b.guestName} 님 → ${L.roomLabel(roomId)}호`);
       })
       .catch(() => notify("방을 정하지 못했어요"));
 
@@ -160,7 +163,15 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
     );
   };
 
-  const floors = s.floors.filter((f) => f.rooms.length && (floorTab === "all" || floorTab === f.id));
+  const multi = L.multi;
+  const bScope = multi && s.buildings.some((x) => x.id === bTab) ? bTab : "all";
+  const scopeFloors = orderedFloors(s).filter((f) => f.rooms.length && (bScope === "all" || f.buildingId === bScope));
+  const floors = scopeFloors.filter((f) => floorTab === "all" || floorTab === f.id);
+  const groups = (multi ? s.buildings : s.buildings.slice(0, 1))
+    .map((bd) => ({ bd, floors: multi ? floors.filter((f) => f.buildingId === bd.id) : floors }))
+    .filter((g) => g.floors.length);
+  const nightIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.filter((r) => { const x = board.byRoom.get(r.id); return x && isActive(x); }).length, 0);
+  const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
   return (
@@ -249,30 +260,61 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
             </button>
           </div>
         </div>
+        {multi ? (
+          <div className="btabs" role="tablist" aria-label="건물">
+            {[{ id: "all", name: "전체" }, ...s.buildings].map((bd) => (
+              <button
+                key={bd.id}
+                role="tab"
+                aria-selected={bScope === bd.id}
+                className={bScope === bd.id ? "on" : ""}
+                title={bd.name}
+                onClick={() => {
+                  setBTab(bd.id);
+                  if (floorTab !== "dayuse") setFloorTab("all");
+                }}
+              >
+                <span className="bn">{bd.name}</span>
+                {bd.id !== "all" ? <small>{roomsIn(orderedFloors(s).filter((f) => f.buildingId === bd.id))}</small> : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
             전체
           </button>
-          {s.floors
-            .filter((f) => f.rooms.length)
-            .map((f) => (
-              <button key={f.id} className={floorTab === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
-                {f.name}
-              </button>
-            ))}
+          {/* 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */}
+          {(multi && bScope === "all" ? [] : scopeFloors).map((f) => (
+            <button key={f.id} className={floorTab === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
+              {f.name}
+            </button>
+          ))}
           <button className={floorTab === "dayuse" ? "on" : ""} onClick={() => setFloorTab("dayuse")}>
             대실 {activeDayuse}
           </button>
         </div>
         {floorTab !== "dayuse"
-          ? floors.map((f) => (
-              <div className="floor" key={f.id}>
-                <div className="fl">
-                  <span className="fdot" style={f.color ? { background: f.color } : undefined} />
-                  {f.name}
-                </div>
-                <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
-              </div>
+          ? groups.map((g) => (
+              <section className={multi ? "bsec" : undefined} key={g.bd.id}>
+                {multi ? (
+                  <div className="bsh">
+                    <b title={g.bd.name}>{g.bd.name}</b>
+                    <span>
+                      숙박 {nightIn(g.floors)}/{roomsIn(g.floors)}
+                    </span>
+                  </div>
+                ) : null}
+                {g.floors.map((f) => (
+                  <div className="floor" key={f.id}>
+                    <div className="fl" title={f.name}>
+                      <span className="fdot" style={f.color ? { background: f.color } : undefined} />
+                      <span className="fln">{f.name}</span>
+                    </div>
+                    <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
+                  </div>
+                ))}
+              </section>
             ))
           : null}
       </div>
@@ -295,7 +337,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
                   </b>
                   <span>
-                    {d.roomId ? `${L.rooms.get(d.roomId)?.no ?? "?"}호` : "방 미정"} · {L.types.get(d.typeId)?.name ?? "?"} ·{" "}
+                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미정"} · {L.types.get(d.typeId)?.name ?? "?"} ·{" "}
                     {won(d.price)}원
                   </span>
                 </div>
@@ -331,8 +373,7 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
               const free = open ? freeRooms(s, bookings, b) : null;
               const t = L.types.get(b.typeId);
               const options = free
-                ? s.floors
-                    .flatMap((f) => f.rooms)
+                ? allRooms(s)
                     .filter((r) => free.has(r.id))
                     .sort((a, c) => Number(a.typeId !== b.typeId) - Number(c.typeId !== b.typeId))
                 : [];
@@ -360,7 +401,8 @@ export default function Dashboard({ data, today, selDate, setSelDate, onOpen, on
                     <div className="rpick">
                       {options.length ? (
                         options.slice(0, 24).map((r) => (
-                          <button key={r.id} className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`} onClick={() => void assign(b, r.id)}>
+                          <button key={r.id} className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => void assign(b, r.id)}>
+                            {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
                             {r.no}
                             {r.typeId !== b.typeId ? <i>{L.types.get(r.typeId ?? "")?.code}</i> : null}
                           </button>

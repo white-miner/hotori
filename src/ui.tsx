@@ -1,4 +1,5 @@
-import type { HotelSettings, Platform, RoomType } from "../shared/ledger";
+import type { Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
+import { isMultiBuilding, orderedFloors } from "../shared/ledger";
 
 export const PALETTE: { name: string; value: string | null }[] = [
   { name: "기본", value: null },
@@ -25,7 +26,12 @@ export function Brand({ sub }: { sub?: string }) {
 }
 
 export function TypeBadge({ t, className = "" }: { t?: RoomType | null; className?: string }) {
-  return <span className={`tb ${className}`}>{t?.code ?? "?"}</span>;
+  const code = t?.code?.trim() || "?";
+  return (
+    <span className={`tb ${className}`} title={t ? (t.name && t.name !== code ? `${code} · ${t.name}` : code) : undefined}>
+      {code}
+    </span>
+  );
 }
 export function PlatBadge({ p }: { p?: Platform | null }) {
   return (
@@ -56,8 +62,19 @@ export function Ring({ on, size = 18 }: { on: boolean; size?: number }) {
 export function lookups(s: HotelSettings) {
   const types = new Map(s.types.map((t) => [t.id, t]));
   const plats = new Map(s.platforms.map((p) => [p.id, p]));
-  const rooms = new Map(s.floors.flatMap((f) => f.rooms.map((r) => [r.id, { ...r, floor: f }] as const)));
-  return { types, plats, rooms };
+  const multi = isMultiBuilding(s);
+  const bmap = new Map(s.buildings.map((b) => [b.id, b]));
+  const rooms = new Map<string, Room & { floor: Floor; building: Building | undefined; label: string }>(
+    orderedFloors(s).flatMap((f) =>
+      f.rooms.map((r) => {
+        const building = bmap.get(f.buildingId);
+        return [r.id, { ...r, floor: f, building, label: multi && building ? `${building.name} ${r.no}` : r.no }] as const;
+      }),
+    ),
+  );
+  /** "201" 또는 (건물 2개 이상) "별관 201" */
+  const roomLabel = (id: string | null | undefined) => (id ? (rooms.get(id)?.label ?? null) : null);
+  return { types, plats, rooms, roomLabel, multi, buildings: bmap };
 }
 
 export const uid = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`;

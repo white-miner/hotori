@@ -6,6 +6,7 @@ import {
   type Status,
   TIME_RE,
   addDays,
+  allRooms as placedRooms,
   dayLabel,
   freeRooms,
   isActive,
@@ -105,7 +106,8 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [s, data.bookings, draft.id, kind, checkIn, nights, startTime, endTime],
   );
-  const allRooms = s.floors.flatMap((f) => f.rooms);
+  const allRooms = placedRooms(s); // 건물 → 층 순서
+  const bpre = (bid: string) => (L.multi ? <em className="bpre">{L.buildings.get(bid)?.name}</em> : null);
   const sameType = allRooms.filter((r) => r.typeId === typeId && (free.has(r.id) || r.id === roomId));
   const otherType = allRooms.filter((r) => r.typeId !== typeId && (free.has(r.id) || r.id === roomId));
   const roomBusy = !!roomId && !free.has(roomId);
@@ -125,7 +127,7 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
       base.endTime !== draft.endTime ||
       base.kind !== draft.kind;
     if (roomBusy && isActive(draft) && slotChanged)
-      return setErr(`${L.rooms.get(roomId!)?.no}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`);
+      return setErr(`${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`);
     setBusy(true);
     setErr(null);
     try {
@@ -388,7 +390,8 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
               나중에 정하기
             </button>
             {sameType.map((r) => (
-              <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} onClick={() => setRoomId(r.id)}>
+              <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => setRoomId(r.id)}>
+                {bpre(r.buildingId)}
                 {r.no}
               </button>
             ))}
@@ -398,8 +401,10 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
                     type="button"
                     key={r.id}
                     className={`rchip other ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`}
+                    title={L.roomLabel(r.id) ?? r.no}
                     onClick={() => setRoomId(r.id)}
                   >
+                    {bpre(r.buildingId)}
                     {r.no}
                     <i>{L.types.get(r.typeId ?? "")?.code}</i>
                   </button>

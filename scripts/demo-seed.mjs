@@ -15,11 +15,11 @@ const TYPES = [
   { id: "t-t", code: "T", name: "트윈" },
   { id: "t-sd", code: "SD", name: "스탠다드 디럭스" },
   { id: "t-td", code: "TD", name: "트윈 디럭스" },
-  { id: "t-bg", code: "BG", name: "방갈로" },
+  { id: "t-bg", code: "SU", name: "스위트" },
 ];
 const TID = Object.fromEntries(TYPES.map((t) => [t.code, t.id]));
 const FL = [
-  ["6층", [["601","SD"],["602","SD"],["603","SD"],["605","TD"],["606","TD"],["607","TD"],["608","TD"],["609","TD"],["610","TD"],["방갈로","BG"]]],
+  ["6층", [["601","SD"],["602","SD"],["603","SD"],["605","TD"],["606","TD"],["607","TD"],["608","TD"],["609","TD"],["610","TD"],["611","SU"]]],
   ["5층", [["501","T"],["502","T"],["503","T"],["505","SD"],["506","SD"],["507","SD"],["508","SD"],["509","SD"],["510","SD"],["511","SD"]]],
   ["3층", [["301","S"],["302","S"],["303","S"],["305","S"],["306","T"],["307","T"],["308","T"],["309","T"],["310","T"],["311","T"]]],
   ["2층", [["201","S"],["202","S"],["203","S"],["205","S"],["206","S"],["207","S"],["208","S"],["209","S"],["210","S"],["211","S"]]],
@@ -28,12 +28,27 @@ const FLOOR_COLORS = ["#DCE9F7", "#F8E5D6", "#E1F0DC", "#E9E3F5"]; // 화이트�
 const floors = FL.map(([name, rooms], i) => ({
   id: `f${i + 1}`,
   name,
+  buildingId: "b-main",
   color: FLOOR_COLORS[i],
-  rooms: rooms.map(([no, c]) => ({ id: `r-${no}`, no, typeId: TID[c], color: no === "방갈로" ? "#F6EFCF" : null })),
+  rooms: rooms.map(([no, c]) => ({ id: `r-${no}`, no, typeId: TID[c], color: no === "611" ? "#F6EFCF" : null })),
+}));
+// 예시 별관: 본관과 같은 방 번호(201~203)를 써도 돼요. 방 id는 r-a201처럼 따로예요.
+const ANNEX = [
+  ["2층", "#D9F0EC", [["201","SD"],["202","SD"],["203","TD"]]],
+  ["1층", "#F6DFE5", [["101","S"],["102","S"],["103","T"],["104","T"]]],
+].map(([name, color, rooms], i) => ({
+  id: `fa${2 - i}`, name, buildingId: "b-annex", color,
+  rooms: rooms.map(([no, c]) => ({ id: `r-a${no}`, no, typeId: TID[c], color: null })),
 }));
 const PLAT = [["야","야놀자"],["여","여기어때"],["아","아고다"],["부","부킹닷컴"],["익","익스피디아"],["에","에어비앤비"],["네","네이버"],["현","현장·전화"]]
   .map(([abbr, name], i) => ({ id: `p${i + 1}`, abbr, name }));
-const settings = { lowThreshold: 2, floors, types: TYPES, platforms: PLAT };
+const settings = {
+  lowThreshold: 2,
+  buildings: [{ id: "b-main", name: "본관" }, { id: "b-annex", name: "별관" }],
+  floors: [...floors, ...ANNEX],
+  types: TYPES,
+  platforms: PLAT,
+};
 
 const ROOMS = floors.flatMap((f) => f.rooms.map((r) => ({ ...r, c: TYPES.find((t) => t.id === r.typeId).code })));
 const total = Object.fromEntries(TYPES.map((t) => [t.code, ROOMS.filter((r) => r.c === t.code).length]));
@@ -53,14 +68,14 @@ Object.assign(TARGET.S, { 6: 10, 11: 12, 12: 13, 19: 14, 18: 12 });
 Object.assign(TARGET.T, { 6: 7, 11: 8, 12: 9 });
 Object.assign(TARGET.SD, { 6: 8, 12: 11, 13: 8 });
 Object.assign(TARGET.TD, { 6: 4, 11: 5, 12: 6, 19: 5 });
-for (let i = 0; i < 26; i++) TARGET.BG[i] = [6, 12, 13, 19].includes(i) ? 1 : 0;
+for (let i = 0; i < 26; i++) TARGET.SU[i] = [6, 12, 13, 19].includes(i) ? 1 : 0;
 const BK = []; const occ = {}; const roomNight = {};
 for (const t of TYPES) occ[t.code] = Array(40).fill(0);
 for (let i = 0; i < 20; i++) for (const t of TYPES) {
   while (occ[t.code][i] < TARGET[t.code][i]) {
     let n = pick([1,1,1,2,2,3]); let k = 0; while (k < n && occ[t.code][i + k] < (TARGET[t.code][i + k] ?? 0)) k++; n = Math.max(1, k);
     const p = pick(PLAT, PW); const wkd = [5, 6].includes(dow(DAY(i)));
-    const base = { S: 65000, T: 75000, SD: 85000, TD: 95000, BG: 130000 }[t.code] + (wkd ? 20000 : 0) + Math.round((rnd() - .5) * 8) * 1000;
+    const base = { S: 65000, T: 75000, SD: 85000, TD: 95000, SU: 130000 }[t.code] + (wkd ? 20000 : 0) + Math.round((rnd() - .5) * 8) * 1000;
     const name = rnd() < .08 ? pick(FOREIGN) : pick(SUR) + pick(GIV);
     let room = null; const assignP = i <= 7 ? 0.94 : 0.55;
     if (rnd() < assignP) { for (const r of ROOMS.filter((r) => r.c === t.code)) { let ok = true; for (let j = 0; j < n; j++) if (roomNight[r.no + "@" + (i + j)]) ok = false; if (ok) { room = r.id; break; } } }
@@ -81,6 +96,12 @@ const DAYUSE = [
   ["16:00","20:00","p1","최서연","SD","511",45000,true],
   ["20:00","23:00","p8","한민재","S",null,35000,false],
 ];
+// 별관 예시: 오늘 3건 + 대실 1건, 그리고 오버부킹 예시 날(오늘+6)에는 별관도 모두 차 있어요 (그래야 본관 예시 숫자가 그대로예요)
+const AX = [["r-a201","SD","p3","김하은",TODAY,2,190000,true],["r-a101","S","p1","박준호",TODAY,1,72000,false],["r-a103","T","p2","윤소희",TODAY,1,79000,true]];
+[["r-a101","S","p1","서지훈"],["r-a102","S","p3","홍예린"],["r-a103","T","p2","안도윤"],["r-a104","T","p1","송가영"],["r-a201","SD","p4","류민재"],["r-a202","SD","p3","신채원"],["r-a203","TD","p7","권우진"]]
+  .forEach(([r, c, p, n]) => AX.push([r, c, p, n, TODAY + 6, 1, { S: 85000, T: 95000, SD: 105000, TD: 115000 }[c], false]));
+for (const [room, c, p, name, i, n, price, ok] of AX) BK.push({ kind: "stay", p, name, t: TID[c], d: DAY(i), n, price, room, ok, memo: "예시 · 별관" });
+DAYUSE.push(["14:00","17:00","p8","오세린","T","a104",40000,false]);
 const q = (v) => (v === null || v === undefined ? "null" : typeof v === "number" || typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 let ts = Date.parse(D0 + "T01:00:00Z");
 const rows = BK.map((b) => { ts += 600e3; const c = new Date(ts).toISOString();

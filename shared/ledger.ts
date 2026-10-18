@@ -7,20 +7,27 @@
 export type Kind = "stay" | "dayuse";
 export type Status = "active" | "cancelled" | "noshow";
 
+export const TYPE_CODE_MAX = 12; // 타입 약자(방 칸에 보이는 글자) 최대 글자 수
+export const TYPE_NAME_MAX = 20;
 export interface RoomType {
   id: string;
-  code: string; // 최대 3글자, 예: S, SD
+  code: string; // 최대 12글자, 예: S, SD, 스위트
   name: string;
 }
 export interface Room {
-  id: string;
-  no: string; // 방 번호 또는 이름 (예: 601, 방갈로)
+  id: string; // 호텔 안에서 유일 (건물이 달라도 같은 번호를 쓸 수 있어서 번호가 아니라 id로 구분해요)
+  no: string; // 방 번호 또는 이름 (예: 601, 펜션1)
   typeId: string | null;
   color?: string | null;
+}
+export interface Building {
+  id: string;
+  name: string; // 예: 본관, 별관, A동
 }
 export interface Floor {
   id: string;
   name: string; // 예: 6층
+  buildingId: string;
   color?: string | null;
   rooms: Room[];
 }
@@ -30,6 +37,7 @@ export interface Platform {
   abbr: string; // 한 글자 약자
 }
 export interface HotelSettings {
+  buildings: Building[]; // 1개 이상. 1개면 화면은 예전과 똑같아요.
   floors: Floor[];
   types: RoomType[];
   platforms: Platform[];
@@ -59,15 +67,30 @@ export interface Booking {
 export const BUSINESS_DAY_CUTOFF_HOUR = 6;
 export const HOTEL_TIME_ZONE = "Asia/Seoul";
 
+/** 건물 정보가 없던 예전 설정은 모두 이 건물 하나로 봐요 (DB 마이그레이션과 같은 id) */
+export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
+
 export function emptySettings(): HotelSettings {
-  return { floors: [], types: [], platforms: [], lowThreshold: 2 };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2 };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
   const th = Number(s.lowThreshold);
+  const seen = new Set<string>();
+  const buildings = (Array.isArray(s.buildings) ? s.buildings : []).filter(
+    (b): b is Building =>
+      !!b && typeof b === "object" && typeof b.id === "string" && !!b.id && !seen.has(b.id) && !!seen.add(b.id),
+  ).map((b) => ({ id: b.id, name: typeof b.name === "string" && b.name.trim() ? b.name : "건물" }));
+  if (!buildings.length) buildings.push({ ...DEFAULT_BUILDING });
+  const first = buildings[0].id;
   return {
+    buildings,
     floors: Array.isArray(s.floors)
-      ? s.floors.map((f) => ({ ...f, rooms: Array.isArray(f.rooms) ? f.rooms : [] }))
+      ? s.floors.map((f) => ({
+          ...f,
+          buildingId: typeof f.buildingId === "string" && seen.has(f.buildingId) ? f.buildingId : first,
+          rooms: Array.isArray(f.rooms) ? f.rooms : [],
+        }))
       : [],
     types: Array.isArray(s.types) ? s.types : [],
     platforms: Array.isArray(s.platforms) ? s.platforms : [],
@@ -118,10 +141,108 @@ export function checkOut(b: Pick<Booking, "checkIn" | "nights">): string {
   return addDays(b.checkIn, b.nights ?? 0);
 }
 
-// ---------- 방·타입 ----------
-export function allRooms(s: HotelSettings): (Room & { floorId: string })[] {
-  return s.floors.flatMap((f) => f.rooms.map((r) => ({ ...r, floorId: f.id })));
+// ---------- 건물·층·방 ----------
+export const isMultiBuilding = (s: Pick<HotelSettings, "buildings">) => (s.buildings?.length ?? 0) > 1;
+/** 건물 순서 → 그 건물 안의 층 순서 (건물을 모르는 층은 첫 건물로) */
+export function orderedFloors(s: HotelSettings): Floor[] {
+  const bs = s.buildings?.length ? s.buildings : [DEFAULT_BUILDING];
+  const known = new Set(bs.map((b) => b.id));
+  const bOf = (f: Floor) => (known.has(f.buildingId) ? f.buildingId : bs[0].id);
+  return bs.flatMap((b) => s.floors.filter((f) => bOf(f) === b.id).map((f) => ({ ...f, buildingId: b.id })));
 }
+export function floorsOf(s: HotelSettings, buildingId: string): Floor[] {
+  return orderedFloors(s).filter((f) => f.buildingId === buildingId);
+}
+export type PlacedRoom = Room & { floorId: string; buildingId: string };
+export function allRooms(s: HotelSettings): PlacedRoom[] {
+  return orderedFloors(s).flatMap((f) => f.rooms.map((r) => ({ ...r, floorId: f.id, buildingId: f.buildingId })));
+}
+/** 화면에 보이는 방 이름: 건물이 하나면 "201", 둘 이상이면 "별관 201" */
+export function roomLabel(s: HotelSettings, roomId: string | null | undefined): string | null {
+  if (!roomId) return null;
+  const r = allRooms(s).find((x) => x.id === roomId);
+  if (!r) return null;
+  if (!isMultiBuilding(s)) return r.no;
+  const b = s.buildings.find((x) => x.id === r.buildingId);
+  return b ? `${b.name} ${r.no}` : r.no;
+}
+/** "601~610, 701" → ["601", ..., "610", "701"] */
+export function parseRoomInput(v: string): string[] {
+  const out: string[] = [];
+  for (const part of v.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)) {
+    const m = /^(\d{1,5})\s*[~-]\s*(\d{1,5})$/.exec(part);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      if (b >= a && b - a < 60) for (let n = a; n <= b; n++) out.push(String(n));
+    } else out.push(part.slice(0, 12));
+  }
+  return out;
+}
+/** 층에 방 추가: 같은 건물 안에 이미 있는 번호만 건너뛰어요 (다른 건물에는 같은 번호가 있어도 돼요) */
+export function addRoomsToFloor(
+  s: HotelSettings,
+  floorId: string,
+  input: string,
+  typeId: string | null,
+  newId: () => string,
+): { settings: HotelSettings; added: string[]; skipped: string[] } {
+  const floor = s.floors.find((f) => f.id === floorId);
+  if (!floor) return { settings: s, added: [], skipped: [] };
+  const existing = new Set(allRooms(s).filter((r) => r.buildingId === floor.buildingId).map((r) => r.no));
+  const added: string[] = [];
+  const skipped: string[] = [];
+  for (const no of parseRoomInput(input)) {
+    if (existing.has(no)) skipped.push(no);
+    else {
+      existing.add(no);
+      added.push(no);
+    }
+  }
+  if (!added.length) return { settings: s, added, skipped };
+  const rooms = added.map((no) => ({ id: newId(), no, typeId, color: null }));
+  return {
+    settings: { ...s, floors: s.floors.map((f) => (f.id === floorId ? { ...f, rooms: [...f.rooms, ...rooms] } : f)) },
+    added,
+    skipped,
+  };
+}
+/** 같은 건물 안에서 겹치는 방 번호 (건물이 다르면 괜찮아요) */
+export function duplicateRoomNos(s: HotelSettings): { buildingId: string; no: string }[] {
+  const seen = new Set<string>();
+  const dup: { buildingId: string; no: string }[] = [];
+  for (const r of allRooms(s)) {
+    const k = `${r.buildingId}\u0000${r.no}`;
+    if (seen.has(k)) dup.push({ buildingId: r.buildingId, no: r.no });
+    seen.add(k);
+  }
+  return dup;
+}
+/** 층 순서 바꾸기: 같은 건물 안에서 바로 위/아래 층과 자리를 바꿔요 */
+export function moveFloor(s: HotelSettings, floorId: string, dir: -1 | 1): HotelSettings {
+  const f = s.floors.find((x) => x.id === floorId);
+  if (!f) return s;
+  const same = orderedFloors(s).filter((x) => x.buildingId === f.buildingId);
+  const i = same.findIndex((x) => x.id === floorId);
+  const other = same[i + dir];
+  if (!other) return s;
+  const a = s.floors.findIndex((x) => x.id === floorId);
+  const b = s.floors.findIndex((x) => x.id === other.id);
+  const floors = s.floors.slice();
+  [floors[a], floors[b]] = [floors[b], floors[a]];
+  return { ...s, floors };
+}
+/** 건물 지우기: 그 건물의 층·방도 같이 지워요 (마지막 건물은 못 지워요) */
+export function removeBuilding(s: HotelSettings, buildingId: string): HotelSettings {
+  if (s.buildings.length <= 1) return s;
+  return {
+    ...s,
+    buildings: s.buildings.filter((b) => b.id !== buildingId),
+    floors: s.floors.filter((f) => f.buildingId !== buildingId),
+  };
+}
+
+// ---------- 방·타입 ----------
 export function roomMap(s: HotelSettings) {
   return new Map(allRooms(s).map((r) => [r.id, r]));
 }

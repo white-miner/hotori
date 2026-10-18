@@ -47,7 +47,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
     if (st === "void" && isActive(b)) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
-      const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.rooms.get(b.roomId ?? "")?.no].join(" ").toLowerCase();
+      const hay = [b.guestName, p?.name, p?.abbr, b.memo, L.roomLabel(b.roomId)].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -156,7 +156,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen }
                   <TypeBadge t={L.types.get(b.typeId)} />
                 </span>
                 <span className="c-len">{b.kind === "stay" ? `${b.nights}박` : `${b.startTime}~${b.endTime}`}</span>
-                <span className="c-room">{b.roomId ? (L.rooms.get(b.roomId)?.no ?? "?") : "—"}</span>
+                <span className="c-room" title={L.roomLabel(b.roomId) ?? undefined}>{b.roomId ? (L.roomLabel(b.roomId) ?? "?") : "—"}</span>
                 <span className="c-price r">
                   {won(b.price)}
                   {per ? <small>1박 {won(per)}</small> : null}
