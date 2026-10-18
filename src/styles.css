@@ -254,7 +254,13 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .tchip .t2.full b { color: var(--red-d); }
 .tchip.on .t2.full b { color: #ff8a90; }
 .datechip { position: relative; cursor: pointer; }
-.datechip input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.datechip { min-width: 9.6em; }
+.datechip input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; margin: 0; padding: 0 12px 0 34px; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; font-family: var(--num); }
+.datechip:focus-within input { opacity: 1; }
+.datechip:focus-within .dl { visibility: hidden; }
+@media (pointer: coarse) { .datechip input { font-size: 16px; } }
+.datechip input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
+.datechip:focus-within { box-shadow: inset 0 0 0 1.5px var(--ink); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .two.memo { grid-template-columns: auto 1fr; }
 .inp.price input { font-family: var(--num); }

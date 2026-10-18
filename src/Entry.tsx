@@ -72,6 +72,14 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
   const [confirmDel, setConfirmDel] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
+  // PC 크롬·엣지는 날짜 칸을 눌러도 달력 아이콘이 아니면 달력이 안 열려요 → 직접 열어 줘요
+  const openPicker = (el: HTMLInputElement) => {
+    try {
+      el.showPicker?.();
+    } catch {
+      /* 이미 열려 있거나 지원하지 않는 브라우저: 기본 동작에 맡겨요 */
+    }
+  };
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -172,6 +180,8 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        // 날짜 칸에서 Esc는 날짜 고르기만 닫고, 적던 예약은 그대로 둬요
+        if (e.target instanceof HTMLInputElement && e.target.type === "date") return e.target.blur();
         return onClose();
       }
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -293,13 +303,23 @@ export default function Entry({ data, today, req, onClose, onSaved }: Props) {
             ))}
             <label className={`chip datechip ${custom ? "on" : ""}`}>
               <CalendarDays size={15} />
-              {custom ? dayLabel(checkIn) : "날짜 고르기"}
+              <span className="dl">{custom ? dayLabel(checkIn) : "날짜 고르기"}</span>
               <input
                 ref={dateRef}
                 type="date"
+                min="2020-01-01"
+                max="2099-12-31"
                 value={checkIn}
                 onChange={(e) => e.target.value && setCheckIn(e.target.value)}
+                onClick={(e) => openPicker(e.currentTarget)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openPicker(e.currentTarget);
+                  }
+                }}
                 aria-label="입실 날짜"
+                title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
               />
             </label>
           </div>
