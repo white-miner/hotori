@@ -1,5 +1,5 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
-import { strongColor } from "../shared/floorColor";
+import { pastelColor, strongColor } from "../shared/floorColor";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -401,11 +401,12 @@ export default function Settings({ data, email, notify }: Props) {
               </button>
               <div className={`rboxes ${paint ? "painting" : ""}`}>
                 {f.rooms.map((r) => {
-                  const strip = floorPaint(r.color ?? f.color);
+                  const strip = pastelColor(r.color ?? f.color);
                   return (
                     <button
                       key={r.id}
                       className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""}`}
+                      style={strip ? { background: strip } : undefined}
                       onClick={() => {
                         if (paint) {
                           // 이미 그 타입이면 아무것도 안 해요
@@ -418,9 +419,7 @@ export default function Settings({ data, email, notify }: Props) {
                         }
                       }}
                     >
-                      <span className={`rpill ${strip ? "on" : ""}`} style={strip ? { background: strip.bg, color: strip.fg } : undefined}>
-                        <FitText className="no" text={r.no} />
-                      </span>
+                      <FitText className="no" text={r.no} />
                       <TypeLine t={typeOf(r.typeId)} />
                     </button>
                   );

@@ -1,4 +1,4 @@
-// 층·방 색: 예전 설정의 옅은 파스텔은 같은 색 계열의 진한 색으로 바꿔서 그려요.
+// 층·방 색: 층 이름 앞 점만 진한 색, 방 번호 바탕(객실 배치·설정 방 칸·캘린더 줄)은 예전처럼 옅은 파스텔.
 import { HEX, textOn } from "./platform";
 
 /** 설정 팔레트 (진한 색). 예전 파스텔 값 → 새 진한 값 */
@@ -13,6 +13,13 @@ export const FLOOR_PALETTE: { name: string; value: string; old: string }[] = [
   { name: "회색", value: "#7A7A7A", old: "#E2E2E2" },
 ];
 const OLD = new Map(FLOOR_PALETTE.map((c) => [c.old, c.value]));
+const PASTEL = new Map(FLOOR_PALETTE.map((c) => [c.value, c.old]));
+
+/** 방 번호 바탕: 저장된 값 그대로 (새 진한 팔레트 값을 고른 경우만 짝인 파스텔로) */
+export function pastelColor(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return PASTEL.get(raw.toUpperCase()) ?? raw;
+}
 
 function hsl(hex: string): [number, number, number] {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);

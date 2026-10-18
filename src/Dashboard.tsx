@@ -33,6 +33,7 @@ import {
 } from "../shared/ledger";
 import { type HotelData, WINDOW_BACK, queryStays } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
+import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import RoomCalendar from "./RoomCalendar";
 import { DateChip, FitText, PlatBadge, Ring, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
@@ -376,10 +377,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const du = dayuseByRoom.get(r.id) ?? [];
-    const strip = floorPaint(r.color ?? fColor ?? null);
+    const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
     const head = (
-      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip.bg, color: strip.fg } : undefined}>
+      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
         <FitText className={`no ${k}`} text={r.no} />
       </div>
     );

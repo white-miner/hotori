@@ -4,7 +4,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isMoved, legsOf, md, orderedFloors, typeLabel, weekday, won } from "../shared/ledger";
 import { type Bar, calendarLayout } from "../shared/calendar";
 import { paint } from "../shared/platform";
-import { strongColor } from "../shared/floorColor";
+import { pastelColor } from "../shared/floorColor";
 import { lookups } from "./ui";
 
 type L = ReturnType<typeof lookups>;
@@ -196,7 +196,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
                 f.rooms.map((r) => (
                   <div className="cal-r" key={r.id}>
                     <div className="cal-l rm" title={`${f.name} ${r.no}`}>
-                      <i className="cal-fc" style={{ background: strongColor(r.color ?? f.color) ?? "var(--line)" }} />
+                      <i className="cal-fc" style={{ background: pastelColor(r.color ?? f.color) ?? "var(--line)" }} />
                       <b>{r.no}</b>
                       <small>{typeLabel(L.types.get(r.typeId ?? ""))}</small>
                     </div>

@@ -1027,11 +1027,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .pc-sw .sw { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); position: relative; }
 .pc-sw .sw.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink); }
 .pc-sw .sw.def::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ink4); }
-/* 층·방 색: 진한 색 + 대비 맞춘 글자 */
-.rbox .rpill { display: block; border-radius: 8px; min-width: 0; }
-.rbox .rpill.on { padding: 1px 6px; margin: 0 -4px; }
-.cell .r1.strip .no { color: inherit; }
-.cell.em .r1.strip .no { color: inherit; opacity: 0.92; }
+/* 층 이름 앞 점: 진한 층 색 */
 .fdot { width: 10px; height: 10px; }
 /* 되돌리기 단추가 있는 알림 */
 .toast.act { display: inline-flex; align-items: center; gap: 8px; padding: 8px 8px 8px 18px; white-space: nowrap; }

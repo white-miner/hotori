@@ -76,3 +76,12 @@ test("층 색: 예전 파스텔은 같은 계열 진한 색, 진한 색은 그�
   assert.equal(strongColor("#F0F0F0"), strongColor("#F0F0F0")); // 회색 계열은 회색
   for (const x of FLOOR_PALETTE) assert.ok(contrast(x.value, textOn(x.value)) >= 3.5, `${x.name} 방 번호 대비`);
 });
+
+test("방 번호 바탕은 예전 파스텔 그대로, 새 진한 팔레트 값만 짝 파스텔로", async () => {
+  const { pastelColor, strongColor } = await import("./floorColor");
+  assert.equal(pastelColor("#DCE9F7"), "#DCE9F7", "저장된 파스텔은 그대로");
+  assert.equal(pastelColor("#2F7BEA"), "#DCE9F7", "새로 고른 진한 파랑 → 옅은 하늘");
+  assert.equal(pastelColor("#123456"), "#123456", "직접 고른 색은 예전처럼 그대로");
+  assert.equal(pastelColor(null), null);
+  assert.equal(strongColor("#DCE9F7"), "#2F7BEA", "층 점은 진하게");
+});
