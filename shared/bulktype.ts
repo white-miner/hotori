@@ -9,6 +9,33 @@ export function roomRange(s: HotelSettings, a: string, b: string): string[] {
   if (i < 0 || j < 0) return j >= 0 ? [b] : [];
   return ids.slice(Math.min(i, j), Math.max(i, j) + 1);
 }
+const floorOf = (s: HotelSettings, id: string) => s.floors.find((f) => f.rooms.some((r) => r.id === id));
+/** 같은 층 안에서만 a부터 b까지 (층이 다르면 b 하나만) */
+export function floorRange(s: HotelSettings, a: string, b: string): string[] {
+  const f = floorOf(s, b);
+  if (!f || floorOf(s, a) !== f) return f ? [b] : [];
+  const ids = f.rooms.map((r) => r.id);
+  const i = ids.indexOf(a);
+  const j = ids.indexOf(b);
+  return ids.slice(Math.min(i, j), Math.max(i, j) + 1);
+}
+export type PickState = { bulk: boolean; sel: ReadonlySet<string>; last: string | null };
+/**
+ * 방 클릭 한 번 (Shift · Ctrl/⌘). null이면 평소 클릭(방 고치기)이에요.
+ * - 모드가 꺼져 있어도 Shift·Ctrl/⌘ 클릭은 여러 개 선택을 켜요. 방금 눌러 둔 방(last)도 같이 골라져요.
+ * - Shift: last와 같은 층이면 그 사이 전부, 층이 다르면 그 방만 더해요 (501 → Shift 601 = 2개).
+ * - Ctrl/⌘ 또는 모드 안의 그냥 클릭: 그 방 하나만 넣었다 뺐다.
+ */
+export function pickRoom(s: HotelSettings, st: PickState, id: string, mods: { shift?: boolean; toggle?: boolean }): PickState | null {
+  if (!st.bulk && !mods.shift && !mods.toggle) return null;
+  const last = st.last && floorOf(s, st.last) ? st.last : null;
+  const base = st.bulk ? st.sel : last ? new Set([last]) : new Set<string>();
+  let sel: Set<string>;
+  if (mods.shift) sel = addRooms(base, last ? floorRange(s, last, id) : [id]);
+  else if (!st.bulk && last === id) sel = new Set([id]); // 모드 밖: 눌러 둔 방을 Ctrl로 다시 눌러도 골라진 채로
+  else sel = toggleRoom(base, id);
+  return { bulk: true, sel, last: id };
+}
 /** 한 방 누르기: 있으면 빼고 없으면 넣어요 */
 export function toggleRoom(sel: ReadonlySet<string>, id: string): Set<string> {
   const n = new Set(sel);

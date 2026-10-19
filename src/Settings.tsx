@@ -6,11 +6,11 @@ import { SpecialDates, TierSettings } from "./SurchargeSettings";
 import FeeSettings from "./FeeSettings";
 import NumInput from "./NumInput";
 import type { ToastOpt } from "./App";
-import { addRooms as addRoomRange, applyType, bulkToast, floorAllSelected, roomRange, toggleFloor, toggleRoom, undoType } from "../shared/bulktype";
+import { applyType, bulkToast, floorAllSelected, pickRoom, toggleFloor, undoType } from "../shared/bulktype";
 import { guestRangeMsg } from "../shared/numdraft";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, CheckSquare, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
   FREE_SHOP_ITEM_LIMIT,
@@ -235,6 +235,18 @@ export default function Settings({ data, email, notify }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [bulk, bsel]);
+  // '여러 개 선택' 단추: '+ 층 추가' 바로 옆 (건물이 여럿이면 첫 건물 줄)
+  const bulkBtn = usableTypes(s.types).length ? (
+    <button
+      className={`btn line sm bulkon ${bulk ? "on" : ""}`}
+      aria-pressed={bulk}
+      title="방 여러 개를 골라 타입을 한 번에 · Shift/Ctrl+클릭으로도 시작돼요"
+      onClick={() => (bulk ? endBulk() : (setPaintRaw(null), setBulk(true), setSelRoom(null), setSelFloor(null), setSelBuilding(null)))}
+    >
+      <CheckSquare size={14} />
+      {bulk ? "선택 끝내기" : "여러 개 선택"}
+    </button>
+  ) : null;
   const applyBulk = () => {
     if (!bsel.size) return;
     if (!btype) return notify("바꿀 타입을 골라 주세요");
@@ -377,6 +389,7 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
           <div className="stools">
             <span className="push" />
+            {!multi ? bulkBtn : null}
             {!multi ? (
               <button className="btn line sm" onClick={() => addFloor(s.buildings[0].id)}>
                 <Plus size={14} />층 추가
@@ -410,29 +423,22 @@ export default function Settings({ data, email, notify }: Props) {
                   끝내기
                 </button>
               ) : null}
-              {usableTypes(s.types).length ? (
-                <button
-                  className={`chip sm bulkon ${bulk ? "on" : ""}`}
-                  aria-pressed={bulk}
-                  onClick={() => (bulk ? endBulk() : (setPaintRaw(null), setBulk(true), setSelRoom(null), setSelFloor(null), setSelBuilding(null)))}
-                >
-                  여러 개 선택
-                </button>
-              ) : null}
             </div>
             <div className="phint">
               {!usableTypes(s.types).length ? (
                 "아래 '객실 타입'에서 타입을 먼저 만들어 주세요"
               ) : bulk ? (
                 <>
-                  방을 눌러 고르고 아래에서 타입을 고르세요 · 층이 달라도 돼요<span className="pc-only"> · <b>Shift</b>+클릭은 범위</span>
+                  방을 눌러 고르고 아래에서 타입을 고르세요 · 층이 달라도 돼요<span className="pc-only"> · <b>Shift</b>+클릭은 같은 층 범위 · <b>Ctrl</b>+클릭은 하나씩</span>
                 </>
               ) : paint ? (
                 <>
                   <b>{paint === NO_TYPE ? "타입 없음" : typeLabel(typeOf(paint))}</b> 선택됨 · 방을 누르면 바로 바뀌고, 층 이름을 누르면 그 층 전체가 바뀌어요
                 </>
               ) : (
-                "타입을 고른 뒤 방을 누르면 한꺼번에 지정돼요"
+                <>
+                  타입을 고른 뒤 방을 누르면 한꺼번에 지정돼요<span className="pc-only"> · <b>Shift</b>·<b>Ctrl</b>+클릭은 여러 개 선택</span>
+                </>
               )}
             </div>
           </div>
@@ -449,7 +455,9 @@ export default function Settings({ data, email, notify }: Props) {
                     <span>{buildingName(s, bd.id)}</span>
                   </button>
                   <span className="tag">{bRooms(bd.id)}실</span>
-                  <button className="btn line sm push" onClick={() => addFloor(bd.id)}>
+                  <span className="push" />
+                  {bd.id === s.buildings[0].id ? bulkBtn : null}
+                  <button className="btn line sm" onClick={() => addFloor(bd.id)}>
                     <Plus size={14} />층 추가
                   </button>
                 </div>
@@ -476,13 +484,18 @@ export default function Settings({ data, email, notify }: Props) {
                       className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint && !bulk ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""} ${bulk && bsel.has(r.id) ? "bsel" : ""}`}
                       aria-pressed={bulk ? bsel.has(r.id) : undefined}
                       style={strip ? { background: strip } : undefined}
+                      onMouseDown={(e) => (e.shiftKey || e.ctrlKey || e.metaKey) && e.preventDefault()}
                       onClick={(e) => {
-                        if (bulk) {
-                          if (e.shiftKey && blast) setBsel((x) => addRoomRange(x, roomRange(s, blast, r.id)));
-                          else setBsel((x) => toggleRoom(x, r.id));
-                          setBlast(r.id);
+                        // Shift·Ctrl/⌘ 클릭은 모드가 꺼져 있어도 여러 개 선택으로 (칠하기 중엔 빼고)
+                        const mods = { shift: e.shiftKey, toggle: e.ctrlKey || e.metaKey };
+                        const next = paint && !bulk ? null : pickRoom(s, { bulk, sel: bsel, last: blast }, r.id, mods);
+                        if (next) {
+                          if (!bulk) (setBulk(true), setSelRoom(null), setSelFloor(null), setSelBuilding(null));
+                          setBsel(new Set(next.sel));
+                          setBlast(next.last);
                           return;
                         }
+                        setBlast(r.id);
                         if (paint) {
                           // 이미 그 타입이면 아무것도 안 해요
                           if ((r.typeId ?? null) !== paintTarget) setRoom(r.id, (x) => ({ ...x, typeId: paintTarget }));

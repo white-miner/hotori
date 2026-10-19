@@ -1472,3 +1472,7 @@ body.bulking .toast { bottom: 96px; }
   body.bulking .toast { bottom: calc(136px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 760px) { .pc-only { display: none; } }
+/* 여러 개 선택 단추 ('+ 층 추가' 옆 · 같은 모양) · 켜지면 검정 */
+.btn.line.bulkon.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+/* Shift·Ctrl 클릭할 때 글자가 파랗게 잡히지 않게 */
+.rboxes, .rboxes .rbox, .flcol { -webkit-user-select: none; user-select: none; }

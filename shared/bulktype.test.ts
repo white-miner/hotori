@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeSettings } from "./ledger";
-import { addRooms, applyType, bulkToast, floorAllSelected, roomRange, roomsLabel, toggleFloor, toggleRoom, undoType, withRo } from "./bulktype";
+import { addRooms, applyType, floorRange, pickRoom, bulkToast, floorAllSelected, roomRange, roomsLabel, toggleFloor, toggleRoom, undoType, withRo } from "./bulktype";
 
 const room = (no: string, typeId: string | null = "s") => ({ id: `r${no}`, no, typeId });
 const S = normalizeSettings({
@@ -58,4 +58,31 @@ test("알림 글: '605–608호 4개를 스탠다드 2PC로 바꿨어요'", () =
   assert.equal(withRo("패밀리룸"), "패밀리룸으로");
   assert.equal(withRo("호텔"), "호텔로");
   assert.equal(bulkToast(S, ["r301"], 1, null), "301호 1개를 타입 없음으로 바꿨어요");
+});
+
+test("Shift·Ctrl 클릭: 모드가 꺼져 있어도 켜지고, Shift는 같은 층만 범위 · 다른 층은 그 방만", () => {
+  const off = { bulk: false, sel: new Set<string>(), last: null };
+  // 평소 클릭은 그대로 (방 고치기)
+  assert.equal(pickRoom(S, off, "r501", {}), null);
+  // 사용자가 한 그대로: 501 (평소 클릭) → Shift 601 은 층이 달라서 둘만
+  let st = pickRoom(S, { ...off, last: "r501" }, "r605", { shift: true })!;
+  assert.equal(st.bulk, true);
+  assert.deepEqual([...st.sel].sort(), ["r501", "r605"]);
+  // 같은 층 Shift → 그 사이 전부 (605 → 608)
+  st = pickRoom(S, st, "r608", { shift: true })!;
+  assert.deepEqual([...st.sel].sort(), ["r501", "r605", "r606", "r607", "r608"]);
+  // 다른 층 Shift → 그 방만 더해요 (3층 사이 방은 안 들어가요)
+  st = pickRoom(S, st, "r303", { shift: true })!;
+  assert.equal(st.sel.size, 6);
+  assert.ok(st.sel.has("r303") && !st.sel.has("r509"));
+  // Ctrl/⌘ → 하나만 넣었다 뺐다
+  st = pickRoom(S, st, "r606", { toggle: true })!;
+  assert.ok(!st.sel.has("r606"));
+  st = pickRoom(S, st, "r606", { toggle: true })!;
+  assert.ok(st.sel.has("r606"));
+  // 모드 밖 Ctrl 클릭: 눌러 둔 방이 없으면 그 방 하나로 시작
+  assert.deepEqual([...pickRoom(S, off, "r302", { toggle: true })!.sel], ["r302"]);
+  // 같은 층 범위는 거꾸로 눌러도 같아요
+  assert.deepEqual(floorRange(S, "r504", "r502"), ["r502", "r503", "r504"]);
+  assert.deepEqual(floorRange(S, "r504", "r302"), ["r302"]);
 });
