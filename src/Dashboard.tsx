@@ -721,6 +721,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 type="button"
                 className={`nowncx ${f.noClean ? "on" : ""}`}
                 title={f.noClean ? "청소X 해제" : "청소하지 않음으로 표시"}
+                aria-pressed={f.noClean}
                 onClick={(e) => {
                   e.stopPropagation();
                   void (async () => {
@@ -733,7 +734,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   })();
                 }}
               >
-                {f.noClean ? "청소X · 해제" : "청소X"}
+                청소X
               </button>
             ) : null}
             {extOk ? (
