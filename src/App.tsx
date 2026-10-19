@@ -14,7 +14,7 @@ import Shop from "./Shop";
 
 type View = "board" | "ledger" | "shop" | "settings";
 const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
-  { id: "board", label: "현황판", icon: LayoutGrid },
+  { id: "board", label: "보드", icon: LayoutGrid },
   { id: "ledger", label: "장부", icon: BookOpen },
   { id: "shop", label: "매점", icon: ShoppingBag },
   { id: "settings", label: "설정", icon: Gear },
@@ -111,7 +111,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setView(v);
     setMenu(false);
   };
-  // 로고 → 처음 화면: 현황판 › 객실 배치 · 오늘, 열린 창·검색·필터를 닫고 비워요 (새로 고침 없이)
+  // 로고 → 처음 화면: 현황판 › 「지금」(현장) · 오늘, 열린 창·검색·필터를 닫고 비워요 (새로 고침 없이)
   const [home, setHome] = useState(0);
   const goHome = () => {
     const d = businessDate();
@@ -122,12 +122,12 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setToday(d);
     setSelDate(d);
     try {
-      localStorage.setItem("hotori.boardTab", "rooms");
+      localStorage.setItem("hotori.boardTab", "now");
       localStorage.setItem("hotori.boardBuilding", "all"); // 건물 필터도 '전체'로
     } catch {
       /* 개인 정보 보호 모드 */
     }
-    if (location.hash !== "#/board/rooms") history.pushState(history.state, "", `${location.pathname}${location.search}#/board/rooms`);
+    if (location.hash !== "#/board/now") history.pushState(history.state, "", `${location.pathname}${location.search}#/board/now`);
     setView("board");
     setHome((n) => n + 1); // 현황판을 새로 그려 층·기간·고른 방 같은 화면 상태를 처음으로
     searchRef.current?.blur();

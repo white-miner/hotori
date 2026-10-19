@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings, stockTable } from "./ledger";
-import { autoPick, freeForStay, groupDateBlock, groupDrafts, groupStockImpact, groupSummaries, splitTotal, validateGroup } from "./group";
+import { autoPick, expandTypeSlots, freeForStay, groupDateBlock, groupDrafts, groupStockImpact, groupStockImpactByTypes, groupSummaries, splitTotal, validateGroup } from "./group";
 
 const room = (no: string, typeId: string) => ({ id: `r${no}`, no, typeId });
 const S = normalizeSettings({
@@ -77,6 +77,25 @@ test("단체 검사", () => {
   assert.match(validateGroup({ ...ok, roomIds: ["r301"] })!, /두 개/);
   assert.match(validateGroup({ ...ok, roomIds: ["r301", "r304"] })!, /다른 예약/);
   assert.match(validateGroup({ ...ok, nights: 0 })!, /박수/);
+});
+
+test("단체 타입만: 호실 없이 타입×수 · 재고 차감 · 방별 금액", () => {
+  const free = new Set<string>();
+  const slots = [{ typeId: "s", count: 2 }, { typeId: "t", count: 1 }];
+  const typeIds = expandTypeSlots(slots);
+  assert.deepEqual(typeIds, ["s", "s", "t"]);
+  const prices = [110000, 120000, 200000];
+  assert.equal(validateGroup({ name: "한빛", platformId: "p", nights: 2, roomIds: [], prices, free, typeOnly: slots }), null);
+  assert.match(validateGroup({ name: "한빛", platformId: "p", nights: 2, roomIds: [], prices: [1], free, typeOnly: [{ typeId: "s", count: 1 }] })!, /두 실/);
+  const list = groupDrafts({ groupId: "g1", groupName: "한빛", platformId: "p", checkIn: "2026-10-19", nights: 2, typeIds, prices, s: S, tentative: true });
+  assert.equal(list.length, 3);
+  assert.ok(list.every((b) => b.roomId === null && b.tentative));
+  assert.deepEqual(list.map((b) => [b.typeId, b.price]), [["s", 110000], ["s", 120000], ["t", 200000]]);
+  const imp = groupStockImpactByTypes(S, [], "2026-10-19", 2, { s: 2, t: 1 });
+  assert.deepEqual(imp.find((x) => x.typeId === "s"), { typeId: "s", n: 2, before: 8, after: 6 });
+  const st = stockTable(S, list, ["2026-10-19"]);
+  assert.equal(st.get("s")!.get("2026-10-19"), 6);
+  assert.equal(st.get("t")!.get("2026-10-19"), 2);
 });
 
 test("장부 묶음: 방 수 · 박수 · 합계 (취소 빼고, 노쇼·환불 반영) · 입실 수", () => {

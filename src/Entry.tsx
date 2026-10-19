@@ -130,6 +130,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [segs, setSegs] = useState<RoomSegment[] | null>(base?.segments ?? null);
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
+  const [tentative, setTentative] = useState(base?.tentative ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
   // 인원 · 추가 인원 금액 (판매 가격에 들어 있어요)
   const baseOf = (tid: string) => typeGuests(s.types.find((t) => t.id === tid)).base;
@@ -215,9 +216,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setEoBusy(false);
     if (ok) onClose();
   };
-  // 입실 완료: 예약 창 위 단추로 바로 저장해요 (저장 버튼을 안 눌러도 돼요)
+  // 입실 완료 · 임시 배치: 예약 창 위 단추로 바로 저장해요 (저장 버튼을 안 눌러도 돼요)
   const [inBusy, setInBusy] = useState(false);
   const [inErr, setInErr] = useState<string | null>(null);
+  const [tentBusy, setTentBusy] = useState(false);
   const toggleIn = async () => {
     if (!base || inBusy) return;
     const next = !arrived;
@@ -231,6 +233,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setInErr("입실 완료를 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setInBusy(false);
+    }
+  };
+  const toggleTent = async () => {
+    if (!base || tentBusy) return;
+    const next = !tentative;
+    setTentBusy(true);
+    setInErr(null);
+    setTentative(next);
+    try {
+      await data.patchBooking(base.id, { tentative: next });
+    } catch {
+      setTentative(!next);
+      setInErr("임시 배치를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setTentBusy(false);
     }
   };
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
@@ -268,9 +285,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     startTime: kind === "dayuse" ? startTime : null,
     endTime: kind === "dayuse" ? endTime : null,
     arrived,
+    tentative,
     earlyOut: base?.earlyOut ?? null,
     refund: base?.refund ?? null,
     memo: memo || null,
+    groupId: base?.groupId ?? null,
+    groupName: base?.groupName ?? null,
     guests,
     extraFee: extraFee || null,
     earlyIn: kind === "stay" && earlyIn ? earlyIn : null,
@@ -626,7 +646,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </button>
         </div>
         {base && isActive(base) ? (
-          <div className={`mtop n${1 + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0)}`}>
+          <div className={`mtop n${1 + 1 + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0)}`}>
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
                 <ArrowRightLeft size={17} />
@@ -645,6 +665,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <b>{arrived ? "입실 완료됨 · 취소" : "입실 완료"}</b>
               {arrived ? null : <span>누르면 바로 저장돼요</span>}
             </button>
+            {base.kind === "stay" ? (
+              <button type="button" className={`beo tent ${tentative ? "on" : ""}`} aria-pressed={tentative} disabled={tentBusy} onClick={() => void toggleTent()}>
+                <b>{tentative ? "임시 · 확정하기" : "임시 배치"}</b>
+              </button>
+            ) : null}
             {eoNow ? (
               <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
                 <Undo2 size={17} />
@@ -1498,9 +1523,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>{isNew ? "입실 · 메모" : "메모"}</label>
           <div className={isNew ? "two memo" : ""}>
             {isNew ? (
-              <button type="button" className={`chip ${arrived ? "on" : ""}`} aria-pressed={arrived} onClick={() => setArrived((a) => !a)}>
-                {arrived ? <Check size={14} strokeWidth={2.6} /> : null}입실 완료
-              </button>
+              <>
+                <button type="button" className={`chip ${arrived ? "on" : ""}`} aria-pressed={arrived} onClick={() => setArrived((a) => !a)}>
+                  {arrived ? <Check size={14} strokeWidth={2.6} /> : null}입실 완료
+                </button>
+                {kind === "stay" ? (
+                  <button type="button" className={`chip ${tentative ? "on" : ""}`} aria-pressed={tentative} onClick={() => setTentative((t) => !t)} title="임시라도 재고는 막혀요">
+                    {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
+                  </button>
+                ) : null}
+              </>
             ) : null}
             <input className="inp" placeholder="메모 (선택)" maxLength={200} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
