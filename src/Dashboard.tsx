@@ -1,7 +1,7 @@
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
-import { nowFlags, nowLists, nowStayChips, unassignedTypeCounts } from "../shared/nowboard";
+import { nowFlags, nowLists, nowStayChips, nowStayDates, unassignedTypeCounts } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -681,6 +681,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const f = nowFlags(b, today);
     if (nowFilter === "tentative" && !f.tentative) return null;
     const stayChips = nowStayChips(b, today);
+    const dates = nowStayDates(b);
     return (
       <div
         key={r.id}
@@ -700,15 +701,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           <div className="r3 nowfacts">
             <span className={`nklab nk-${f.kind}`}>{f.label}</span>
-            {stayChips.length ? (
-              <span className="nowchips" aria-label={stayChips.join(" · ")}>
-                {stayChips.map((c) => (
-                  <span key={c} className="nowchip">
-                    {c}
-                  </span>
-                ))}
-              </span>
-            ) : null}
+            <span className="nowchips nowdates" aria-label={`입실 ${dates.inLabel} 퇴실 ${dates.outLabel}`}>
+              <span className="nowchip nowdate">{dates.inLabel}입</span>
+              <span className="nowchip nowdate">{dates.outLabel}퇴</span>
+              {stayChips.map((c) => (
+                <span key={c} className="nowchip">
+                  {c}
+                </span>
+              ))}
+            </span>
           </div>
         </div>
       </div>

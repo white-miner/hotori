@@ -2,7 +2,20 @@
 // · 호실 지정 / 타입만(호실 나중에) · 방별 금액(타입 요금 프리필 + 줄 단위 수정)
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
-import { type HotelSettings, addDays, allRooms, dayLabel, orderedFloors, stockTable, typeLabel, usableTypes, won } from "../shared/ledger";
+import {
+  type HotelSettings,
+  addDays,
+  allRooms,
+  checkOutFromStayNights,
+  clampStayNights,
+  dayLabel,
+  nightsFromStayDates,
+  orderedFloors,
+  stockTable,
+  typeLabel,
+  usableTypes,
+  won,
+} from "../shared/ledger";
 import {
   autoPick,
   expandTypeSlots,
@@ -40,7 +53,11 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const [name, setName] = useState("");
   const [platformId, setPlatformId] = useState(init.platformId);
   const [checkIn, setCheckIn] = useState(init.checkIn);
-  const [nights, setNights] = useState(Math.max(1, init.nights));
+  const [nights, setNights] = useState(clampStayNights(init.nights));
+  const checkOutDate = checkOutFromStayNights(checkIn, nights);
+  const setStayCheckIn = (d: string) => setCheckIn(d);
+  const setStayNights = (n: number) => setNights(clampStayNights(n));
+  const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
   const [assignMode, setAssignMode] = useState<AssignMode>("rooms");
   const [mode, setMode] = useState<PriceMode>("rate");
   const [rates, setRates] = useState<Record<string, string>>({});
@@ -143,7 +160,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       : groupStockImpact(s, data.bookings, checkIn, nights, sorted);
   const over = impact.filter((x) => x.after < 0);
   const summary = types.map((t) => [t, countOf(t.id)] as const).filter(([, c]) => c > 0).map(([t, c]) => `${typeLabel(t)} ${c}`).join(" · ");
-  const checkOut = addDays(checkIn, nights);
+  const checkOut = checkOutDate;
 
   const switchAssign = (m: AssignMode) => {
     setAssignMode(m);
@@ -269,19 +286,46 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         </div>
         <div className="fld">
           <label>
-            입실 날짜<em>*</em>
+            입실<em>*</em>
           </label>
           <div className="chips scroll">
             {dateChips.map((d, i) => (
-              <button type="button" key={d} className={`chip ${checkIn === d ? "on" : ""}`} onClick={() => setCheckIn(d)}>
+              <button type="button" key={d} className={`chip ${checkIn === d ? "on" : ""}`} onClick={() => setStayCheckIn(d)}>
                 {["오늘", "내일", "모레"][i]} {dayLabel(d)}
               </button>
             ))}
             <label className={`chip datechip ${dateChips.includes(checkIn) ? "" : "on"}`}>
               <CalendarDays size={15} />
               <span className="dl">{dateChips.includes(checkIn) ? "날짜 고르기" : dayLabel(checkIn)}</span>
-              <input type="date" min="2020-01-01" max="2099-12-31" value={checkIn} onChange={(e) => e.target.value && setCheckIn(e.target.value)} aria-label="입실 날짜" />
+              <input type="date" min="2020-01-01" max="2099-12-31" value={checkIn} onChange={(e) => e.target.value && setStayCheckIn(e.target.value)} aria-label="입실" />
             </label>
+          </div>
+        </div>
+        <div className="fld">
+          <label>
+            퇴실<em>*</em>
+          </label>
+          <div className="step stayio">
+            <label className="chip datechip on">
+              <CalendarDays size={15} />
+              <span className="dl">{dayLabel(checkOutDate)}</span>
+              <input
+                type="date"
+                min={addDays(checkIn, 1)}
+                max={addDays(checkIn, 90)}
+                value={checkOutDate}
+                onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
+                aria-label="퇴실"
+                title="퇴실일을 고르면 박수가 맞춰져요"
+              />
+            </label>
+            <span className="rng">
+              <b>
+                {dayLabel(checkOutDate)} {s.stayTimes.checkOut}
+              </b>{" "}
+              퇴실
+              {assignMode === "rooms" ? " · 이 기간 내내 빈 방만 고를 수 있어요" : " · 호실은 나중에 배정해요 (타입 재고만 차감)"}
+            </span>
           </div>
         </div>
         <div className="fld">
@@ -289,26 +333,18 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
             박수<em>*</em>
           </label>
           <div className="step">
-            <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setNights((v) => Math.max(1, v - 1))}>
+            <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setStayNights(nights - 1)}>
               <Minus size={16} />
             </button>
             <span className="sv">
               {nights}
               <small>박</small>
             </span>
-            <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setNights((v) => Math.min(90, v + 1))}>
+            <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setStayNights(nights + 1)}>
               <Plus size={16} />
             </button>
-            <span className="rng">
-              <b>
-                {dayLabel(checkIn)} {s.stayTimes.checkIn}
-              </b>{" "}
-              입실 →{" "}
-              <b>
-                {dayLabel(checkOut)} {s.stayTimes.checkOut}
-              </b>{" "}
-              퇴실
-              {assignMode === "rooms" ? " · 이 기간 내내 빈 방만 고를 수 있어요" : " · 호실은 나중에 배정해요 (타입 재고만 차감)"}
+            <span className="rng stayglance" aria-label={`입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}>
+              <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
             </span>
           </div>
         </div>

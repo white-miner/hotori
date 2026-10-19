@@ -283,6 +283,30 @@ export function checkOut(b: Pick<Booking, "checkIn" | "nights">): string {
   return addDays(b.checkIn, b.nights ?? 0);
 }
 
+/** 숙박 박수 범위 (예약 창·단체와 동일) */
+export const STAY_NIGHTS_MIN = 1;
+export const STAY_NIGHTS_MAX = 90;
+
+/** 숙박 박수 클램프 (1~90). NaN·비유한 값은 1박 */
+export function clampStayNights(n: number): number {
+  if (!Number.isFinite(n)) return STAY_NIGHTS_MIN;
+  return Math.min(STAY_NIGHTS_MAX, Math.max(STAY_NIGHTS_MIN, Math.round(n)));
+}
+
+/**
+ * 입실·퇴실 → 박수.
+ * 호텔: 퇴실일 아침 = 마지막 밤 다음 날 → nights = daysBetween(입실, 퇴실).
+ * 예: 10/20 입실 · 10/28 퇴실 = 8박. 퇴실 ≤ 입실이면 1박.
+ */
+export function nightsFromStayDates(checkIn: string, checkOutDate: string): number {
+  return clampStayNights(daysBetween(checkIn, checkOutDate));
+}
+
+/** 입실·박수 → 퇴실일 (장부 checkOut과 같은 산술, 박수만 클램프) */
+export function checkOutFromStayNights(checkIn: string, nights: number): string {
+  return addDays(checkIn, clampStayNights(nights));
+}
+
 // ---------- 건물·층·방 ----------
 /** 이름을 안 적은 건물은 순서대로 A동, B동, C동… (26개 넘으면 27동…) */
 export function defaultBuildingName(index: number): string {

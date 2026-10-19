@@ -1377,6 +1377,15 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   line-height: 1;
   white-space: nowrap;
 }
+/* 「지금」: 입실·퇴실 날짜는 항상 (화이트보드 한눈에) */
+.nowchip.nowdate {
+  font-family: var(--num);
+  color: var(--ink);
+  background: #fff;
+  border-color: #bbb;
+}
+.step.stayio { gap: 8px; }
+.step .rng.stayglance { font-weight: 600; }
 .now-page .nowext.side {
   width: auto;
   margin: 0;
