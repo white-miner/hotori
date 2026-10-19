@@ -159,6 +159,11 @@ export interface Booking {
   earlyIn?: number | null;
   /** 늦은 퇴실: 기본 퇴실 시간보다 몇 시간 늦게 (숙박만) */
   lateOut?: number | null;
+  /**
+   * 정상 퇴실처리 시각 (ISO). null/없으면 아직 퇴실 전.
+   * 중도 퇴실(earlyOut)과 별개 — 재사용 금지.
+   */
+  checkedOutAt?: string | null;
   /** 판매 가격(price)에 들어 있는 시간 추가 금액 (0 + 시간 있음 = 서비스) */
   timeFee?: number | null;
   /** 주차: 도보 · 차량 (안 적었으면 없음) */

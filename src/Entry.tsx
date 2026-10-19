@@ -65,6 +65,7 @@ import {
   planExtend,
   validateExtendRate,
 } from "../shared/extend";
+import { canCheckOut, isCheckedOut } from "../shared/nowboard";
 
 interface Props {
   data: HotelData;
@@ -152,6 +153,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [segs, setSegs] = useState<RoomSegment[] | null>(base?.segments ?? null);
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
+  const [checkedOutAt, setCheckedOutAt] = useState<string | null>(base?.checkedOutAt ?? null);
   const [tentative, setTentative] = useState(base?.tentative ?? false);
   const [noClean, setNoClean] = useState(base?.noClean ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
@@ -298,6 +300,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [inErr, setInErr] = useState<string | null>(null);
   const [tentBusy, setTentBusy] = useState(false);
   const [ncxBusy, setNcxBusy] = useState(false);
+  const [coBusy, setCoBusy] = useState(false);
   const toggleIn = async () => {
     if (!base || inBusy) return;
     const next = !arrived;
@@ -311,6 +314,45 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setInErr("입실 완료를 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setInBusy(false);
+    }
+  };
+  const toggleCheckOut = async () => {
+    if (!base || coBusy || base.kind !== "stay") return;
+    const done = isCheckedOut({ checkedOutAt });
+    if (done) {
+      if (!window.confirm("퇴실처리를 취소할까요? 칸에 다시 보여요.")) return;
+      setCoBusy(true);
+      setInErr(null);
+      const prev = checkedOutAt;
+      setCheckedOutAt(null);
+      try {
+        await data.patchBooking(base.id, { checkedOutAt: null });
+        notify(`${base.guestName} 님 퇴실처리를 취소했어요`);
+      } catch {
+        setCheckedOutAt(prev);
+        setInErr("퇴실처리 취소를 저장하지 못했어요. 다시 눌러 주세요.");
+      } finally {
+        setCoBusy(false);
+      }
+      return;
+    }
+    if (!canCheckOut({ ...base, checkedOutAt: null }, today)) {
+      setInErr("퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.");
+      return;
+    }
+    setCoBusy(true);
+    setInErr(null);
+    const at = new Date().toISOString();
+    setCheckedOutAt(at);
+    setArrived(true);
+    try {
+      await data.patchBooking(base.id, { checkedOutAt: at, arrived: true });
+      notify(`${base.guestName} 님 퇴실처리했어요`);
+    } catch {
+      setCheckedOutAt(null);
+      setInErr("퇴실처리를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setCoBusy(false);
     }
   };
   const toggleTent = async () => {
@@ -381,6 +423,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     tentative,
     noClean,
     earlyOut: base?.earlyOut ?? null,
+    checkedOutAt,
     refund: base?.refund ?? null,
     memo: memo || null,
     groupId: base?.groupId ?? null,
@@ -754,7 +797,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
         {base && isActive(base) ? (
           <div
-            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (base.groupId ? 1 : 0)}`}
+            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (base.groupId ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? 1 : 0)}`}
           >
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
@@ -767,13 +810,26 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               type="button"
               className={`bin ${arrived ? "on" : ""}`}
               aria-pressed={arrived}
-              disabled={inBusy}
+              disabled={inBusy || !!checkedOutAt}
               onClick={() => void toggleIn()}
             >
               <Check size={17} strokeWidth={2.6} />
               <b>{arrived ? "입실 완료됨 · 취소" : "입실 완료"}</b>
               {arrived ? null : <span>누르면 바로 저장돼요</span>}
             </button>
+            {base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
+              <button
+                type="button"
+                className={`beo cout ${checkedOutAt ? "on" : ""}`}
+                aria-pressed={!!checkedOutAt}
+                disabled={coBusy}
+                onClick={() => void toggleCheckOut()}
+                title="정상 퇴실 · 누르면 바로 저장 · 중도 퇴실과 다름"
+              >
+                <DoorOpen size={17} />
+                <b>{checkedOutAt ? "퇴실처리됨 · 취소" : "퇴실처리"}</b>
+              </button>
+            ) : null}
             {base.kind === "stay" ? (
               <button type="button" className={`beo tent ${tentative ? "on" : ""}`} aria-pressed={tentative} disabled={tentBusy} onClick={() => void toggleTent()}>
                 <b>{tentative ? "임시 · 확정하기" : "임시 배치"}</b>

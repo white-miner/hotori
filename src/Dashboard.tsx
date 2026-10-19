@@ -1,7 +1,16 @@
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
-import { nowFlags, nowLists, nowNightRange, nowStayChips, unassignedTypeCounts } from "../shared/nowboard";
+import {
+  canCheckOut,
+  hotelWallClock,
+  nowByRoom,
+  nowFlags,
+  nowLists,
+  nowNightRange,
+  nowStayChips,
+  unassignedTypeCounts,
+} from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -264,8 +273,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     w.scrollLeft = Math.max(0, x - 3 * th.offsetWidth); // 오늘 앞 사흘도 보이게
   }, [view.from, view.to, tab]);
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
-  const nowBoard = useMemo(() => nightBoard(s, bookings, today), [s, bookings, today]);
-  const nowSide = useMemo(() => nowLists(bookings, today), [bookings, today]);
+  const nowOpts = useMemo(() => ({ stayTimes: s.stayTimes, clock: hotelWallClock() }), [s.stayTimes, data.syncedAt]);
+  const nowBoardMap = useMemo(() => nowByRoom(bookings, today), [bookings, today]);
+  const nowSide = useMemo(() => nowLists(bookings, today, nowOpts), [bookings, today, nowOpts]);
+  const [coBusy, setCoBusy] = useState<string | null>(null);
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
   // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
@@ -657,7 +668,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
 
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
-    const b = nowBoard.byRoom.get(r.id);
+    const b = nowBoardMap.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
@@ -678,7 +689,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
       );
     }
-    const f = nowFlags(b, today);
+    const f = nowFlags(b, today, nowOpts);
     if (nowFilter === "tentative" && !f.tentative) return null;
     const stayChips = nowStayChips(b, today);
     const nights = nowNightRange(b);
@@ -722,7 +733,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
       .filter((g) => g.floors.length);
     const uaCounts = unassignedTypeCounts(nowSide.unassigned);
-    const sideRow = (b: Booking, label: string, ext = false) => (
+    const doCheckOut = async (b: Booking) => {
+      if (readOnly || coBusy || !canCheckOut(b, today)) return;
+      setCoBusy(b.id);
+      try {
+        await data.patchBooking(b.id, { checkedOutAt: new Date().toISOString(), arrived: true });
+        notify(`${b.guestName} 님 퇴실처리했어요`);
+      } catch {
+        notify("퇴실처리를 저장하지 못했어요. 다시 해 주세요");
+      } finally {
+        setCoBusy(null);
+      }
+    };
+    const sideRow = (b: Booking, label: string, departing = false) => (
       <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`}>
         <button type="button" className={`nowli ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
           <span className="nowli-t">{label}</span>
@@ -734,7 +757,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {b.noClean ? " · 청소X" : ""}
           </span>
         </button>
-        {ext && !readOnly && canExtend(b) ? (
+        {departing && !readOnly && canCheckOut(b, today) ? (
+          <button type="button" className="nowext side nowco" disabled={coBusy === b.id} onClick={() => void doCheckOut(b)}>
+            {coBusy === b.id ? "처리 중…" : "퇴실처리"}
+          </button>
+        ) : null}
+        {departing && !readOnly && canExtend(b) ? (
           <button type="button" className="nowext side" onClick={() => onOpen(b, today, { openExtend: true })}>
             {EXTEND_COPY}
           </button>

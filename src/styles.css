@@ -1359,6 +1359,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .ncxtag { flex: none; font-size: 11px; font-weight: 900; color: #7a180c; background: #ffe3dc; border: 1.5px solid #c43c28; border-radius: 5px; padding: 0 5px; line-height: 16px; letter-spacing: -0.02em; }
 .cell.bk.ncx { box-shadow: inset 3px 0 0 #c43c28; }
 .beo.ncx.on, .chip.ncx.on { border-color: #c43c28; background: #ffe8e2; color: #7a180c; }
+.beo.cout.on { border-color: #1a5f3a; background: #e6f5ec; color: #0f3d26; }
+.nowext.nowco { border-color: #1a5f3a; color: #0f3d26; font-weight: 800; }
 /* 「지금」 칸: 상태 칩만 (액션 버튼 없음). 연박 진행·청소X 태그 */
 .nowfacts { align-items: center; gap: 6px; flex-wrap: wrap; }
 .nowchips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
