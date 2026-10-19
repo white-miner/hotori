@@ -74,6 +74,8 @@ export interface EntryRequest {
   preset?: Partial<Booking>; // 새로 적기
   n?: number;
   night?: string; // 객실 배치에서 열었으면 그 밤 (위에 '객실 이동' 단추)
+  /** 「지금」 빠른 액션: 예약 창을 열고 1박 연장 패널을 바로 펴요 */
+  openExtend?: boolean;
 }
 /** 객실 배치에서 빈 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
 export interface BoardMove {
@@ -253,14 +255,14 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           today={today}
           selDate={selDate}
           setSelDate={setSelDate}
-          onOpen={(b, night) => setEntry({ booking: b, night })}
+          onOpen={(b, night, opts) => setEntry({ booking: b, night, openExtend: opts?.openExtend })}
           onNew={openNew}
           notify={notify}
           move={boardMove}
           onMoveEnd={() => setBoardMove(null)}
         />
       ) : view === "ledger" ? (
-        <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b) => setEntry({ booking: b })} notify={notify} />
+        <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b, opts) => setEntry({ booking: b, openExtend: opts?.openExtend })} notify={notify} />
       ) : view === "shop" ? (
         <Shop data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : (

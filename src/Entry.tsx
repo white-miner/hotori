@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -49,6 +49,18 @@ import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, i
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
+import {
+  EXTEND_COPY,
+  NIGHTS_PRICE_WARN,
+  applyExtend,
+  canExtend,
+  extendBlock,
+  extendNotifyLine,
+  nightRate,
+  nightsChangedWithoutPrice,
+  planExtend,
+  validateExtendRate,
+} from "../shared/extend";
 
 interface Props {
   data: HotelData;
@@ -176,16 +188,70 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const eoToday = !!live && canEarlyOutToday(live, today);
   // 지난 숙박 바로잡기: 이미 끝난 2박 이상 숙박은 아래 단추로 날짜를 골라 적어요
   const eoPast = !!live && !eoNow && !eoToday && live.status === "active" && live.kind === "stay" && (live.nights ?? 0) >= 2 && today >= checkOut(live);
+  // 1박 연장: 박수+1 · 오늘 요금 가산 · 수납 또는 잔금
+  const groupRates = live?.groupId ? (data.groups.get(live.groupId)?.rates ?? null) : null;
+  const defaultExRate = live && canExtend(live) ? nightRate(live, groupRates?.[live.typeId]) : 0;
+  const [ex, setEx] = useState<{ rate: string; collect: boolean; method: BookPayMethod } | null>(() =>
+    req.openExtend && live && canExtend(live) ? { rate: String(defaultExRate), collect: true, method: "card" } : null,
+  );
+  const [exBusy, setExBusy] = useState(false);
+  const [exErr, setExErr] = useState<string | null>(null);
+  const canEx = !!live && canExtend(live);
   const eocRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (eo) eocRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (eo || ex) eocRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!eo]);
+  }, [!!eo, !!ex]);
   const openEo = () => {
     if (!live) return;
     const ds = earlyOutDates(live);
     setEoErr(null);
+    setEx(null);
     setEo({ date: ds.includes(today) ? today : ds[ds.length - 1], refund: "" });
+  };
+  const openEx = () => {
+    if (!live || !canExtend(live)) return;
+    setExErr(null);
+    setEo(null);
+    setEx({ rate: String(nightRate(live, groupRates?.[live.typeId])), collect: true, method: "card" });
+  };
+  const confirmEx = async () => {
+    if (!live || !ex || exBusy) return;
+    const rate = Number(ex.rate || 0);
+    const rv = validateExtendRate(rate);
+    if (rv) return setExErr(rv);
+    const block = extendBlock(s, data.bookings, live, rate, (id) => L.roomLabel(id));
+    if (block) return setExErr(block);
+    const plan = planExtend(live, rate, ex.collect);
+    if (ex.collect && plan.collectAmount > 0) {
+      const pv = validatePayment(plan.collectAmount, ex.method, today);
+      if (pv) return setExErr(pv);
+    }
+    setExBusy(true);
+    setExErr(null);
+    try {
+      const next: Booking = { ...live, nights: plan.draft.nights, price: plan.draft.price, segments: plan.draft.segments };
+      const saved = await data.saveBooking(next, false);
+      let collected = false;
+      if (ex.collect && plan.collectAmount > 0) {
+        try {
+          await data.addPayment(saved.id, { kind: "balance", method: ex.method, amount: plan.collectAmount, bizDate: today });
+          collected = true;
+        } catch (e) {
+          onClose();
+          notify(
+            `${extendNotifyLine(saved.guestName, plan.draft, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          return;
+        }
+      }
+      onClose();
+      notify(extendNotifyLine(saved.guestName, applyExtend(live, rate), collected));
+    } catch (e) {
+      setExErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setExBusy(false);
+    }
   };
   const confirmEo = async () => {
     if (!live || !eo || eoBusy) return;
@@ -486,6 +552,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const draft = override ? { ...draftBase, status: override } : draftBase;
     const v = validateBooking(draft, s);
     if (v) return setErr(v);
+    if (base && !override && nightsChangedWithoutPrice(base, draft) && !window.confirm(NIGHTS_PRICE_WARN)) return;
     const slotChanged =
       !base ||
       !isActive(base) ||
@@ -646,7 +713,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </button>
         </div>
         {base && isActive(base) ? (
-          <div className={`mtop n${1 + 1 + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0)}`}>
+          <div
+            className={`mtop n${1 + (base.kind === "stay" ? 1 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0)}`}
+          >
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
                 <ArrowRightLeft size={17} />
@@ -670,6 +739,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{tentative ? "임시 · 확정하기" : "임시 배치"}</b>
               </button>
             ) : null}
+            {canEx ? (
+              <button type="button" className={`beo ${ex ? "on" : ""}`} aria-expanded={!!ex} onClick={() => (ex ? setEx(null) : openEx())}>
+                <CalendarPlus size={17} />
+                <b>{EXTEND_COPY}</b>
+              </button>
+            ) : null}
             {eoNow ? (
               <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
                 <Undo2 size={17} />
@@ -690,6 +765,79 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <span>
               {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
             </span>
+          </div>
+        ) : null}
+        {ex && live ? (
+          <div className="eoc" role="group" aria-label={EXTEND_COPY} ref={eocRef}>
+            <div className="eoc-h">
+              <b>
+                {EXTEND_COPY} · {(live.nights ?? 0) + 1}박 · {dayLabel(addDays(live.checkIn, (live.nights ?? 0) + 1))} 퇴실
+              </b>
+              <span>
+                판매 가격에 오늘 요금을 더하고, 지금 받거나 잔금으로 남겨 둬요
+                {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
+              </span>
+            </div>
+            <div className="eoc-r">
+              <label htmlFor="ex-rate">오늘 요금</label>
+              <label className="inp price">
+                <input
+                  id="ex-rate"
+                  className="num"
+                  inputMode="numeric"
+                  value={ex.rate ? Number(ex.rate).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setEx({ ...ex, rate: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmEx();
+                    }
+                  }}
+                />
+                원
+              </label>
+              <small>
+                기본 {won(nightRate(live, groupRates?.[live.typeId]))}원
+                {groupRates?.[live.typeId] ? " · 단체 타입 요금" : (live.nights ?? 0) > 1 ? " · 1박 평균" : " · 현재 판매가"} · 저장 후 판매{" "}
+                {won(live.price + Number(ex.rate || 0))}원
+              </small>
+            </div>
+            <div className="eoc-d">
+              <label>수납</label>
+              <div className="chips">
+                <button type="button" className={`chip ${ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: true })}>
+                  지금 받기
+                </button>
+                <button type="button" className={`chip ${!ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: false })}>
+                  잔금으로 남기기
+                </button>
+              </div>
+            </div>
+            {ex.collect ? (
+              <div className="eoc-d">
+                <label>방법</label>
+                <div className="chips">
+                  {BOOK_PAY_METHODS.map((m) => (
+                    <button type="button" key={m} className={`chip ${ex.method === m ? "on" : ""}`} onClick={() => setEx({ ...ex, method: m })}>
+                      {BOOK_PAY_LABEL[m]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="muted sm" style={{ marginTop: -4 }}>
+                가격만 올리고 잔금이 생겨요 · 나중에 「잔금 받음」으로 적어요
+              </div>
+            )}
+            {exErr ? <div className="ferr">{exErr}</div> : null}
+            <div className="eoc-a">
+              <button type="button" className="btn" onClick={() => setEx(null)}>
+                닫기
+              </button>
+              <button type="button" className="btn dark" disabled={exBusy} onClick={() => void confirmEx()}>
+                {exBusy ? "저장 중…" : EXTEND_COPY}
+              </button>
+            </div>
           </div>
         ) : null}
         {eo && live ? (
@@ -859,6 +1007,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{dayLabel(checkIn)} {inTimeOf(s, { earlyIn, lateOut })}</b> 입실 → <b>{dayLabel(addDays(checkIn, nights))} {outTimeOf(s, { earlyIn, lateOut })}</b> 퇴실 · 퇴실날은 다시 팔 수 있어요
               </span>
             </div>
+            {base && nightsChangedWithoutPrice(base, draftBase) ? (
+              <div className="nwarn" role="status">
+                <AlertTriangle size={16} />
+                <span>박수가 바뀌었는데 판매 가격은 그대로예요. 「{EXTEND_COPY}」으로 요금을 맞추거나 가격·잔금을 고쳐 주세요.</span>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="fld">
