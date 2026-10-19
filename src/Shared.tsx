@@ -52,6 +52,9 @@ export default function SharedView({ token }: { token: string }) {
     patchBooking: async () => {
       throw new Error("보기 전용이에요");
     },
+    confirmTentative: async () => {
+      throw new Error("보기 전용이에요");
+    },
   } as unknown as HotelData;
   const time = at ? at.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" }) : "";
 

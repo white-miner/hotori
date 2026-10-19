@@ -1,6 +1,7 @@
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
+import { nowFlags, nowLists, nowStayHint, unassignedTypeCounts } from "../shared/nowboard";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
@@ -74,7 +75,7 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
-/** 현황판 탭: 주소(#/board/stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 재고 현황 */
+/** 현황판 탭: 주소(#/board/now · stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 「지금」 */
 const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
@@ -85,6 +86,7 @@ const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "month", label: "월" },
   { id: "range", label: "기간" },
 ];
+const TAB_OK = new Set<BoardTab>(["now", "stock", "rooms", "calendar", "parking"]);
 const lsGet = (k: string): string | null => {
   try {
     return localStorage.getItem(k);
@@ -105,9 +107,9 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     if (h) return h;
     try {
       const v = localStorage.getItem(TAB_KEY);
-      return v === "rooms" || v === "calendar" || v === "parking" ? v : "stock";
+      return v && TAB_OK.has(v as BoardTab) ? (v as BoardTab) : "now";
     } catch {
-      return "stock";
+      return "now";
     }
   };
   const [tab, setTabState] = useState<BoardTab>(read);
@@ -261,6 +263,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     w.scrollLeft = Math.max(0, x - 3 * th.offsetWidth); // 오늘 앞 사흘도 보이게
   }, [view.from, view.to, tab]);
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
+  const nowBoard = useMemo(() => nightBoard(s, bookings, today), [s, bookings, today]);
+  const nowSide = useMemo(() => nowLists(bookings, today), [bookings, today]);
+  const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
+  const [tentBusy, setTentBusy] = useState(false);
   // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
   const turn = useMemo(() => {
     const m = new Map<string, TurnWarn[]>();
@@ -447,7 +453,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <div
         key={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => onOpen(b, selDate))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -468,6 +474,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span>{b.guestName}</span>
+          {!cancelled && b.tentative ? <span className="tenttag" title="임시 배치 · 재고는 막혀 있어요">임시</span> : null}
           {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
         </div>
         <div className="r3 rp">
@@ -516,10 +523,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
+  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 지금 · 재고 · 배치 · 캘린더 (+주차)
   const tabs = (
-    <div className={`boardtabs seg ${s.parking.enabled ? "four" : ""}`} role="tablist" aria-label="현황판">
+    <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
+      <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
+        지금
+        {nowSide.tentative.length ? (
+          <span className="obdot tentdot num" aria-label={`임시 ${nowSide.tentative.length}건`}>
+            {nowSide.tentative.length}
+          </span>
+        ) : null}
+      </button>
       <button role="tab" aria-selected={tab === "stock"} className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}>
-        재고 현황
+        재고
         {(over ? overs : oversAll).length ? (
           <span className="obdot num" aria-label={`오버부킹 ${(over ? overs : oversAll).length}건`}>
             {(over ? overs : oversAll).length}
@@ -527,10 +543,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </button>
       <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
-        객실 배치
+        배치
       </button>
       <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
-        객실 캘린더
+        캘린더
       </button>
       {s.parking.enabled ? (
         <button role="tab" aria-selected={tab === "parking"} className={tab === "parking" ? "on" : ""} onClick={() => setTab("parking")}>
@@ -623,6 +639,205 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
     </div>
   );
+
+  const confirmAllTentative = async () => {
+    if (readOnly || tentBusy || !nowSide.tentative.length) return;
+    setTentBusy(true);
+    try {
+      await data.confirmTentative(nowSide.tentative.map((b) => b.id));
+      notify(`임시 ${nowSide.tentative.length}건을 확정했어요`);
+      setNowFilter("all");
+    } catch {
+      notify("임시 확정에 실패했어요. 다시 해 주세요");
+    } finally {
+      setTentBusy(false);
+    }
+  };
+
+  const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
+    const b = nowBoard.byRoom.get(r.id);
+    const t = r.typeId ? L.types.get(r.typeId) : null;
+    const strip = pastelColor(r.color ?? fColor ?? null);
+    const k = /^\d+$/.test(r.no) ? "" : "k";
+    const head = (
+      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
+        <FitText className={`no ${k}`} text={r.no} />
+      </div>
+    );
+    if (!b || !isActive(b)) {
+      if (nowFilter === "tentative") return null;
+      return (
+        <div key={r.id} {...act} className={`cell em nowempty ${readOnly ? "ro" : ""}`} onClick={() => onNew({ checkIn: today, roomId: r.id, typeId: r.typeId ?? undefined })}>
+          {head}
+          <TypeLine t={t} />
+          <div className="emt">빈 방</div>
+        </div>
+      );
+    }
+    const f = nowFlags(b, today);
+    if (nowFilter === "tentative" && !f.tentative) return null;
+    return (
+      <div
+        key={r.id}
+        {...act}
+        className={`cell bk nowcell nk-${f.kind} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${b.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
+        onClick={() => onOpen(b, today)}
+      >
+        {head}
+        <TypeLine t={t} />
+        <div className="nm">
+          <PlatBadge p={L.plats.get(b.platformId)} />
+          <span>{b.guestName}</span>
+          {f.tentative ? <span className="tenttag">임시</span> : null}
+          {f.group ? <span className="grptag">단체</span> : null}
+        </div>
+        <div className="r3">
+          <span className={`nklab nk-${f.kind}`}>{f.label}</span>
+          <span className="muted sm">{nowStayHint(b, today)}</span>
+        </div>
+      </div>
+    );
+  };
+
+  if (tab === "now") {
+    const scopeFloorsNow = orderedFloors(s).filter((f) => f.rooms.length && (bScope === "all" || f.buildingId === bScope));
+    const floorsNow = scopeFloorsNow.filter((f) => floorTab === "all" || floorTab === f.id);
+    const groupsNow = (multi ? s.buildings : s.buildings.slice(0, 1))
+      .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
+      .filter((g) => g.floors.length);
+    const uaCounts = unassignedTypeCounts(nowSide.unassigned);
+    const sideRow = (b: Booking, label: string) => (
+      <button type="button" key={b.id} className={`nowli ${b.tentative ? "tent" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
+        <span className="nowli-t">{label}</span>
+        <b>{b.guestName}</b>
+        <span className="muted sm">
+          {b.roomId ? `${L.roomLabel(b.roomId)}호` : typeLabel(L.types.get(b.typeId))}
+          {b.groupName ? ` · ${b.groupName}` : ""}
+          {b.tentative ? " · 임시" : ""}
+        </span>
+      </button>
+    );
+    return (
+      <main className="page board-page now-page">
+        <div className="main">
+          {tabs}
+          {banner}
+          <div className="bdh">
+            <div>
+              <h1>지금 · 현장 현황</h1>
+              <div className="bdh-s">
+                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 칸을 누르면 같은 예약·단체 창으로 가요
+              </div>
+            </div>
+            <div className="dnav nowfilters">
+              <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} onClick={() => setNowFilter("all")}>
+                전체
+              </button>
+              <button type="button" className={`chip ${nowFilter === "tentative" ? "on" : ""}`} onClick={() => setNowFilter("tentative")}>
+                임시만{nowSide.tentative.length ? ` ${nowSide.tentative.length}` : ""}
+              </button>
+              {!readOnly && nowSide.tentative.length ? (
+                <button type="button" className="btn sm dark" disabled={tentBusy} onClick={() => void confirmAllTentative()}>
+                  {tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}
+                </button>
+              ) : null}
+              <button type="button" className="btn sm line" onClick={() => setTab("rooms")}>
+                재고·배치로
+              </button>
+            </div>
+          </div>
+          {buildingTabs}
+          <div className="nowlayout">
+            <div className="nowgrid">
+              {multi && bScope === "all" ? null : null}
+              {groupsNow.map(({ bd, floors: fl }) => (
+                <section key={bd.id} className="bblock">
+                  {multi ? <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2> : null}
+                  {fl.map((f) => (
+                    <div className="floor" key={f.id}>
+                      <div className="fh">
+                        <span className="fn" style={floorPaint(f.color) ? { ["--fc" as string]: floorPaint(f.color)! } : undefined}>
+                          {f.name}
+                        </span>
+                      </div>
+                      <div className="rooms">{f.rooms.map((r) => nowCell(r, f.color))}</div>
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+            <aside className="nowside" aria-label="현장 목록">
+              <div className="nowside-h">한눈에</div>
+              {uaCounts.length ? (
+                <div className="nowsec">
+                  <h3>미배정 {nowSide.unassigned.length}</h3>
+                  {uaCounts.map((g) => (
+                    <button
+                      type="button"
+                      key={g.key}
+                      className="nowli"
+                      disabled={readOnly}
+                      onClick={() => g.bookings[0] && onOpen(g.bookings[0], today)}
+                    >
+                      <span className="nowli-t">미배정</span>
+                      <b>
+                        {g.groupName ? `${g.groupName} · ` : ""}
+                        {typeLabel(L.types.get(g.typeId))} {g.n}
+                      </b>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {nowSide.tentative.length ? (
+                <div className="nowsec">
+                  <h3>임시 {nowSide.tentative.length}</h3>
+                  {nowSide.tentative.map((b) => sideRow(b, "임시"))}
+                </div>
+              ) : null}
+              {nowSide.lateOut.length ? (
+                <div className="nowsec">
+                  <h3>늦은 퇴실 {nowSide.lateOut.length}</h3>
+                  {nowSide.lateOut.map((b) => sideRow(b, "늦은 퇴실"))}
+                </div>
+              ) : null}
+              {nowSide.departing.length ? (
+                <div className="nowsec">
+                  <h3>퇴실 예정 {nowSide.departing.length}</h3>
+                  {nowSide.departing.map((b) => sideRow(b, "퇴실 예정"))}
+                </div>
+              ) : null}
+              {nowSide.arriving.length ? (
+                <div className="nowsec">
+                  <h3>입실 예정 {nowSide.arriving.length}</h3>
+                  {nowSide.arriving.map((b) => sideRow(b, "입실 예정"))}
+                </div>
+              ) : null}
+              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
+                <div className="muted sm nowempty-side">오늘 눈에 띄는 미배정·임시·퇴실 일정이 없어요</div>
+              ) : null}
+            </aside>
+          </div>
+          <div className="lg nowlg">
+            <span>
+              <i className="nkdot nk-arriving" />입실 예정
+            </span>
+            <span>
+              <i className="nkdot nk-inhouse" />투숙 중
+            </span>
+            <span>
+              <i className="nkdot nk-departing" />퇴실 예정
+            </span>
+            <span>
+              <i className="nkdot nk-lateOut" />늦은 퇴실
+            </span>
+            <span>
+              <i className="nkdot nk-tent" />임시
+            </span>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (tab === "stock")
     return (
@@ -764,8 +979,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {banner}
         <div className="bdh">
           <div>
-            <h1>객실 배치 현황</h1>
-            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실)" : "칸을 누르면 예약을 고치거나 객실을 옮겨요 · 입실 완료는 예약 창 위 단추로 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료"}</div>
+            <h1>객실 배치 · 재고</h1>
+            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실) · 점선은 임시" : "선택한 날 밤 배치 · 칸을 누르면 예약·단체 창 · 점선「임시」는 나중에 고쳐도 되고 재고는 막혀 있어요 · 현장은 「지금」 탭"}</div>
           </div>
           <div className="dnav">
             <span className="cnt-m">

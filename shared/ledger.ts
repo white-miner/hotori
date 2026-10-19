@@ -142,6 +142,8 @@ export interface Booking {
   startTime: string | null; // HH:MM (대실만)
   endTime: string | null;
   arrived: boolean;
+  /** 임시 배치: 방은 잡았으나 확정 전 (재고는 확정과 동일하게 점유) */
+  tentative?: boolean;
   /** 중도 퇴실: 손님이 떠난 영업일 (입실 다음 날 ~ 퇴실 전날). 그날 밤부터는 방이 비어요. 없으면 끝까지 묵어요 */
   earlyOut?: string | null;
   /** 중도 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 중도 퇴실한 날짜에 빠져요 */
@@ -829,10 +831,10 @@ export function stockRangeLabel(period: StockPeriod, from: string, to: string, t
 }
 
 // ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
-export type BoardTab = "stock" | "rooms" | "calendar" | "parking";
-/** '#/board/rooms' → rooms, '#/board/stock' → stock, 그 밖에는 null (기기에 남긴 탭을 써요) */
+export type BoardTab = "now" | "stock" | "rooms" | "calendar" | "parking";
+/** '#/board/now' → now, '#/board/rooms' → rooms, … 그 밖에는 null (기기에 남긴 탭을 써요) */
 export function boardTabFromHash(hash: string): BoardTab | null {
-  const m = /^#\/board\/(stock|rooms|calendar|parking)\/?$/.exec(hash);
+  const m = /^#\/board\/(now|stock|rooms|calendar|parking)\/?$/.exec(hash);
   return m ? (m[1] as BoardTab) : null;
 }
 

@@ -44,6 +44,7 @@ interface BookingRow {
   start_time: string | null;
   end_time: string | null;
   arrived: boolean;
+  tentative?: boolean; // 임시 배치
   early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
   refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
@@ -87,7 +88,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -158,6 +159,7 @@ export function fromRow(r: BookingRow): Booking {
     startTime: r.start_time ? r.start_time.slice(0, 5) : null,
     endTime: r.end_time ? r.end_time.slice(0, 5) : null,
     arrived: r.arrived,
+    tentative: r.tentative === true,
     earlyOut: r.early_out_on ?? null,
     refund: r.refund_amount ?? null,
     memo: r.memo,
@@ -199,6 +201,7 @@ function toRow(b: Booking) {
     start_time: stay ? null : b.startTime,
     end_time: stay ? null : b.endTime,
     arrived: b.arrived,
+    tentative: b.tentative === true,
     // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
@@ -332,11 +335,12 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId],
   );
-  const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status">>) => {
+  const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative">>) => {
     const row: Record<string, unknown> = {};
     if (patch.arrived !== undefined) row.arrived = patch.arrived;
     if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
     if (patch.status !== undefined) row.status = patch.status;
+    if (patch.tentative !== undefined) row.tentative = patch.tentative;
     setBookings((list) => list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)));
     const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
     if (error) {
@@ -346,6 +350,23 @@ export function useHotelData(hotelId: string) {
     const saved = fromRow(data as BookingRow);
     setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
   }, [refresh]);
+  /** 임시 배치를 한 번에 확정 (재고는 그대로, 표시만 확정) */
+  const confirmTentative = useCallback(
+    async (ids: string[]): Promise<Booking[]> => {
+      if (!ids.length) return [];
+      setBookings((list) => list.map((x) => (ids.includes(x.id) ? { ...x, tentative: false } : x)));
+      const { data, error } = await supabase.from("bookings").update({ tentative: false }).in("id", ids).eq("hotel_id", hotelId).select(COLS);
+      if (error) {
+        void refresh();
+        throw error;
+      }
+      const saved = (data as BookingRow[]).map(fromRow);
+      const m = new Map(saved.map((b) => [b.id, b]));
+      setBookings((list) => list.map((x) => m.get(x.id) ?? x));
+      return saved;
+    },
+    [hotelId, refresh],
+  );
   // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
   const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: BookPayMethod; amount: number; bizDate: string }) => {
     const { data, error } = await supabase
@@ -529,7 +550,7 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup, groups, saveGroupInfo, addGroupPayment, deleteGroupPayment };
+  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, confirmTentative, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup, groups, saveGroupInfo, addGroupPayment, deleteGroupPayment };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 

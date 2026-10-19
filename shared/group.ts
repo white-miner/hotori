@@ -49,42 +49,101 @@ export function autoPick(s: HotelSettings, free: Set<string>, typeId: string, n:
   return out;
 }
 
-/** 고른 방이 재고에 주는 영향: 타입마다 그 기간 가장 적게 남는 수 (전 → 후) */
-export function groupStockImpact(s: HotelSettings, bookings: Booking[], checkIn: string, nights: number, roomIds: string[]) {
+/** 타입×수가 재고에 주는 영향: 타입마다 그 기간 가장 적게 남는 수 (전 → 후) */
+export function groupStockImpactByTypes(
+  s: HotelSettings,
+  bookings: Booking[],
+  checkIn: string,
+  nights: number,
+  counts: Map<string, number> | Record<string, number>,
+) {
   const dates = Array.from({ length: nights }, (_, i) => addDays(checkIn, i));
   const table = stockTable(s, bookings, dates);
+  const pick = counts instanceof Map ? counts : new Map(Object.entries(counts).map(([k, v]) => [k, Number(v) || 0]));
+  return [...pick.entries()]
+    .filter(([, n]) => n > 0)
+    .map(([typeId, n]) => {
+      const before = Math.min(...dates.map((d) => table.get(typeId)?.get(d) ?? 0));
+      return { typeId, n, before, after: before - n };
+    });
+}
+
+/** 고른 방이 재고에 주는 영향: 타입마다 그 기간 가장 적게 남는 수 (전 → 후) */
+export function groupStockImpact(s: HotelSettings, bookings: Booking[], checkIn: string, nights: number, roomIds: string[]) {
   const rmap = new Map(allRooms(s).map((r) => [r.id, r]));
   const pick = new Map<string, number>();
   for (const id of roomIds) {
     const t = rmap.get(id)?.typeId;
     if (t) pick.set(t, (pick.get(t) ?? 0) + 1);
   }
-  return [...pick.entries()].map(([typeId, n]) => {
-    const before = Math.min(...dates.map((d) => table.get(typeId)?.get(d) ?? 0));
-    return { typeId, n, before, after: before - n };
-  });
+  return groupStockImpactByTypes(s, bookings, checkIn, nights, pick);
 }
 
-/** 단체 예약 줄 만들기 (방마다 한 줄) */
+export interface GroupTypeSlot {
+  typeId: string;
+  count: number;
+}
+
+/** 타입×수 → 멤버 줄 수만큼 typeId 배열 (저장·금액 줄용) */
+export function expandTypeSlots(slots: GroupTypeSlot[]): string[] {
+  const out: string[] = [];
+  for (const x of slots) for (let i = 0; i < x.count; i++) out.push(x.typeId);
+  return out;
+}
+
+/** 단체 예약 줄 만들기 (방마다 한 줄, 또는 타입만·호실 미정) */
 export function groupDrafts(p: {
   groupId: string;
   groupName: string;
   platformId: string;
   checkIn: string;
   nights: number;
-  roomIds: string[];
+  /** 물리 방 id. 타입만이면 비우고 typeIds를 넣어요 */
+  roomIds?: string[];
+  /** 호실 미정 멤버의 타입 (길이 = 실 수). roomIds와 둘 중 하나만 */
+  typeIds?: string[];
   prices: number[];
   s: HotelSettings;
   guestsOf?: (typeId: string) => number | null;
+  tentative?: boolean;
 }): Booking[] {
   const rmap = new Map(allRooms(p.s).map((r) => [r.id, r]));
   const now = new Date().toISOString();
-  return p.roomIds.map((id, i) => {
+  const tent = !!p.tentative;
+  if (p.typeIds?.length) {
+    return p.typeIds.map((typeId, i) => ({
+      id: `__g${i}`,
+      kind: "stay" as const,
+      status: "active" as const,
+      platformId: p.platformId,
+      price: p.prices[i] ?? 0,
+      guestName: p.groupName.trim(),
+      typeId,
+      roomId: null,
+      segments: null,
+      checkIn: p.checkIn,
+      nights: p.nights,
+      startTime: null,
+      endTime: null,
+      arrived: false,
+      tentative: tent,
+      earlyOut: null,
+      refund: null,
+      memo: null,
+      guests: p.guestsOf?.(typeId) ?? null,
+      groupId: p.groupId,
+      groupName: p.groupName.trim(),
+      cancelledAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }
+  return (p.roomIds ?? []).map((id, i) => {
     const typeId = rmap.get(id)?.typeId ?? "";
     return {
       id: `__g${i}`,
-      kind: "stay",
-      status: "active",
+      kind: "stay" as const,
+      status: "active" as const,
       platformId: p.platformId,
       price: p.prices[i] ?? 0,
       guestName: p.groupName.trim(),
@@ -96,6 +155,7 @@ export function groupDrafts(p: {
       startTime: null,
       endTime: null,
       arrived: false,
+      tentative: tent,
       earlyOut: null,
       refund: null,
       memo: null,
@@ -109,15 +169,34 @@ export function groupDrafts(p: {
   });
 }
 
-export function validateGroup(p: { name: string; platformId: string; nights: number; roomIds: string[]; prices: number[]; free: Set<string> }): string | null {
+export function validateGroup(p: {
+  name: string;
+  platformId: string;
+  nights: number;
+  roomIds: string[];
+  prices: number[];
+  free: Set<string>;
+  /** 타입만(호실 미정). 있으면 roomIds는 무시하고 타입×수로 검사해요 */
+  typeOnly?: GroupTypeSlot[];
+}): string | null {
   if (!p.name.trim()) return "단체명을 적어 주세요.";
   if (p.name.trim().length > GROUP_NAME_MAX) return `단체명은 ${GROUP_NAME_MAX}글자까지예요.`;
   if (!p.platformId) return "플랫폼을 골라 주세요.";
   if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
-  if (p.roomIds.length < 2) return "방을 두 개 이상 골라 주세요.";
-  if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 만들 수 있어요.`;
-  const busy = p.roomIds.filter((id) => !p.free.has(id));
-  if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
+  if (p.typeOnly) {
+    const slots = p.typeOnly.filter((x) => x.count > 0);
+    if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";
+    const n = slots.reduce((a, x) => a + x.count, 0);
+    if (n < 2) return "타입을 합쳐 두 실 이상 잡아 주세요.";
+    if (n > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 만들 수 있어요.`;
+    if (p.prices.length !== n) return "방별 금액을 확인해 주세요.";
+  } else {
+    if (p.roomIds.length < 2) return "방을 두 개 이상 골라 주세요.";
+    if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 만들 수 있어요.`;
+    const busy = p.roomIds.filter((id) => !p.free.has(id));
+    if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
+    if (p.prices.length && p.prices.length !== p.roomIds.length) return "방별 금액을 확인해 주세요.";
+  }
   if (p.prices.some((x) => !Number.isInteger(x) || x < 0 || x > 100_000_000)) return "금액을 확인해 주세요.";
   return null;
 }
