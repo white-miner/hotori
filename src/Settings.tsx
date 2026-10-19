@@ -4,6 +4,8 @@ import { isOnsite } from "../shared/payment";
 import { GUESTS_MAX, tierLabel, typeGuests } from "../shared/surcharge";
 import { SpecialDates, TierSettings } from "./SurchargeSettings";
 import FeeSettings from "./FeeSettings";
+import NumInput from "./NumInput";
+import { guestRangeMsg } from "../shared/numdraft";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -26,7 +28,6 @@ import {
   typeLabel,
   typeTotals,
   usableTypes,
-  won,
 } from "../shared/ledger";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { canAddShopItem } from "../shared/shop";
@@ -641,13 +642,15 @@ export default function Settings({ data, email, notify }: Props) {
                   const g = typeGuests(t);
                   const setG = (patch: { baseGuests?: number; maxGuests?: number }) =>
                     update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, ...patch } : y)) }));
-                  const cl = (v: string) => Math.max(1, Math.min(GUESTS_MAX, Number(v.replace(/\D/g, "")) || 1));
+                  // 적는 동안은 글자 그대로 (칸을 벗어날 때만 1~99로 맞춰요). 기본 > 최대여도 값은 안 바꾸고 안내만
+                  const rawMax = t.maxGuests != null && Number.isInteger(t.maxGuests) && t.maxGuests >= 1 ? Math.min(GUESTS_MAX, t.maxGuests) : g.base + 2;
+                  const warn = guestRangeMsg(g.base, rawMax);
                   return (
                     <>
                       기본
-                      <input className="gin num" inputMode="numeric" aria-label={`${t.name} 기본 인원`} value={g.base} onChange={(e) => setG({ baseGuests: cl(e.target.value), maxGuests: Math.max(cl(e.target.value), g.max) })} />
+                      <NumInput className={`gin num ${warn ? "bad" : ""}`} min={1} max={GUESTS_MAX} aria-label={`${t.name} 기본 인원`} value={g.base} onChange={(v) => v != null && setG({ baseGuests: v })} />
                       최대
-                      <input className="gin num" inputMode="numeric" aria-label={`${t.name} 최대 인원`} value={g.max} onChange={(e) => setG({ maxGuests: cl(e.target.value) })} />
+                      <NumInput className={`gin num ${warn ? "bad" : ""}`} min={1} max={GUESTS_MAX} aria-label={`${t.name} 최대 인원`} title={warn ?? undefined} value={rawMax} onChange={(v) => v != null && setG({ maxGuests: v })} />
                       명
                       <select className="tsel" aria-label={`${t.name} 객실 종류 (일반 · 특수)`} title="일반 · 특수: 설정 › 인원 추가 요금의 1명 1박 금액" value={t.tierId ?? s.surchargeTiers[0]?.id} onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, tierId: e.target.value } : y)) }))}>
                         {s.surchargeTiers.map((r) => (
@@ -656,6 +659,11 @@ export default function Settings({ data, email, notify }: Props) {
                           </option>
                         ))}
                       </select>
+                      {warn ? (
+                        <span className="gwarn" role="status">
+                          {warn}
+                        </span>
+                      ) : null}
                     </>
                   );
                 })()}
@@ -708,13 +716,7 @@ export default function Settings({ data, email, notify }: Props) {
             <label>
               <span>1시간 추가 요금</span>
               <span className="inp price hfee">
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  aria-label="1시간 추가 요금"
-                  value={won(s.extraHourFee)}
-                  onChange={(e) => update((x) => ({ ...x, extraHourFee: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) }))}
-                />
+                <NumInput aria-label="1시간 추가 요금" min={0} max={1_000_000} allowEmpty value={s.extraHourFee} onChange={(v) => update((x) => ({ ...x, extraHourFee: v ?? 0 }))} />
                 원
               </span>
             </label>
@@ -744,14 +746,14 @@ export default function Settings({ data, email, notify }: Props) {
                 <label>
                   <span>추가 차량 1대당 주차 요금 (1박)</span>
                   <span className="inp price hfee">
-                    <input className="num" inputMode="numeric" aria-label="추가 차량 1대당 주차 요금" value={won(s.parking.extraCarFee)} onChange={(e) => update((x) => ({ ...x, parking: { ...x.parking, extraCarFee: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) } }))} />
+                    <NumInput aria-label="추가 차량 1대당 주차 요금" min={0} max={1_000_000} allowEmpty value={s.parking.extraCarFee} onChange={(v) => update((x) => ({ ...x, parking: { ...x.parking, extraCarFee: v ?? 0 } }))} />
                     원
                   </span>
                 </label>
                 <label>
                   <span>도보 할인 (예약 1건, 없으면 0)</span>
                   <span className="inp price hfee">
-                    <input className="num" inputMode="numeric" aria-label="도보 할인" value={won(s.parking.walkDiscount)} onChange={(e) => update((x) => ({ ...x, parking: { ...x.parking, walkDiscount: Math.min(1_000_000, Number(e.target.value.replace(/\D/g, "").slice(0, 7) || 0)) } }))} />
+                    <NumInput aria-label="도보 할인" min={0} max={1_000_000} allowEmpty value={s.parking.walkDiscount} onChange={(v) => update((x) => ({ ...x, parking: { ...x.parking, walkDiscount: v ?? 0 } }))} />
                     원
                   </span>
                 </label>
@@ -923,17 +925,7 @@ export default function Settings({ data, email, notify }: Props) {
                 />
               </span>
               <label className="sh-p">
-                <input
-                  className="nin num"
-                  inputMode="numeric"
-                  value={it.price ? it.price.toLocaleString("ko-KR") : ""}
-                  placeholder="가격"
-                  aria-label="가격"
-                  onChange={(e) => {
-                    const v = Number(e.target.value.replace(/[^0-9]/g, "").slice(0, 8));
-                    setShop(it.id, { price: Math.min(v, 10_000_000) });
-                  }}
-                />
+                <NumInput className="nin num" placeholder="가격" aria-label="가격" min={0} max={10_000_000} allowEmpty value={it.price || null} onChange={(v) => setShop(it.id, { price: v ?? 0 })} />
                 <span>원</span>
               </label>
               <button

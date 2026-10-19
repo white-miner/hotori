@@ -4,9 +4,8 @@ import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import type { HotelSettings } from "../shared/ledger";
 import { SURCHARGE_MAX, TIER_NAME_MAX, isPeakNight, shortWon, tierLabel, tierSummary } from "../shared/surcharge";
 import { uid } from "./ui";
+import NumInput from "./NumInput";
 
-const num = (v: string) => Math.min(SURCHARGE_MAX, Number(v.replace(/\D/g, "").slice(0, 8) || 0));
-const fmt = (n: number) => (n ? n.toLocaleString("ko-KR") : "");
 
 export function TierSettings({ s, update, notify }: { s: HotelSettings; update: (fn: (x: HotelSettings) => HotelSettings) => void; notify: (m: string) => void }) {
   const setTier = (id: string, patch: Partial<HotelSettings["surchargeTiers"][number]>) =>
@@ -23,10 +22,10 @@ export function TierSettings({ s, update, notify }: { s: HotelSettings; update: 
         <div className="trow tierrow" key={t.id}>
           <input className="nin" value={tierLabel(t)} maxLength={TIER_NAME_MAX} placeholder="이름 (예: 특수)" aria-label="객실 종류 이름" onChange={(e) => setTier(t.id, { name: e.target.value })} />
           <label className="tierin">
-            <input className="num" inputMode="numeric" aria-label={`${t.name} 평일 1명 1박`} value={fmt(t.weekday)} onChange={(e) => setTier(t.id, { weekday: num(e.target.value) })} />원
+            <NumInput aria-label={`${tierLabel(t)} 평일 1명 1박`} min={0} max={SURCHARGE_MAX} allowEmpty value={t.weekday || null} onChange={(v) => setTier(t.id, { weekday: v ?? 0 })} />원
           </label>
           <label className="tierin">
-            <input className="num" inputMode="numeric" aria-label={`${t.name} 금·토·특별일 1명 1박`} value={fmt(t.weekend)} onChange={(e) => setTier(t.id, { weekend: num(e.target.value) })} />원
+            <NumInput aria-label={`${tierLabel(t)} 금·토·특별일 1명 1박`} min={0} max={SURCHARGE_MAX} allowEmpty value={t.weekend || null} onChange={(v) => setTier(t.id, { weekend: v ?? 0 })} />원
           </label>
           <button
             className="ic"

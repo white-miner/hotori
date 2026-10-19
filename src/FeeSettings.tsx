@@ -1,32 +1,15 @@
 // 설정 › 수수료 · 입금: 플랫폼마다 수수료율 · 기준 · 쿠폰 기본 부담 · 정산 주기, 카드 수수료율
-import { useEffect, useState } from "react";
 import type { HotelSettings, Platform } from "../shared/ledger";
-import { normalizeDays, normalizeRate } from "../shared/feerate";
+import { PAYOUT_DAYS_MAX, RATE_MAX, normalizeDays, normalizeRate } from "../shared/feerate";
+import NumInput from "./NumInput";
 import { isOnsite } from "../shared/payment";
 import { PlatBadge } from "./ui";
 
-/** 수수료율 칸: '9.5'처럼 소수점을 적는 도중에도 글자가 안 사라지게 따로 들고 있어요 */
+/** 수수료율 칸: 적는 동안 글자 그대로 ('9.5'도), 칸을 벗어날 때 0.01~50으로. 비우면 없음 */
 export function RateInput({ value, label, onChange }: { value: number | null | undefined; label: string; onChange: (v: number | null) => void }) {
-  const [raw, setRaw] = useState(value != null ? String(value) : "");
-  useEffect(() => {
-    if (normalizeRate(raw) !== (value ?? null)) setRaw(value != null ? String(value) : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
   return (
     <span className="inp rate">
-      <input
-        className="num"
-        inputMode="decimal"
-        placeholder="없음"
-        aria-label={label}
-        value={raw}
-        onChange={(e) => {
-          const v = e.target.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1").slice(0, 5);
-          setRaw(v);
-          onChange(normalizeRate(v));
-        }}
-        onBlur={() => setRaw(value != null ? String(value) : "")}
-      />
+      <NumInput aria-label={label} placeholder="없음" decimal min={0.01} max={RATE_MAX} allowEmpty format={(n) => String(n)} value={value} onChange={(v) => onChange(normalizeRate(v))} />
       %
     </span>
   );
@@ -83,14 +66,7 @@ export default function FeeSettings({ s, update }: { s: HotelSettings; update: (
             </div>
             <span className="inp days">
               퇴실 후
-              <input
-                className="num"
-                inputMode="numeric"
-                placeholder="—"
-                aria-label={`${p.name} 정산 주기 (퇴실 후 며칠)`}
-                value={p.payoutDays ?? ""}
-                onChange={(e) => setP(p.id, { payoutDays: normalizeDays(e.target.value.replace(/\D/g, "").slice(0, 2)) })}
-              />
+              <NumInput placeholder="—" aria-label={`${p.name} 정산 주기 (퇴실 후 며칠)`} min={0} max={PAYOUT_DAYS_MAX} allowEmpty format={(n) => String(n)} value={p.payoutDays} onChange={(v) => setP(p.id, { payoutDays: normalizeDays(v) })} />
               일
             </span>
           </div>
