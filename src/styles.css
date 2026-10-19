@@ -1364,8 +1364,40 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nowncx:hover { background: #ffe8e2; }
 .nowacts { display: flex; flex-direction: column; gap: 2px; width: 100%; }
 .nowacts .nowext, .nowacts .nowncx { width: calc(100% - 16px); margin-left: 8px; margin-right: 8px; }
-/* padding이 .cell-body로 옮겨져서 안쪽 단추는 가로 100% */
-.now-page .nowacts .nowext, .now-page .nowacts .nowncx { width: 100%; margin-left: 0; margin-right: 0; }
+/* 「지금」: 풀폭 바 → 하단 컴팩트 칩 */
+.now-page .nowacts {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  margin-top: auto;
+}
+.now-page .nowacts .nowncx,
+.now-page .nowacts .nowext {
+  width: auto;
+  margin: 0;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  font-weight: 750;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+.now-page .nowext.side {
+  width: auto;
+  margin: 0;
+  height: 22px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  font-weight: 750;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+}
 .nkdot.nk-ncx { border-color: #c43c28; background: #ffe3dc; }
 .mtop.n4 { grid-template-columns: 1fr 1fr; }
 .mtop.n4 > :first-child { grid-column: 1 / -1; }
@@ -1386,16 +1418,16 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: 12px;
   align-items: stretch;
-  /* 같은 층 안 행 높이를 맞춤 → 아래쪽 빈 칸이 짧아져 테두리가 잘려 보이는 현상 방지 */
-  grid-auto-rows: 1fr;
+  /* indefinite 그리드에서 1fr은 사실상 auto — minmax로 행 최소·stretch 보장 */
+  grid-auto-rows: minmax(200px, auto);
   overflow: visible;
-  padding: 2px; /* 1px 테두리가 부모 clip에 먹히지 않게 */
+  padding: 2px; /* 테두리가 부모 clip에 먹히지 않게 */
 }
 .now-page .cell {
   /* container-type은 .cell-body로 옮김 — grid item의 size containment이 stretch를 깨면 빈 칸이 짧아짐 */
   container-type: normal;
   min-height: 200px;
-  height: 100%;
+  height: auto;
   align-self: stretch;
   padding: 0;
   gap: 0;
@@ -1419,22 +1451,50 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .now-page .cell .r1.strip { padding: 4px 7px; }
 .now-page .fh { display: flex; align-items: flex-start; padding-top: 8px; }
 .now-page .fn { font-size: 13px; font-weight: 700; color: var(--ink3); writing-mode: horizontal-tb; }
-/* 투숙 칸: border-color만 있으면 두께가 0 — 테두리를 명시 */
-.now-page .nowcell { border: 1px solid var(--stay); }
+/* 이중 링: border 1.5px + inset shadow — 서브픽셀/클리핑에도 또렷 */
+.now-page .nowcell {
+  --nk-ring: color-mix(in srgb, var(--stay) 55%, transparent);
+  border: 1.5px solid var(--stay);
+  box-shadow: inset 0 0 0 1px var(--nk-ring);
+}
 .now-page .nowempty,
-.now-page .cell.em { border: 1px dashed #c8c8c8; background-clip: padding-box; }
+.now-page .cell.em {
+  border: 1.5px dashed #9a9a9a;
+  background-clip: padding-box;
+}
 @media (max-width: 760px) {
   .now-page .floor { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 10px; }
-  .now-page .rooms { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .now-page .rooms {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    grid-auto-rows: minmax(150px, auto);
+  }
   .now-page .cell { min-height: 150px; border-radius: 14px; }
   .now-page .cell-body { padding: 8px 9px 9px; gap: 3px; }
   .now-page .fh { padding-top: 0; padding-left: 2px; }
 }
 .nowfilters { flex-wrap: wrap; gap: 8px; }
-.now-page .nowcell.nk-arriving { border-color: #3b6fd9; }
-.now-page .nowcell.nk-inhouse { border-color: var(--stay); }
-.now-page .nowcell.nk-departing { border-color: #c47a12; }
-.now-page .nowcell.nk-lateOut { border-color: #b42318; box-shadow: inset 0 0 0 1px #b42318; }
+.now-page .nowcell.nk-arriving {
+  border-color: #3b6fd9;
+  --nk-ring: color-mix(in srgb, #3b6fd9 55%, transparent);
+}
+.now-page .nowcell.nk-inhouse {
+  border-color: var(--stay);
+  --nk-ring: color-mix(in srgb, var(--stay) 55%, transparent);
+}
+.now-page .nowcell.nk-departing {
+  border-color: #c47a12;
+  --nk-ring: color-mix(in srgb, #c47a12 55%, transparent);
+}
+.now-page .nowcell.nk-lateOut {
+  border-color: #b42318;
+  --nk-ring: #b42318;
+  box-shadow: inset 0 0 0 1px var(--nk-ring);
+}
+/* 청소X 좌측 바 + 외곽 링 스택 (.cell.bk.ncx 단일 shadow 덮어쓰기 방지) */
+.now-page .nowcell.ncx {
+  box-shadow: inset 3px 0 0 #c43c28, inset 0 0 0 1px var(--nk-ring);
+}
 .nowcell .nklab { font-size: 11px; font-weight: 750; }
 .nklab.nk-arriving { color: #2f5fc4; }
 .nklab.nk-inhouse { color: var(--red-d); }
