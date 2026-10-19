@@ -5,7 +5,8 @@ import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
-import { bookingCash, paySplit, payState } from "../shared/payment";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
+import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
@@ -20,7 +21,7 @@ interface Props {
   today: string;
   query: string;
   setQuery: (q: string) => void;
-  onOpen: (b: Booking) => void;
+  onOpen: (b: Booking, opts?: { openExtend?: boolean }) => void;
   notify: (m: string) => void;
 }
 type LTab = "bookings" | "expenses";
@@ -76,6 +77,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   };
   const [gOpen, setGOpen] = useState<Set<string>>(new Set());
   const [gEdit, setGEdit] = useState<{ id: string; name: string; checkIn: string; nights: number } | null>(null);
+  const [gExt, setGExt] = useState<{ id: string; collect: boolean; method: BookPayMethod } | null>(null);
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
@@ -265,12 +267,48 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (dateChanged) {
       const block = groupDateBlock(data.hotel!.settings, data.bookings, g.members, gEdit.checkIn, gEdit.nights);
       if (block) return notify(block);
+      if (gEdit.nights !== g.nights && !window.confirm(NIGHTS_PRICE_WARN)) return;
     }
     setGBusy(true);
     try {
       await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name, ...(dateChanged ? { checkIn: gEdit.checkIn, nights: gEdit.nights } : {}) });
       notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}`);
       setGEdit(null);
+    } catch (e) {
+      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setGBusy(false);
+    }
+  };
+  const saveGroupExtend = async (g: GroupSummary) => {
+    if (!gExt || gBusy || gExt.id !== g.groupId) return;
+    const rates = data.groups.get(g.groupId)?.rates ?? null;
+    const planned = planGroupExtend(data.hotel!.settings, data.bookings, g.members, rates);
+    if ("err" in planned) return notify(planned.err);
+    if (gExt.collect && planned.ok.totalRate > 0) {
+      const pv = validatePayment(planned.ok.totalRate, gExt.method, today);
+      if (pv) return notify(pv);
+    }
+    setGBusy(true);
+    try {
+      for (const m of planned.ok.members) {
+        const cur = data.bookings.find((x) => x.id === m.id);
+        if (!cur) continue;
+        await data.saveBooking({ ...cur, nights: m.draft.nights, price: m.draft.price, segments: m.draft.segments }, false);
+      }
+      let payNote = "";
+      if (gExt.collect && planned.ok.totalRate > 0) {
+        try {
+          await data.addGroupPayment(g.groupId, { method: gExt.method, amount: planned.ok.totalRate, bizDate: today });
+          payNote = ` · 오늘 요금 ${won(planned.ok.totalRate)}원 받음 (${BOOK_PAY_LABEL[gExt.method]})`;
+        } catch (e) {
+          payNote = ` · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`;
+        }
+      } else if (planned.ok.totalRate > 0) {
+        payNote = ` · 잔금 +${won(planned.ok.totalRate)}원`;
+      }
+      notify(`단체 ${g.name} 전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${payNote}`);
+      setGExt(null);
     } catch (e) {
       notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
     } finally {
@@ -325,6 +363,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <button type="button" className="btn sm line" disabled={gBusy} onClick={() => setGEdit(gEdit?.id === g.groupId ? null : { id: g.groupId, name: g.name, checkIn: g.checkIn, nights: g.nights })}>
                   이름·날짜 바꾸기
                 </button>
+                {g.active.some((b) => canExtend(b)) ? (
+                  <button
+                    type="button"
+                    className="btn sm line"
+                    disabled={gBusy}
+                    onClick={() => setGExt(gExt?.id === g.groupId ? null : { id: g.groupId, collect: true, method: "card" })}
+                  >
+                    전 방 {EXTEND_COPY}
+                  </button>
+                ) : null}
                 <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
                   정산하기
                 </button>
@@ -352,10 +400,51 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                     +
                   </button>
                 </span>
-                <span className="muted sm">모든 방에 같이 적용돼요 · 가격은 그대로</span>
+                <span className="muted sm">
+                  모든 방에 같이 적용돼요 · 가격은 그대로
+                  {gEdit.nights !== g.nights ? ` · 박수만 바꾸면 잔금이 안 맞을 수 있어요 → 「전 방 ${EXTEND_COPY}」 권장` : ""}
+                </span>
                 <button type="button" className="btn sm dark" disabled={gBusy} onClick={() => void saveGroupEdit(g)}>
                   저장
                 </button>
+              </div>
+            ) : null}
+            {gExt?.id === g.groupId ? (
+              <div className="gedit gext">
+                {(() => {
+                  const planned = planGroupExtend(data.hotel!.settings, data.bookings, g.members, data.groups.get(g.groupId)?.rates ?? null);
+                  if ("err" in planned) return <span className="muted sm">{planned.err}</span>;
+                  return (
+                    <>
+                      <span className="muted sm">
+                        활성 {planned.ok.members.length}실 +1박 · 요금 합 {won(planned.ok.totalRate)}원 (타입/방 단가)
+                      </span>
+                      <span className="chips">
+                        <button type="button" className={`chip ${gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: true })}>
+                          지금 받기
+                        </button>
+                        <button type="button" className={`chip ${!gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: false })}>
+                          잔금으로 남기기
+                        </button>
+                      </span>
+                      {gExt.collect ? (
+                        <span className="chips">
+                          {BOOK_PAY_METHODS.map((m) => (
+                            <button type="button" key={m} className={`chip ${gExt.method === m ? "on" : ""}`} onClick={() => setGExt({ ...gExt, method: m })}>
+                              {BOOK_PAY_LABEL[m]}
+                            </button>
+                          ))}
+                        </span>
+                      ) : null}
+                      <button type="button" className="btn sm" disabled={gBusy} onClick={() => setGExt(null)}>
+                        닫기
+                      </button>
+                      <button type="button" className="btn sm dark" disabled={gBusy} onClick={() => void saveGroupExtend(g)}>
+                        {gBusy ? "저장 중…" : `전 방 ${EXTEND_COPY}`}
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
             ) : null}
             {[...g.members].sort((a, b) => (L.roomLabel(a.roomId) ?? "").localeCompare(L.roomLabel(b.roomId) ?? "", "ko", { numeric: true })).map((b) => renderRow(b, true))}

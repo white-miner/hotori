@@ -2,6 +2,7 @@ import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
 import { nowFlags, nowLists, nowStayHint, unassignedTypeCounts } from "../shared/nowboard";
+import { EXTEND_COPY, canExtend } from "../shared/extend";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
@@ -51,7 +52,7 @@ interface Props {
   today: string;
   selDate: string;
   setSelDate: (d: string) => void;
-  onOpen: (b: Booking, night?: string) => void;
+  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
   notify: (m: string, opt?: ToastOpt) => void;
   /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
@@ -265,6 +266,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
   const nowBoard = useMemo(() => nightBoard(s, bookings, today), [s, bookings, today]);
   const nowSide = useMemo(() => nowLists(bookings, today), [bookings, today]);
+  const nowExtendable = useMemo(() => {
+    const ids = new Set<string>();
+    const out: Booking[] = [];
+    for (const b of [...nowSide.lateOut, ...nowSide.departing, ...bookings]) {
+      if (ids.has(b.id) || !canExtend(b) || !isActive(b) || b.kind !== "stay") continue;
+      const f = nowFlags(b, today);
+      if (f.kind !== "inhouse" && f.kind !== "departing" && f.kind !== "lateOut") continue;
+      ids.add(b.id);
+      out.push(b);
+    }
+    return out.sort((a, c) => a.guestName.localeCompare(c.guestName, "ko"));
+  }, [nowSide.lateOut, nowSide.departing, bookings, today]);
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
   // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
@@ -676,6 +689,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     const f = nowFlags(b, today);
     if (nowFilter === "tentative" && !f.tentative) return null;
+    const extOk = !readOnly && canExtend(b) && (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
     return (
       <div
         key={r.id}
@@ -695,6 +709,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <span className={`nklab nk-${f.kind}`}>{f.label}</span>
           <span className="muted sm">{nowStayHint(b, today)}</span>
         </div>
+        {extOk ? (
+          <button
+            type="button"
+            className="nowext"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(b, today, { openExtend: true });
+            }}
+          >
+            {EXTEND_COPY}
+          </button>
+        ) : null}
       </div>
     );
   };
@@ -706,16 +732,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
       .filter((g) => g.floors.length);
     const uaCounts = unassignedTypeCounts(nowSide.unassigned);
-    const sideRow = (b: Booking, label: string) => (
-      <button type="button" key={b.id} className={`nowli ${b.tentative ? "tent" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
-        <span className="nowli-t">{label}</span>
-        <b>{b.guestName}</b>
-        <span className="muted sm">
-          {b.roomId ? `${L.roomLabel(b.roomId)}호` : typeLabel(L.types.get(b.typeId))}
-          {b.groupName ? ` · ${b.groupName}` : ""}
-          {b.tentative ? " · 임시" : ""}
-        </span>
-      </button>
+    const sideRow = (b: Booking, label: string, ext = false) => (
+      <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""}`}>
+        <button type="button" className={`nowli ${b.tentative ? "tent" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
+          <span className="nowli-t">{label}</span>
+          <b>{b.guestName}</b>
+          <span className="muted sm">
+            {b.roomId ? `${L.roomLabel(b.roomId)}호` : typeLabel(L.types.get(b.typeId))}
+            {b.groupName ? ` · ${b.groupName}` : ""}
+            {b.tentative ? " · 임시" : ""}
+          </span>
+        </button>
+        {ext && !readOnly && canExtend(b) ? (
+          <button type="button" className="nowext side" onClick={() => onOpen(b, today, { openExtend: true })}>
+            {EXTEND_COPY}
+          </button>
+        ) : null}
+      </div>
     );
     return (
       <main className="page board-page now-page">
@@ -797,13 +830,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               {nowSide.lateOut.length ? (
                 <div className="nowsec">
                   <h3>늦은 퇴실 {nowSide.lateOut.length}</h3>
-                  {nowSide.lateOut.map((b) => sideRow(b, "늦은 퇴실"))}
+                  {nowSide.lateOut.map((b) => sideRow(b, "늦은 퇴실", true))}
                 </div>
               ) : null}
               {nowSide.departing.length ? (
                 <div className="nowsec">
                   <h3>퇴실 예정 {nowSide.departing.length}</h3>
-                  {nowSide.departing.map((b) => sideRow(b, "퇴실 예정"))}
+                  {nowSide.departing.map((b) => sideRow(b, "퇴실 예정", true))}
+                </div>
+              ) : null}
+              {nowExtendable.filter((b) => nowFlags(b, today).kind === "inhouse").length ? (
+                <div className="nowsec">
+                  <h3>투숙 중 · {EXTEND_COPY}</h3>
+                  {nowExtendable
+                    .filter((b) => nowFlags(b, today).kind === "inhouse")
+                    .map((b) => sideRow(b, "투숙 중", true))}
                 </div>
               ) : null}
               {nowSide.arriving.length ? (
@@ -812,7 +853,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   {nowSide.arriving.map((b) => sideRow(b, "입실 예정"))}
                 </div>
               ) : null}
-              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
+              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length && !nowExtendable.length ? (
                 <div className="muted sm nowempty-side">오늘 눈에 띄는 미배정·임시·퇴실 일정이 없어요</div>
               ) : null}
             </aside>

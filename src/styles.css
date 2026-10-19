@@ -1379,9 +1379,18 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nowside-h { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
 .nowsec { margin-top: 10px; }
 .nowsec h3 { font-size: 12px; font-weight: 750; color: var(--ink2); margin: 0 0 6px; }
-.nowli { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; padding: 8px 9px; border-radius: 10px; border: 1px solid transparent; background: var(--panel); margin-bottom: 4px; cursor: pointer; }
+.nowli-wrap { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.nowli { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; padding: 8px 9px; border-radius: 10px; border: 1px solid transparent; background: var(--panel); margin-bottom: 0; cursor: pointer; }
 .nowli:hover:not(:disabled) { border-color: var(--line); background: #fff; }
 .nowli:disabled { cursor: default; }
+.nowext { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--ink); background: #fff; font-size: 11.5px; font-weight: 750; cursor: pointer; }
+.nowext:hover { background: #f4f4f4; }
+.nowext.side { width: 100%; margin: 0; }
+.nowcell .nowext { margin-top: 2px; }
+.mtop.n5 { grid-template-columns: 1fr 1fr; }
+.mtop.n5 > :first-child { grid-column: 1 / -1; }
+.nwarn { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #fff8e8; border: 1px solid #e0b84a; font-size: 13px; font-weight: 600; color: #6a4e00; display: flex; gap: 8px; align-items: flex-start; }
+.nwarn svg { flex: none; margin-top: 1px; }
 .nowli.tent { border-style: dashed; border-color: #bbb; }
 .nowli-t { font-size: 10.5px; font-weight: 750; color: var(--ink3); }
 .nowli b { font-size: 13.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
