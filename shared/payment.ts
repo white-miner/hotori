@@ -41,9 +41,15 @@ export interface PayState {
 /**
  * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 플랫폼이 받은 걸로 봐서 잔금이 없어요.
  * 받을 돈 = 판매 가격 − 중도 퇴실 환불.
+ * 장기(long_stay): 받을 돈 = 원장 누적 − 받은 돈 (판매가 price 총액 모델 아님).
  */
 export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined): PayState {
   const paid = paidOf(b);
+  if (b.stayMode === "long_stay" && b.status === "active") {
+    const due = (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
+    const left = Math.max(0, due - paid);
+    return { tracked: true, due, paid, left, full: due > 0 && left === 0 };
+  }
   const tracked = b.status === "active" && (isOnsite(plat) || paid > 0);
   const due = revenueOf(b);
   const left = tracked ? Math.max(0, due - paid) : 0;

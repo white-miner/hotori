@@ -12,6 +12,7 @@ import {
   unassignedTypeCounts,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
+import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
@@ -34,12 +35,14 @@ import {
   allRooms,
   firstOverbooking,
   freeRooms,
+  fitSegments,
   isActive,
   isEarlyOut,
   usedNights,
   md,
   nightBoard,
   orderedFloors,
+  stayEnd,
   stockLevel,
   stockTable,
   typeLabel,
@@ -491,7 +494,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
         </div>
         <div className="r3 rp">
-          {readOnly ? <span /> : ((left) => (left > 0 ? <span className="pr dueamt" title={`판매 가격 ${won(b.price)}원`}>잔금 {won(left)}</span> : <span className="pr">{won(b.price)}</span>))(cancelled || b.groupId ? 0 : payState(b, L.plats.get(b.platformId)).left)}
+          {readOnly ? (
+            <span />
+          ) : (
+            ((left) =>
+              left > 0 ? (
+                <span className="pr dueamt" title={isLongStay(b) ? `미수 ${won(left)}원` : `판매 가격 ${won(b.price)}원`}>
+                  {isLongStay(b) ? "미수" : "잔금"} {won(left)}
+                </span>
+              ) : isLongStay(b) ? (
+                <span className="pr muted">장기</span>
+              ) : (
+                <span className="pr">{won(b.price)}</span>
+              ))(cancelled || b.groupId ? 0 : payState(b, L.plats.get(b.platformId)).left)
+          )}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         {((tags, ws) => (
@@ -708,6 +724,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span>{b.guestName}</span>
             {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
             {f.tentative ? <span className="tenttag">임시</span> : null}
+            {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
             {f.group ? <span className="grptag">단체</span> : null}
           </div>
           <div className="r3 nowfacts">
@@ -721,6 +738,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               ))}
             </span>
           </div>
+          {f.longStay && !readOnly
+            ? ((left) =>
+                left > 0 ? (
+                  <div className="nowdue" title="받을 돈(미수)">
+                    미수 {won(left)}
+                  </div>
+                ) : null)(payState(b, L.plats.get(b.platformId)).left)
+            : null}
         </div>
       </div>
     );
@@ -737,7 +762,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (readOnly || coBusy || !canCheckOut(b, today)) return;
       setCoBusy(b.id);
       try {
-        await data.patchBooking(b.id, { checkedOutAt: new Date().toISOString(), arrived: true });
+        const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: new Date().toISOString(), arrived: true };
+        if (isLongStay(b) && stayEnd(b) > today) {
+          const n = nightsAtCheckout(b.checkIn, today);
+          patch.nights = n;
+          patch.segments = fitSegments(b.segments, b.roomId, n);
+        }
+        await data.patchBooking(b.id, patch);
         notify(`${b.guestName} 님 퇴실처리했어요`);
       } catch {
         notify("퇴실처리를 저장하지 못했어요. 다시 해 주세요");
@@ -746,15 +777,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       }
     };
     const sideRow = (b: Booking, label: string, departing = false) => (
-      <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`}>
+      <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""} ${isLongStay(b) ? "long" : ""}`}>
         <button type="button" className={`nowli ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
           <span className="nowli-t">{label}</span>
           <b>{b.guestName}</b>
           <span className="muted sm">
             {b.roomId ? `${L.roomLabel(b.roomId)}호` : typeLabel(L.types.get(b.typeId))}
             {b.groupName ? ` · ${b.groupName}` : ""}
+            {isLongStay(b) ? " · 장기" : ""}
             {b.tentative ? " · 임시" : ""}
             {b.noClean ? " · 청소X" : ""}
+            {isLongStay(b) && payState(b, L.plats.get(b.platformId)).left > 0 ? ` · 미수 ${won(payState(b, L.plats.get(b.platformId)).left)}` : ""}
           </span>
         </button>
         {departing && !readOnly && canCheckOut(b, today) ? (

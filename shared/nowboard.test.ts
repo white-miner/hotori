@@ -106,6 +106,16 @@ test("퇴실처리 후 빈 칸 · 되돌리기 전제", () => {
   assert.equal(nowByRoom([b], "2026-10-21").has("r301"), false);
   assert.equal(canCheckOut(bk({ arrived: true, checkIn: "2026-10-19", nights: 2 }), "2026-10-21"), true);
   assert.equal(canCheckOut(b, "2026-10-21"), false);
+  // 장기: 입실일부터 퇴실처리 가능 · 재고 창 종료 라벨
+  assert.equal(canCheckOut(bk({ stayMode: "long_stay", checkIn: "2026-10-11", nights: 7, arrived: true }), "2026-10-15"), true);
+  assert.equal(
+    nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-14", nights: 7, arrived: true, roomId: "r301" }), "2026-10-21", {
+      stayTimes: stay,
+      clock: clock("10:00", "2026-10-21"),
+    }).label,
+    "재고 창 종료",
+  );
+  assert.equal(nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-19", nights: 7, arrived: true, roomId: "r301" }), "2026-10-19").longStay, true);
 });
 
 test("중도 퇴실: stayEnd가 앞당겨진 날 아침에 퇴실 예정", () => {

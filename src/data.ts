@@ -20,6 +20,16 @@ import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
+import {
+  type NightCharge,
+  chargesOutsideWindow,
+  longStayRateToJson,
+  normalizeLongStayRate,
+  parseSettleCycle,
+  parseStayMode,
+  planMissingCharges,
+  priceCacheFromCharges,
+} from "../shared/longstay";
 
 export interface Hotel {
   id: string;
@@ -48,6 +58,9 @@ interface BookingRow {
   no_clean?: boolean; // 청소X
   early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
   checked_out_at?: string | null; // 정상 퇴실처리 시각
+  stay_mode?: string | null;
+  long_stay_rate?: unknown;
+  settle_cycle?: string | null;
   refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
   guests?: number | null; // 인원
@@ -69,6 +82,7 @@ interface BookingRow {
   created_at: string;
   updated_at: string;
   booking_payments?: PaymentRow[];
+  booking_night_charges?: ChargeRow[];
 }
 interface PaymentRow {
   id: string;
@@ -79,7 +93,15 @@ interface PaymentRow {
   biz_date: string;
   created_at: string;
 }
+interface ChargeRow {
+  id: string;
+  booking_id?: string;
+  night_date: string;
+  amount: number;
+  created_at: string;
+}
 const PAY_COLS = "id,booking_id,kind,method,amount,biz_date,created_at";
+const CHARGE_COLS = "id,booking_id,night_date,amount,created_at";
 const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
   bookingId: r.booking_id ?? bookingId ?? "",
@@ -89,10 +111,17 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   bizDate: r.biz_date,
   createdAt: r.created_at,
 });
+const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
+  id: r.id,
+  bookingId: r.booking_id ?? bookingId ?? "",
+  nightDate: r.night_date,
+  amount: r.amount,
+  createdAt: r.created_at,
+});
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
-// 받은 돈(선금·잔금)도 함께 불러와요
-const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
+// 받은 돈(선금·잔금) · 장기 원장도 함께 불러와요
+const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
 // 단체 정산
 interface GroupRow {
@@ -165,6 +194,10 @@ export function fromRow(r: BookingRow): Booking {
     noClean: r.no_clean === true,
     earlyOut: r.early_out_on ?? null,
     checkedOutAt: r.checked_out_at ?? null,
+    stayMode: parseStayMode(r.stay_mode),
+    longStayRate: normalizeLongStayRate(r.long_stay_rate),
+    settleCycle: parseSettleCycle(r.settle_cycle),
+    charges: (r.booking_night_charges ?? []).map((x) => chargeFromRow(x, r.id)).sort((a, b) => a.nightDate.localeCompare(b.nightDate)),
     refund: r.refund_amount ?? null,
     memo: r.memo,
     guests: r.guests ?? null,
@@ -210,6 +243,9 @@ function toRow(b: Booking) {
     // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     checked_out_at: stay && b.status === "active" && b.checkedOutAt ? b.checkedOutAt : null,
+    stay_mode: stay && b.stayMode === "long_stay" ? "long_stay" : "standard",
+    long_stay_rate: stay && b.stayMode === "long_stay" ? longStayRateToJson(b.longStayRate) : null,
+    settle_cycle: stay && b.stayMode === "long_stay" ? b.settleCycle ?? "weekly" : null,
     refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
     guests: b.guests && b.guests >= 1 ? Math.min(99, Math.round(b.guests)) : null,
@@ -327,6 +363,41 @@ export function useHotelData(hotelId: string) {
     };
   }, [hotelId, refresh]);
 
+  /** 장기 원장: 재고 창 밤 ⊆ 청구 줄. 누락 삽입 · 창 밖 삭제 · price 캐시 갱신 */
+  const syncNightCharges = useCallback(async (b: Booking): Promise<Booking> => {
+    if (b.stayMode !== "long_stay" || !b.longStayRate || !b.nights) return b;
+    const rate = b.longStayRate;
+    const existing = b.charges ?? [];
+    const planned = planMissingCharges(b.checkIn, b.nights, rate, existing);
+    if ("err" in planned) throw new Error(planned.err);
+    if (planned.length) {
+      const { data, error } = await supabase
+        .from("booking_night_charges")
+        .insert(planned.map((p) => ({ booking_id: b.id, night_date: p.nightDate, amount: p.amount })))
+        .select(CHARGE_COLS);
+      if (error) throw error;
+      const added = (data as ChargeRow[]).map((r) => chargeFromRow(r, b.id));
+      existing.push(...added);
+    }
+    const drop = chargesOutsideWindow(b.checkIn, b.nights, existing);
+    if (drop.length) {
+      const { error } = await supabase.from("booking_night_charges").delete().in("id", drop.map((x) => x.id));
+      if (error) throw error;
+    }
+    const keep = existing.filter((c) => !drop.some((d) => d.id === c.id)).sort((a, c) => a.nightDate.localeCompare(c.nightDate));
+    const price = priceCacheFromCharges(keep);
+    if (price !== b.price) {
+      const { data, error } = await supabase.from("bookings").update({ price }).eq("id", b.id).select(COLS).single();
+      if (error) throw error;
+      const saved = fromRow(data as BookingRow);
+      setBookings((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      return saved;
+    }
+    const saved = { ...b, charges: keep, price };
+    setBookings((list) => list.map((x) => (x.id === b.id ? saved : x)));
+    return saved;
+  }, []);
+
   const saveBooking = useCallback(
     async (b: Booking, isNew: boolean): Promise<Booking> => {
       const row = toRow(b);
@@ -335,14 +406,18 @@ export function useHotelData(hotelId: string) {
         : supabase.from("bookings").update(row).eq("id", b.id).select(COLS).single();
       const { data, error } = await q;
       if (error) throw error;
-      const saved = fromRow(data as BookingRow);
+      let saved = fromRow(data as BookingRow);
       setBookings((list) => (isNew ? [...list, saved] : list.map((x) => (x.id === saved.id ? saved : x))));
+      if (saved.stayMode === "long_stay") saved = await syncNightCharges({ ...saved, longStayRate: b.longStayRate ?? saved.longStayRate });
       return saved;
     },
-    [hotelId],
+    [hotelId, syncNightCharges],
   );
   const patchBooking = useCallback(
-    async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt">>) => {
+    async (
+      id: string,
+      patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt" | "nights" | "price" | "segments">>,
+    ) => {
       const row: Record<string, unknown> = {};
       if (patch.arrived !== undefined) row.arrived = patch.arrived;
       if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
@@ -350,6 +425,11 @@ export function useHotelData(hotelId: string) {
       if (patch.tentative !== undefined) row.tentative = patch.tentative;
       if (patch.noClean !== undefined) row.no_clean = patch.noClean;
       if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
+      if (patch.nights !== undefined) row.nights = patch.nights;
+      if (patch.price !== undefined) row.price = Math.round(patch.price);
+      if (patch.segments !== undefined) {
+        row.room_segments = patch.segments?.map((x) => ({ room: x.roomId, nights: x.nights })) ?? null;
+      }
       setBookings((list) =>
         list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)),
       );
@@ -358,10 +438,15 @@ export function useHotelData(hotelId: string) {
         void refresh();
         throw error;
       }
-      const saved = fromRow(data as BookingRow);
-      setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+      let saved = fromRow(data as BookingRow);
+      if (saved.stayMode === "long_stay" && (patch.nights !== undefined || patch.checkedOutAt !== undefined)) {
+        saved = await syncNightCharges(saved);
+      } else {
+        setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+      }
+      return saved;
     },
-    [refresh],
+    [refresh, syncNightCharges],
   );
   /** 임시 배치를 한 번에 확정 (재고는 그대로, 표시만 확정) */
   const confirmTentative = useCallback(
@@ -563,7 +648,29 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
-  return { hotel, bookings, error, syncedAt, refresh, saveBooking, patchBooking, confirmTentative, setPlacement, setEarlyOut, addPayment, deletePayment, deleteBooking, saveHotel, saveGroup, patchGroup, groups, saveGroupInfo, addGroupPayment, deleteGroupPayment };
+  return {
+    hotel,
+    bookings,
+    error,
+    syncedAt,
+    refresh,
+    saveBooking,
+    patchBooking,
+    syncNightCharges,
+    confirmTentative,
+    setPlacement,
+    setEarlyOut,
+    addPayment,
+    deletePayment,
+    deleteBooking,
+    saveHotel,
+    saveGroup,
+    patchGroup,
+    groups,
+    saveGroupInfo,
+    addGroupPayment,
+    deleteGroupPayment,
+  };
 }
 export type HotelData = ReturnType<typeof useHotelData>;
 
