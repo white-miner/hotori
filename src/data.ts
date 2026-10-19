@@ -45,6 +45,7 @@ interface BookingRow {
   end_time: string | null;
   arrived: boolean;
   tentative?: boolean; // 임시 배치
+  no_clean?: boolean; // 청소X
   early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
   refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
@@ -88,7 +89,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -160,6 +161,7 @@ export function fromRow(r: BookingRow): Booking {
     endTime: r.end_time ? r.end_time.slice(0, 5) : null,
     arrived: r.arrived,
     tentative: r.tentative === true,
+    noClean: r.no_clean === true,
     earlyOut: r.early_out_on ?? null,
     refund: r.refund_amount ?? null,
     memo: r.memo,
@@ -202,6 +204,7 @@ function toRow(b: Booking) {
     end_time: stay ? null : b.endTime,
     arrived: b.arrived,
     tentative: b.tentative === true,
+    no_clean: b.noClean === true,
     // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
@@ -335,12 +338,13 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId],
   );
-  const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative">>) => {
+  const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean">>) => {
     const row: Record<string, unknown> = {};
     if (patch.arrived !== undefined) row.arrived = patch.arrived;
     if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
     if (patch.status !== undefined) row.status = patch.status;
     if (patch.tentative !== undefined) row.tentative = patch.tentative;
+    if (patch.noClean !== undefined) row.no_clean = patch.noClean;
     setBookings((list) => list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)));
     const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
     if (error) {

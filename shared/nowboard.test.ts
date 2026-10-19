@@ -36,8 +36,10 @@ test("지금 상태: 입실 예정 · 투숙 · 퇴실 예정 · 늦은 퇴실 �
   assert.equal(nowFlags(bk({ arrived: true, checkIn: date, nights: 1 }), date).kind, "departing");
   assert.equal(nowFlags(bk({ arrived: true, checkIn: date, nights: 1, lateOut: 2 }), date).kind, "lateOut");
   assert.equal(nowFlags(bk({ arrived: true, tentative: true, checkIn: date, nights: 3 }), date).tentative, true);
+  assert.equal(nowFlags(bk({ arrived: true, noClean: true, checkIn: date, nights: 3 }), date).noClean, true);
   assert.equal(nowFlags(bk({ roomId: null, checkIn: date }), date).kind, "unassigned");
   assert.equal(nowFlags(null, date).kind, "empty");
+  assert.equal(nowFlags(null, date).noClean, false);
 });
 
 test("중도 퇴실 밤은 보드에 안 나오고, 그 전날 밤은 퇴실 예정", () => {

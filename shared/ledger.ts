@@ -144,6 +144,8 @@ export interface Booking {
   arrived: boolean;
   /** 임시 배치: 방은 잡았으나 확정 전 (재고는 확정과 동일하게 점유) */
   tentative?: boolean;
+  /** 청소X: 이 투숙은 청소하지 않음 (예약 단위 · 현장 운영 플래그) */
+  noClean?: boolean;
   /** 중도 퇴실: 손님이 떠난 영업일 (입실 다음 날 ~ 퇴실 전날). 그날 밤부터는 방이 비어요. 없으면 끝까지 묵어요 */
   earlyOut?: string | null;
   /** 중도 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 중도 퇴실한 날짜에 빠져요 */

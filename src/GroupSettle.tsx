@@ -15,10 +15,12 @@ interface Props {
   members: Booking[];
   onClose: () => void;
   notify: (m: string) => void;
+  /** 같은 단체에 객실 추가 창 열기 */
+  onAddRooms?: () => void;
 }
 const num = (v: string) => v.replace(/\D/g, "").slice(0, 9);
 
-export default function GroupSettle({ data, today, groupId, members, onClose, notify }: Props) {
+export default function GroupSettle({ data, today, groupId, members, onClose, notify, onAddRooms }: Props) {
   const s = data.hotel!.settings;
   const L = lookups(s);
   const info: GroupInfo = data.groups.get(groupId) ?? emptyGroupInfo(groupId);
@@ -317,6 +319,11 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
         {err ? <div className="ferr noprint">{err}</div> : null}
         <div className="mf noprint">
           <div className="keys acts">
+            {onAddRooms ? (
+              <button type="button" className="btn line sm" onClick={onAddRooms}>
+                <Plus size={14} /> 단체에 객실 추가
+              </button>
+            ) : null}
             <button type="button" className="btn line sm" onClick={() => window.print()}>
               <Printer size={14} /> 저장(이미지/PDF)
             </button>

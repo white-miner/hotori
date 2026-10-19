@@ -3,6 +3,7 @@ import { Check, ChevronRight, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
+import GroupAdd from "./GroupAdd";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
@@ -80,6 +81,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [gExt, setGExt] = useState<{ id: string; collect: boolean; method: BookPayMethod } | null>(null);
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
+  const [addGroupId, setAddGroupId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
@@ -203,6 +205,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <span className="c-name">
                   <span className="gn">{b.guestName}</span>
                   {b.groupId && !gm ? <span className="grptag" title="단체 예약">단체 {b.groupName}</span> : null}
+                  {b.noClean && b.status === "active" ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
                   {STATUS[b.status] ? <span className={b.status === "noshow" ? "nst" : "cxt"} title={b.status === "noshow" ? "결제한 금액은 매출에 남아요" : "전액 환불 · 매출에서 빠져요"}>{STATUS[b.status]}</span> : null}
                   {b.memo ? <span className="memo">{b.memo}</span> : null}
                 </span>
@@ -373,6 +376,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                     전 방 {EXTEND_COPY}
                   </button>
                 ) : null}
+                <button type="button" className="btn sm line" onClick={() => setAddGroupId(g.groupId)}>
+                  객실 추가
+                </button>
                 <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
                   정산하기
                 </button>
@@ -689,7 +695,30 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
         </>
       )}
       {settleId && allGroups.get(settleId) ? (
-        <GroupSettle data={data} today={today} groupId={settleId} members={allGroups.get(settleId)!.members} onClose={() => setSettleId(null)} notify={notify} />
+        <GroupSettle
+          data={data}
+          today={today}
+          groupId={settleId}
+          members={allGroups.get(settleId)!.members}
+          onClose={() => setSettleId(null)}
+          notify={notify}
+          onAddRooms={() => {
+            setAddGroupId(settleId);
+            setSettleId(null);
+          }}
+        />
+      ) : null}
+      {addGroupId && allGroups.get(addGroupId) ? (
+        <GroupAdd
+          data={data}
+          today={today}
+          members={allGroups.get(addGroupId)!.members}
+          onClose={() => setAddGroupId(null)}
+          onSaved={(m) => {
+            notify(m);
+            setAddGroupId(null);
+          }}
+        />
       ) : null}
     </main>
   );
