@@ -1,13 +1,13 @@
 // 인원 추가 요금 등급 · 특별일 (설정 저장 모양). ledger.ts가 불러서 따로 둬요
 export interface SurchargeTier {
   id: string;
-  name: string; // 일반 · 독채 …
+  name: string; // 일반 · 특수 …
   weekday: number; // 1명 1박 (일~목 밤)
   weekend: number; // 1명 1박 (금·토 밤, 특별일)
 }
 export const DEFAULT_TIERS: SurchargeTier[] = [
   { id: "normal", name: "일반", weekday: 10000, weekend: 20000 },
-  { id: "house", name: "독채", weekday: 20000, weekend: 30000 },
+  { id: "house", name: "특수", weekday: 20000, weekend: 30000 },
 ];
 export const DEFAULT_BASE_GUESTS = 2;
 export const GUESTS_MAX = 99;
@@ -18,7 +18,17 @@ export const intIn = (v: unknown, lo: number, hi: number): number | null => {
   const n = Number(v);
   return Number.isInteger(n) && n >= lo && n <= hi ? n : null;
 };
-/** 설정의 추가 요금 등급: 없거나 망가졌으면 기본(일반·독채) */
+/** 예전 이름(펜션룸 · 펜션 · 독채)은 화면에서 '특수'로 보여요. 저장된 값은 그대로 */
+const LEGACY_SPECIAL = /^(펜션룸|펜션|독채)$/;
+export function tierLabel(t: Pick<SurchargeTier, "name">): string {
+  const n = t.name.trim();
+  return LEGACY_SPECIAL.test(n) ? "특수" : n;
+}
+/** '일반 객실 추가금 1만/2만 · 특수 객실 추가금 2만/3만' */
+export function tierSummary(tiers: readonly SurchargeTier[], short: (n: number) => string): string {
+  return tiers.map((t) => `${tierLabel(t) || "이름 없는"} 객실 추가금 ${short(t.weekday)}/${short(t.weekend)}`).join(" · ");
+}
+/** 설정의 추가 요금 등급: 없거나 망가졌으면 기본(일반·특수) */
 export function normalizeTiers(raw: unknown): SurchargeTier[] {
   if (!Array.isArray(raw)) return DEFAULT_TIERS.map((t) => ({ ...t }));
   const seen = new Set<string>();

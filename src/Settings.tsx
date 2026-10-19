@@ -1,7 +1,7 @@
 import { EXPENSE_CATEGORY_MAX } from "../shared/expense";
 import { pastelColor, strongColor } from "../shared/floorColor";
 import { isOnsite } from "../shared/payment";
-import { GUESTS_MAX, typeGuests } from "../shared/surcharge";
+import { GUESTS_MAX, tierLabel, typeGuests } from "../shared/surcharge";
 import { SpecialDates, TierSettings } from "./SurchargeSettings";
 import FeeSettings from "./FeeSettings";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
@@ -606,7 +606,7 @@ export default function Settings({ data, email, notify }: Props) {
           ) : null}
         </section>
 
-        <section className="card">
+        <section className="card" id="set-types">
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
@@ -636,7 +636,7 @@ export default function Settings({ data, email, notify }: Props) {
                 }}
               />
               <span className="tfill" />
-              <span className="tguest" title="인원 추가금: 기본 인원을 넘으면 1명마다 등급 요금을 더해요. 최대 인원을 넘으면 경고만 해요">
+              <span className="tguest" title="인원 추가금: 기본 인원을 넘으면 1명마다 일반 · 특수 객실 추가금을 더해요. 최대 인원을 넘으면 경고만 해요">
                 {(() => {
                   const g = typeGuests(t);
                   const setG = (patch: { baseGuests?: number; maxGuests?: number }) =>
@@ -649,10 +649,10 @@ export default function Settings({ data, email, notify }: Props) {
                       최대
                       <input className="gin num" inputMode="numeric" aria-label={`${t.name} 최대 인원`} value={g.max} onChange={(e) => setG({ maxGuests: cl(e.target.value) })} />
                       명
-                      <select className="tsel" aria-label={`${t.name} 추가 요금 등급`} value={t.tierId ?? s.surchargeTiers[0]?.id} onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, tierId: e.target.value } : y)) }))}>
+                      <select className="tsel" aria-label={`${t.name} 객실 종류 (일반 · 특수)`} title="일반 · 특수: 설정 › 인원 추가 요금의 1명 1박 금액" value={t.tierId ?? s.surchargeTiers[0]?.id} onChange={(e) => update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, tierId: e.target.value } : y)) }))}>
                         {s.surchargeTiers.map((r) => (
                           <option key={r.id} value={r.id}>
-                            {r.name || "이름 없는 등급"}
+                            {tierLabel(r) || "이름 없음"}
                           </option>
                         ))}
                       </select>

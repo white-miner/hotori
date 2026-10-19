@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings } from "./ledger";
-import { DEFAULT_TIERS, isPeakNight, normalizeTiers, shortWon, surchargeOf, typeGuests } from "./surcharge";
+import { DEFAULT_TIERS, isPeakNight, normalizeTiers, shortWon, surchargeOf, tierLabel, tierSummary, typeGuests } from "./surcharge";
 
 const S = normalizeSettings({
   types: [
@@ -20,7 +20,7 @@ const bk = (p: Partial<Booking>): Booking => ({
   createdAt: "", updatedAt: "", segments: null, earlyOut: null, refund: null, ...p,
 });
 
-test("기본 설정: 등급 일반 1만/2만 · 독채 2만/3만, 특별일은 날짜만 한 번씩", () => {
+test("기본 설정: 일반 1만/2만 · 특수 2만/3만, 특별일은 날짜만 한 번씩", () => {
   assert.deepEqual(normalizeSettings({}).surchargeTiers, DEFAULT_TIERS);
   assert.deepEqual(S.specialDates, ["2026-10-21"]);
   assert.deepEqual(normalizeTiers([{ id: "x", name: "펜션", weekday: "15000", weekend: -1 }]), [{ id: "x", name: "펜션", weekday: 15000, weekend: 0 }]);
@@ -96,4 +96,17 @@ test("타입 안의 새 칸(기본·최대 인원, 등급)은 설정을 다시 �
   const again = normalizeSettings(JSON.parse(JSON.stringify(S)));
   assert.equal(again.types[2].tierId, "house");
   assert.equal(again.types[0].maxGuests, 3);
+});
+
+test("객실 종류 이름: 일반 · 특수 (예전 펜션룸 · 독채는 화면에서 '특수', 저장 값과 금액은 그대로)", () => {
+  assert.deepEqual(DEFAULT_TIERS.map((t) => t.name), ["일반", "특수"]);
+  const old = normalizeSettings({ surchargeTiers: [{ id: "normal", name: "일반", weekday: 10000, weekend: 20000 }, { id: "house", name: "펜션룸", weekday: 20000, weekend: 30000 }] } as never);
+  assert.equal(old.surchargeTiers[1].name, "펜션룸");
+  assert.deepEqual(old.surchargeTiers.map(tierLabel), ["일반", "특수"]);
+  assert.equal(tierLabel({ name: "독채" }), "특수");
+  assert.equal(tierLabel({ name: "VIP" }), "VIP");
+  assert.equal(tierSummary(old.surchargeTiers, shortWon), "일반 객실 추가금 1만/2만 · 특수 객실 추가금 2만/3만");
+  // 특수를 고른 타입은 예전처럼 2만/3만
+  const S3 = normalizeSettings({ ...old, types: [{ id: "p", name: "펜션룸1", baseGuests: 5, tierId: "house" }], floors: [{ id: "f", name: "1층", rooms: [{ id: "r1", no: "101", typeId: "p" }] }] } as never);
+  assert.equal(surchargeOf(S3, bk({ typeId: "p", roomId: "r1", checkIn: "2026-10-23", nights: 1 }), 7).total, 60000);
 });

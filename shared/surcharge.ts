@@ -103,7 +103,7 @@ export function surchargeOf(s: SPick, b: BPick, guests: number | null | undefine
 }
 
 export function validateTier(t: SurchargeTier): string | null {
-  if (!t.name.trim()) return "등급 이름을 적어 주세요.";
+  if (!t.name.trim()) return "객실 종류 이름을 적어 주세요.";
   if (t.weekday > SURCHARGE_MAX || t.weekend > SURCHARGE_MAX) return "요금이 너무 커요.";
   return null;
 }

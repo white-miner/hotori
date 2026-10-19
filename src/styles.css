@@ -1443,3 +1443,4 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cfld > label { align-self: start; padding-top: 6px; }
 .inp.rate, .inp.days { width: auto; }
 .cardfee label > span:first-child { white-space: nowrap; }
+.tsum { margin-top: 8px; }
