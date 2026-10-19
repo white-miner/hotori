@@ -66,6 +66,23 @@ import {
   validateExtendRate,
 } from "../shared/extend";
 import { canCheckOut, isCheckedOut } from "../shared/nowboard";
+import {
+  LONG_STAY_WINDOW_DEFAULT,
+  WINDOW_EXTEND_DEFAULT,
+  type SettleCycle,
+  type StayMode,
+  flatRate,
+  isLongStay,
+  longPayState,
+  nightAmount,
+  nightsAtCheckout,
+  planLongStayExtend,
+  planWindowExtend,
+  settleHint,
+  validateLongStayRate,
+  windowExtendBlock,
+  withPlannedCharges,
+} from "../shared/longstay";
 
 interface Props {
   data: HotelData;
@@ -122,9 +139,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
-  const [nights, setNights] = useState(() => clampStayNights(base?.nights ?? p.nights ?? 1));
-  // 숙박: 퇴실 = 입실 + 박수. 입실·박수 바꾸면 퇴실이, 퇴실 고르면 박수가 맞춰져요
+  const [stayMode, setStayMode] = useState<StayMode>(base?.stayMode === "long_stay" ? "long_stay" : "standard");
+  const [flatAmt, setFlatAmt] = useState(() => String(base?.longStayRate?.kind === "flat" ? base.longStayRate.flatAmount ?? "" : ""));
+  const [settleCycle, setSettleCycle] = useState<SettleCycle>(base?.settleCycle === "adhoc" ? "adhoc" : "weekly");
+  const [nights, setNights] = useState(() =>
+    clampStayNights(base?.nights ?? p.nights ?? (base?.stayMode === "long_stay" ? LONG_STAY_WINDOW_DEFAULT : 1)),
+  );
+  // 숙박: 퇴실 = 입실 + 박수. 입실·박수 바꾸면 퇴실이, 퇴실 고르면 박수가 맞춰져요 (장기는 재고 창만)
   const checkOutDate = checkOutFromStayNights(checkIn, nights);
+  const long = stayMode === "long_stay";
+  const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
@@ -209,6 +233,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   );
   const [exBusy, setExBusy] = useState(false);
   const [exErr, setExErr] = useState<string | null>(null);
+  const [winBusy, setWinBusy] = useState(false);
+  const [showLedger, setShowLedger] = useState(false);
   const canEx = !!live && canExtend(live);
   const eocRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -226,23 +252,46 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!live || !canExtend(live)) return;
     setExErr(null);
     setEo(null);
-    setEx({ rate: String(nightRate(live, groupRates?.[live.typeId])), collect: true, method: "card" });
+    const rate =
+      isLongStay(live) && live.longStayRate
+        ? nightAmount(live.longStayRate, addDays(live.checkIn, live.nights ?? 0)) ?? 0
+        : nightRate(live, groupRates?.[live.typeId]);
+    setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
   };
   const confirmEx = async () => {
     if (!live || !ex || exBusy) return;
-    const rate = Number(ex.rate || 0);
-    const rv = validateExtendRate(rate);
-    if (rv) return setExErr(rv);
-    const block = extendBlock(s, data.bookings, live, rate, (id) => L.roomLabel(id));
-    if (block) return setExErr(block);
-    const plan = planExtend(live, rate, ex.collect);
-    if (ex.collect && plan.collectAmount > 0) {
-      const pv = validatePayment(plan.collectAmount, ex.method, today);
-      if (pv) return setExErr(pv);
-    }
     setExBusy(true);
     setExErr(null);
     try {
+      if (isLongStay(live) && live.longStayRate) {
+        const planned = planLongStayExtend(live, live.longStayRate);
+        if ("err" in planned) return setExErr(planned.err);
+        const block = extendBlock(s, data.bookings, live, planned.line.amount, (id) => L.roomLabel(id));
+        if (block) return setExErr(block);
+        const next: Booking = {
+          ...live,
+          nights: planned.draft.nights,
+          price: planned.draft.price,
+          segments: planned.draft.segments,
+          stayMode: "long_stay",
+          longStayRate: live.longStayRate,
+          settleCycle: live.settleCycle ?? "weekly",
+        };
+        const saved = await data.saveBooking(next, false);
+        onClose();
+        notify(`${saved.guestName} 님 재고 창 +1박 · ${planned.draft.nights}박 · 원장 +${won(planned.line.amount)}원`);
+        return;
+      }
+      const rate = Number(ex.rate || 0);
+      const rv = validateExtendRate(rate);
+      if (rv) return setExErr(rv);
+      const block = extendBlock(s, data.bookings, live, rate, (id) => L.roomLabel(id));
+      if (block) return setExErr(block);
+      const plan = planExtend(live, rate, ex.collect);
+      if (ex.collect && plan.collectAmount > 0) {
+        const pv = validatePayment(plan.collectAmount, ex.method, today);
+        if (pv) return setExErr(pv);
+      }
       const next: Booking = { ...live, nights: plan.draft.nights, price: plan.draft.price, segments: plan.draft.segments };
       const saved = await data.saveBooking(next, false);
       let collected = false;
@@ -264,6 +313,31 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setExErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
     } finally {
       setExBusy(false);
+    }
+  };
+  const confirmWinExtend = async () => {
+    if (!live || !isLongStay(live) || !live.longStayRate || winBusy) return;
+    const block = windowExtendBlock(s, data.bookings, live, WINDOW_EXTEND_DEFAULT, live.longStayRate, (id) => L.roomLabel(id));
+    if (block) return notify(block);
+    const plan = planWindowExtend(live, WINDOW_EXTEND_DEFAULT, live.longStayRate);
+    if ("err" in plan) return notify(plan.err);
+    setWinBusy(true);
+    try {
+      const next: Booking = {
+        ...live,
+        nights: plan.nights,
+        price: plan.price,
+        segments: plan.segments,
+        stayMode: "long_stay",
+        longStayRate: live.longStayRate,
+        settleCycle: live.settleCycle ?? "weekly",
+      };
+      const saved = await data.saveBooking(next, false);
+      notify(`${saved.guestName} 님 재고 창 +${WINDOW_EXTEND_DEFAULT}박 · ${plan.nights}박 · 원장 +${won(plan.totalRate)}원`);
+    } catch (e) {
+      notify(e instanceof Error ? `창 연장을 저장하지 못했어요: ${e.message}` : "창 연장을 저장하지 못했어요");
+    } finally {
+      setWinBusy(false);
     }
   };
   const confirmEo = async () => {
@@ -336,8 +410,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       }
       return;
     }
-    if (!canCheckOut({ ...base, checkedOutAt: null }, today)) {
-      setInErr("퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.");
+    const liveB = data.bookings.find((x) => x.id === base.id) ?? base;
+    if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
+      setInErr(
+        isLongStay(liveB)
+          ? "입실일 전부터는 퇴실처리할 수 없어요."
+          : "퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.",
+      );
       return;
     }
     setCoBusy(true);
@@ -346,7 +425,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setCheckedOutAt(at);
     setArrived(true);
     try {
-      await data.patchBooking(base.id, { checkedOutAt: at, arrived: true });
+      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: at, arrived: true };
+      // 장기: 창이 남았으면 실제 투숙 밤으로 nights를 맞춰 재고를 풀어요
+      if (isLongStay(liveB) && checkOut(liveB) > today) {
+        const n = nightsAtCheckout(liveB.checkIn, today);
+        patch.nights = n;
+        patch.segments = fitSegments(liveB.segments, liveB.roomId, n);
+        setNights(n);
+      }
+      await data.patchBooking(base.id, patch);
       notify(`${base.guestName} 님 퇴실처리했어요`);
     } catch {
       setCheckedOutAt(null);
@@ -405,12 +492,46 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     nameRef.current?.focus();
   }, []);
 
+  const liveCharges = (base ? data.bookings.find((x) => x.id === base.id)?.charges : null) ?? base?.charges ?? [];
+  const draftLongPreview =
+    long && longRate && kind === "stay"
+      ? withPlannedCharges(
+          {
+            id: base?.id ?? "__draft__",
+            kind: "stay",
+            status: "active",
+            platformId,
+            price: 0,
+            guestName,
+            typeId,
+            roomId,
+            segments: null,
+            checkIn,
+            nights,
+            startTime: null,
+            endTime: null,
+            arrived,
+            memo: null,
+            cancelledAt: null,
+            createdAt: "",
+            updatedAt: "",
+            stayMode: "long_stay",
+            longStayRate: longRate,
+            settleCycle,
+            charges: liveCharges,
+            payments: [],
+          },
+          longRate,
+        )
+      : null;
+  const draftPrice =
+    long && draftLongPreview && !("err" in draftLongPreview) ? draftLongPreview.price : Number(price || 0);
   const draftBase: Booking = {
     id: base?.id ?? "__draft__",
     kind,
     status,
     platformId,
-    price: Number(price || 0),
+    price: draftPrice,
     guestName,
     typeId,
     roomId,
@@ -424,12 +545,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     noClean,
     earlyOut: base?.earlyOut ?? null,
     checkedOutAt,
+    stayMode: kind === "stay" ? stayMode : "standard",
+    longStayRate: kind === "stay" && long ? longRate : null,
+    settleCycle: kind === "stay" && long ? settleCycle : null,
+    charges: long && draftLongPreview && !("err" in draftLongPreview) ? draftLongPreview.charges : liveCharges,
     refund: base?.refund ?? null,
     memo: memo || null,
     groupId: base?.groupId ?? null,
     groupName: base?.groupName ?? null,
     guests,
-    extraFee: extraFee || null,
+    extraFee: long ? null : extraFee || null,
     earlyIn: kind === "stay" && earlyIn ? earlyIn : null,
     lateOut: kind === "stay" && lateOut ? lateOut : null,
     timeFee: kind === "stay" && (earlyIn || lateOut) ? timeFee : null,
@@ -544,16 +669,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
   };
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
-  const payTracked = isOnsite(L.plats.get(platformId)) || livePays.length > 0;
+  const payTracked = long || isOnsite(L.plats.get(platformId)) || livePays.length > 0;
   const curPlat = L.plats.get(platformId);
   const po = payoutOf(draftBase, curPlat);
   const poLine = payoutLine(po);
   // 쿠폰 · 입금 칸: 플랫폼 예약이거나 수수료율이 있는 플랫폼 (또는 이미 쿠폰을 적었으면)
-  const feeOn = !!curPlat && (!isOnsite(curPlat) || !!curPlat.feeRate || coupons.length > 0);
+  const feeOn = !long && !!curPlat && (!isOnsite(curPlat) || !!curPlat.feeRate || coupons.length > 0);
   const depAmt = payTracked && !livePays.length ? Number(dep.amount || 0) : 0;
   const payPaid = livePays.reduce((n, x) => n + x.amount, 0) + depAmt;
-  const payDue = revenueOf({ ...draftBase, status: "active" });
-  const payLeft = Math.max(0, payDue - payPaid);
+  const longPay = long
+    ? longPayState({
+        status: "active",
+        charges: draftBase.charges,
+        payments: [...livePays, ...(depAmt > 0 ? [{ id: "_dep", bookingId: "", kind: "deposit" as const, method: dep.method, amount: depAmt, bizDate: dep.date, createdAt: "" }] : [])],
+      })
+    : null;
+  const payDue = longPay ? longPay.accrued : revenueOf({ ...draftBase, status: "active" });
+  const payLeft = longPay ? Math.max(0, longPay.accrued - payPaid) : Math.max(0, payDue - payPaid);
   const takeBalance = async () => {
     if (!base || !bal || payBusy) return;
     const amount = Number(bal.amount || 0);
@@ -565,7 +697,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       await data.addPayment(base.id, { kind: "balance", method: bal.method, amount, bizDate: today });
       setBal(null);
       const left = Math.max(0, payDue - payPaid - amount);
-      notify(`${guestName} 님 잔금 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`);
+      notify(
+        long
+          ? `${guestName} 님 미수 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 미수 ${won(left)}원` : " · 정산됨"}`
+          : `${guestName} 님 잔금 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`,
+      );
     } catch (e) {
       setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
     } finally {
@@ -574,7 +710,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const delPay = async (id: string) => {
     if (!base || payBusy) return;
-    if (!window.confirm("이 결제 줄을 지울까요? 잔금이 다시 늘어나요.")) return;
+    if (!window.confirm(long ? "이 결제 줄을 지울까요? 미수가 다시 늘어나요." : "이 결제 줄을 지울까요? 잔금이 다시 늘어나요.")) return;
     setPayBusy(true);
     setPayErr(null);
     try {
@@ -621,6 +757,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
   async function save(again = false, override?: Status) {
     const draft = override ? { ...draftBase, status: override } : draftBase;
+    if (draft.kind === "stay" && draft.stayMode === "long_stay") {
+      const rv = validateLongStayRate(draft.longStayRate);
+      if (rv) return setErr(rv);
+      if (draftLongPreview && "err" in draftLongPreview) return setErr(draftLongPreview.err);
+    }
     const v = validateBooking(draft, s);
     if (v) return setErr(v);
     if (base && !override && nightsChangedWithoutPrice(base, draft) && !window.confirm(NIGHTS_PRICE_WARN)) return;
@@ -643,7 +784,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (depAmt > 0) {
       const pv = validatePayment(depAmt, dep.method, dep.date);
       if (pv) return setErr(`선금: ${pv}`);
-      if (depAmt > draft.price) return setErr("선금이 판매 가격보다 커요.");
+      if (!long && depAmt > draft.price) return setErr("선금이 판매 가격보다 커요.");
     }
     setBusy(true);
     setErr(null);
@@ -797,7 +938,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
         {base && isActive(base) ? (
           <div
-            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (base.groupId ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? 1 : 0)}`}
+            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (live && isLongStay(live) && canExtend(live) ? 1 : 0) + (base.groupId ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0)}`}
           >
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
@@ -848,7 +989,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {canEx ? (
               <button type="button" className={`beo ${ex ? "on" : ""}`} aria-expanded={!!ex} onClick={() => (ex ? setEx(null) : openEx())}>
                 <CalendarPlus size={17} />
-                <b>{EXTEND_COPY}</b>
+                <b>{isLongStay(live ?? base) ? "재고 창 +1박" : EXTEND_COPY}</b>
+              </button>
+            ) : null}
+            {live && isLongStay(live) && canExtend(live) ? (
+              <button type="button" className="beo" disabled={winBusy} onClick={() => void confirmWinExtend()} title="재고 확정 창을 7박 늘리고 원장에 줄을 쌓아요">
+                <CalendarPlus size={17} />
+                <b>{winBusy ? "연장 중…" : `재고 창 +${WINDOW_EXTEND_DEFAULT}`}</b>
               </button>
             ) : null}
             {eoNow ? (
@@ -874,65 +1021,78 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
         {ex && live ? (
-          <div className="eoc" role="group" aria-label={EXTEND_COPY} ref={eocRef}>
+          <div className="eoc" role="group" aria-label={isLongStay(live) ? "재고 창 +1박" : EXTEND_COPY} ref={eocRef}>
             <div className="eoc-h">
               <b>
-                {EXTEND_COPY} · {(live.nights ?? 0) + 1}박 · {dayLabel(addDays(live.checkIn, (live.nights ?? 0) + 1))} 퇴실
+                {isLongStay(live) ? "재고 창 +1박" : EXTEND_COPY} · {(live.nights ?? 0) + 1}박
+                {isLongStay(live)
+                  ? ` · 판매 보류 끝 ${dayLabel(addDays(live.checkIn, (live.nights ?? 0) + 1))}`
+                  : ` · ${dayLabel(addDays(live.checkIn, (live.nights ?? 0) + 1))} 퇴실`}
               </b>
               <span>
-                판매 가격에 오늘 요금을 더하고, 지금 받거나 잔금으로 남겨 둬요
+                {isLongStay(live)
+                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수 받기」로"
+                  : "판매 가격에 오늘 요금을 더하고, 지금 받거나 잔금으로 남겨 둬요"}
                 {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
               </span>
             </div>
-            <div className="eoc-r">
-              <label htmlFor="ex-rate">오늘 요금</label>
-              <label className="inp price">
-                <input
-                  id="ex-rate"
-                  className="num"
-                  inputMode="numeric"
-                  value={ex.rate ? Number(ex.rate).toLocaleString("ko-KR") : ""}
-                  onChange={(e) => setEx({ ...ex, rate: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void confirmEx();
-                    }
-                  }}
-                />
-                원
-              </label>
-              <small>
-                기본 {won(nightRate(live, groupRates?.[live.typeId]))}원
-                {groupRates?.[live.typeId] ? " · 단체 타입 요금" : (live.nights ?? 0) > 1 ? " · 1박 평균" : " · 현재 판매가"} · 저장 후 판매{" "}
-                {won(live.price + Number(ex.rate || 0))}원
-              </small>
-            </div>
-            <div className="eoc-d">
-              <label>수납</label>
-              <div className="chips">
-                <button type="button" className={`chip ${ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: true })}>
-                  지금 받기
-                </button>
-                <button type="button" className={`chip ${!ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: false })}>
-                  잔금으로 남기기
-                </button>
-              </div>
-            </div>
-            {ex.collect ? (
-              <div className="eoc-d">
-                <label>방법</label>
-                <div className="chips">
-                  {BOOK_PAY_METHODS.map((m) => (
-                    <button type="button" key={m} className={`chip ${ex.method === m ? "on" : ""}`} onClick={() => setEx({ ...ex, method: m })}>
-                      {BOOK_PAY_LABEL[m]}
-                    </button>
-                  ))}
+            {!isLongStay(live) ? (
+              <>
+                <div className="eoc-r">
+                  <label htmlFor="ex-rate">오늘 요금</label>
+                  <label className="inp price">
+                    <input
+                      id="ex-rate"
+                      className="num"
+                      inputMode="numeric"
+                      value={ex.rate ? Number(ex.rate).toLocaleString("ko-KR") : ""}
+                      onChange={(e) => setEx({ ...ex, rate: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void confirmEx();
+                        }
+                      }}
+                    />
+                    원
+                  </label>
+                  <small>
+                    기본 {won(nightRate(live, groupRates?.[live.typeId]))}원
+                    {groupRates?.[live.typeId] ? " · 단체 타입 요금" : (live.nights ?? 0) > 1 ? " · 1박 평균" : " · 현재 판매가"} · 저장 후 판매{" "}
+                    {won(live.price + Number(ex.rate || 0))}원
+                  </small>
                 </div>
-              </div>
+                <div className="eoc-d">
+                  <label>수납</label>
+                  <div className="chips">
+                    <button type="button" className={`chip ${ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: true })}>
+                      지금 받기
+                    </button>
+                    <button type="button" className={`chip ${!ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: false })}>
+                      잔금으로 남기기
+                    </button>
+                  </div>
+                </div>
+                {ex.collect ? (
+                  <div className="eoc-d">
+                    <label>방법</label>
+                    <div className="chips">
+                      {BOOK_PAY_METHODS.map((m) => (
+                        <button type="button" key={m} className={`chip ${ex.method === m ? "on" : ""}`} onClick={() => setEx({ ...ex, method: m })}>
+                          {BOOK_PAY_LABEL[m]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="muted sm" style={{ marginTop: -4 }}>
+                    가격만 올리고 잔금이 생겨요 · 나중에 「잔금 받음」으로 적어요
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="muted sm" style={{ marginTop: -4 }}>
-                가격만 올리고 잔금이 생겨요 · 나중에 「잔금 받음」으로 적어요
+              <div className="muted sm">
+                단가 {won(Number(ex.rate || 0))}원/박 · 저장 후 청구 합계 {won((live.charges ?? []).reduce((n, c) => n + c.amount, 0) + Number(ex.rate || 0))}원
               </div>
             )}
             {exErr ? <div className="ferr">{exErr}</div> : null}
@@ -941,7 +1101,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 닫기
               </button>
               <button type="button" className="btn dark" disabled={exBusy} onClick={() => void confirmEx()}>
-                {exBusy ? "저장 중…" : EXTEND_COPY}
+                {exBusy ? "저장 중…" : isLongStay(live) ? "재고 창 +1박" : EXTEND_COPY}
               </button>
             </div>
           </div>
@@ -1105,40 +1265,83 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <>
             <div className="fld">
               <label>
-                퇴실<em>*</em>
+                숙박 유형<em>*</em>
               </label>
-              <div className="step stayio">
-                <label className="chip datechip on">
-                  <CalendarDays size={15} />
-                  <span className="dl">{dayLabel(checkOutDate)}</span>
-                  <input
-                    type="date"
-                    min={addDays(checkIn, 1)}
-                    max={addDays(checkIn, 90)}
-                    value={checkOutDate}
-                    onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
-                    onClick={(e) => openPicker(e.currentTarget)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openPicker(e.currentTarget);
-                      }
-                    }}
-                    aria-label="퇴실"
-                    title="퇴실일을 고르면 박수가 맞춰져요"
-                  />
-                </label>
-                <span className="rng">
-                  <b>
-                    {dayLabel(checkOutDate)} {outTimeOf(s, { earlyIn, lateOut })}
-                  </b>{" "}
-                  퇴실 · 퇴실날은 다시 팔 수 있어요
-                </span>
+              <div className="chips">
+                <button
+                  type="button"
+                  className={`chip ${!long ? "on" : ""}`}
+                  aria-pressed={!long}
+                  onClick={() => {
+                    setStayMode("standard");
+                    if (nights === LONG_STAY_WINDOW_DEFAULT && isNew) setStayNights(1);
+                  }}
+                >
+                  일반
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${long ? "on" : ""}`}
+                  aria-pressed={long}
+                  onClick={() => {
+                    setStayMode("long_stay");
+                    if (isNew && nights < LONG_STAY_WINDOW_DEFAULT) setStayNights(LONG_STAY_WINDOW_DEFAULT);
+                    if (!flatAmt) setFlatAmt("80000");
+                  }}
+                >
+                  장기(퇴실 미정)
+                </button>
               </div>
             </div>
+            {long ? (
+              <div className="fld">
+                <label>퇴실</label>
+                <div className="step stayio">
+                  <span className="chip datechip on muted" aria-label="퇴실 미정">
+                    퇴실 미정
+                  </span>
+                  <span className="rng">손님 약속 퇴실 없음 · 아래 재고 창까지만 방을 막아 둬요</span>
+                </div>
+              </div>
+            ) : (
+              <div className="fld">
+                <label>
+                  퇴실<em>*</em>
+                </label>
+                <div className="step stayio">
+                  <label className="chip datechip on">
+                    <CalendarDays size={15} />
+                    <span className="dl">{dayLabel(checkOutDate)}</span>
+                    <input
+                      type="date"
+                      min={addDays(checkIn, 1)}
+                      max={addDays(checkIn, 90)}
+                      value={checkOutDate}
+                      onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
+                      onClick={(e) => openPicker(e.currentTarget)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openPicker(e.currentTarget);
+                        }
+                      }}
+                      aria-label="퇴실"
+                      title="퇴실일을 고르면 박수가 맞춰져요"
+                    />
+                  </label>
+                  <span className="rng">
+                    <b>
+                      {dayLabel(checkOutDate)} {outTimeOf(s, { earlyIn, lateOut })}
+                    </b>{" "}
+                    퇴실 · 퇴실날은 다시 팔 수 있어요
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="fld">
               <label>
-                박수<em>*</em>
+                {long ? "재고 창" : "박수"}
+                <em>*</em>
               </label>
               <div className="step">
                 <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setStayNights(nights - 1)}>
@@ -1151,12 +1354,63 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setStayNights(nights + 1)}>
                   <Plus size={16} />
                 </button>
-                <span className="rng stayglance" aria-label={`입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}>
-                  <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
+                <span
+                  className="rng stayglance"
+                  aria-label={long ? `재고 창 ${nights}박 · 판매 보류 끝 ${dayLabel(checkOutDate)}` : `입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}
+                >
+                  {long ? (
+                    <>
+                      판매 보류 끝 <b>{dayLabel(checkOutDate)}</b> · 손님 약속이 아니라 이 밤까지 방을 막아요
+                    </>
+                  ) : (
+                    <>
+                      <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
+                    </>
+                  )}
                 </span>
               </div>
             </div>
-            {base && nightsChangedWithoutPrice(base, draftBase) ? (
+            {long ? (
+              <>
+                <div className="fld">
+                  <label>
+                    요금표<em>*</em>
+                  </label>
+                  <div className="step">
+                    <span className="chip on">매일 동일</span>
+                    <label className="inp price sm">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        aria-label="매일 단가"
+                        placeholder="80000"
+                        value={flatAmt ? won(Number(flatAmt)) : ""}
+                        onChange={(e) => setFlatAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                      />
+                      원/박
+                    </label>
+                  </div>
+                  <div className="muted sm" style={{ marginTop: 6 }}>
+                    요일별 단가는 다음에 · 지금은 매일 같은 금액
+                  </div>
+                </div>
+                <div className="fld">
+                  <label>정산</label>
+                  <div className="chips">
+                    <button type="button" className={`chip ${settleCycle === "weekly" ? "on" : ""}`} onClick={() => setSettleCycle("weekly")}>
+                      주간
+                    </button>
+                    <button type="button" className={`chip ${settleCycle === "adhoc" ? "on" : ""}`} onClick={() => setSettleCycle("adhoc")}>
+                      수시만
+                    </button>
+                  </div>
+                  <div className="muted sm" style={{ marginTop: 6 }}>
+                    {settleHint(settleCycle, payLeft)}
+                  </div>
+                </div>
+              </>
+            ) : null}
+            {base && !long && nightsChangedWithoutPrice(base, draftBase) ? (
               <div className="nwarn" role="status">
                 <AlertTriangle size={16} />
                 <span>박수가 바뀌었는데 판매 가격은 그대로예요. 「{EXTEND_COPY}」으로 요금을 맞추거나 가격·잔금을 고쳐 주세요.</span>
@@ -1253,9 +1507,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="fld">
           <label>
-            이름 · 가격<em>*</em>
+            {long ? "이름" : "이름 · 가격"}
+            <em>*</em>
           </label>
-          <div className="two">
+          <div className={long ? "one" : "two"}>
             <input
               ref={nameRef}
               className="inp"
@@ -1265,19 +1520,54 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               onChange={(e) => setName(e.target.value)}
               aria-label="이름"
             />
-            <label className="inp price">
-              <input
-                className="num"
-                inputMode="numeric"
-                placeholder={kind === "stay" ? "총액" : "금액"}
-                value={price ? won(Number(price)) : ""}
-                onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                aria-label="판매 가격"
-              />
-              원{per ? <small>1박 평균 {won(per)}원</small> : null}
-            </label>
+            {!long ? (
+              <label className="inp price">
+                <input
+                  className="num"
+                  inputMode="numeric"
+                  placeholder={kind === "stay" ? "총액" : "금액"}
+                  value={price ? won(Number(price)) : ""}
+                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                  aria-label="판매 가격"
+                />
+                원{per ? <small>1박 평균 {won(per)}원</small> : null}
+              </label>
+            ) : null}
           </div>
         </div>
+        {long ? (
+          <div className="fld">
+            <label>누적 요금</label>
+            <div className="payb longacc">
+              <div className="payrow">
+                <b>청구 합계</b>
+                <span className="num">{won(payDue)}원</span>
+                <span className="muted">{(draftBase.charges ?? []).length}박 · 스케줄 적용</span>
+              </div>
+              <div className="payrow">
+                <b>받은 돈</b>
+                <span className="num">{won(payPaid)}원</span>
+              </div>
+              <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
+                받을 돈(미수) <b className="num">{won(payLeft)}원</b>
+                <span className="muted"> · {settleHint(settleCycle, payLeft)}</span>
+                <button type="button" className="btn sm line" onClick={() => setShowLedger((v) => !v)}>
+                  {showLedger ? "내역 닫기" : "내역"}
+                </button>
+              </div>
+              {showLedger ? (
+                <div className="longledger">
+                  {(draftBase.charges ?? []).map((c) => (
+                    <div className="payrow" key={c.id + c.nightDate}>
+                      <span>{dayLabel(c.nightDate)}</span>
+                      <span className="num">{won(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="fld gfld">
           <label>인원</label>
@@ -1501,7 +1791,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         ) : null}
 
         <div className="fld pay">
-          <label>결제</label>
+          <label>{long ? "수납" : "결제"}</label>
           <div className="payb">
             {!payTracked ? (
               <div className="muted sm payota">플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span></div>
@@ -1509,7 +1799,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <>
                 {livePays.map((x) => (
                   <div className="payrow" key={x.id}>
-                    <b>{PAY_KIND_LABEL[x.kind]}</b>
+                    <b>{long ? "수납" : PAY_KIND_LABEL[x.kind]}</b>
                     <span className="num">{won(x.amount)}원</span>
                     <span className="muted">{BOOK_PAY_LABEL[x.method]} · {dayLabel(x.bizDate)}</span>
                     <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
@@ -1520,13 +1810,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {livePays.length > 1 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
                 {!livePays.length ? (
                   <div className="paydep">
-                    <span className="pl">선금</span>
+                    <span className="pl">{long ? "선수" : "선금"}</span>
                     <label className="inp price sm">
                       <input
                         className="num"
                         inputMode="numeric"
                         placeholder="없으면 비워 두세요"
-                        aria-label="선금"
+                        aria-label={long ? "선수금" : "선금"}
                         value={dep.amount ? won(Number(dep.amount)) : ""}
                         onChange={(e) => setDep({ ...dep, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
                       />
@@ -1545,19 +1835,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                   {payLeft > 0 ? (
                     <>
-                      잔금 <b className="num">{won(payLeft)}원</b>
-                      <span className="muted"> = 판매 가격 {won(payDue)} − 받은 돈 {won(payPaid)}</span>
+                      {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
+                      <span className="muted">
+                        {" "}
+                        = {long ? "청구 합계" : "판매 가격"} {won(payDue)} − 받은 돈 {won(payPaid)}
+                      </span>
                     </>
                   ) : payPaid > 0 ? (
                     <>
-                      <Check size={14} strokeWidth={2.6} /> 완납 <span className="muted">· 받은 돈 {won(payPaid)}원</span>
+                      <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 받은 돈 {won(payPaid)}원</span>
                     </>
                   ) : (
-                    <span className="muted">판매 가격을 적으면 잔금이 보여요</span>
+                    <span className="muted">{long ? "요금표를 적으면 미수가 보여요" : "판매 가격을 적으면 잔금이 보여요"}</span>
                   )}
                   {live && isActive(live) && payLeft > 0 && !bal ? (
                     <button type="button" className="btn sm dark balbtn" onClick={() => setBal({ method: "card", amount: String(payLeft) })}>
-                      잔금 받음
+                      {long ? "미수 받기" : "잔금 받음"}
                     </button>
                   ) : null}
                 </div>
@@ -1574,7 +1867,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       <input
                         className="num"
                         inputMode="numeric"
-                        aria-label="받은 잔금"
+                        aria-label={long ? "받은 미수" : "받은 잔금"}
                         value={bal.amount ? won(Number(bal.amount)) : ""}
                         onChange={(e) => setBal({ ...bal, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
                         onKeyDown={(e) => {

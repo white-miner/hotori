@@ -91,11 +91,12 @@ export function validateExtendRate(rate: number): string | null {
   return null;
 }
 
-/** 박수만 바뀌고 판매 가격이 그대로면 경고 (조용한 완납 과소청구 방지) */
+/** 박수만 바뀌고 판매 가격이 그대로면 경고 (조용한 완납 과소청구 방지). 장기는 원장이 진실이라 제외 */
 export function nightsChangedWithoutPrice(
-  prev: Pick<Booking, "kind" | "nights" | "price">,
-  next: Pick<Booking, "kind" | "nights" | "price">,
+  prev: Pick<Booking, "kind" | "nights" | "price" | "stayMode">,
+  next: Pick<Booking, "kind" | "nights" | "price" | "stayMode">,
 ): boolean {
+  if (next.stayMode === "long_stay" || prev.stayMode === "long_stay") return false;
   return next.kind === "stay" && prev.kind === "stay" && (prev.nights ?? 0) !== (next.nights ?? 0) && prev.price === next.price;
 }
 

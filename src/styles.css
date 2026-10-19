@@ -1229,7 +1229,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 }
 .btn.red-t { color: var(--red); }
 .c-type.gts { font-size: 11.5px; font-weight: 750; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nm .grptag, .cbar .grptag { margin-left: 2px; flex: none; }
+.nm .grptag, .cbar .grptag, .nm .longtag { margin-left: 2px; flex: none; }
 .cell .r3 > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cell .r3 .gcount { flex: none; }
 .cell .nm .grptag { order: -1; }
@@ -1354,6 +1354,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .obdot.tentdot { background: #5c5c5c; }
 .cell.bk.tent { border-style: dashed !important; }
 .tenttag { flex: none; font-size: 10.5px; font-weight: 800; color: #444; background: #eee; border: 1px dashed #888; border-radius: 5px; padding: 0 5px; line-height: 16px; }
+.longtag { flex: none; font-size: 10.5px; font-weight: 800; color: #1a4a6e; background: #e8f2fa; border: 1px solid #7aa8c9; border-radius: 5px; padding: 0 5px; line-height: 16px; }
+.nowdue { margin-top: 4px; font-size: 12px; font-weight: 800; color: var(--red); letter-spacing: -0.02em; }
+.longacc .payrow { align-items: baseline; }
+.longledger { margin-top: 6px; max-height: 160px; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; }
 .beo.tent.on { border-style: dashed; border-color: #555; background: #f3f3f3; }
 /* 청소X: 현장 한눈에 보이도록 강한 대비 */
 .ncxtag { flex: none; font-size: 11px; font-weight: 900; color: #7a180c; background: #ffe3dc; border: 1.5px solid #c43c28; border-radius: 5px; padding: 0 5px; line-height: 16px; letter-spacing: -0.02em; }

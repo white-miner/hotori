@@ -1,6 +1,7 @@
 import { normalizePlatformFee, normalizeRate } from "./feerate";
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
+import type { LongStayRate, NightCharge, SettleCycle, StayMode } from "./longstay";
 import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
@@ -164,6 +165,14 @@ export interface Booking {
    * 중도 퇴실(earlyOut)과 별개 — 재사용 금지.
    */
   checkedOutAt?: string | null;
+  /** 숙박 유형: 일반 · 장기(퇴실 미정). 없으면 일반 */
+  stayMode?: StayMode;
+  /** 장기 요금표 (flat/dow). 일반은 없음 */
+  longStayRate?: LongStayRate | null;
+  /** 장기 정산 주기. 일반은 없음 */
+  settleCycle?: SettleCycle | null;
+  /** 장기 박별 누적 원장. 미수 = 합 − payments */
+  charges?: NightCharge[];
   /** 판매 가격(price)에 들어 있는 시간 추가 금액 (0 + 시간 있음 = 서비스) */
   timeFee?: number | null;
   /** 주차: 도보 · 차량 (안 적었으면 없음) */

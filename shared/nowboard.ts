@@ -12,6 +12,8 @@ export interface NowFlags {
   group: boolean;
   /** 청소X: 이 투숙은 청소하지 않음 */
   noClean: boolean;
+  /** 장기(퇴실 미정) */
+  longStay: boolean;
   /** 한글 짧은 라벨 */
   label: string;
 }
@@ -32,7 +34,7 @@ export interface NowOpts {
   clock?: NowClock;
 }
 
-const emptyFlags = (): NowFlags => ({ kind: "empty", tentative: false, group: false, noClean: false, label: "빈 방" });
+const emptyFlags = (): NowFlags => ({ kind: "empty", tentative: false, group: false, noClean: false, longStay: false, label: "빈 방" });
 
 function minutesOf(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -106,38 +108,44 @@ export function nowFlags(b: Booking | null | undefined, date: string, opts?: Now
   const tentative = !!booking.tentative;
   const group = !!booking.groupId;
   const noClean = !!booking.noClean;
+  const longStay = booking.stayMode === "long_stay";
   const stayTimes = opts?.stayTimes ?? DEFAULT_STAY_TIMES;
   const clock = opts?.clock ?? hotelWallClock();
   const onCheckoutMorning = stayEnd(booking) === date;
+  const base = { tentative, group, noClean, longStay };
 
   const rid = roomForNowBoard(booking, date);
   // 호실 없으면 미배정 우선 (퇴실 뱃지보다 배정이 먼저)
   if (!booking.roomId || !rid) {
-    return { kind: "unassigned", tentative, group, noClean, label: "미배정" };
+    return { kind: "unassigned", ...base, label: "미배정" };
   }
 
   if (onCheckoutMorning) {
     if (departingWindowOpen(booking, date, stayTimes, clock)) {
-      if (clampHours(booking.lateOut)) {
-        return { kind: "lateOut", tentative, group, noClean, label: "늦은 퇴실" };
+      // 장기: 약속 퇴실 없음 → 재고 창 종료 경고 (퇴실 예정과 다른 카피)
+      if (longStay) {
+        return { kind: "departing", ...base, label: "재고 창 종료" };
       }
-      return { kind: "departing", tentative, group, noClean, label: "퇴실 예정" };
+      if (clampHours(booking.lateOut)) {
+        return { kind: "lateOut", ...base, label: "늦은 퇴실" };
+      }
+      return { kind: "departing", ...base, label: "퇴실 예정" };
     }
     // 윈도우 전: 투숙 중 유지 (뱃지 안 켬)
     if (booking.arrived) {
-      return { kind: "inhouse", tentative, group, noClean, label: "투숙 중" };
+      return { kind: "inhouse", ...base, label: "투숙 중" };
     }
-    return { kind: "arriving", tentative, group, noClean, label: "입실 예정" };
+    return { kind: "arriving", ...base, label: "입실 예정" };
   }
 
   // 점유 밤 (마지막 밤 포함): 퇴실 예정 아님
   if (booking.checkIn === date && !booking.arrived) {
-    return { kind: "arriving", tentative, group, noClean, label: "입실 예정" };
+    return { kind: "arriving", ...base, label: "입실 예정" };
   }
   if (booking.arrived) {
-    return { kind: "inhouse", tentative, group, noClean, label: "투숙 중" };
+    return { kind: "inhouse", ...base, label: "투숙 중" };
   }
-  return { kind: "arriving", tentative, group, noClean, label: "입실 예정" };
+  return { kind: "arriving", ...base, label: "입실 예정" };
 }
 
 export interface NowLists {
@@ -286,7 +294,12 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
   return nowNightRange(b).label;
 }
 
-/** 퇴실처리 가능: 활성 숙박 · 영업일 ≥ 퇴실일 (중도 퇴실 earlyOut 경로와 분리) */
+/**
+ * 퇴실처리 가능: 활성 숙박 · 영업일 ≥ 퇴실일 (중도 퇴실 earlyOut 경로와 분리).
+ * 장기: 약속 퇴실 없음 → 입실일 이후(당일 포함) 언제든 퇴실처리로 종료.
+ */
 export function canCheckOut(b: Booking, today: string): boolean {
-  return isActive(b) && b.kind === "stay" && !isCheckedOut(b) && stayEnd(b) <= today;
+  if (!isActive(b) || b.kind !== "stay" || isCheckedOut(b)) return false;
+  if (b.stayMode === "long_stay") return b.checkIn <= today;
+  return stayEnd(b) <= today;
 }
