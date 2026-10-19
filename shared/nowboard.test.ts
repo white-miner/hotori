@@ -11,8 +11,8 @@ import {
   nowDateLine,
   nowFlags,
   nowLists,
+  nowNightRange,
   nowStayChips,
-  nowStayDates,
   nowStayHint,
   unassignedTypeCounts,
   type NowClock,
@@ -167,22 +167,14 @@ test("연박 칩: 총 박수 + 몇 박째, 1박은 빈 배열 · 퇴실 아침�
   assert.deepEqual(nowStayChips(b, "2026-10-21"), ["11박", "11박째"]);
 });
 
-test("보드 날짜: 점유 밤 구간 (퇴실일 끝 금지)", () => {
-  // 입 10/19 · 2박 · 퇴 21 → 보드 19~20
-  const b = bk({ checkIn: "2026-10-19", nights: 2, arrived: true });
-  const d = nowStayDates(b);
-  assert.equal(d.checkOut, "2026-10-21");
-  assert.equal(d.lastNight, "2026-10-20");
-  assert.equal(d.rangeLabel, "10/19~20");
-  assert.equal(nowDateLine(b), "10/19~20");
-  // 1박 → 단일 날짜
-  assert.equal(nowStayDates(bk({ checkIn: "2026-10-19", nights: 1 })).rangeLabel, "10/19");
-  // 중도 퇴실: 실제 stayEnd 기준 밤 구간
+test("점유 밤 구간: 2박 입19·퇴21 → 보드 19~20 (퇴실 아침 제외)", () => {
+  const b2 = bk({ checkIn: "2026-10-19", nights: 2, arrived: true });
+  assert.equal(nowNightRange(b2).label, "10/19~20");
+  assert.equal(nowDateLine(b2), "10/19~20");
+  const b8 = bk({ checkIn: "2026-10-20", nights: 8, arrived: true });
+  assert.equal(nowNightRange(b8).label, "10/20~27"); // 퇴실 아침 10/28
+  const one = bk({ checkIn: "2026-10-19", nights: 1, arrived: true });
+  assert.equal(nowNightRange(one).label, "10/19");
   const eo = bk({ checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20", arrived: true });
-  assert.equal(nowStayDates(eo).rangeLabel, "10/18~19");
-  assert.equal(nowDateLine(eo), "10/18~19");
-  // 8박: 입 20 · 퇴 28 → 밤 20~27
-  const long = bk({ checkIn: "2026-10-20", nights: 8, arrived: true });
-  assert.equal(nowStayDates(long).rangeLabel, "10/20~27");
-  assert.equal(nowDateLine(long), "10/20~27");
+  assert.equal(nowNightRange(eo).label, "10/18~19"); // stayEnd=20 → 마지막 밤 19
 });

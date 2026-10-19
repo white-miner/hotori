@@ -242,37 +242,48 @@ export function nowStayChips(b: Booking, date: string): string[] {
   return [`${u}박`, `${night}박째`];
 }
 
-/** 보드 점유 밤 구간 끝일 축약: 같은 달이면 일만 (`20`), 아니면 `M/D` */
-function nightRangeEndLabel(from: string, to: string): string {
-  const [, m0] = from.split("-");
-  const [, m1, d1] = to.split("-");
-  if (m0 === m1) return String(Number(d1));
-  return md(to);
+/**
+ * 「지금」 칸 날짜: **점유 밤** 구간 `checkIn ~ (stayEnd−1)`.
+ * 퇴실 아침(stayEnd)은 구간에 넣지 않음 (예: 2박 입19·퇴21 → `10/19~20`).
+ * Entry는 입·퇴·박을 쓰고, 보드는 밤 구간만 쓴다.
+ */
+export function nowNightRange(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
+  from: string;
+  to: string;
+  fromLabel: string;
+  toLabel: string;
+  /** 1박은 `10/19`, 연박은 `10/19~20` */
+  label: string;
+} {
+  const lastNight = addDays(stayEnd(b), -1);
+  const fromLabel = md(b.checkIn);
+  const toLabel = md(lastNight);
+  // 같은 달이면 `10/19~20`, 달 넘기면 `10/30~11/2`
+  const sameMonth = b.checkIn.slice(0, 7) === lastNight.slice(0, 7);
+  const rangeEnd = sameMonth ? String(Number(lastNight.slice(8, 10))) : toLabel;
+  return {
+    from: b.checkIn,
+    to: lastNight,
+    fromLabel,
+    toLabel,
+    label: b.checkIn === lastNight ? fromLabel : `${fromLabel}~${rangeEnd}`,
+  };
 }
 
-/**
- * 「지금」 칸 날짜: 점유 밤 구간 `checkIn ~ (stayEnd−1)`.
- * Entry용 입·퇴는 checkIn/checkOut 필드로 유지.
- */
+/** Entry용 입·퇴 라벨. 보드 주 표기는 nowNightRange */
 export function nowStayDates(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
   checkIn: string;
   checkOut: string;
-  lastNight: string;
   inLabel: string;
   outLabel: string;
-  rangeLabel: string;
 } {
   const out = stayEnd(b);
-  const lastNight = addDays(out, -1);
-  const inLabel = md(b.checkIn);
-  const outLabel = md(out);
-  const rangeLabel = b.checkIn === lastNight ? inLabel : `${inLabel}~${nightRangeEndLabel(b.checkIn, lastNight)}`;
-  return { checkIn: b.checkIn, checkOut: out, lastNight, inLabel, outLabel, rangeLabel };
+  return { checkIn: b.checkIn, checkOut: out, inLabel: md(b.checkIn), outLabel: md(out) };
 }
 
-/** 화이트보드용 한 줄: `10/20~27` (점유 밤) */
+/** 화이트보드용 한 줄 = 점유 밤 구간 */
 export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): string {
-  return nowStayDates(b).rangeLabel;
+  return nowNightRange(b).label;
 }
 
 /** 퇴실처리 가능: 활성 숙박 · 영업일 ≥ 퇴실일 (중도 퇴실 earlyOut 경로와 분리) */

@@ -7,8 +7,8 @@ import {
   nowByRoom,
   nowFlags,
   nowLists,
+  nowNightRange,
   nowStayChips,
-  nowStayDates,
   unassignedTypeCounts,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
@@ -692,7 +692,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const f = nowFlags(b, today, nowOpts);
     if (nowFilter === "tentative" && !f.tentative) return null;
     const stayChips = nowStayChips(b, today);
-    const dates = nowStayDates(b);
+    const nights = nowNightRange(b);
     return (
       <div
         key={r.id}
@@ -712,8 +712,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           <div className="r3 nowfacts">
             <span className={`nklab nk-${f.kind}`}>{f.label}</span>
-            <span className="nowchips nowdates" aria-label={`이용 ${dates.rangeLabel}`}>
-              <span className="nowchip nowdate">{dates.rangeLabel}</span>
+            <span className="nowchips nowdates" aria-label={`점유 밤 ${nights.label}`}>
+              <span className="nowchip nowdate">{nights.label}</span>
               {stayChips.map((c) => (
                 <span key={c} className="nowchip">
                   {c}
