@@ -111,6 +111,28 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setView(v);
     setMenu(false);
   };
+  // 로고 → 처음 화면: 현황판 › 객실 배치 · 오늘, 열린 창·검색·필터를 닫고 비워요 (새로 고침 없이)
+  const [home, setHome] = useState(0);
+  const goHome = () => {
+    const d = businessDate();
+    setEntry(null);
+    setMenu(false);
+    setBoardMove(null);
+    setQuery("");
+    setToday(d);
+    setSelDate(d);
+    try {
+      localStorage.setItem("hotori.boardTab", "rooms");
+      localStorage.setItem("hotori.boardBuilding", "all"); // 건물 필터도 '전체'로
+    } catch {
+      /* 개인 정보 보호 모드 */
+    }
+    if (location.hash !== "#/board/rooms") history.pushState(history.state, "", `${location.pathname}${location.search}#/board/rooms`);
+    setView("board");
+    setHome((n) => n + 1); // 현황판을 새로 그려 층·기간·고른 방 같은 화면 상태를 처음으로
+    searchRef.current?.blur();
+    window.scrollTo({ top: 0 });
+  };
   const notify = useCallback((m: string, opt?: ToastOpt) => {
     const n = Date.now() + Math.random();
     setToast({ m, opt, n });
@@ -175,7 +197,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
   return (
     <div className="app">
       <header className="top">
-        <Brand sub={hotel.name} />
+        <Brand sub={hotel.name} onHome={goHome} />
         <nav className="nav">
           {VIEWS.map((v) => (
             <a
@@ -226,6 +248,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
 
       {view === "board" ? (
         <Dashboard
+          key={home}
           data={data}
           today={today}
           selDate={selDate}

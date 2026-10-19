@@ -11,13 +11,34 @@ export function floorPaint(raw: string | null | undefined): { bg: string; fg: st
   return bg ? { bg, fg: onStrong(bg) } : null;
 }
 
-export function Brand({ sub }: { sub?: string }) {
-  return (
-    <div className="brand">
+export function Brand({ sub, onHome }: { sub?: string; onHome?: () => void }) {
+  const mark = (
+    <>
       <span className="wm">HOTORI</span>
-      <span className="seal" aria-label="호토리">
+      <span className="seal" aria-hidden={onHome ? true : undefined} aria-label={onHome ? undefined : "호토리"}>
         호<br />토<br />리
       </span>
+    </>
+  );
+  return (
+    <div className="brand">
+      {onHome ? (
+        // 로고: 처음 화면(현황판 › 객실 배치 · 오늘)으로. 새로 고침 없이 보기만 처음으로 돌려요
+        <a
+          className="brand-home"
+          href="#/board/rooms"
+          aria-label="HOTORI 처음 화면으로 (오늘 객실 배치)"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // 새 탭 열기는 그대로
+            e.preventDefault();
+            onHome();
+          }}
+        >
+          {mark}
+        </a>
+      ) : (
+        mark
+      )}
       {sub ? <small>{sub}</small> : null}
     </div>
   );
