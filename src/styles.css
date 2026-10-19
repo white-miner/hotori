@@ -1373,8 +1373,24 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .gline-row .gl-lab { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gline-row .gl-lab b { font-size: 13.5px; }
 /* ---------- 「지금」 현장 현황 ---------- */
+/* board-page의 오른쪽 .side 칸(372px)은 「지금」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
+.now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
+/* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
+.now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+.now-page .rooms { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; }
+.now-page .cell { min-height: 200px; padding: 10px 11px 11px; gap: 5px; border-radius: 18px; }
+.now-page .cell .r1 { padding: 3px 5px; margin-bottom: 2px; }
+.now-page .cell .r1.strip { padding: 4px 7px; }
+.now-page .fh { display: flex; align-items: flex-start; padding-top: 8px; }
+.now-page .fn { font-size: 13px; font-weight: 700; color: var(--ink3); writing-mode: horizontal-tb; }
+@media (max-width: 760px) {
+  .now-page .floor { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 10px; }
+  .now-page .rooms { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .now-page .cell { min-height: 150px; padding: 8px 9px 9px; gap: 3px; border-radius: 14px; }
+  .now-page .fh { padding-top: 0; padding-left: 2px; }
+}
 .nowfilters { flex-wrap: wrap; gap: 8px; }
 .nowcell.nk-arriving { border-color: #3b6fd9; }
 .nowcell.nk-inhouse { border-color: var(--stay); }
