@@ -1447,3 +1447,28 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .gin.bad { box-shadow: inset 0 0 0 1.5px var(--red); }
 .gwarn { flex-basis: 100%; font-size: 11.5px; font-weight: 650; color: var(--red-d); white-space: normal; margin-top: 2px; }
 .trow .tguest:has(.gwarn) { flex-wrap: wrap; }
+/* 객실 배치 · 여러 개 선택 */
+.flcol { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.flall { height: 24px; border-radius: 8px; font-size: 11px; font-weight: 700; color: var(--ink3); background: #fff; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.flall.on { background: var(--ink); color: #fff; box-shadow: none; }
+.rboxes.bulking .rbox { cursor: pointer; }
+.rbox.bsel { box-shadow: inset 0 0 0 2.5px var(--red); background: #fff5f5 !important; }
+.paint .chip.bulkon { margin-left: auto; }
+.paint .chip.bulkon.on { background: var(--ink); color: #fff; box-shadow: none; }
+.bulkbar { position: sticky; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 8px; margin: 12px -6px 0; padding: 10px 12px; border-radius: 16px; background: var(--ink); color: #fff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); font-size: 13px; }
+.bulkbar b { font-weight: 800; white-space: nowrap; margin-right: 4px; }
+.bulkbar .bsel-t { height: 32px; border: 0; border-radius: 10px; padding: 0 10px; font-size: 13px; font-weight: 700; color: var(--ink); background: #fff; min-width: 0; flex: 1; max-width: 220px; }
+.bulkbar .btn.line { background: transparent; color: #fff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4); }
+.bulkbar .btn:disabled { opacity: 0.45; }
+.bulkbar .bx { color: #fff; margin-left: auto; }
+@media (max-width: 760px) {
+  .flcol { flex-direction: row; align-items: center; }
+  .flall { padding: 0 8px; }
+  .bulkbar { position: fixed; left: 10px; right: 10px; bottom: calc(72px + env(safe-area-inset-bottom)); margin: 0; }
+}
+body.bulking .fab { display: none; }
+body.bulking .toast { bottom: 96px; }
+@media (max-width: 760px) {
+  body.bulking .toast { bottom: calc(136px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 760px) { .pc-only { display: none; } }

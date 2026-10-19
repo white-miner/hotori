@@ -5,6 +5,8 @@ import { GUESTS_MAX, tierLabel, typeGuests } from "../shared/surcharge";
 import { SpecialDates, TierSettings } from "./SurchargeSettings";
 import FeeSettings from "./FeeSettings";
 import NumInput from "./NumInput";
+import type { ToastOpt } from "./App";
+import { addRooms as addRoomRange, applyType, bulkToast, floorAllSelected, roomRange, toggleFloor, toggleRoom, undoType } from "../shared/bulktype";
 import { guestRangeMsg } from "../shared/numdraft";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +38,7 @@ import { FitText, PALETTE, PlatBadge, floorPaint, TypeBadge, TypeLine, uid } fro
 interface Props {
   data: HotelData;
   email: string;
-  notify: (m: string) => void;
+  notify: (m: string, opt?: ToastOpt) => void;
 }
 /** 받침이 있으면 a(과·은·이), 없으면 b(와·는·가) */
 const josa = (w: string, a: string, b: string) => {
@@ -171,7 +173,21 @@ export default function Settings({ data, email, notify }: Props) {
   const [name, setName] = useState(hotel.name);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [paint, setPaint] = useState<string | null>(null);
+  const [paint, setPaintRaw] = useState<string | null>(null);
+  // 여러 개 선택: 방을 눌러 고르고(층·건물이 달라도), 아래 막대에서 타입을 골라 한 번에
+  const [bulk, setBulk] = useState(false);
+  const [bsel, setBsel] = useState<Set<string>>(new Set());
+  const [blast, setBlast] = useState<string | null>(null);
+  const [btype, setBtype] = useState("");
+  const setPaint = (v: string | null) => {
+    setPaintRaw(v);
+    if (v) setBulk(false);
+  };
+  const endBulk = () => {
+    setBulk(false);
+    setBsel(new Set());
+    setBlast(null);
+  };
   const [selRoom, setSelRoom] = useState<string | null>(null);
   const [selFloor, setSelFloor] = useState<string | null>(null);
   const [selBuilding, setSelBuilding] = useState<string | null>(null);
@@ -208,6 +224,30 @@ export default function Settings({ data, email, notify }: Props) {
     timer.current = setTimeout(() => void flush(), 700);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  // 여러 개 선택 중에는 아래 막대가 보이게: 예약 기록 단추는 숨기고 알림은 막대 위로
+  useEffect(() => {
+    document.body.classList.toggle("bulking", bulk);
+    return () => document.body.classList.remove("bulking");
+  }, [bulk]);
+  useEffect(() => {
+    if (!bulk) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (bsel.size ? (setBsel(new Set()), setBlast(null)) : setBulk(false));
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bulk, bsel]);
+  const applyBulk = () => {
+    if (!bsel.size) return;
+    if (!btype) return notify("바꿀 타입을 골라 주세요");
+    const target = btype === NO_TYPE ? null : btype;
+    const r = applyType(s, bsel, target);
+    const tname = target ? typeLabel(typeOf(target)) : null;
+    if (!r.changed) return notify(`고른 ${bsel.size}개는 이미 모두 ${tname ?? "타입 없음"}이에요`);
+    update(() => r.settings); // 고른 방 전부 · 설정 한 번 저장
+    const prev = r.prev;
+    notify(bulkToast(s, bsel, bsel.size, tname), { ms: 6000, action: { label: "되돌리기", run: () => (update((x) => undoType(x, prev)), notify("되돌렸어요")) } });
+    setBsel(new Set());
+    setBlast(null);
+  };
   useEffect(() => {
     if (!paint) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPaint(null);
@@ -370,10 +410,23 @@ export default function Settings({ data, email, notify }: Props) {
                   끝내기
                 </button>
               ) : null}
+              {usableTypes(s.types).length ? (
+                <button
+                  className={`chip sm bulkon ${bulk ? "on" : ""}`}
+                  aria-pressed={bulk}
+                  onClick={() => (bulk ? endBulk() : (setPaintRaw(null), setBulk(true), setSelRoom(null), setSelFloor(null), setSelBuilding(null)))}
+                >
+                  여러 개 선택
+                </button>
+              ) : null}
             </div>
             <div className="phint">
               {!usableTypes(s.types).length ? (
                 "아래 '객실 타입'에서 타입을 먼저 만들어 주세요"
+              ) : bulk ? (
+                <>
+                  방을 눌러 고르고 아래에서 타입을 고르세요 · 층이 달라도 돼요<span className="pc-only"> · <b>Shift</b>+클릭은 범위</span>
+                </>
               ) : paint ? (
                 <>
                   <b>{paint === NO_TYPE ? "타입 없음" : typeLabel(typeOf(paint))}</b> 선택됨 · 방을 누르면 바로 바뀌고, 층 이름을 누르면 그 층 전체가 바뀌어요
@@ -403,19 +456,33 @@ export default function Settings({ data, email, notify }: Props) {
               ) : null}
               {floorsOf(s, bd.id).map((f) => (
             <div className="sfl" key={f.id}>
-              <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={paint ? `${f.name} 전체를 이 타입으로` : f.name} onClick={() => (paint ? paintFloor(f) : (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null)))}>
-                <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
-                {f.name}
-              </button>
-              <div className={`rboxes ${paint ? "painting" : ""}`}>
+              <div className="flcol">
+                <button className={`fl flbtn ${selFloor === f.id ? "on" : ""}`} title={paint ? `${f.name} 전체를 이 타입으로` : f.name} onClick={() => (bulk ? setBsel((x) => toggleFloor(s, x, f.id)) : paint ? paintFloor(f) : (setSelFloor(selFloor === f.id ? null : f.id), setSelRoom(null), setSelBuilding(null)))}>
+                  <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
+                  {f.name}
+                </button>
+                {bulk && f.rooms.length ? (
+                  <button type="button" className={`flall ${floorAllSelected(s, bsel, f.id) ? "on" : ""}`} aria-pressed={floorAllSelected(s, bsel, f.id)} aria-label={`${f.name} 층 전체 선택`} onClick={() => setBsel((x) => toggleFloor(s, x, f.id))}>
+                    층 전체
+                  </button>
+                ) : null}
+              </div>
+              <div className={`rboxes ${paint ? "painting" : ""} ${bulk ? "bulking" : ""}`}>
                 {f.rooms.map((r) => {
                   const strip = pastelColor(r.color ?? f.color);
                   return (
                     <button
                       key={r.id}
-                      className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""}`}
+                      className={`rbox ${/^\d+$/.test(r.no) ? "" : "k"} ${selRoom === r.id && !paint && !bulk ? "sel" : ""} ${paint && paintTarget === (r.typeId ?? null) ? "same" : ""} ${bulk && bsel.has(r.id) ? "bsel" : ""}`}
+                      aria-pressed={bulk ? bsel.has(r.id) : undefined}
                       style={strip ? { background: strip } : undefined}
-                      onClick={() => {
+                      onClick={(e) => {
+                        if (bulk) {
+                          if (e.shiftKey && blast) setBsel((x) => addRoomRange(x, roomRange(s, blast, r.id)));
+                          else setBsel((x) => toggleRoom(x, r.id));
+                          setBlast(r.id);
+                          return;
+                        }
                         if (paint) {
                           // 이미 그 타입이면 아무것도 안 해요
                           if ((r.typeId ?? null) !== paintTarget) setRoom(r.id, (x) => ({ ...x, typeId: paintTarget }));
@@ -455,6 +522,29 @@ export default function Settings({ data, email, notify }: Props) {
             </div>
           ))}
           {!s.floors.length && !multi ? <div className="lempty">'층 추가'를 눌러 첫 층을 만들어 주세요</div> : null}
+          {bulk ? (
+            <div className="bulkbar" role="toolbar" aria-label="여러 개 선택">
+              <b className="num">{bsel.size}개 선택</b>
+              <select className="bsel-t" aria-label="바꿀 타입" value={btype} onChange={(e) => setBtype(e.target.value)}>
+                <option value="">타입 선택</option>
+                {usableTypes(s.types).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {typeLabel(t)}
+                  </option>
+                ))}
+                <option value={NO_TYPE}>타입 없음</option>
+              </select>
+              <button type="button" className="btn red sm" disabled={!bsel.size || !btype} onClick={applyBulk}>
+                적용
+              </button>
+              <button type="button" className="btn line sm" disabled={!bsel.size} onClick={() => (setBsel(new Set()), setBlast(null))}>
+                해제
+              </button>
+              <button type="button" className="ic bx" aria-label="여러 개 선택 끝내기" onClick={endBulk}>
+                <X size={16} />
+              </button>
+            </div>
+          ) : null}
 
           {building ? (
             <div className="editor">
