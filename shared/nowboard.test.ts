@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking } from "./ledger";
-import { nowFlags, nowLists, nowStayChips, nowStayHint, unassignedTypeCounts } from "./nowboard";
+import { nowDateLine, nowFlags, nowLists, nowStayChips, nowStayDates, nowStayHint, unassignedTypeCounts } from "./nowboard";
 
 let n = 0;
 const bk = (p: Partial<Booking>): Booking => ({
@@ -86,4 +86,13 @@ test("연박 칩: 총 박수 + 몇 박째, 1박은 빈 배열", () => {
   assert.deepEqual(nowStayChips(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), []);
   assert.equal(nowStayHint(b, "2026-10-18"), "11박 · 9박째");
   assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박");
+});
+
+test("입실·퇴실 날짜: 예약 퇴실 = 입실+박수, 중도 퇴실이면 stayEnd", () => {
+  const b = bk({ checkIn: "2026-10-20", nights: 8, arrived: true });
+  assert.deepEqual(nowStayDates(b), { checkIn: "2026-10-20", checkOut: "2026-10-28", inLabel: "10/20", outLabel: "10/28" });
+  assert.equal(nowDateLine(b), "10/20→10/28");
+  const eo = bk({ checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20", arrived: true });
+  assert.equal(nowStayDates(eo).outLabel, "10/20");
+  assert.equal(nowDateLine(eo), "10/18→10/20");
 });

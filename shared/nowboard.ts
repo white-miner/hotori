@@ -1,6 +1,6 @@
 // 현장 현황 보드(「지금」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours } from "./extratime";
-import { type Booking, addDays, isActive, occupiesNight, roomOnNight, stayEnd, usedNights } from "./ledger";
+import { type Booking, addDays, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights } from "./ledger";
 
 /** 칸·옆 패널에 쓰는 현장 상태 (우선순위 높은 것부터 판별) */
 export type NowKind = "lateOut" | "departing" | "arriving" | "inhouse" | "unassigned" | "empty";
@@ -122,4 +122,21 @@ export function nowStayChips(b: Booking, date: string): string[] {
   const raw = Math.round((Date.parse(date) - Date.parse(b.checkIn)) / 864e5) + 1;
   const night = Math.min(Math.max(raw, 1), u);
   return [`${u}박`, `${night}박째`];
+}
+
+/** 「지금」 칸: 입실·퇴실 날짜 (중도 퇴실이면 실제 퇴실일 = stayEnd) */
+export function nowStayDates(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
+  checkIn: string;
+  checkOut: string;
+  inLabel: string;
+  outLabel: string;
+} {
+  const out = stayEnd(b);
+  return { checkIn: b.checkIn, checkOut: out, inLabel: md(b.checkIn), outLabel: md(out) };
+}
+
+/** 화이트보드용 한 줄: `10/20→10/28` */
+export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): string {
+  const d = nowStayDates(b);
+  return `${d.inLabel}→${d.outLabel}`;
 }
