@@ -47,6 +47,7 @@ interface BookingRow {
   tentative?: boolean; // 임시 배치
   no_clean?: boolean; // 청소X
   early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
+  checked_out_at?: string | null; // 정상 퇴실처리 시각
   refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
   guests?: number | null; // 인원
@@ -89,7 +90,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금)도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS})`;
 
@@ -163,6 +164,7 @@ export function fromRow(r: BookingRow): Booking {
     tentative: r.tentative === true,
     noClean: r.no_clean === true,
     earlyOut: r.early_out_on ?? null,
+    checkedOutAt: r.checked_out_at ?? null,
     refund: r.refund_amount ?? null,
     memo: r.memo,
     guests: r.guests ?? null,
@@ -207,6 +209,7 @@ function toRow(b: Booking) {
     no_clean: b.noClean === true,
     // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
+    checked_out_at: stay && b.status === "active" && b.checkedOutAt ? b.checkedOutAt : null,
     refund_amount: stay && b.status === "active" && isEarlyOut(b) && b.refund ? Math.round(b.refund) : null,
     memo: b.memo?.trim() ? b.memo.trim().slice(0, 200) : null,
     guests: b.guests && b.guests >= 1 ? Math.min(99, Math.round(b.guests)) : null,
@@ -338,22 +341,28 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId],
   );
-  const patchBooking = useCallback(async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean">>) => {
-    const row: Record<string, unknown> = {};
-    if (patch.arrived !== undefined) row.arrived = patch.arrived;
-    if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
-    if (patch.status !== undefined) row.status = patch.status;
-    if (patch.tentative !== undefined) row.tentative = patch.tentative;
-    if (patch.noClean !== undefined) row.no_clean = patch.noClean;
-    setBookings((list) => list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)));
-    const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
-    if (error) {
-      void refresh();
-      throw error;
-    }
-    const saved = fromRow(data as BookingRow);
-    setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
-  }, [refresh]);
+  const patchBooking = useCallback(
+    async (id: string, patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt">>) => {
+      const row: Record<string, unknown> = {};
+      if (patch.arrived !== undefined) row.arrived = patch.arrived;
+      if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
+      if (patch.status !== undefined) row.status = patch.status;
+      if (patch.tentative !== undefined) row.tentative = patch.tentative;
+      if (patch.noClean !== undefined) row.no_clean = patch.noClean;
+      if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
+      setBookings((list) =>
+        list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)),
+      );
+      const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
+      if (error) {
+        void refresh();
+        throw error;
+      }
+      const saved = fromRow(data as BookingRow);
+      setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+    },
+    [refresh],
+  );
   /** 임시 배치를 한 번에 확정 (재고는 그대로, 표시만 확정) */
   const confirmTentative = useCallback(
     async (ids: string[]): Promise<Booking[]> => {
