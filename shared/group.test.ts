@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings, stockTable } from "./ledger";
-import { autoPick, expandTypeSlots, freeForStay, groupDateBlock, groupDrafts, groupStockImpact, groupStockImpactByTypes, groupSummaries, splitTotal, validateGroup } from "./group";
+import { autoPick, expandTypeSlots, freeForStay, groupDateBlock, groupDrafts, groupStockImpact, groupStockImpactByTypes, groupSummaries, splitTotal, validateGroup, validateGroupAttach } from "./group";
 
 const room = (no: string, typeId: string) => ({ id: `r${no}`, no, typeId });
 const S = normalizeSettings({
@@ -109,6 +109,30 @@ test("장부 묶음: 방 수 · 박수 · 합계 (취소 빼고, 노쇼·환불 
   assert.equal(s.nights, 6);
   assert.equal(s.total, 300000 + 300000 + 300000 + 200000);
   assert.equal(s.arrived, 1);
+});
+
+test("기존 단체에 객실 추가: 1실부터 · 겹침 막기 · 타입만 1실", () => {
+  const free = new Set(["r301", "r302"]);
+  assert.equal(validateGroupAttach({ nights: 2, roomIds: ["r301"], prices: [100000], free }), null);
+  assert.match(validateGroupAttach({ nights: 2, roomIds: [], prices: [], free })!, /한 개/);
+  assert.match(validateGroupAttach({ nights: 2, roomIds: ["r304"], prices: [1], free })!, /다른 예약/);
+  assert.equal(validateGroupAttach({ nights: 2, roomIds: [], prices: [90000], free, typeOnly: [{ typeId: "s", count: 1 }] }), null);
+  assert.match(validateGroupAttach({ nights: 2, roomIds: [], prices: [], free, typeOnly: [{ typeId: "s", count: 0 }] })!, /타입/);
+  // 기존 group_id로 줄 만들기 (단체를 새로 만들지 않아요)
+  const list = groupDrafts({
+    groupId: "기존단체",
+    groupName: "오서건설",
+    platformId: "p",
+    checkIn: "2026-10-19",
+    nights: 3,
+    roomIds: ["r302"],
+    prices: [150000],
+    s: S,
+  });
+  assert.equal(list.length, 1);
+  assert.equal(list[0].groupId, "기존단체");
+  assert.equal(list[0].groupName, "오서건설");
+  assert.equal(list[0].roomId, "r302");
 });
 
 test("단체 날짜 바꾸기: 다른 예약과 겹치는 방 · 객실 이동한 방은 막아요", () => {

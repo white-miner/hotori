@@ -106,10 +106,12 @@ export function groupDrafts(p: {
   s: HotelSettings;
   guestsOf?: (typeId: string) => number | null;
   tentative?: boolean;
+  noClean?: boolean;
 }): Booking[] {
   const rmap = new Map(allRooms(p.s).map((r) => [r.id, r]));
   const now = new Date().toISOString();
   const tent = !!p.tentative;
+  const ncx = !!p.noClean;
   if (p.typeIds?.length) {
     return p.typeIds.map((typeId, i) => ({
       id: `__g${i}`,
@@ -127,6 +129,7 @@ export function groupDrafts(p: {
       endTime: null,
       arrived: false,
       tentative: tent,
+      noClean: ncx,
       earlyOut: null,
       refund: null,
       memo: null,
@@ -156,6 +159,7 @@ export function groupDrafts(p: {
       endTime: null,
       arrived: false,
       tentative: tent,
+      noClean: ncx,
       earlyOut: null,
       refund: null,
       memo: null,
@@ -193,6 +197,37 @@ export function validateGroup(p: {
   } else {
     if (p.roomIds.length < 2) return "방을 두 개 이상 골라 주세요.";
     if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 만들 수 있어요.`;
+    const busy = p.roomIds.filter((id) => !p.free.has(id));
+    if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
+    if (p.prices.length && p.prices.length !== p.roomIds.length) return "방별 금액을 확인해 주세요.";
+  }
+  if (p.prices.some((x) => !Number.isInteger(x) || x < 0 || x > 100_000_000)) return "금액을 확인해 주세요.";
+  return null;
+}
+
+/**
+ * 기존 단체에 객실(또는 타입만) 추가할 때 검사.
+ * 단체명·플랫폼은 기존 묶음을 따르므로 여기선 안 봐요. 1실부터 가능.
+ */
+export function validateGroupAttach(p: {
+  nights: number;
+  roomIds: string[];
+  prices: number[];
+  free: Set<string>;
+  /** 타입만(호실 미정). 있으면 roomIds는 무시하고 타입×수로 검사해요 */
+  typeOnly?: GroupTypeSlot[];
+}): string | null {
+  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
+  if (p.typeOnly) {
+    const slots = p.typeOnly.filter((x) => x.count > 0);
+    if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";
+    const n = slots.reduce((a, x) => a + x.count, 0);
+    if (n < 1) return "실 수를 한 개 이상 잡아 주세요.";
+    if (n > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 추가할 수 있어요.`;
+    if (p.prices.length !== n) return "방별 금액을 확인해 주세요.";
+  } else {
+    if (p.roomIds.length < 1) return "방을 한 개 이상 골라 주세요.";
+    if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 추가할 수 있어요.`;
     const busy = p.roomIds.filter((id) => !p.free.has(id));
     if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
     if (p.prices.length && p.prices.length !== p.roomIds.length) return "방별 금액을 확인해 주세요.";

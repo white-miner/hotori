@@ -44,6 +44,7 @@ import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
+import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, isOnsite, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
@@ -113,6 +114,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [kind, setKind] = useState<Kind>(base?.kind ?? p.kind ?? "stay");
   // 단체 예약: 새로 적을 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
+  const [addGroup, setAddGroup] = useState(false);
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
@@ -143,6 +145,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [mv, setMv] = useState<{ from: number; room: string | null; other: boolean } | null>(null);
   const [arrived, setArrived] = useState(base?.arrived ?? false);
   const [tentative, setTentative] = useState(base?.tentative ?? false);
+  const [noClean, setNoClean] = useState(base?.noClean ?? false);
   const [memo, setMemo] = useState(base?.memo ?? "");
   // 인원 · 추가 인원 금액 (판매 가격에 들어 있어요)
   const baseOf = (tid: string) => typeGuests(s.types.find((t) => t.id === tid)).base;
@@ -286,6 +289,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [inBusy, setInBusy] = useState(false);
   const [inErr, setInErr] = useState<string | null>(null);
   const [tentBusy, setTentBusy] = useState(false);
+  const [ncxBusy, setNcxBusy] = useState(false);
   const toggleIn = async () => {
     if (!base || inBusy) return;
     const next = !arrived;
@@ -314,6 +318,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setInErr("임시 배치를 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setTentBusy(false);
+    }
+  };
+  const toggleNoClean = async () => {
+    if (!base || ncxBusy) return;
+    const next = !noClean;
+    setNcxBusy(true);
+    setInErr(null);
+    setNoClean(next);
+    try {
+      await data.patchBooking(base.id, { noClean: next });
+    } catch {
+      setNoClean(!next);
+      setInErr("청소X를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setNcxBusy(false);
     }
   };
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
@@ -352,6 +371,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     endTime: kind === "dayuse" ? endTime : null,
     arrived,
     tentative,
+    noClean,
     earlyOut: base?.earlyOut ?? null,
     refund: base?.refund ?? null,
     memo: memo || null,
@@ -682,6 +702,18 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         onSaved={(m) => onSaved(m)}
       />
     );
+  if (addGroup && base?.groupId) {
+    const members = data.bookings.filter((b) => b.groupId === base.groupId);
+    return (
+      <GroupAdd
+        data={data}
+        today={today}
+        members={members}
+        onClose={() => setAddGroup(false)}
+        onSaved={(m) => onSaved(m)}
+      />
+    );
+  }
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
@@ -714,7 +746,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
         {base && isActive(base) ? (
           <div
-            className={`mtop n${1 + (base.kind === "stay" ? 1 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0)}`}
+            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (base.groupId ? 1 : 0)}`}
           >
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
@@ -737,6 +769,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {base.kind === "stay" ? (
               <button type="button" className={`beo tent ${tentative ? "on" : ""}`} aria-pressed={tentative} disabled={tentBusy} onClick={() => void toggleTent()}>
                 <b>{tentative ? "임시 · 확정하기" : "임시 배치"}</b>
+              </button>
+            ) : null}
+            {base.kind === "stay" ? (
+              <button type="button" className={`beo ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} disabled={ncxBusy} onClick={() => void toggleNoClean()} title="청소하지 않음 · 누르면 바로 저장">
+                <b>{noClean ? "청소X · 해제" : "청소X"}</b>
+              </button>
+            ) : null}
+            {base.groupId ? (
+              <button type="button" className="beo" onClick={() => setAddGroup(true)} title="같은 단체에 방·타입만 멤버를 이어 붙여요">
+                <b>단체에 객실 추가</b>
               </button>
             ) : null}
             {canEx ? (
@@ -1684,6 +1726,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {kind === "stay" ? (
                   <button type="button" className={`chip ${tentative ? "on" : ""}`} aria-pressed={tentative} onClick={() => setTentative((t) => !t)} title="임시라도 재고는 막혀요">
                     {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
+                  </button>
+                ) : null}
+                {kind === "stay" ? (
+                  <button type="button" className={`chip ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} onClick={() => setNoClean((t) => !t)} title="청소하지 않음">
+                    {noClean ? <Check size={14} strokeWidth={2.6} /> : null}청소X
                   </button>
                 ) : null}
               </>
