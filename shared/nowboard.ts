@@ -124,7 +124,35 @@ export function nowStayChips(b: Booking, date: string): string[] {
   return [`${u}박`, `${night}박째`];
 }
 
-/** 「지금」 칸: 입실·퇴실 날짜 (중도 퇴실이면 실제 퇴실일 = stayEnd) */
+/**
+ * 「지금」 칸 날짜: **점유 밤** 구간 `checkIn ~ (stayEnd−1)`.
+ * 퇴실 아침(stayEnd)은 구간에 넣지 않음 (예: 2박 입19·퇴21 → `10/19~20`).
+ * Entry는 입·퇴·박을 쓰고, 보드는 밤 구간만 쓴다.
+ */
+export function nowNightRange(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
+  from: string;
+  to: string;
+  fromLabel: string;
+  toLabel: string;
+  /** 1박은 `10/19`, 연박은 `10/19~20` */
+  label: string;
+} {
+  const lastNight = addDays(stayEnd(b), -1);
+  const fromLabel = md(b.checkIn);
+  const toLabel = md(lastNight);
+  // 같은 달이면 `10/19~20`, 달 넘기면 `10/30~11/2`
+  const sameMonth = b.checkIn.slice(0, 7) === lastNight.slice(0, 7);
+  const rangeEnd = sameMonth ? String(Number(lastNight.slice(8, 10))) : toLabel;
+  return {
+    from: b.checkIn,
+    to: lastNight,
+    fromLabel,
+    toLabel,
+    label: b.checkIn === lastNight ? fromLabel : `${fromLabel}~${rangeEnd}`,
+  };
+}
+
+/** @deprecated 보드 주 표기는 nowNightRange. Entry용 입·퇴 라벨이 필요할 때만 */
 export function nowStayDates(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
   checkIn: string;
   checkOut: string;
@@ -135,8 +163,7 @@ export function nowStayDates(b: Pick<Booking, "checkIn" | "nights" | "kind" | "e
   return { checkIn: b.checkIn, checkOut: out, inLabel: md(b.checkIn), outLabel: md(out) };
 }
 
-/** 화이트보드용 한 줄: `10/20→10/28` */
+/** 화이트보드용 한 줄 = 점유 밤 구간 */
 export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): string {
-  const d = nowStayDates(b);
-  return `${d.inLabel}→${d.outLabel}`;
+  return nowNightRange(b).label;
 }
