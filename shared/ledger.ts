@@ -1,3 +1,4 @@
+import { normalizePlatformFee, normalizeRate } from "./feerate";
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
 import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
@@ -58,6 +59,14 @@ export interface Platform {
   color?: string | null; // 캘린더 막대 색 (#RRGGBB). 없으면 플랫폼 기본 색
   /** 현장 결제 (잔금을 따져요). 없으면 이름에 '현장'·'전화'가 있을 때 켜진 걸로 봐요 */
   onsite?: boolean;
+  /** 수수료율 % (없으면 수수료 없음) */
+  feeRate?: number | null;
+  /** 수수료 기준: 판매가(sale, 기본) · 쿠폰 뺀 금액(net) */
+  feeBasis?: "sale" | "net";
+  /** 쿠폰 기본 부담: 숙소 부담이면 true (기본은 플랫폼 부담) */
+  couponHotel?: boolean;
+  /** 정산 주기: 퇴실 후 N일에 입금 (없으면 날짜 없음) */
+  payoutDays?: number | null;
 }
 export interface HotelSettings {
   buildings: Building[]; // 1개 이상. 1개면 화면은 예전과 똑같아요.
@@ -77,6 +86,8 @@ export interface HotelSettings {
   extraHourFee: number;
   /** 주차 관리 (없으면 꺼짐) */
   parking: ParkingSettings;
+  /** 카드 수수료율 % (현장 카드 결제에만, 없으면 없음) */
+  cardFeeRate: number | null;
 }
 export interface ShopItem {
   id: string;
@@ -106,6 +117,11 @@ export function normalizeShopItems(raw: unknown): ShopItem[] {
     });
 }
 
+export interface Coupon {
+  amount: number;
+  /** 숙소 부담 (입금에서 빠져요). 아니면 플랫폼 부담 */
+  hotel: boolean;
+}
 export interface RoomSegment {
   roomId: string;
   nights: number;
@@ -149,6 +165,11 @@ export interface Booking {
   carFee?: number | null;
   /** 판매 가격에서 빠진 도보 할인 */
   walkOff?: number | null;
+  /** 쿠폰: 금액 · 숙소 부담 여부 (판매 가격은 쿠폰 빼기 전 금액 그대로) */
+  coupons?: Coupon[] | null;
+  /** 플랫폼 입금 확인 · 실제 입금액 (없으면 입금 예정가 그대로 들어온 걸로) */
+  payoutOk?: boolean;
+  payoutAmount?: number | null;
   /** 단체 예약 묶음 (같은 단체의 방들은 같은 값) */
   groupId?: string | null;
   groupName?: string | null;
@@ -166,7 +187,7 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE, parking: normalizeParking(undefined) };
+  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE, parking: normalizeParking(undefined), cardFeeRate: null };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -199,7 +220,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
       ? s.platforms
           .filter((p) => p && typeof p.id === "string")
           .map((p) => {
-            const { color, ...rest } = p;
+            const { color, ...rest } = normalizePlatformFee(p);
             return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? { ...rest, color: color.toUpperCase() } : rest;
           })
       : [],
@@ -211,6 +232,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     stayTimes: normalizeStayTimes((s as { stayTimes?: unknown }).stayTimes),
     extraHourFee: normalizeHourFee((s as { extraHourFee?: unknown }).extraHourFee),
     parking: normalizeParking((s as { parking?: unknown }).parking),
+    cardFeeRate: normalizeRate((s as { cardFeeRate?: unknown }).cardFeeRate),
   };
 }
 
@@ -1003,6 +1025,7 @@ export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.types.some((t) => t.id === b.typeId && typeLabel(t))) return "객실 타입을 골라 주세요.";
   if (!b.guestName.trim()) return "손님 이름을 적어 주세요.";
   if (!Number.isFinite(b.price) || b.price < 0) return "판매 가격을 적어 주세요.";
+  if ((b.coupons ?? []).reduce((n, c) => n + (c.amount > 0 ? c.amount : 0), 0) > b.price) return "쿠폰 합계가 판매 가격보다 커요. 판매 가격은 쿠폰 빼기 전 금액이에요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
     if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";

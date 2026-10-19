@@ -1390,3 +1390,56 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .pmark .pm-t { display: none; }
   .cell .pmark .pm-i { display: inline-flex; font-size: 9px; }
 }
+/* 설정 · 수수료 · 입금 */
+.feegrid { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.fg-h, .fg-r { display: grid; grid-template-columns: minmax(150px, 1fr) 110px 190px 190px 150px; gap: 10px; align-items: center; }
+.fg-r .seg { justify-self: start; }
+.fg-h { font-size: 12px; color: var(--ink3); font-weight: 650; padding: 0 10px; }
+.fg-r { background: #fff; border-radius: 14px; padding: 7px 10px; font-size: 13.5px; }
+.fg-p { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fg-p b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fg-p small { font-size: 11px; white-space: nowrap; }
+.fg-r.off .seg { opacity: 0.6; }
+.inp.rate, .inp.days { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink3); font-size: 13px; white-space: nowrap; }
+.inp.rate input, .inp.days input { border: 0; padding: 0; min-width: 0; width: 46px; text-align: right; font-size: 15px; font-weight: 750; color: var(--ink); background: transparent; }
+.inp.days input { width: 30px; }
+.inp.rate input:focus, .inp.days input:focus { outline: none; }
+.inp.rate:focus-within, .inp.days:focus-within { border-color: var(--ink2); }
+.cardfee { display: flex; align-items: center; gap: 14px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.cardfee label { display: flex; align-items: center; gap: 10px; font-size: 13.5px; font-weight: 700; color: var(--ink2); }
+.cardfee .sub { margin: 0; flex: 1; min-width: 220px; }
+@media (max-width: 760px) {
+  .fg-h { display: none; }
+  .fg-r { grid-template-columns: 1fr auto; row-gap: 8px; }
+  .fg-r .seg { grid-column: 1 / -1; justify-self: start; }
+  .fg-r .inp.days { grid-column: 1 / -1; justify-self: start; }
+}
+/* 예약 창 · 쿠폰 · 입금 */
+.cprow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cprow .pl { font-size: 12.5px; font-weight: 700; color: var(--ink2); min-width: 44px; }
+.cprow .inp.price { width: 150px; flex: none; }
+.cprow .ck { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink2); font-weight: 650; }
+.cprow .ck input { accent-color: var(--red); width: 15px; height: 15px; }
+.cpadd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cpadd .chip { display: inline-flex; align-items: center; gap: 3px; }
+.poline { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--panel); font-size: 13.5px; }
+.poline b { font-size: 15px; font-weight: 800; color: var(--ink); }
+.poline .pof { font-family: var(--num); font-size: 12px; }
+.postat { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.postat .tgl { margin-left: 0; }
+.postat .inp.price { width: 150px; flex: none; }
+.podiff { font-family: var(--num); font-weight: 750; color: var(--ink2); }
+.podiff.neg { color: var(--red); }
+/* 장부 · 입금 */
+.c-price small.poamt { display: inline-flex; align-items: center; gap: 2px; justify-content: flex-end; color: var(--ink3); }
+.c-price small.poamt.ok { color: var(--ink2); }
+.posum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; font-size: 12.5px; color: var(--ink2); }
+.posum b { font-family: var(--num); font-weight: 750; color: var(--ink); }
+.posum .poc { font-family: var(--num); font-size: 12px; background: var(--panel); border-radius: 999px; padding: 2px 9px; color: var(--ink2); font-weight: 650; }
+.posum .poc:first-of-type { margin-left: 6px; }
+.posum .poc.wait { color: var(--red-d); }
+.lsum .mbasis { padding: 3px; }
+.lsum .mbasis button { padding: 4px 12px; font-size: 12.5px; }
+.cfld > label { align-self: start; padding-top: 6px; }
+.inp.rate, .inp.days { width: auto; }
+.cardfee label > span:first-child { white-space: nowrap; }

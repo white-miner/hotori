@@ -47,6 +47,7 @@ import GroupEntry from "./GroupEntry";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, isOnsite, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
+import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
 
 interface Props {
@@ -156,6 +157,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [walkOff, setWalkOff] = useState<number>(base?.arrival === "walk" ? Math.max(0, base.walkOff ?? 0) : 0);
   const [cMan, setCMan] = useState(false);
   const [wMan, setWMan] = useState(false);
+  // 쿠폰 · 플랫폼 입금 확인 (저장할 때 같이)
+  const [coupons, setCoupons] = useState<{ amount: string; hotel: boolean }[]>(() => (base?.coupons ?? []).map((c) => ({ amount: String(c.amount), hotel: c.hotel })));
+  const [payOk, setPayOk] = useState(base?.payoutOk === true);
+  const [payAmt, setPayAmt] = useState(base?.payoutOk && base.payoutAmount != null ? String(base.payoutAmount) : "");
   // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
   const [dep, setDep] = useState<{ amount: string; method: BookPayMethod; date: string }>({ amount: "", method: "card", date: today });
   const [bal, setBal] = useState<{ method: BookPayMethod; amount: string } | null>(null);
@@ -276,6 +281,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     plates: pk ? (arrival === "car" ? plates : null) : (base?.plates ?? null),
     carFee: pk ? (arrival === "car" && carFee ? carFee : null) : (base?.carFee ?? null),
     walkOff: pk ? (arrival === "walk" && walkOff ? walkOff : null) : (base?.walkOff ?? null),
+    coupons: cleanCoupons(coupons.map((c) => ({ amount: Number(c.amount || 0), hotel: c.hotel }))),
+    payoutOk: payOk,
+    payoutAmount: payOk && payAmt !== "" ? Number(payAmt) : null,
     cancelledAt: base?.cancelledAt ?? null,
     createdAt: base?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -380,6 +388,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
   const payTracked = isOnsite(L.plats.get(platformId)) || livePays.length > 0;
+  const curPlat = L.plats.get(platformId);
+  const po = payoutOf(draftBase, curPlat);
+  const poLine = payoutLine(po);
+  // 쿠폰 · 입금 칸: 플랫폼 예약이거나 수수료율이 있는 플랫폼 (또는 이미 쿠폰을 적었으면)
+  const feeOn = !!curPlat && (!isOnsite(curPlat) || !!curPlat.feeRate || coupons.length > 0);
   const depAmt = payTracked && !livePays.length ? Number(dep.amount || 0) : 0;
   const payPaid = livePays.reduce((n, x) => n + x.amount, 0) + depAmt;
   const payDue = revenueOf({ ...draftBase, status: "active" });
@@ -1258,6 +1271,89 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             )}
           </div>
         </div>
+
+        {feeOn ? (
+          <div className="fld cfld">
+            <label>쿠폰 · 입금</label>
+            <div className="payb">
+              {coupons.map((c, i) => (
+                <div className="cprow" key={i}>
+                  <span className="pl">쿠폰{coupons.length > 1 ? ` ${i + 1}` : ""}</span>
+                  <label className="inp price sm">
+                    <input
+                      className="num"
+                      inputMode="numeric"
+                      aria-label={`쿠폰 ${i + 1} 금액`}
+                      placeholder="금액"
+                      value={c.amount ? won(Number(c.amount)) : ""}
+                      onChange={(e) => {
+                        const v = String(Math.min(COUPON_AMOUNT_MAX, Number(e.target.value.replace(/\D/g, "").slice(0, 8) || 0)) || "");
+                        setCoupons((l) => l.map((x, j) => (j === i ? { ...x, amount: v } : x)));
+                      }}
+                    />
+                    원
+                  </label>
+                  <label className="ck">
+                    <input type="checkbox" checked={c.hotel} aria-label={`쿠폰 ${i + 1} 숙소 부담`} onChange={(e) => setCoupons((l) => l.map((x, j) => (j === i ? { ...x, hotel: e.target.checked } : x)))} />
+                    숙소 부담
+                  </label>
+                  <button type="button" className="ic" aria-label={`쿠폰 ${i + 1} 지우기`} onClick={() => setCoupons((l) => l.filter((_, j) => j !== i))}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <div className="cpadd">
+                {coupons.length < COUPON_MAX ? (
+                  <button type="button" className="chip sm" onClick={() => setCoupons((l) => [...l, { amount: "", hotel: curPlat?.couponHotel === true }])}>
+                    <Plus size={13} /> 쿠폰
+                  </button>
+                ) : null}
+                {!coupons.length ? <span className="muted sm">쿠폰을 썼으면 금액을 적어 주세요 · 판매 가격은 그대로예요</span> : null}
+              </div>
+              {poLine ? (
+                <div className="poline">
+                  <span>
+                    입금 예정가 <b className="num">{won(po.expected)}원</b>
+                  </span>
+                  <span className="muted pof">{poLine}</span>
+                </div>
+              ) : null}
+              {po.tracked ? (
+                <div className="postat">
+                  {po.dueOn ? <span className="muted">입금 예정일 {dayLabel(po.dueOn)}</span> : null}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={payOk}
+                    aria-label="입금 확인"
+                    className={`tgl ${payOk ? "on" : ""}`}
+                    onClick={() => {
+                      if (!payOk && payAmt === "") setPayAmt(String(po.expected));
+                      setPayOk(!payOk);
+                    }}
+                  >
+                    <i />
+                    입금 확인
+                  </button>
+                  {payOk ? (
+                    <>
+                      <label className="inp price sm">
+                        <input className="num" inputMode="numeric" aria-label="실제 입금액" value={payAmt !== "" ? won(Number(payAmt)) : ""} placeholder={won(po.expected)} onChange={(e) => setPayAmt(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                        원
+                      </label>
+                      {po.diff ? (
+                        <span className={`podiff ${po.diff < 0 ? "neg" : ""}`}>
+                          예정보다 {po.diff > 0 ? "+" : "−"}
+                          {won(Math.abs(po.diff))}원
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div className="fld">
           <label>{moved ? "첫 방" : "방 번호"}</label>

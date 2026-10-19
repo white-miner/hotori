@@ -3,6 +3,7 @@ import { pastelColor, strongColor } from "../shared/floorColor";
 import { isOnsite } from "../shared/payment";
 import { GUESTS_MAX, typeGuests } from "../shared/surcharge";
 import { SpecialDates, TierSettings } from "./SurchargeSettings";
+import FeeSettings from "./FeeSettings";
 import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
@@ -311,6 +312,7 @@ export default function Settings({ data, email, notify }: Props) {
           {[
             ["rooms", "객실·타입"],
             ["plats", "플랫폼"],
+            ["fees", "수수료"],
             ["pcolor", "플랫폼 색"],
             ["shop", "매점"],
             ["exp", "지출 분류"],
@@ -828,6 +830,12 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="preview-row">
             미리 보기 {s.platforms.slice(0, 5).map((p) => <PlatBadge key={p.id} p={p} />)}
           </div>
+        </section>
+
+        <section className="card wide" id="set-fees">
+          <h3>수수료 · 입금</h3>
+          <div className="sub">플랫폼마다 수수료를 적으면 예약 창과 장부에 플랫폼이 넣어 줄 입금 예정가가 보여요.</div>
+          <FeeSettings s={s} update={update} />
         </section>
 
         <section className="card" id="set-pcolor">

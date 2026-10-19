@@ -12,6 +12,7 @@ import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/sho
 import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
+import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
 
 interface Props {
   data: HotelData;
@@ -25,6 +26,8 @@ interface Props {
 type LTab = "bookings" | "expenses";
 const LT_KEY = "hotori.ledgerTab";
 type StatusF = "all" | "active" | "void";
+type MoneyBasis = "sale" | "payout";
+const MB_KEY = "hotori.moneyBasis";
 const STATUS: Record<string, string> = { active: "", cancelled: "취소", noshow: "노쇼" };
 
 export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, notify }: Props) {
@@ -54,6 +57,23 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [kind, setKind] = useState("");
   const [st, setSt] = useState<StatusF>("all");
   const [dueOnly, setDueOnly] = useState(false);
+  const [poWait, setPoWait] = useState(false);
+  // 남은 금액 기준: 판매가 · 입금 예정 (수수료 · 숙소 부담 쿠폰 · 카드 수수료를 뺀 금액). 기기마다 기억
+  const [mBasis, setMBasisRaw] = useState<MoneyBasis>(() => {
+    try {
+      return localStorage.getItem(MB_KEY) === "payout" ? "payout" : "sale";
+    } catch {
+      return "sale";
+    }
+  });
+  const setMBasis = (x: MoneyBasis) => {
+    setMBasisRaw(x);
+    try {
+      localStorage.setItem(MB_KEY, x);
+    } catch {
+      /* 개인 정보 보호 모드 */
+    }
+  };
   const [gOpen, setGOpen] = useState<Set<string>>(new Set());
   const [gEdit, setGEdit] = useState<{ id: string; name: string; checkIn: string; nights: number } | null>(null);
   const [gBusy, setGBusy] = useState(false);
@@ -127,6 +147,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (st === "active" && !isActive(b)) return false;
     if (st === "void" && isActive(b)) return false;
     if (dueOnly && leftOf(b) <= 0) return false;
+    if (poWait && !payoutWaiting(b, L.plats.get(b.platformId))) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
       const hay = [b.guestName, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
@@ -144,7 +165,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const sum = rev.net;
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
   // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
-  const filtered = !!(plat || type || kind || q || st === "void" || dueOnly);
+  const filtered = !!(plat || type || kind || q || st === "void" || dueOnly || poWait);
   const dueTotal =
     list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0) +
     [...new Set(list.map((b) => b.groupId).filter((x): x is string => !!x))].reduce((n, id) => n + (groupSettle(id)?.left ?? 0), 0);
@@ -153,12 +174,22 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const revAll = roomRevenue(rows ?? [], from, to);
   const roomsAll = revAll.net;
   const exT = expenseTotals(ex.list ?? []);
+  // 수수료 · 입금: 설정에서 수수료를 하나라도 적었을 때만 보여요
+  const platOf = (b: Pick<Booking, "platformId">) => L.plats.get(b.platformId);
+  const feeUsed = s.platforms.some((p) => p.feeRate || p.payoutDays != null) || s.cardFeeRate != null;
+  const poSum = payoutSummary(list, platOf);
+  const poRooms = payoutRevenue(rows ?? [], platOf, from, to);
+  const cardTotal = (paySum?.card ?? 0) + (shopSum?.pay.card ?? 0);
+  const cardFee = cardFeeOf(s, cardTotal);
+  const byPayout = feeUsed && mBasis === "payout";
   const renderRow = (b: Booking, gm = false) => {
             const p = L.plats.get(b.platformId);
             const per = perNight(b);
             const eo = isActive(b) && isEarlyOut(b);
             // 단체 방은 결제자가 하나라 방마다 잔금을 안 보여요 (단체 줄에서)
             const ps = b.groupId ? { left: 0, full: false } : payState(b, p);
+            const po = payoutOf(b, p);
+            const poV = payoutValue(po);
             return (
               <div key={b.id} role="button" tabIndex={0} className={`lrow ${gm ? "gmem" : ""} ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
                 <span className="c-date">{dayLabel(b.checkIn)}</span>
@@ -188,6 +219,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                 <span className="c-price r">
                   {won(b.price)}
                   {eo && b.refund ? <small className="rf">환불 −{won(b.refund)}</small> : per ? <small>1박 {won(per)}</small> : null}
+                  {po.tracked && poV !== b.price ? (
+                    <small className={`poamt ${po.ok ? "ok" : ""}`} title={po.ok ? `입금 확인${po.diff ? ` · 예정 ${won(po.expected)}원` : ""}` : `입금 예정${po.dueOn ? ` ${dayLabel(po.dueOn)}` : ""} · 아직 확인 안 함`}>
+                      {po.ok ? <Check size={11} strokeWidth={3} /> : null}입금 {won(poV)}
+                    </small>
+                  ) : null}
                   {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
                 </span>
                 <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
@@ -329,7 +365,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     );
   };
 
-  const money = moneySummary(roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
+  const money = moneySummary(byPayout ? poRooms.amount - cardFee : roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
 
   return (
@@ -349,13 +385,36 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             )}
           </div>
           <div className="lsum money">
-            <span title={`숙박·대실 ${won(money.sales - (shopSum?.amount ?? 0))}원 + 매점 ${won(shopSum?.amount ?? 0)}원`}>
-              매출<b>{won(money.sales)}원</b>
-              <i className="muted">
-                {" "}
-                · 숙박·대실 {won(roomsAll)}{revAll.refunds ? ` (환불 −${won(revAll.refunds)})` : ""} · 매점 {won(shopSum?.amount ?? 0)}
-              </i>
-            </span>
+            {feeUsed ? (
+              <div className="seg sm mbasis" role="group" aria-label="남은 금액 기준">
+                <button type="button" className={!byPayout ? "on" : ""} aria-pressed={!byPayout} onClick={() => setMBasis("sale")}>
+                  판매가
+                </button>
+                <button type="button" className={byPayout ? "on" : ""} aria-pressed={byPayout} onClick={() => setMBasis("payout")}>
+                  입금 예정
+                </button>
+              </div>
+            ) : null}
+            {byPayout ? (
+              <span title="숙박·대실은 플랫폼 수수료 · 숙소 부담 쿠폰을 뺀 입금 예정가(입금 확인한 건 실제 입금액), 카드 수수료는 현장 카드 결제(예약 · 단체 · 매점)에만">
+                매출 (입금 예정)<b>{won(money.sales)}원</b>
+                <i className="muted">
+                  {" "}
+                  · 숙박·대실 {won(poRooms.amount)}
+                  {poRooms.fee ? ` (수수료 −${won(poRooms.fee)})` : ""}
+                  {poRooms.hotelCoupons ? ` (숙소 부담 쿠폰 −${won(poRooms.hotelCoupons)})` : ""} · 매점 {won(shopSum?.amount ?? 0)}
+                  {cardFee ? ` · 카드 수수료 −${won(cardFee)}` : ""}
+                </i>
+              </span>
+            ) : (
+              <span title={`숙박·대실 ${won(money.sales - (shopSum?.amount ?? 0))}원 + 매점 ${won(shopSum?.amount ?? 0)}원`}>
+                매출<b>{won(money.sales)}원</b>
+                <i className="muted">
+                  {" "}
+                  · 숙박·대실 {won(roomsAll)}{revAll.refunds ? ` (환불 −${won(revAll.refunds)})` : ""} · 매점 {won(shopSum?.amount ?? 0)}
+                </i>
+              </span>
+            )}
             <span className="op">−</span>
             <span>
               지출<b>{won(money.expense)}원</b>
@@ -378,6 +437,24 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           {tab === "bookings" && paySum && paySum.total > 0 ? (
             <div className="lsum-f muted paysum" title="받은 날 기준 예약 선금·잔금 (단체 정산 포함). 이체는 현금 시재에 안 들어가요">
               예약 받은 돈 {won(paySum.total)}원 · 카드 {won(paySum.card)} · 현금 {won(paySum.cash)} · 이체 {won(paySum.transfer)}
+            </div>
+          ) : null}
+          {tab === "bookings" && poSum.count > 0 ? (
+            <div className="lsum-f posum" title="수수료율 · 정산 주기 · 숙소 부담 쿠폰이 있는 예약만 (입실일 기준 · 취소 제외)">
+              <span className="muted">플랫폼 입금 {poSum.count}건 ·</span> 판매가 <b>{won(poSum.sale)}</b> − 수수료 <b>{won(poSum.fee)}</b> − 쿠폰(숙소 부담) <b>{won(poSum.hotelCoupons)}</b>
+              {poSum.refund ? (
+                <>
+                  {" "}
+                  − 환불 <b>{won(poSum.refund)}</b>
+                </>
+              ) : null}{" "}
+              = 입금 예정 <b>{won(poSum.expected)}원</b>
+              <span className="poc">
+                입금 확인 {poSum.okCount}건 {won(poSum.okAmount)}원
+              </span>
+              <span className={`poc ${poSum.waitCount ? "wait" : ""}`}>
+                미확인 {poSum.waitCount}건 {won(poSum.waitAmount)}원
+              </span>
             </div>
           ) : null}
           {tab === "bookings" && dueTotal > 0 ? (
@@ -479,6 +556,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
         <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
           잔금 남음
         </button>
+        {feeUsed ? (
+          <button type="button" className={`chip sm duechip ${poWait ? "on" : ""}`} aria-pressed={poWait} onClick={() => setPoWait((x) => !x)}>
+            입금 미확인
+          </button>
+        ) : null}
         <div className="seg">
           {(
             [
