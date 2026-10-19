@@ -682,9 +682,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (nowFilter === "tentative") return null;
       return (
         <div key={r.id} {...act} className={`cell em nowempty ${readOnly ? "ro" : ""}`} onClick={() => onNew({ checkIn: today, roomId: r.id, typeId: r.typeId ?? undefined })}>
-          {head}
-          <TypeLine t={t} />
-          <div className="emt">빈 방</div>
+          <div className="cell-body">
+            {head}
+            <TypeLine t={t} />
+            <div className="emt">빈 방</div>
+          </div>
         </div>
       );
     }
@@ -699,52 +701,54 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         className={`cell bk nowcell nk-${f.kind} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${b.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
         onClick={() => onOpen(b, today)}
       >
-        {head}
-        <TypeLine t={t} />
-        <div className="nm">
-          <PlatBadge p={L.plats.get(b.platformId)} />
-          <span>{b.guestName}</span>
-          {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
-          {f.tentative ? <span className="tenttag">임시</span> : null}
-          {f.group ? <span className="grptag">단체</span> : null}
-        </div>
-        <div className="r3">
-          <span className={`nklab nk-${f.kind}`}>{f.label}</span>
-          <span className="muted sm">{nowStayHint(b, today)}</span>
-        </div>
-        <div className="nowacts">
-          {ncxOk ? (
-            <button
-              type="button"
-              className={`nowncx ${f.noClean ? "on" : ""}`}
-              title={f.noClean ? "청소X 해제" : "청소하지 않음으로 표시"}
-              onClick={(e) => {
-                e.stopPropagation();
-                void (async () => {
-                  try {
-                    await data.patchBooking(b.id, { noClean: !f.noClean });
-                    notify(f.noClean ? "청소X를 해제했어요" : "청소X로 표시했어요");
-                  } catch {
-                    notify("청소X를 저장하지 못했어요");
-                  }
-                })();
-              }}
-            >
-              {f.noClean ? "청소X · 해제" : "청소X"}
-            </button>
-          ) : null}
-          {extOk ? (
-            <button
-              type="button"
-              className="nowext"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen(b, today, { openExtend: true });
-              }}
-            >
-              {EXTEND_COPY}
-            </button>
-          ) : null}
+        <div className="cell-body">
+          {head}
+          <TypeLine t={t} />
+          <div className="nm">
+            <PlatBadge p={L.plats.get(b.platformId)} />
+            <span>{b.guestName}</span>
+            {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
+            {f.tentative ? <span className="tenttag">임시</span> : null}
+            {f.group ? <span className="grptag">단체</span> : null}
+          </div>
+          <div className="r3">
+            <span className={`nklab nk-${f.kind}`}>{f.label}</span>
+            <span className="muted sm">{nowStayHint(b, today)}</span>
+          </div>
+          <div className="nowacts">
+            {ncxOk ? (
+              <button
+                type="button"
+                className={`nowncx ${f.noClean ? "on" : ""}`}
+                title={f.noClean ? "청소X 해제" : "청소하지 않음으로 표시"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void (async () => {
+                    try {
+                      await data.patchBooking(b.id, { noClean: !f.noClean });
+                      notify(f.noClean ? "청소X를 해제했어요" : "청소X로 표시했어요");
+                    } catch {
+                      notify("청소X를 저장하지 못했어요");
+                    }
+                  })();
+                }}
+              >
+                {f.noClean ? "청소X · 해제" : "청소X"}
+              </button>
+            ) : null}
+            {extOk ? (
+              <button
+                type="button"
+                className="nowext"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpen(b, today, { openExtend: true });
+                }}
+              >
+                {EXTEND_COPY}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     );

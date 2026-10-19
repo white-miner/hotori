@@ -1364,6 +1364,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nowncx:hover { background: #ffe8e2; }
 .nowacts { display: flex; flex-direction: column; gap: 2px; width: 100%; }
 .nowacts .nowext, .nowacts .nowncx { width: calc(100% - 16px); margin-left: 8px; margin-right: 8px; }
+/* padding이 .cell-body로 옮겨져서 안쪽 단추는 가로 100% */
+.now-page .nowacts .nowext, .now-page .nowacts .nowncx { width: 100%; margin-left: 0; margin-right: 0; }
 .nkdot.nk-ncx { border-color: #c43c28; background: #ffe3dc; }
 .mtop.n4 { grid-template-columns: 1fr 1fr; }
 .mtop.n4 > :first-child { grid-column: 1 / -1; }
@@ -1378,24 +1380,61 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
-.now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
-.now-page .rooms { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; }
-.now-page .cell { min-height: 200px; padding: 10px 11px 11px; gap: 5px; border-radius: 18px; }
+.now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
+.now-page .nowgrid { overflow: visible; }
+.now-page .rooms {
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  /* 같은 층 안 행 높이를 맞춤 → 아래쪽 빈 칸이 짧아져 테두리가 잘려 보이는 현상 방지 */
+  grid-auto-rows: 1fr;
+  overflow: visible;
+  padding: 2px; /* 1px 테두리가 부모 clip에 먹히지 않게 */
+}
+.now-page .cell {
+  /* container-type은 .cell-body로 옮김 — grid item의 size containment이 stretch를 깨면 빈 칸이 짧아짐 */
+  container-type: normal;
+  min-height: 200px;
+  height: 100%;
+  align-self: stretch;
+  padding: 0;
+  gap: 0;
+  border-radius: 18px;
+  overflow: visible;
+  box-sizing: border-box;
+}
+.now-page .cell-body {
+  container-type: inline-size;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 11px 11px;
+  min-width: 0;
+  min-height: 100%;
+  border-radius: inherit;
+  box-sizing: border-box;
+}
 .now-page .cell .r1 { padding: 3px 5px; margin-bottom: 2px; }
 .now-page .cell .r1.strip { padding: 4px 7px; }
 .now-page .fh { display: flex; align-items: flex-start; padding-top: 8px; }
 .now-page .fn { font-size: 13px; font-weight: 700; color: var(--ink3); writing-mode: horizontal-tb; }
+/* 투숙 칸: border-color만 있으면 두께가 0 — 테두리를 명시 */
+.now-page .nowcell { border: 1px solid var(--stay); }
+.now-page .nowempty,
+.now-page .cell.em { border: 1px dashed #c8c8c8; background-clip: padding-box; }
 @media (max-width: 760px) {
   .now-page .floor { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 10px; }
   .now-page .rooms { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
-  .now-page .cell { min-height: 150px; padding: 8px 9px 9px; gap: 3px; border-radius: 14px; }
+  .now-page .cell { min-height: 150px; border-radius: 14px; }
+  .now-page .cell-body { padding: 8px 9px 9px; gap: 3px; }
   .now-page .fh { padding-top: 0; padding-left: 2px; }
 }
 .nowfilters { flex-wrap: wrap; gap: 8px; }
-.nowcell.nk-arriving { border-color: #3b6fd9; }
-.nowcell.nk-inhouse { border-color: var(--stay); }
-.nowcell.nk-departing { border-color: #c47a12; }
-.nowcell.nk-lateOut { border-color: #b42318; box-shadow: inset 0 0 0 1px #b42318; }
+.now-page .nowcell.nk-arriving { border-color: #3b6fd9; }
+.now-page .nowcell.nk-inhouse { border-color: var(--stay); }
+.now-page .nowcell.nk-departing { border-color: #c47a12; }
+.now-page .nowcell.nk-lateOut { border-color: #b42318; box-shadow: inset 0 0 0 1px #b42318; }
 .nowcell .nklab { font-size: 11px; font-weight: 750; }
 .nklab.nk-arriving { color: #2f5fc4; }
 .nklab.nk-inhouse { color: var(--red-d); }
