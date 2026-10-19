@@ -178,9 +178,14 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         <Brand sub={hotel.name} />
         <nav className="nav">
           {VIEWS.map((v) => (
-            <a key={v.id} href={`#/${v.id}`} className={view === v.id ? "on" : ""} onClick={() => setView(v.id)}>
+            <a
+              key={v.id}
+              href={`#/${v.id}`}
+              className={view === v.id ? "on" : ""}
+              onClick={() => setView(v.id)}
+              aria-keyshortcuts={v.id === "shop" ? "M" : undefined}
+            >
               {v.label}
-              {v.id === "shop" ? <kbd className="nk">M</kbd> : null}
             </a>
           ))}
         </nav>
@@ -198,9 +203,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             />
             <kbd>/</kbd>
           </label>
-          <button className="addbtn" onClick={() => openNew({ checkIn: selDate })}>
+          <button className="addbtn" aria-keyshortcuts="N" onClick={() => openNew({ checkIn: selDate })}>
             <Plus size={17} strokeWidth={2.4} />
-            예약 기록<kbd>N</kbd>
+            예약 기록
           </button>
           <div className="menu-wrap">
             <button className="av" aria-label="메뉴" onClick={() => setMenu((m) => !m)}>

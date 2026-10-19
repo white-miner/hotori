@@ -87,7 +87,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .search kbd { background: #fff; padding: 1px 6px; color: var(--ink3); }
 .addbtn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 15px; border-radius: 999px; background: var(--red); color: #fff; font-weight: 700; font-size: 14px; white-space: nowrap; }
 .addbtn:hover { background: var(--red-d); }
-.addbtn kbd { background: rgba(255, 255, 255, 0.22); color: #fff; border-radius: 999px; padding: 2px 8px; }
 .menu-wrap { position: relative; }
 .av { width: 34px; height: 34px; border-radius: 50%; background: var(--panel); color: var(--ink2); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; }
 .av-m { display: none; }
@@ -621,8 +620,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sgrid .card.share { align-self: start; }
 
 /* ---------- 매점 ---------- */
-.nav a .nk { margin-left: 6px; font-size: 10px; padding: 1px 5px; background: transparent; color: var(--ink4); }
-.nav a.on .nk { background: #fff; }
 .tabbar { display: none; }
 .shop-ph { align-items: flex-end; }
 .shop-sum { font-size: 14px !important; color: var(--ink2) !important; }
