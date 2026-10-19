@@ -1,7 +1,7 @@
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
-import { nowFlags, nowLists, nowStayHint, unassignedTypeCounts } from "../shared/nowboard";
+import { nowFlags, nowLists, nowStayChips, unassignedTypeCounts } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -266,18 +266,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
   const nowBoard = useMemo(() => nightBoard(s, bookings, today), [s, bookings, today]);
   const nowSide = useMemo(() => nowLists(bookings, today), [bookings, today]);
-  const nowExtendable = useMemo(() => {
-    const ids = new Set<string>();
-    const out: Booking[] = [];
-    for (const b of [...nowSide.lateOut, ...nowSide.departing, ...bookings]) {
-      if (ids.has(b.id) || !canExtend(b) || !isActive(b) || b.kind !== "stay") continue;
-      const f = nowFlags(b, today);
-      if (f.kind !== "inhouse" && f.kind !== "departing" && f.kind !== "lateOut") continue;
-      ids.add(b.id);
-      out.push(b);
-    }
-    return out.sort((a, c) => a.guestName.localeCompare(c.guestName, "ko"));
-  }, [nowSide.lateOut, nowSide.departing, bookings, today]);
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
   // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
@@ -692,8 +680,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     const f = nowFlags(b, today);
     if (nowFilter === "tentative" && !f.tentative) return null;
-    const extOk = !readOnly && canExtend(b) && (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
-    const ncxOk = !readOnly && (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut" || f.kind === "arriving");
+    const stayChips = nowStayChips(b, today);
     return (
       <div
         key={r.id}
@@ -711,43 +698,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {f.tentative ? <span className="tenttag">임시</span> : null}
             {f.group ? <span className="grptag">단체</span> : null}
           </div>
-          <div className="r3">
+          <div className="r3 nowfacts">
             <span className={`nklab nk-${f.kind}`}>{f.label}</span>
-            <span className="muted sm">{nowStayHint(b, today)}</span>
-          </div>
-          <div className="nowacts">
-            {ncxOk ? (
-              <button
-                type="button"
-                className={`nowncx ${f.noClean ? "on" : ""}`}
-                title={f.noClean ? "청소X 해제" : "청소하지 않음으로 표시"}
-                aria-pressed={f.noClean}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void (async () => {
-                    try {
-                      await data.patchBooking(b.id, { noClean: !f.noClean });
-                      notify(f.noClean ? "청소X를 해제했어요" : "청소X로 표시했어요");
-                    } catch {
-                      notify("청소X를 저장하지 못했어요");
-                    }
-                  })();
-                }}
-              >
-                청소X
-              </button>
-            ) : null}
-            {extOk ? (
-              <button
-                type="button"
-                className="nowext"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpen(b, today, { openExtend: true });
-                }}
-              >
-                {EXTEND_COPY}
-              </button>
+            {stayChips.length ? (
+              <span className="nowchips" aria-label={stayChips.join(" · ")}>
+                {stayChips.map((c) => (
+                  <span key={c} className="nowchip">
+                    {c}
+                  </span>
+                ))}
+              </span>
             ) : null}
           </div>
         </div>
@@ -870,21 +830,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   {nowSide.departing.map((b) => sideRow(b, "퇴실 예정", true))}
                 </div>
               ) : null}
-              {nowExtendable.filter((b) => nowFlags(b, today).kind === "inhouse").length ? (
-                <div className="nowsec">
-                  <h3>투숙 중 · {EXTEND_COPY}</h3>
-                  {nowExtendable
-                    .filter((b) => nowFlags(b, today).kind === "inhouse")
-                    .map((b) => sideRow(b, "투숙 중", true))}
-                </div>
-              ) : null}
               {nowSide.arriving.length ? (
                 <div className="nowsec">
                   <h3>입실 예정 {nowSide.arriving.length}</h3>
                   {nowSide.arriving.map((b) => sideRow(b, "입실 예정"))}
                 </div>
               ) : null}
-              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length && !nowExtendable.length ? (
+              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
                 <div className="muted sm nowempty-side">오늘 눈에 띄는 미배정·임시·퇴실 일정이 없어요</div>
               ) : null}
             </aside>

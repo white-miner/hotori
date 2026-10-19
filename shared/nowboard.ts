@@ -106,8 +106,20 @@ export const NOW_KIND_LABEL: Record<NowKind, string> = {
 
 /** 테스트·표시용: 이용 박수 라벨 */
 export function nowStayHint(b: Booking, date: string): string {
+  const chips = nowStayChips(b, date);
+  if (!chips.length) return "1박";
+  if (chips.length === 1) return chips[0]!;
+  return `${chips[0]} · ${chips[1]}`;
+}
+
+/**
+ * 「지금」 칸 화이트보드 칩 (사실만 · 액션 아님).
+ * 연박: `11박` + `9박째` (「11박 중 9박째」를 칩 둘로). 1박은 칩 없음.
+ */
+export function nowStayChips(b: Booking, date: string): string[] {
   const u = usedNights(b) ?? b.nights ?? 0;
-  const nth = Math.round((Date.parse(date) - Date.parse(b.checkIn)) / 864e5) + 1;
-  if (u <= 1) return "1박";
-  return `${u}박 중 ${Math.min(nth, u)}박째`;
+  if (u <= 1) return [];
+  const raw = Math.round((Date.parse(date) - Date.parse(b.checkIn)) / 864e5) + 1;
+  const night = Math.min(Math.max(raw, 1), u);
+  return [`${u}박`, `${night}박째`];
 }

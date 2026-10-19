@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking } from "./ledger";
-import { nowFlags, nowLists, unassignedTypeCounts } from "./nowboard";
+import { nowFlags, nowLists, nowStayChips, nowStayHint, unassignedTypeCounts } from "./nowboard";
 
 let n = 0;
 const bk = (p: Partial<Booking>): Booking => ({
@@ -77,4 +77,13 @@ test("미배정 타입 카운트: 단체·타입별", () => {
   assert.equal(c.find((x) => x.groupName === "한빛" && x.typeId === "s")?.n, 2);
   assert.equal(c.find((x) => x.groupName === "한빛" && x.typeId === "t")?.n, 1);
   assert.equal(c.find((x) => !x.groupName && x.typeId === "s")?.n, 1);
+});
+
+test("연박 칩: 총 박수 + 몇 박째, 1박은 빈 배열", () => {
+  const b = bk({ checkIn: "2026-10-10", nights: 11, arrived: true });
+  assert.deepEqual(nowStayChips(b, "2026-10-18"), ["11박", "9박째"]);
+  assert.deepEqual(nowStayChips(b, "2026-10-10"), ["11박", "1박째"]);
+  assert.deepEqual(nowStayChips(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), []);
+  assert.equal(nowStayHint(b, "2026-10-18"), "11박 · 9박째");
+  assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박");
 });

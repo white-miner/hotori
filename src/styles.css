@@ -1359,32 +1359,23 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .ncxtag { flex: none; font-size: 11px; font-weight: 900; color: #7a180c; background: #ffe3dc; border: 1.5px solid #c43c28; border-radius: 5px; padding: 0 5px; line-height: 16px; letter-spacing: -0.02em; }
 .cell.bk.ncx { box-shadow: inset 3px 0 0 #c43c28; }
 .beo.ncx.on, .chip.ncx.on { border-color: #c43c28; background: #ffe8e2; color: #7a180c; }
-.nowncx { display: block; width: calc(100% - 16px); margin: 0 8px 4px; padding: 5px 8px; border-radius: 8px; border: 1.5px solid #c43c28; background: #fff7f5; font-size: 11.5px; font-weight: 800; color: #7a180c; cursor: pointer; }
-.nowncx.on { background: #ffe3dc; }
-.nowncx:hover { background: #ffe8e2; }
-.nowacts { display: flex; flex-direction: column; gap: 2px; width: 100%; }
-.nowacts .nowext, .nowacts .nowncx { width: calc(100% - 16px); margin-left: 8px; margin-right: 8px; }
-/* 「지금」: 풀폭 바 → 하단 컴팩트 칩 */
-.now-page .nowacts {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 4px;
-  width: 100%;
-  margin-top: auto;
-}
-.now-page .nowacts .nowncx,
-.now-page .nowacts .nowext {
-  width: auto;
-  margin: 0;
-  height: 22px;
-  padding: 0 7px;
-  font-size: 10.5px;
-  font-weight: 750;
-  border-radius: 6px;
+/* 「지금」 칸: 상태 칩만 (액션 버튼 없음). 연박 진행·청소X 태그 */
+.nowfacts { align-items: center; gap: 6px; flex-wrap: wrap; }
+.nowchips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.nowchip {
   display: inline-flex;
   align-items: center;
-  box-sizing: border-box;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink2);
+  background: #f3f3f3;
+  border: 1px solid #cfcfcf;
+  line-height: 1;
+  white-space: nowrap;
 }
 .now-page .nowext.side {
   width: auto;
@@ -1508,10 +1499,9 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nowli { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; padding: 8px 9px; border-radius: 10px; border: 1px solid transparent; background: var(--panel); margin-bottom: 0; cursor: pointer; }
 .nowli:hover:not(:disabled) { border-color: var(--line); background: #fff; }
 .nowli:disabled { cursor: default; }
-.nowext { display: block; width: calc(100% - 16px); margin: 0 8px 8px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--ink); background: #fff; font-size: 11.5px; font-weight: 750; cursor: pointer; }
+.nowext { display: block; width: 100%; margin: 0; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--ink); background: #fff; font-size: 11.5px; font-weight: 750; cursor: pointer; }
 .nowext:hover { background: #f4f4f4; }
 .nowext.side { width: 100%; margin: 0; }
-.nowcell .nowext { margin-top: 2px; }
 .mtop.n5, .mtop.n6, .mtop.n7 { grid-template-columns: 1fr 1fr; }
 .mtop.n5 > :first-child, .mtop.n6 > :first-child, .mtop.n7 > :first-child { grid-column: 1 / -1; }
 .nwarn { margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #fff8e8; border: 1px solid #e0b84a; font-size: 13px; font-weight: 600; color: #6a4e00; display: flex; gap: 8px; align-items: flex-start; }
