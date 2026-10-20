@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { BookOpen, LayoutGrid, LogOut, Menu, Plus, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { BookOpen, LayoutGrid, LogOut, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
@@ -236,7 +236,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             <kbd>/</kbd>
           </label>
           <button className="addbtn" aria-keyshortcuts="N" onClick={() => openSimple({ checkIn: selDate })}>
-            <Plus size={17} strokeWidth={2.4} />
+            <span className="addbtn-ico" aria-hidden="true">
+              ➕
+            </span>
             간단 예약
           </button>
           <div className="menu-wrap">
@@ -282,7 +284,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
 
       {view === "shop" || view === "expenses" ? null : (
         <button className="fab" onClick={() => openSimple({ checkIn: selDate })}>
-          <Plus size={19} strokeWidth={2.4} />
+          <span className="addbtn-ico" aria-hidden="true">
+            ➕
+          </span>
           간단 예약
         </button>
       )}
