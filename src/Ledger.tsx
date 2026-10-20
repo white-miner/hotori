@@ -5,7 +5,7 @@ import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
-import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenses } from "./data";
+import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
 import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
@@ -89,6 +89,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [err, setErr] = useState<string | null>(null);
   const [shopSum, setShopSum] = useState<{ amount: number; count: number; pay: PaySplit } | null>(null);
   const ex = useExpenses(hotelId, from, to);
+  const ven = useExpenseVendors(hotelId);
   const [shopTick, setShopTick] = useState(0);
   useEffect(() => {
     const t = setInterval(() => document.visibilityState === "visible" && setShopTick((n) => n + 1), 15000);
@@ -579,11 +580,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           base={exEdit === "new" ? null : exEdit}
           today={today}
           categories={categories}
+          vendors={ven.list ?? []}
+          history={ex.list ?? []}
+          onSaveVendor={ven.save}
           onClose={() => setExEdit(null)}
           onSave={async (d) => {
             const saved = await ex.save(d, exEdit === "new" ? undefined : exEdit.id);
             setExEdit(null);
-            notify(`${saved.category} ${won(saved.amount)}원 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"} · ${EXPENSE_PAY_LABEL[saved.method]}`);
+            const amt = saved.amount > 0 ? `${won(saved.amount)}원` : "금액 미정";
+            const pay = saved.paid ? (saved.method ? ` · ${EXPENSE_PAY_LABEL[saved.method]}` : "") : " · 미수금";
+            notify(`${saved.vendorName ? `${saved.vendorName} · ` : ""}${saved.category} ${amt} 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"}${pay}`);
           }}
           onDelete={async () => {
             if (exEdit === "new") return;

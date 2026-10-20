@@ -14,7 +14,7 @@ import {
   normalizeSettings,
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
-import { type Expense, isExpensePayMethod } from "../shared/expense";
+import { type Expense, type ExpenseVendor, type VendorType, isExpensePayMethod, isVendorType } from "../shared/expense";
 import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
@@ -919,26 +919,47 @@ export async function queryStays(hotelId: string, from: string, to: string): Pro
   return (data as BookingRow[]).map(fromRow);
 }
 
-// ---------- 지출 ----------
+// ---------- 지출 · 거래처 ----------
+interface VendorEmbed {
+  name: string;
+  vendor_type: string;
+}
 interface ExpenseRow {
   id: string;
   biz_date: string;
+  stock_in_date: string | null;
   category: string;
   amount: number;
-  payment_method: string;
+  payment_method: string | null;
+  paid: boolean;
   memo: string | null;
+  vendor_id: string | null;
   created_at: string;
+  expense_vendors?: VendorEmbed | VendorEmbed[] | null;
 }
-const EXP_COLS = "id,biz_date,category,amount,payment_method,memo,created_at";
-const fromExpRow = (r: ExpenseRow): Expense => ({
-  id: r.id,
-  bizDate: r.biz_date,
-  category: r.category,
-  amount: r.amount,
-  method: isExpensePayMethod(r.payment_method) ? r.payment_method : "card",
-  memo: r.memo,
-  createdAt: r.created_at,
-});
+const EXP_COLS = "id,biz_date,stock_in_date,category,amount,payment_method,paid,memo,vendor_id,created_at,expense_vendors(name,vendor_type)";
+const vendorFromEmbed = (v: ExpenseRow["expense_vendors"]): { name: string | null; type: VendorType | null } => {
+  const one = Array.isArray(v) ? v[0] : v;
+  if (!one) return { name: null, type: null };
+  return { name: one.name, type: isVendorType(one.vendor_type) ? one.vendor_type : null };
+};
+const fromExpRow = (r: ExpenseRow): Expense => {
+  const vend = vendorFromEmbed(r.expense_vendors);
+  return {
+    id: r.id,
+    bizDate: r.biz_date,
+    stockInDate: r.stock_in_date ?? null,
+    category: r.category,
+    amount: r.amount,
+    method: isExpensePayMethod(r.payment_method) ? r.payment_method : null,
+    paid: r.paid !== false,
+    memo: r.memo,
+    vendorId: r.vendor_id ?? null,
+    vendorName: vend.name,
+    vendorType: vend.type,
+    createdAt: r.created_at,
+  };
+};
 export async function queryExpenses(hotelId: string, from: string, to: string): Promise<Expense[]> {
   const { data, error } = await supabase
     .from("expenses")
@@ -952,7 +973,76 @@ export async function queryExpenses(hotelId: string, from: string, to: string): 
   if (error) throw error;
   return (data as ExpenseRow[]).map(fromExpRow);
 }
-export type ExpenseDraft = Pick<Expense, "bizDate" | "category" | "amount" | "method" | "memo">;
+export type ExpenseDraft = Pick<Expense, "bizDate" | "stockInDate" | "category" | "amount" | "method" | "paid" | "memo" | "vendorId">;
+
+interface VendorRow {
+  id: string;
+  name: string;
+  vendor_type: string;
+  created_at: string;
+}
+const VEN_COLS = "id,name,vendor_type,created_at";
+const fromVenRow = (r: VendorRow): ExpenseVendor => ({
+  id: r.id,
+  name: r.name,
+  vendorType: isVendorType(r.vendor_type) ? r.vendor_type : "other",
+  createdAt: r.created_at,
+});
+export async function queryExpenseVendors(hotelId: string): Promise<ExpenseVendor[]> {
+  const { data, error } = await supabase.from("expense_vendors").select(VEN_COLS).eq("hotel_id", hotelId).order("name").limit(2000);
+  if (error) throw error;
+  return (data as VendorRow[]).map(fromVenRow);
+}
+export type VendorDraft = Pick<ExpenseVendor, "name" | "vendorType">;
+/** 거래처 목록 · 저장 · 실시간 */
+export function useExpenseVendors(hotelId: string) {
+  const [list, setList] = useState<ExpenseVendor[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      const rows = await queryExpenseVendors(hotelId);
+      setList(rows);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "거래처를 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void refresh(), 250);
+    };
+    const ch = supabase
+      .channel(`exp-vendors-${hotelId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "expense_vendors", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .subscribe();
+    return () => {
+      clearTimeout(t);
+      void supabase.removeChannel(ch);
+    };
+  }, [hotelId, refresh]);
+  const save = useCallback(
+    async (d: VendorDraft, id?: string): Promise<ExpenseVendor> => {
+      const row = { name: d.name.trim().slice(0, 40), vendor_type: d.vendorType };
+      const q = id
+        ? supabase.from("expense_vendors").update(row).eq("id", id).select(VEN_COLS).single()
+        : supabase.from("expense_vendors").insert({ ...row, hotel_id: hotelId }).select(VEN_COLS).single();
+      const { data, error } = await q;
+      if (error) throw error;
+      const saved = fromVenRow(data as VendorRow);
+      setList((cur) => {
+        const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+        return [...rest, saved].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      });
+      return saved;
+    },
+    [hotelId],
+  );
+  return { list, error, save, refresh };
+}
+
 /** 지출: 기간(영업일)으로 불러오고, 다른 기기에서 적은 것도 실시간 + 15초마다 맞춰요 */
 export function useExpenses(hotelId: string, from: string, to: string) {
   const [list, setList] = useState<Expense[] | null>(null);
@@ -997,7 +1087,19 @@ export function useExpenses(hotelId: string, from: string, to: string) {
   }, [hotelId, from, to, refresh]);
   const save = useCallback(
     async (d: ExpenseDraft, id?: string): Promise<Expense> => {
-      const row = { biz_date: d.bizDate, category: d.category.trim(), amount: Math.round(d.amount), payment_method: d.method, memo: d.memo?.trim() ? d.memo.trim().slice(0, 200) : null };
+      const paid = !!d.paid;
+      const amount = Math.max(0, Math.round(d.amount) || 0);
+      const method = paid && isExpensePayMethod(d.method) ? d.method : isExpensePayMethod(d.method) ? d.method : null;
+      const row = {
+        biz_date: d.bizDate,
+        stock_in_date: d.stockInDate && /^\d{4}-\d{2}-\d{2}$/.test(d.stockInDate) ? d.stockInDate : null,
+        category: d.category.trim(),
+        amount,
+        payment_method: method,
+        paid,
+        memo: d.memo?.trim() ? d.memo.trim().slice(0, 200) : null,
+        vendor_id: d.vendorId || null,
+      };
       const q = id
         ? supabase.from("expenses").update(row).eq("id", id).select(EXP_COLS).single()
         : supabase.from("expenses").insert({ ...row, hotel_id: hotelId }).select(EXP_COLS).single();
