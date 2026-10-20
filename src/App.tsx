@@ -8,6 +8,7 @@ import { Brand, isTypingTarget, lookups } from "./ui";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
+import SimpleBooking from "./SimpleBooking";
 import { ExpensesPage } from "./Expenses";
 import Ledger from "./Ledger";
 import Settings from "./Settings";
@@ -80,6 +81,8 @@ export interface EntryRequest {
   openExtend?: boolean;
   /** 「지금」 사이드: +추가금 시트 바로 펴요 (1박 연장과 분리) */
   openSurcharge?: boolean;
+  /** 간단 예약 축약 폼 (미배정/즉시 배정) */
+  simple?: boolean;
 }
 /** 객실 배치에서 빈 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
 export interface BoardMove {
@@ -145,6 +148,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
   const openNew = useCallback((preset?: Partial<Booking>) => setEntry({ preset, n: Date.now() }), []);
+  const openSimple = useCallback((preset?: Partial<Booking>) => setEntry({ preset, simple: true, n: Date.now() }), []);
   // 중도 퇴실 되돌리기 (예약 창 단추·알림의 되돌리기): 비운 밤이 다시 팔렸으면 막아요
   const bkRef = useRef(data.bookings);
   bkRef.current = data.bookings;
@@ -261,6 +265,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           setSelDate={setSelDate}
           onOpen={(b, night, opts) => setEntry({ booking: b, night, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge })}
           onNew={openNew}
+          onSimple={openSimple}
           notify={notify}
           move={boardMove}
           onMoveEnd={() => setBoardMove(null)}
@@ -291,7 +296,21 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         ))}
       </nav>
 
-      {entry ? (
+      {entry?.simple ? (
+        <SimpleBooking
+          key={`simple-${entry.n ?? 0}`}
+          data={data}
+          today={today}
+          req={entry}
+          onClose={() => setEntry(null)}
+          notify={notify}
+          onOpenFull={(preset) => setEntry({ preset, n: Date.now() })}
+          onSaved={(m) => {
+            notify(m);
+            setEntry(null);
+          }}
+        />
+      ) : entry ? (
         <Entry
           key={entry.booking?.id ?? `new-${entry.n ?? 0}`}
           data={data}

@@ -56,6 +56,8 @@ export interface PayState {
  */
 export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined): PayState {
   const paid = paidOf(b);
+  // 금액미정: 잔금·완납 계산 보류 (글랜스는 nowAmountGlance)
+  if (b.priceUnset) return { tracked: false, due: 0, paid, left: 0, full: false };
   if (b.stayMode === "long_stay" && b.status === "active") {
     const due = (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
     const left = Math.max(0, due - paid);

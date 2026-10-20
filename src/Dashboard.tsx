@@ -13,6 +13,7 @@ import {
   nowNightRange,
   nowStaySummary,
   shouldAutoArrive,
+  simplePayGlance,
   unassignedTypeCounts,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
@@ -64,7 +65,7 @@ import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
-import { payState } from "../shared/payment";
+import { isOnsite, payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -74,6 +75,8 @@ interface Props {
   setSelDate: (d: string) => void;
   onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
+  /** 간단 예약 축약 폼 (기본 Path A · 미배정) */
+  onSimple?: (preset?: Partial<Booking>) => void;
   notify: (m: string, opt?: ToastOpt) => void;
   /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
   move?: BoardMove | null;
@@ -169,10 +172,11 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
   return [tab, setTab];
 }
 
-export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveEnd = () => {} }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveEnd = () => {} }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
+  const onSimple = readOnly ? () => {} : (simpleRaw ?? ((preset?: Partial<Booking>) => onNew({ kind: "stay", roomId: null, ...preset })));
   const act = readOnly ? {} : { role: "button" as const, tabIndex: 0 };
   const [tab, setTab] = useBoardTab();
   const s = data.hotel!.settings;
@@ -964,10 +968,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 <button
                   type="button"
                   className="btn sm dark"
-                  title="호실 없이 타입·손님만 먼저 받아요 (타입 홀드)"
-                  onClick={() => onNew({ kind: "stay", checkIn: today, roomId: null })}
+                  title="간단 예약 · 호실은 지금 또는 나중에 (타입 홀드)"
+                  onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}
                 >
-                  예약만 · 호실 미정
+                  간단 예약
                 </button>
               ) : null}
               <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} onClick={() => setNowFilter("all")}>
@@ -997,10 +1001,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 <button
                   type="button"
                   className="btn sm line now-ua-new"
-                  title="호실 없이 타입·손님만 먼저 받아요"
-                  onClick={() => onNew({ kind: "stay", checkIn: today, roomId: null })}
+                  title="간단 예약 · 미배정으로 받기"
+                  onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}
                 >
-                  + 예약만 · 호실 미정
+                  + 간단 예약
                 </button>
               ) : null}
             </div>
@@ -1014,6 +1018,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                         .filter((r) => free.has(r.id))
                         .sort((a, c) => Number(a.typeId !== b.typeId) - Number(c.typeId !== b.typeId))
                     : [];
+                  const plat = L.plats.get(b.platformId);
+                  const glance = nowAmountGlance(b, plat);
+                  const payG = simplePayGlance(b, isOnsite(plat));
                   return (
                     <div key={b.id} className={`now-ua-row ${open ? "open" : ""}`}>
                       <button type="button" className="nowli now-ua-item" onClick={() => onOpen(b, today)} disabled={readOnly}>
@@ -1024,6 +1031,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                           {b.nights ? ` · ${b.nights}박` : ""}
                           {b.groupName ? ` · ${b.groupName}` : ""}
                           {b.checkIn !== today ? ` · ${md(b.checkIn)} 입실` : ""}
+                          {glance ? ` · ${glance}` : ""}
+                          {payG ? ` · ${payG}` : ""}
                         </span>
                       </button>
                       {isActive(b) && !readOnly ? (
@@ -1062,7 +1071,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             ) : (
               <div className="muted sm now-ua-empty">
-                미배정 예약이 없어요 · 「예약만 · 호실 미정」으로 타입만 먼저 받을 수 있어요
+                미배정 예약이 없어요 · 「간단 예약」으로 타입만 먼저 받을 수 있어요
               </div>
             )}
           </section>

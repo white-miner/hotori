@@ -345,6 +345,11 @@ test("임시 배치는 방 있을 때만 · 미배정+tentative는 거절", () =
   assert.equal(validateBooking(bk({ roomId: null, tentative: false }), S), null);
 });
 
+test("금액미정(priceUnset): price 0 허용 · 양수면 거절", () => {
+  assert.equal(validateBooking(bk({ roomId: null, price: 0, priceUnset: true }), S), null);
+  assert.match(validateBooking(bk({ roomId: null, price: 50000, priceUnset: true }), S) ?? "", /금액미정/);
+});
+
 test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1", () => {
   const two = normalizeSettings({
     ...M,

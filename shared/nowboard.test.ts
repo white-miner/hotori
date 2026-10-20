@@ -23,6 +23,7 @@ import {
   nowStayNightIndex,
   nowStaySummary,
   shouldAutoArrive,
+  simplePayGlance,
   unassignedTypeCounts,
   type NowClock,
 } from "./nowboard";
@@ -281,6 +282,12 @@ test("점유 밤 구간: 2박 입19·퇴21 → 보드 19~20 (퇴실 아침 제�
 
 test("금액 글랜스 · 메타 줄", () => {
   assert.equal(nowAmountGlance(bk({ price: 180000 }), null), "₩180,000");
+  assert.equal(nowAmountGlance(bk({ price: 0, priceUnset: true }), onsite), "금액미정");
+  assert.equal(simplePayGlance(bk({ price: 180000, payments: [] }), true), "후불");
+  assert.equal(
+    simplePayGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), true),
+    "선불",
+  );
   assert.equal(
     nowAmountGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
     "잔금 ₩130,000",

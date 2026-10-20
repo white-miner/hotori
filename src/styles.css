@@ -1624,6 +1624,12 @@ button.nowstatus { cursor: pointer; }
   .now-ua { margin: 0 0 10px; padding: 10px 12px 12px; }
   .now-ua-new { margin-left: 0; width: 100%; }
 }
+/* 간단 예약 축약 폼 */
+.modal.simple-book { max-width: 560px; }
+.modal.simple-book .fld.simple-nights { align-items: start; }
+.modal.simple-book .fld.simple-nights > label { padding-top: 8px; }
+.simple-price { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.simple-price-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }

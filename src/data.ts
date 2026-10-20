@@ -90,6 +90,8 @@ interface BookingRow {
   group_id?: string | null; // 단체 예약 묶음
   group_name?: string | null;
   night_rates?: unknown; // 방×밤 요금 {flat,weekday, weekend, nights}
+  /** 금액미정 (간단 예약) */
+  price_unset?: boolean;
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
@@ -133,7 +135,7 @@ const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,night_rates,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,night_rates,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금) · 장기 원장도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
@@ -195,6 +197,7 @@ export function fromRow(r: BookingRow): Booking {
     status: r.status,
     platformId: r.platform_id,
     price: r.price,
+    priceUnset: r.price_unset === true,
     guestName: r.guest_name,
     guestPhone: r.guest_phone ?? null,
     typeId: r.type_id,
@@ -243,7 +246,8 @@ function toRow(b: Booking) {
     kind: b.kind,
     status: b.status,
     platform_id: b.platformId,
-    price: Math.round(b.price),
+    price: b.priceUnset ? 0 : Math.round(b.price),
+    price_unset: b.priceUnset === true,
     guest_name: b.guestName.trim(),
     guest_phone: t(b.guestPhone, 30),
     type_id: b.typeId,
