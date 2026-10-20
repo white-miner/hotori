@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FREE_SHOP_ITEM_LIMIT, businessDate, normalizeSettings, normalizeShopItems } from "./ledger";
-import { addMonths, canAddShopItem, payLine, inRange, lastSaleOf, ledgerSummary, monthRange, onDay, shopGroups, shopTotals, type ShopSale } from "./shop";
+import { addMonths, canAddShopItem, makeShopItem, payLine, inRange, lastSaleOf, ledgerSummary, monthRange, onDay, shopGroups, shopTotals, validateShopDraft, type ShopSale } from "./shop";
 
 const sale = (
   id: string,
@@ -104,6 +104,14 @@ test("Free는 물품 10개까지", () => {
   assert.equal(canAddShopItem("free", 9, FREE_SHOP_ITEM_LIMIT), true);
   assert.equal(canAddShopItem("free", 10, FREE_SHOP_ITEM_LIMIT), false);
   assert.equal(canAddShopItem("pro", 50, FREE_SHOP_ITEM_LIMIT), true);
+});
+
+test("물품 만들기·바로 등록 검사", () => {
+  const it = makeShopItem({ id: "i-1", name: "  컵라면  ", price: 3500.6, category: " 면 " });
+  assert.deepEqual(it, { id: "i-1", name: "컵라면", price: 3501, category: "면", hidden: false });
+  assert.equal(validateShopDraft({ name: "", price: 1000 }), "물품 이름을 적어 주세요");
+  assert.equal(validateShopDraft({ name: "생수", price: 0 }), "가격을 적어 주세요");
+  assert.equal(validateShopDraft({ name: "생수", price: 1000 }), null);
 });
 
 test("카드·현금 따로 합계, 미지정(예전 기록)은 0이 아닐 때만", () => {

@@ -1,14 +1,148 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
-import { type ShopItem, addDays, dayLabel, won } from "../shared/ledger";
-import { type PayMethod, PAY_LABEL, addMonths, lastSaleOf, monthRange, onDay, payLine, shopGroups, shopTotals } from "../shared/shop";
+import { FREE_SHOP_ITEM_LIMIT, SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem, addDays, dayLabel, won } from "../shared/ledger";
+import {
+  type PayMethod,
+  PAY_LABEL,
+  addMonths,
+  canAddShopItem,
+  lastSaleOf,
+  makeShopItem,
+  monthRange,
+  onDay,
+  payLine,
+  shopGroups,
+  shopTotals,
+  validateShopDraft,
+} from "../shared/shop";
 import { type HotelData, useShopSales } from "./data";
+import NumInput from "./NumInput";
+import { uid } from "./ui";
 
 interface Props {
   data: HotelData;
   hotelId: string;
   today: string;
   notify: (m: string) => void;
+}
+
+/** 매점에서 바로 물품 등록 · 설정과 같은 shopItems 저장 */
+function ShopAddModal({
+  categories,
+  onSave,
+  onClose,
+}: {
+  categories: string[];
+  onSave: (d: { name: string; price: number; category: string }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState<number | null>(null);
+  const [category, setCat] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function save() {
+    const d = { name: name.trim(), price: price ?? 0, category: category.trim() };
+    const v = validateShopDraft(d);
+    if (v) return setErr(v);
+    setBusy(true);
+    setErr(null);
+    try {
+      await onSave(d);
+    } catch (e) {
+      setErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form
+        className="modal shop-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <div className="grab" />
+        <div className="mh">
+          <h2>물품 추가</h2>
+          <button type="button" className="x" onClick={onClose}>
+            <kbd>Esc</kbd>닫기
+          </button>
+        </div>
+        <div className="fld">
+          <label>
+            이름<em>*</em>
+          </label>
+          <input
+            ref={nameRef}
+            className="inp"
+            value={name}
+            placeholder="예: 컵라면"
+            maxLength={SHOP_NAME_MAX}
+            aria-label="물품 이름"
+            onChange={(e) => setName(e.target.value.slice(0, SHOP_NAME_MAX))}
+          />
+        </div>
+        <div className="fld">
+          <label>
+            가격<em>*</em>
+          </label>
+          <label className="inp price">
+            <NumInput className="num" placeholder="가격" aria-label="가격" min={0} max={10_000_000} allowEmpty value={price} onChange={setPrice} />
+            원
+          </label>
+        </div>
+        <div className="fld">
+          <label>분류</label>
+          <div className="cat-pick">
+            {categories.length ? (
+              <div className="chips">
+                {categories.map((c) => (
+                  <button type="button" key={c} className={`chip sm ${category === c ? "on" : ""}`} onClick={() => setCat(category === c ? "" : c)}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <input
+              className="inp"
+              value={category}
+              placeholder="분류 (선택 · 예: 음료)"
+              maxLength={SHOP_CATEGORY_MAX}
+              aria-label="분류"
+              onChange={(e) => setCat(e.target.value.slice(0, SHOP_CATEGORY_MAX))}
+            />
+          </div>
+        </div>
+        {err ? <div className="ferr">{err}</div> : null}
+        <div className="mf">
+          <button type="button" className="btn line" onClick={onClose}>
+            취소
+          </button>
+          <button type="submit" className="btn red" disabled={busy}>
+            {busy ? "저장 중…" : "추가"}
+          </button>
+        </div>
+        <p className="fine">추가하면 매점에 바로 보여요. 순서·숨김은 설정 › 매점에서 바꿀 수 있어요.</p>
+      </form>
+    </div>
+  );
 }
 
 export default function Shop({ data, hotelId, today, notify }: Props) {
@@ -18,16 +152,45 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
   const [mode, setMode] = useState<"day" | "month">("day");
   const [day, setDay] = useState(today);
   const [ym, setYm] = useState(today.slice(0, 7));
+  const [adding, setAdding] = useState(false);
   const [from, to] = mode === "day" ? [day, day] : monthRange(ym);
   const shop = useShopSales(hotelId, from, to);
   const sales = shop.sales ?? [];
 
   const groups = useMemo(() => shopGroups(items), [items]);
+  const cats = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const it of items) {
+      const c = it.category.trim();
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+    }
+    return out;
+  }, [items]);
   const dayT = useMemo(() => shopTotals(sales, onDay(day)), [sales, day]);
   const isToday = day === today;
   // 숨기거나 지운 물품이라도 이날 판 게 있으면 되돌릴 수 있게 보여 줘요
   const shown = new Set(groups.flatMap((g) => g.items.map((i) => i.id)));
   const extra = [...dayT.byItem.entries()].filter(([id]) => !shown.has(id));
+  const canAdd = canAddShopItem(hotel.plan, items.length, FREE_SHOP_ITEM_LIMIT);
+
+  const openAdd = () => {
+    if (!canAdd) return notify(`Free 요금제는 물품 ${FREE_SHOP_ITEM_LIMIT}개까지예요. Pro에서는 제한 없이 등록할 수 있어요.`);
+    setAdding(true);
+  };
+  const saveItem = async (d: { name: string; price: number; category: string }) => {
+    if (!canAddShopItem(hotel.plan, hotel.settings.shopItems.length, FREE_SHOP_ITEM_LIMIT)) {
+      notify(`Free 요금제는 물품 ${FREE_SHOP_ITEM_LIMIT}개까지예요`);
+      setAdding(false);
+      return;
+    }
+    const next = makeShopItem({ id: uid("i"), name: d.name, price: d.price, category: d.category });
+    await data.saveHotel({ settings: { ...hotel.settings, shopItems: [...hotel.settings.shopItems, next] } });
+    notify(`${next.name} ${won(next.price)}원 · 매점에 추가했어요`);
+    setAdding(false);
+  };
 
   const sell = (it: ShopItem, m: PayMethod) => {
     notify(`${it.name} 1개 +${won(it.price)}원 · ${PAY_LABEL[m]}`);
@@ -41,6 +204,13 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
     shop.undo(last).catch(() => notify("취소하지 못했어요. 다시 눌러 주세요"));
   };
   const setDaySafe = (d: string) => setDay(d > today ? today : d);
+
+  const addBtn = (
+    <button type="button" className="btn sm line" onClick={openAdd} aria-label="물품 추가">
+      <Plus size={14} strokeWidth={2.4} />
+      물품 추가
+    </button>
+  );
 
   const head = (
     <div className="ph shop-ph">
@@ -103,9 +273,12 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
             월별{pro ? null : <span className="tag pro-t">Pro</span>}
           </button>
         </div>
+        {addBtn}
       </div>
     </div>
   );
+
+  const modal = adding ? <ShopAddModal categories={cats} onSave={saveItem} onClose={() => setAdding(false)} /> : null;
 
   if (!items.some((i) => i.name.trim()))
     return (
@@ -113,11 +286,16 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
         {head}
         <div className="empty-setup">
           <h1>매점 물품을 먼저 등록해 주세요</h1>
-          <p>설정의 매점 물품에서 컵라면, 음료처럼 파는 물건과 가격을 적으면, 여기서 한 번 눌러 바로 기록할 수 있어요.</p>
-          <a className="btn red" href="#/settings">
-            설정으로 가기
+          <p>컵라면, 음료처럼 파는 물건과 가격을 적으면, 여기서 한 번 눌러 바로 기록할 수 있어요.</p>
+          <button type="button" className="btn red" onClick={openAdd}>
+            <Plus size={16} strokeWidth={2.4} />
+            물품 추가
+          </button>
+          <a className="btn line sm" href="#/settings/shop">
+            설정에서 관리
           </a>
         </div>
+        {modal}
       </main>
     );
 
@@ -181,6 +359,7 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
             )}
           </section>
         </div>
+        {modal}
       </main>
     );
   }
@@ -251,7 +430,11 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
           </div>
         </section>
       ) : null}
-      <p className="shop-hint muted">현금·카드 줄의 + 를 누르면 그 방법으로 1개 팔린 걸로 바로 기록돼요. 잘못 눌렀으면 같은 줄의 − 를 눌러 주세요.</p>
+      <p className="shop-hint muted">
+        현금·카드 줄의 + 를 누르면 그 방법으로 1개 팔린 걸로 바로 기록돼요. 잘못 눌렀으면 같은 줄의 − 를 눌러 주세요.{" "}
+        <a href="#/settings/shop">설정에서 물품 관리</a>
+      </p>
+      {modal}
     </main>
   );
 }

@@ -20,7 +20,7 @@ const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
   { id: "settings", label: "설정", icon: Gear },
 ];
 const viewFromHash = (): View => {
-  const h = location.hash.replace("#/", "");
+  const h = location.hash.replace(/^#\/?/, "").split("/")[0] ?? "";
   return h === "ledger" || h === "settings" || h === "shop" ? h : "board";
 };
 

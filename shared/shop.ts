@@ -1,5 +1,5 @@
 // 매점: 물품을 누를 때마다 판매 1개를 한 줄로 남겨요. 이름·가격은 판 그때 값으로 복사해 둬요.
-import type { ShopItem } from "./ledger";
+import { SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem } from "./ledger";
 
 export type PayMethod = "card" | "cash";
 export const PAY_LABEL: Record<PayMethod, string> = { card: "카드", cash: "현금" };
@@ -90,6 +90,26 @@ export function addMonths(ym: string, n: number): string {
   return d.toISOString().slice(0, 7);
 }
 export const canAddShopItem = (plan: "free" | "pro", count: number, limit: number) => plan === "pro" || count < limit;
+
+/** 설정·매점에서 같은 모양으로 물품 한 줄을 만들어요 */
+export function makeShopItem(opts: { id: string; name?: string; price?: number; category?: string; hidden?: boolean }): ShopItem {
+  const price = Math.round(Number(opts.price ?? 0));
+  return {
+    id: opts.id,
+    name: (opts.name ?? "").trim().slice(0, SHOP_NAME_MAX),
+    price: Number.isFinite(price) && price >= 0 ? Math.min(price, 10_000_000) : 0,
+    category: (opts.category ?? "").trim().slice(0, SHOP_CATEGORY_MAX),
+    hidden: opts.hidden === true,
+  };
+}
+
+/** 매점 화면에서 바로 등록할 때: 이름·가격이 있어야 팔 수 있어요 */
+export function validateShopDraft(d: { name: string; price: number }): string | null {
+  if (!d.name.trim()) return "물품 이름을 적어 주세요";
+  if (!Number.isFinite(d.price) || d.price < 0) return "가격을 확인해 주세요";
+  if (d.price === 0) return "가격을 적어 주세요";
+  return null;
+}
 
 /** '카드 18,000 · 현금 9,500' (미지정은 0이 아닐 때만) */
 export function payLine(p: PaySplit, won: (v: number) => string): string {

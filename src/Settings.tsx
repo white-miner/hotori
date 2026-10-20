@@ -32,7 +32,7 @@ import {
   usableTypes,
 } from "../shared/ledger";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
-import { canAddShopItem } from "../shared/shop";
+import { canAddShopItem, makeShopItem } from "../shared/shop";
 import { FitText, PALETTE, PlatBadge, floorPaint, TypeBadge, TypeLine, uid } from "./ui";
 
 interface Props {
@@ -224,6 +224,18 @@ export default function Settings({ data, email, notify }: Props) {
     timer.current = setTimeout(() => void flush(), 700);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  // 매점 → 설정 딥링크(#/settings/shop)처럼 /settings/<칸> 이면 그 칸으로 스크롤해요
+  useEffect(() => {
+    const focus = () => {
+      const parts = location.hash.replace(/^#\/?/, "").split("/");
+      if (parts[0] !== "settings" || !parts[1]) return;
+      const id = parts[1].startsWith("set-") ? parts[1] : `set-${parts[1]}`;
+      requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+    focus();
+    window.addEventListener("hashchange", focus);
+    return () => window.removeEventListener("hashchange", focus);
+  }, []);
   // 여러 개 선택 중에는 아래 막대가 보이게: 예약 기록 단추는 숨기고 알림은 막대 위로
   useEffect(() => {
     document.body.classList.toggle("bulking", bulk);
@@ -372,7 +384,12 @@ export default function Settings({ data, email, notify }: Props) {
             ["share", "현황 공유"],
             ["plan", "요금제"],
           ].map(([id, l]) => (
-            <a key={id} className="chip" href={`#/settings`} onClick={(e) => (e.preventDefault(), document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth" }))}>
+            <a
+              key={id}
+              className="chip"
+              href={`#/settings/${id}`}
+              onClick={(e) => (e.preventDefault(), (location.hash = `#/settings/${id}`), document.getElementById(`set-${id}`)?.scrollIntoView({ behavior: "smooth" }))}
+            >
               {l}
             </a>
           ))}
@@ -1047,12 +1064,7 @@ export default function Settings({ data, email, notify }: Props) {
           {!canAddShopItem(hotel.plan, s.shopItems.length, FREE_SHOP_ITEM_LIMIT) ? (
             <div className="share-lock">Free 요금제는 물품 {FREE_SHOP_ITEM_LIMIT}개까지예요. Pro에서는 제한 없이 등록할 수 있어요.</div>
           ) : (
-            <button
-              className="add"
-              onClick={() =>
-                update((x) => ({ ...x, shopItems: [...x.shopItems, { id: uid("i"), name: "", price: 0, category: "", hidden: false }] }))
-              }
-            >
+            <button className="add" onClick={() => update((x) => ({ ...x, shopItems: [...x.shopItems, makeShopItem({ id: uid("i") })] }))}>
               <Plus size={14} />
               물품 추가
             </button>

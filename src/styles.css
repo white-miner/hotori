@@ -950,6 +950,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .exlock { margin-top: 14px; }
 .exmodal { width: 560px; }
 .exmodal .mf .sp { flex: 1; }
+.shop-add { width: 440px; }
+.shop-add .cat-pick { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.shop-hint a { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; }
+.empty-setup .btn + .btn,
+.empty-setup .btn + a.btn { margin-top: 4px; }
 .seg.paym { justify-self: start; height: 44px; }
 .seg.paym button { padding: 0 22px; font-size: 14px; font-weight: 700; }
 @media (max-width: 760px) {
