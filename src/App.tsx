@@ -5,6 +5,7 @@ import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
 import { Brand, isTypingTarget, lookups } from "./ui";
+import { HeaderCTA } from "./primitives/HeaderCTA";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
@@ -235,12 +236,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             />
             <kbd>/</kbd>
           </label>
-          <button className="addbtn" aria-keyshortcuts="N" onClick={() => openSimple({ checkIn: selDate })}>
-            <span className="addbtn-ico" aria-hidden="true">
-              ➕
-            </span>
-            간단 예약
-          </button>
+          <HeaderCTA onClick={() => openSimple({ checkIn: selDate })} />
           <div className="menu-wrap">
             <button className="av" aria-label="메뉴" onClick={() => setMenu((m) => !m)}>
               <span className="av-l">{(email[0] ?? "H").toUpperCase()}</span>
@@ -283,12 +279,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       )}
 
       {view === "shop" || view === "expenses" ? null : (
-        <button className="fab" onClick={() => openSimple({ checkIn: selDate })}>
-          <span className="addbtn-ico" aria-hidden="true">
-            ➕
-          </span>
-          간단 예약
-        </button>
+        <HeaderCTA variant="fab" onClick={() => openSimple({ checkIn: selDate })} />
       )}
       {/* 휴대폰: 아래 탭으로 한 번에 이동 */}
       <nav className="tabbar" aria-label="화면">

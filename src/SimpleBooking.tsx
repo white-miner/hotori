@@ -2,7 +2,6 @@
  * 간단 예약 — Entry 축약 폼 (Path A: roomId=null · Path B: 지금 방 배정 · 확정 기본)
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus } from "lucide-react";
 import {
   type Booking,
   addDays,
@@ -22,6 +21,7 @@ import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { lookups } from "./ui";
+import { Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import NightPickCalendar from "./NightPickCalendar";
 
 type PayMode = "prepaid" | "postpaid" | "deposit";
@@ -66,10 +66,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   useEffect(() => {
     nameRef.current?.focus();
   }, []);
-
-  const stepGuests = (d: number) => {
-    setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
-  };
 
   const plat = s.platforms.find((x) => x.id === platformId);
   const onsite = isOnsite(plat);
@@ -209,82 +205,43 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
         <div className="fld">
           <label>채널</label>
-          <div className="chips">
+          <ChipGroup>
             {s.platforms.map((pl) => (
-              <button
-                type="button"
-                key={pl.id}
-                className={`chip ${pl.id === platformId ? "on" : ""}`}
-                onClick={() => setPlatformId(pl.id)}
-                title={isOnsite(pl) ? "현장/전화" : "플랫폼"}
-              >
+              <Chip key={pl.id} active={pl.id === platformId} onClick={() => setPlatformId(pl.id)} title={isOnsite(pl) ? "현장/전화" : "플랫폼"}>
                 {pl.name}
-              </button>
+              </Chip>
             ))}
-          </div>
+          </ChipGroup>
         </div>
 
         <div className="fld">
           <label>
             이름 · 연락처<em>*</em>
           </label>
-          <div className="two">
-            <input
-              ref={nameRef}
-              className="inp"
-              value={guestName}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="손님 이름"
-              autoComplete="name"
-              maxLength={60}
-              aria-label="이름"
-            />
-            <input
-              className="inp"
-              value={guestPhone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="010-1234-5678"
-              inputMode="tel"
-              autoComplete="tel"
-              maxLength={30}
-              aria-label="연락처"
-            />
-          </div>
+          <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
         </div>
 
         <div className="fld">
           <label>객실타입</label>
-          <div className="chips">
+          <ChipGroup>
             {pickTypes.map((t) => (
-              <button
-                type="button"
+              <Chip
                 key={t.id}
-                className={`chip ${t.id === typeId ? "on" : ""}`}
+                active={t.id === typeId}
                 onClick={() => {
                   setTypeId(t.id);
                   if (assignNow && roomId && L.rooms.get(roomId)?.typeId !== t.id) setRoomId(null);
                 }}
               >
                 {typeLabel(t)}
-              </button>
+              </Chip>
             ))}
-          </div>
+          </ChipGroup>
         </div>
 
         <div className="fld">
           <label>인원</label>
-          <div className="step gstep">
-            <button type="button" className="sb" aria-label="1명 줄이기" onClick={() => stepGuests(-1)} disabled={guests <= 1}>
-              <Minus size={16} />
-            </button>
-            <span className="sv">
-              {guests}
-              <small>명</small>
-            </span>
-            <button type="button" className="sb" aria-label="1명 늘리기" onClick={() => stepGuests(1)} disabled={guests >= GUESTS_MAX}>
-              <Plus size={16} />
-            </button>
-          </div>
+          <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
         </div>
 
         <div className="fld">
@@ -306,8 +263,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               금액미정
             </label>
             {!priceUnset ? (
-              <div className="price-row">
-                <label className="inp price sm">
+              <PriceRow>
+                <PriceInp sm suffix="원/박">
                   <input
                     className="num"
                     inputMode="numeric"
@@ -319,10 +276,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       setPriceTouched(false);
                     }}
                   />
-                  원/박
-                </label>
+                </PriceInp>
                 <span className="muted sm">× {nights}박 =</span>
-                <label className="inp price price-total">
+                <PriceInp total>
                   <input
                     className="num"
                     inputMode="numeric"
@@ -334,14 +290,13 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       setPriceTouched(true);
                     }}
                   />
-                  원
-                </label>
+                </PriceInp>
                 {priceTouched && suggested > 0 && Number(priceStr || 0) !== suggested ? (
-                  <button type="button" className="chip sm" onClick={() => { setPriceStr(String(suggested)); setPriceTouched(false); }}>
+                  <Chip sm onClick={() => { setPriceStr(String(suggested)); setPriceTouched(false); }}>
                     다시 맞추기
-                  </button>
+                  </Chip>
                 ) : null}
-              </div>
+              </PriceRow>
             ) : (
               <span className="muted sm">협상 후 Entry에서 확정</span>
             )}
@@ -352,7 +307,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <div className="fld">
             <label>결제</label>
             <div>
-              <div className="chips">
+              <ChipGroup>
                 {(
                   [
                     ["prepaid", "선불"],
@@ -360,26 +315,26 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                     ["deposit", "선금"],
                   ] as const
                 ).map(([k, lab]) => (
-                  <button type="button" key={k} className={`chip ${payMode === k ? "on" : ""}`} onClick={() => setPayMode(k)}>
+                  <Chip key={k} active={payMode === k} onClick={() => setPayMode(k)}>
                     {lab}
-                  </button>
+                  </Chip>
                 ))}
-              </div>
+              </ChipGroup>
               {payMode === "prepaid" && !priceUnset ? (
-                <div className="muted sm" style={{ marginTop: 6 }}>
+                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
                   저장 시 판매금만큼 받기(완납)로 적어요 · 방법
-                  <span className="chips" style={{ display: "inline-flex", marginLeft: 8 }}>
+                  <ChipGroup style={{ display: "inline-flex", marginLeft: "var(--space-3)" }}>
                     {BOOK_PAY_METHODS.map((m) => (
-                      <button type="button" key={m} className={`chip sm ${depMethod === m ? "on" : ""}`} onClick={() => setDepMethod(m)}>
+                      <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
                         {BOOK_PAY_LABEL[m]}
-                      </button>
+                      </Chip>
                     ))}
-                  </span>
+                  </ChipGroup>
                 </div>
               ) : null}
               {payMode === "deposit" && !priceUnset ? (
-                <div className="price-row" style={{ marginTop: 8 }}>
-                  <label className="inp price sm">
+                <PriceRow style={{ marginTop: "var(--space-3)" }}>
+                  <PriceInp sm>
                     <input
                       className="num"
                       inputMode="numeric"
@@ -388,19 +343,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       value={depAmt !== "" ? won(Number(depAmt)) : ""}
                       onChange={(e) => setDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
                     />
-                    원
-                  </label>
-                  <span className="chips">
+                  </PriceInp>
+                  <ChipGroup>
                     {BOOK_PAY_METHODS.map((m) => (
-                      <button type="button" key={m} className={`chip sm ${depMethod === m ? "on" : ""}`} onClick={() => setDepMethod(m)}>
+                      <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
                         {BOOK_PAY_LABEL[m]}
-                      </button>
+                      </Chip>
                     ))}
-                  </span>
-                </div>
+                  </ChipGroup>
+                </PriceRow>
               ) : null}
-              {payMode === "postpaid" ? <div className="muted sm" style={{ marginTop: 6 }}>퇴실(또는 나중에) 정산 · 결제 줄 없음</div> : null}
-              {priceUnset ? <div className="muted sm" style={{ marginTop: 6 }}>금액미정 · 수납은 확정 후 Entry에서</div> : null}
+              {payMode === "postpaid" ? <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>퇴실(또는 나중에) 정산 · 결제 줄 없음</div> : null}
+              {priceUnset ? <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>금액미정 · 수납은 확정 후 Entry에서</div> : null}
             </div>
           </div>
         ) : null}
