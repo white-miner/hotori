@@ -72,7 +72,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const [memberRates, setMemberRates] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
-  const [view, setView] = useState<"count" | "board">("board");
+  const [view, setView] = useState<"count" | "board">("count");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
