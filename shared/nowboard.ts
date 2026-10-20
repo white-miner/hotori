@@ -213,7 +213,8 @@ export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): Now
   const arriving: Booking[] = [];
   for (const b of active) {
     const f = nowFlags(b, date, opts);
-    if (f.tentative) tentative.push(b);
+    // 임시 = 방 점유 후 신호만 (미배정·타입 홀드와 분리)
+    if (f.tentative && b.roomId) tentative.push(b);
     if (f.kind === "unassigned") unassigned.push(b);
     else if (f.kind === "lateOut") lateOut.push(b);
     else if (f.kind === "departing") departing.push(b);

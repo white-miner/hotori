@@ -146,7 +146,7 @@ export interface Booking {
   startTime: string | null; // HH:MM (대실만)
   endTime: string | null;
   arrived: boolean;
-  /** 임시 배치: 방은 잡았으나 확정 전 (재고는 확정과 동일하게 점유) */
+  /** 임시 배치: 방(roomId)을 잡은 뒤 확정 전 표시 (재고는 확정과 동일 점유). roomId 없으면 불가 */
   tentative?: boolean;
   /** 청소X: 이 투숙은 청소하지 않음 (예약 단위 · 현장 운영 플래그) */
   noClean?: boolean;
@@ -1079,6 +1079,7 @@ export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
     if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";
+    if (b.tentative && !b.roomId) return "임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「예약만」(타입 홀드)예요.";
   } else {
     if (!b.startTime || !b.endTime || !TIME_RE.test(b.startTime) || !TIME_RE.test(b.endTime))
       return "대실은 이용 시간을 꼭 적어 주세요. 예: 12:00~14:00";
