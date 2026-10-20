@@ -2,6 +2,7 @@
  * 간단 예약 — Entry 축약 폼 (Path A: roomId=null · Path B: 지금 방 배정 · 확정 기본)
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Minus, Plus } from "lucide-react";
 import {
   type Booking,
   addDays,
@@ -17,7 +18,7 @@ import {
 } from "../shared/ledger";
 import { syncStayNightRates } from "../shared/nightrates";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, isOnsite, validatePayment } from "../shared/payment";
-import { typeGuests } from "../shared/surcharge";
+import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { lookups } from "./ui";
@@ -47,9 +48,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
   const [guestName, setName] = useState("");
   const [guestPhone, setPhone] = useState("");
-  const baseOf = (tid: string) => typeGuests(s.types.find((t) => t.id === tid)).base;
-  const [guests, setGuests] = useState(baseOf(typeId));
-  const gTouched = useRef(false);
+  const [guests, setGuests] = useState(1);
   const [rateStr, setRateStr] = useState("");
   const [priceStr, setPriceStr] = useState("");
   const [priceTouched, setPriceTouched] = useState(false);
@@ -67,10 +66,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   useEffect(() => {
     nameRef.current?.focus();
   }, []);
-  useEffect(() => {
-    if (!gTouched.current) setGuests(baseOf(typeId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeId]);
+
+  const stepGuests = (d: number) => {
+    setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
+  };
 
   const plat = s.platforms.find((x) => x.id === platformId);
   const onsite = isOnsite(plat);
@@ -187,7 +186,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         </div>
 
         <div className="fld simple-nights">
-          <label>이용 밤</label>
+          <label>이용 날짜</label>
           <div>
             <NightPickCalendar
               checkIn={checkIn}
@@ -209,22 +208,41 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         </div>
 
         <div className="fld">
-          <label>
-            이름<em>*</em>
-          </label>
-          <input ref={nameRef} value={guestName} onChange={(e) => setName(e.target.value)} placeholder="손님 이름" autoComplete="name" />
+          <label>채널</label>
+          <div className="chips">
+            {s.platforms.map((pl) => (
+              <button
+                type="button"
+                key={pl.id}
+                className={`chip ${pl.id === platformId ? "on" : ""}`}
+                onClick={() => setPlatformId(pl.id)}
+                title={isOnsite(pl) ? "현장/전화" : "플랫폼"}
+              >
+                {pl.name}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="fld">
-          <label>
-            연락처<em>*</em>
-          </label>
-          <input
-            value={guestPhone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="전화"
-            inputMode="tel"
-            autoComplete="tel"
-          />
+
+        <div className="simple-guest-row">
+          <div className="fld">
+            <label>
+              이름<em>*</em>
+            </label>
+            <input ref={nameRef} value={guestName} onChange={(e) => setName(e.target.value)} placeholder="손님 이름" autoComplete="name" />
+          </div>
+          <div className="fld">
+            <label>
+              연락처<em>*</em>
+            </label>
+            <input
+              value={guestPhone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="전화"
+              inputMode="tel"
+              autoComplete="tel"
+            />
+          </div>
         </div>
 
         <div className="fld">
@@ -248,37 +266,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
         <div className="fld">
           <label>인원</label>
-          <div className="chips">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <button
-                type="button"
-                key={n}
-                className={`chip sm ${guests === n ? "on" : ""}`}
-                onClick={() => {
-                  gTouched.current = true;
-                  setGuests(n);
-                }}
-              >
-                {n}명
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="fld">
-          <label>채널</label>
-          <div className="chips">
-            {s.platforms.map((pl) => (
-              <button
-                type="button"
-                key={pl.id}
-                className={`chip ${pl.id === platformId ? "on" : ""}`}
-                onClick={() => setPlatformId(pl.id)}
-                title={isOnsite(pl) ? "현장/전화" : "플랫폼"}
-              >
-                {pl.name}
-              </button>
-            ))}
+          <div className="step gstep">
+            <button type="button" className="sb" aria-label="1명 줄이기" onClick={() => stepGuests(-1)} disabled={guests <= 1}>
+              <Minus size={16} />
+            </button>
+            <span className="sv">
+              {guests}
+              <small>명</small>
+            </span>
+            <button type="button" className="sb" aria-label="1명 늘리기" onClick={() => stepGuests(1)} disabled={guests >= GUESTS_MAX}>
+              <Plus size={16} />
+            </button>
           </div>
         </div>
 
@@ -414,13 +412,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                   if (!e.target.checked) setRoomId(null);
                 }}
               />
-              지금 방 배정 (Path B · 확정)
+              지금 방 배정
             </label>
-            {!assignNow ? (
-              <div className="muted sm" style={{ marginTop: 6 }}>
-                Path A · 미배정으로 저장 → 「지금」미배정에서 호실 정하기
-              </div>
-            ) : (
+            {assignNow ? (
               <div className="chips" style={{ marginTop: 8 }}>
                 {sameType.map((r) => (
                   <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""}`} onClick={() => setRoomId(r.id)}>
@@ -443,7 +437,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                     ) : null}
                 {!sameType.length && !otherRooms ? <span className="muted sm">이 타입은 그 기간에 빈 방이 없어요</span> : null}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 

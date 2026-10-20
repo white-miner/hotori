@@ -1628,6 +1628,28 @@ button.nowstatus { cursor: pointer; }
 .modal.simple-book { max-width: 560px; }
 .modal.simple-book .fld.simple-nights { align-items: start; }
 .modal.simple-book .fld.simple-nights > label { padding-top: 8px; }
+.modal.simple-book .simple-guest-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.modal.simple-book .simple-guest-row .fld {
+  margin-bottom: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  align-items: stretch;
+}
+.modal.simple-book .simple-guest-row .fld > label { padding-top: 0; }
+.modal.simple-book .simple-guest-row input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  box-sizing: border-box;
+}
+@media (max-width: 520px) {
+  .modal.simple-book .simple-guest-row { grid-template-columns: 1fr; }
+}
 .simple-price { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .simple-price-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
@@ -2152,8 +2174,7 @@ body.bulking .toast { bottom: 96px; }
 }
 .npick-d.blk.sel { background: repeating-linear-gradient(135deg, #555 0 3px, #333 3px 6px); color: #ddd; }
 .npick-d:disabled { opacity: 0; }
-.npick-d:not(.blk):not(.out):not(:disabled):hover { background: var(--hover); }
-.npick-d.sel:hover { background: #2a2a2a; }
+/* hover fill 없음 — 선택(.sel)과 헷갈림 */
 .npick-sum {
   margin-top: 12px;
   padding: 10px 12px;

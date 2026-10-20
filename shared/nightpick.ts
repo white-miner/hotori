@@ -151,12 +151,13 @@ export function monthGrid(monthStart: string): MonthCell[] {
   const first = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-01`;
   const [fy, fm, fd] = first.split("-").map(Number);
   const dow0 = new Date(Date.UTC(fy, fm - 1, fd)).getUTCDay(); // 0=일
-  const start = addDays(first, -dow0);
+  const start = addDays(first, -dow0); // 항상 일요일부터
   const cells: MonthCell[] = [];
   for (let i = 0; i < 42; i++) {
     const date = addDays(start, i);
     const [, cm] = date.split("-").map(Number);
-    cells.push({ date, inMonth: cm === m, dow: (dow0 + i) % 7 });
+    // 그리드가 일요일부터라 i%7이 요일. (dow0+i)%7은 1일이 일요일이 아니면 화·수에 토·일 색이 붙음
+    cells.push({ date, inMonth: cm === m, dow: i % 7 });
   }
   // 다음 달이 5주만 쓰면 마지막 주 전부 out → 35칸으로 줄여도 되지만 42 고정이 터치에 안정적
   return cells;
