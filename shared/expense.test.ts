@@ -4,24 +4,41 @@ import { inflateRawSync } from "node:zlib";
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   expenseTotals,
+  itemCadenceFor,
   moneySummary,
   monthlyByCategory,
   normalizeExpenseCategories,
+  purchaseCadence,
   validateExpense,
+  validateVendor,
+  vendorCadenceMap,
   type Expense,
   type ExpensePayMethod,
 } from "./expense";
 import { normalizeSettings } from "./ledger";
 import { xlsx, zipStore } from "./xlsx";
 
-const ex = (bizDate: string, category: string, amount: number, method: ExpensePayMethod, memo = "테스트"): Expense => ({
-  id: `${bizDate}-${category}-${amount}-${method}`,
+const ex = (
+  bizDate: string,
+  category: string,
+  amount: number,
+  method: ExpensePayMethod | null,
+  memo = "테스트",
+  extra: Partial<Expense> = {},
+): Expense => ({
+  id: `${bizDate}-${category}-${amount}-${method}-${memo}`,
   bizDate,
+  stockInDate: null,
   category,
   amount,
   method,
+  paid: method != null,
   memo,
+  vendorId: null,
+  vendorName: null,
+  vendorType: null,
   createdAt: `${bizDate}T10:00:00Z`,
+  ...extra,
 });
 
 const list = [
@@ -30,6 +47,7 @@ const list = [
   ex("2026-09-30", "비품구매", 12000, "cash"),
   ex("2026-10-19", "비품구매", 8000, "card"),
   ex("2026-10-19", "수리", 20000, "transfer", "보일러"),
+  ex("2026-10-20", "비품구매", 15000, null, "라면", { paid: false, vendorId: "v1", vendorName: "동네마트", vendorType: "mart" }),
 ];
 
 test("기본 지출 분류: 설정이 없으면 수리·비품구매를 앞에", () => {
@@ -48,14 +66,16 @@ test("지출 분류 정리: 잘못된 항목·중복 id 제거, 이름 길이 �
   assert.ok(out.every((c) => c.name.length <= 12));
 });
 
-test("지출 합계: 카드·현금·이체·분류별", () => {
+test("지출 합계: 카드·현금·이체·미수·분류별", () => {
   const t = expenseTotals(list);
-  assert.equal(t.amount, 115000);
-  assert.equal(t.count, 5);
-  assert.equal(t.cash, 42000);
+  assert.equal(t.amount, 130000);
+  assert.equal(t.count, 6);
+  assert.equal(t.cash, 42000); // 입금 완료 현금만
   assert.equal(t.card, 53000);
   assert.equal(t.transfer, 20000);
-  assert.equal(t.byCategory.get("비품구매"), 50000);
+  assert.equal(t.unpaid, 15000);
+  assert.equal(t.unpaidCount, 1);
+  assert.equal(t.byCategory.get("비품구매"), 65000);
   assert.equal(t.byCategory.get("세탁"), 45000);
   assert.equal(t.byCategory.get("수리"), 20000);
 });
@@ -66,24 +86,24 @@ test("월별 분류 합계: 최근 달이 먼저", () => {
     m.map((r) => r.month),
     ["2026-10", "2026-09"],
   );
-  assert.equal(m[0].total, 103000);
-  assert.equal(m[0].byCategory.get("비품구매"), 38000);
+  assert.equal(m[0].total, 118000);
+  assert.equal(m[0].byCategory.get("비품구매"), 53000);
   assert.equal(m[1].byCategory.get("비품구매"), 12000);
 });
 
-test("남은 금액·현금 시재: 이체 지출은 시재에서 안 빼요", () => {
+test("남은 금액·현금 시재: 이체·미수는 시재에서 안 빼요", () => {
   const s = moneySummary(500000, 40000, 25000, expenseTotals(list));
   assert.equal(s.sales, 540000);
-  assert.equal(s.expense, 115000);
-  assert.equal(s.left, 425000);
-  assert.equal(s.cash, 25000 - 42000); // 현금 지출만
+  assert.equal(s.expense, 130000);
+  assert.equal(s.left, 410000);
+  assert.equal(s.cash, 25000 - 42000); // 입금 완료 현금만
   const z = moneySummary(0, 0, 0, { amount: 0, cash: 0 });
   assert.equal(z.left, 0);
   assert.equal(z.cash, 0);
 });
 
-test("지출 입력 확인: 사용처·품목 필수, 카드·현금·이체", () => {
-  const ok = { bizDate: "2026-10-19", category: "수리", amount: 1000, method: "cash", memo: "수도꼭지" };
+test("지출 입력 확인: 품목 필수, 입금 완료면 금액·결제, 미수는 금액 선택", () => {
+  const ok = { bizDate: "2026-10-19", category: "수리", amount: 1000, method: "cash" as const, paid: true, memo: "수도꼭지" };
   assert.equal(validateExpense(ok), null);
   assert.equal(validateExpense({ ...ok, method: "transfer" }), null);
   assert.equal(validateExpense({ ...ok, method: "card" }), null);
@@ -95,6 +115,50 @@ test("지출 입력 확인: 사용처·품목 필수, 카드·현금·이체", (
   assert.match(validateExpense({ ...ok, memo: "" }) ?? "", /사용처/);
   assert.match(validateExpense({ ...ok, memo: null }) ?? "", /사용처/);
   assert.match(validateExpense({ ...ok, memo: " " }) ?? "", /사용처/);
+  // 미수금: 금액 0·결제 없음 OK
+  assert.equal(validateExpense({ ...ok, paid: false, amount: 0, method: null }), null);
+  assert.equal(validateExpense({ ...ok, paid: false, amount: 5000, method: null }), null);
+  assert.match(validateExpense({ ...ok, paid: true, amount: 0, method: "cash" }) ?? "", /금액/);
+  assert.match(validateExpense({ ...ok, stockInDate: "bad" }) ?? "", /입고/);
+  assert.equal(validateExpense({ ...ok, stockInDate: "2026-10-18" }), null);
+});
+
+test("거래처 입력 확인", () => {
+  assert.equal(validateVendor({ name: "쿠팡", vendorType: "auction" }), null);
+  assert.match(validateVendor({ name: " ", vendorType: "mart" }) ?? "", /이름/);
+  assert.match(validateVendor({ name: "ok", vendorType: "shop" }) ?? "", /종류/);
+});
+
+test("구매 주기: 입고일 우선 · 평균·중앙값", () => {
+  const rows = [
+    ex("2026-10-01", "비품구매", 1000, "cash", "라면", { vendorId: "v1", stockInDate: "2026-10-01" }),
+    ex("2026-10-15", "비품구매", 1000, "cash", "라면", { vendorId: "v1", stockInDate: "2026-10-15" }),
+    ex("2026-10-29", "비품구매", 1000, "cash", "라면", { vendorId: "v1", stockInDate: "2026-10-29" }),
+  ];
+  const c = purchaseCadence(rows);
+  assert.equal(c.gaps, 2);
+  assert.equal(c.avgDays, 14);
+  assert.equal(c.medianDays, 14);
+  assert.match(c.label ?? "", /14일/);
+  assert.equal(itemCadenceFor(rows, "v1", "라면")?.medianDays, 14);
+  assert.equal(itemCadenceFor(rows, "v1", "없는품목"), null);
+  const one = purchaseCadence([rows[0]!]);
+  assert.equal(one.label, null);
+  const map = vendorCadenceMap(rows);
+  assert.equal(map.get("v1")?.avgDays, 14);
+});
+
+test("구매 주기: 같은 날·불규칙 간격은 중앙값", () => {
+  const rows = [
+    ex("2026-09-01", "비품구매", 1, "cash", "컵", { vendorId: "v2" }),
+    ex("2026-09-01", "비품구매", 1, "cash", "컵", { vendorId: "v2" }), // 같은 날
+    ex("2026-09-11", "비품구매", 1, "cash", "컵", { vendorId: "v2" }), // +10
+    ex("2026-10-01", "비품구매", 1, "cash", "컵", { vendorId: "v2" }), // +20
+  ];
+  const c = purchaseCadence(rows);
+  assert.equal(c.gaps, 2);
+  assert.equal(c.avgDays, 15);
+  assert.equal(c.medianDays, 15);
 });
 
 // 아주 단순한 zip 읽기 (store 방식만)
