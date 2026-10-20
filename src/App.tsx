@@ -16,9 +16,9 @@ import Shop from "./Shop";
 type View = "board" | "ledger" | "expenses" | "shop" | "settings";
 const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
   { id: "board", label: "보드", icon: LayoutGrid },
-  { id: "ledger", label: "장부", icon: BookOpen },
-  { id: "expenses", label: "지출", icon: Wallet },
   { id: "shop", label: "매점", icon: ShoppingBag },
+  { id: "expenses", label: "지출", icon: Wallet },
+  { id: "ledger", label: "장부", icon: BookOpen },
   { id: "settings", label: "설정", icon: Gear },
 ];
 const viewFromHash = (): View => {

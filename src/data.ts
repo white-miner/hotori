@@ -15,6 +15,15 @@ import {
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
 import { type Expense, type ExpenseVendor, type VendorType, isExpensePayMethod, isVendorType } from "../shared/expense";
+import {
+  type RoomMemo,
+  type RoomMemoDraft,
+  type RoomMemoKind,
+  type RoomMemoStatus,
+  isRoomMemoKind,
+  isRoomMemoStatus,
+  validateRoomMemoDraft,
+} from "../shared/roomMemo";
 import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
@@ -1122,3 +1131,119 @@ export function useExpenses(hotelId: string, from: string, to: string) {
   }, []);
   return { list, error, save, remove, refresh };
 }
+
+// ---------- 객실 특이사항 (「지금」말풍선 · 인수인계용 room_memos) ----------
+interface RoomMemoRow {
+  id: string;
+  room_id: string;
+  body: string;
+  status: string;
+  kind: string;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const MEMO_COLS = "id,room_id,body,status,kind,resolved_at,created_at,updated_at";
+const fromMemoRow = (r: RoomMemoRow): RoomMemo => ({
+  id: r.id,
+  roomId: r.room_id,
+  body: r.body,
+  status: isRoomMemoStatus(r.status) ? r.status : "open",
+  kind: isRoomMemoKind(r.kind) ? r.kind : "issue",
+  resolvedAt: r.resolved_at,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+export async function queryRoomMemos(hotelId: string): Promise<RoomMemo[]> {
+  const { data, error } = await supabase
+    .from("room_memos")
+    .select(MEMO_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(5000);
+  if (error) throw error;
+  return (data as RoomMemoRow[]).map(fromMemoRow);
+}
+
+/** 객실 특이사항: 호텔 전체 · 실시간 + 20초마다 맞춤 */
+export function useRoomMemos(hotelId: string) {
+  const [list, setList] = useState<RoomMemo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const listRef = useRef<RoomMemo[]>([]);
+  listRef.current = list ?? [];
+  const refresh = useCallback(async () => {
+    try {
+      const rows = await queryRoomMemos(hotelId);
+      setList(rows);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "특이사항을 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void refresh(), 250);
+    };
+    const ch = supabase
+      .channel(`room-memos-${hotelId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "room_memos", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .subscribe();
+    const poll = setInterval(() => document.visibilityState === "visible" && void refresh(), 20000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(poll);
+      void supabase.removeChannel(ch);
+    };
+  }, [hotelId, refresh]);
+  const save = useCallback(
+    async (d: RoomMemoDraft, id?: string): Promise<RoomMemo> => {
+      const v = validateRoomMemoDraft(d);
+      if (v) throw new Error(v);
+      const status: RoomMemoStatus = d.status ?? "open";
+      const kind: RoomMemoKind = d.kind ?? "issue";
+      const row = {
+        room_id: d.roomId.trim().slice(0, 40),
+        body: d.body.trim().slice(0, 120),
+        kind,
+        status,
+        resolved_at: status === "resolved" ? new Date().toISOString() : null,
+      };
+      const q = id
+        ? supabase.from("room_memos").update(row).eq("id", id).select(MEMO_COLS).single()
+        : supabase.from("room_memos").insert({ ...row, hotel_id: hotelId }).select(MEMO_COLS).single();
+      const { data, error } = await q;
+      if (error) throw error;
+      const saved = fromMemoRow(data as RoomMemoRow);
+      setList((cur) => {
+        const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+        return [saved, ...rest].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      });
+      return saved;
+    },
+    [hotelId],
+  );
+  const setStatus = useCallback(async (id: string, status: RoomMemoStatus): Promise<RoomMemo> => {
+    const row = {
+      status,
+      resolved_at: status === "resolved" ? new Date().toISOString() : null,
+    };
+    const { data, error } = await supabase.from("room_memos").update(row).eq("id", id).select(MEMO_COLS).single();
+    if (error) throw error;
+    const saved = fromMemoRow(data as RoomMemoRow);
+    setList((cur) => {
+      const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+      return [saved, ...rest].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    });
+    return saved;
+  }, []);
+  const remove = useCallback(async (id: string) => {
+    const { error } = await supabase.from("room_memos").delete().eq("id", id);
+    if (error) throw error;
+    setList((cur) => (cur ?? []).filter((x) => x.id !== id));
+  }, []);
+  return { list, error, save, setStatus, remove, refresh };
+}
+
