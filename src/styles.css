@@ -280,6 +280,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .price-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
 .price-row .price-total { flex: 1; min-width: 140px; }
 .price-row .price-total input { font-size: 18px; font-weight: 800; }
+.price-row.wdwe { margin-top: 8px; }
+.price-row.wdwe .inp.price { width: 120px; }
 .step { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .step .sb { width: 40px; height: 40px; border-radius: 50%; background: var(--panel); display: flex; align-items: center; justify-content: center; }
 .step .sb:hover { background: var(--hover); }
@@ -1992,6 +1994,23 @@ body.bulking .toast { bottom: 96px; }
   touch-action: manipulation;
 }
 .npick-d .num { font-family: var(--num); font-weight: 800; }
+.npick-d.has-amt { flex-direction: column; gap: 1px; padding: 4px 2px; min-height: 52px; }
+.npick-amt { font-size: 10px; font-weight: 700; line-height: 1.1; opacity: 0.92; font-family: var(--num); letter-spacing: -0.03em; }
+.npick-d.sel .npick-amt { color: #fff; }
+.npick-rates { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.npick-ratechip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 6px 10px; border-radius: 12px; background: var(--panel);
+  border: none; cursor: pointer; font: inherit; color: inherit;
+}
+.npick-ratechip b { font-size: 12px; font-weight: 750; }
+.npick-ratechip .num { font-size: 13px; font-weight: 800; font-family: var(--num); }
+.npick-ratechip:hover { background: var(--hover); }
+.npick-edit {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 8px 0 4px; padding: 8px 10px; background: var(--panel); border-radius: 14px;
+}
+.npick-edit-lab { font-size: 13px; font-weight: 700; }
 .npick-d.out { visibility: hidden; pointer-events: none; }
 .npick-d.su:not(.sel):not(.blk) { color: var(--red-d); }
 .npick-d.sa:not(.sel):not(.blk) { color: var(--dayuse); }

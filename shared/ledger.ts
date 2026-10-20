@@ -2,6 +2,7 @@ import { normalizePlatformFee, normalizeRate } from "./feerate";
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
 import type { LongStayRate, NightCharge, SettleCycle, StayMode } from "./longstay";
+import type { StayNightRates } from "./nightrates";
 import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
@@ -193,6 +194,11 @@ export interface Booking {
   /** 단체 예약 묶음 (같은 단체의 방들은 같은 값) */
   groupId?: string | null;
   groupName?: string | null;
+  /**
+   * 표준 숙박 방별·밤별 요금 ({ flat, weekday?, weekend?, nights:{date:amount} }).
+   * nights 행렬이 LOS를 덮으면 객실료 진실 = Σ nights. 장기 charges와 별개.
+   */
+  nightRates?: StayNightRates | null;
   /** 받은 돈 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
   payments?: Payment[];
   cancelledAt: string | null;

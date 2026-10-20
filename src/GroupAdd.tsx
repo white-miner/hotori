@@ -33,7 +33,7 @@ import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 
 type AssignMode = "rooms" | "typeOnly";
-type PriceMode = "rate" | "room" | "total" | "line";
+type PriceMode = "rate" | "member" | "room" | "total" | "line";
 
 interface Props {
   data: HotelData;
@@ -69,6 +69,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const [roomPrice, setRoomPrice] = useState("");
   const [total, setTotal] = useState("");
   const [linePrices, setLinePrices] = useState<string[]>([]);
+  const [memberRates, setMemberRates] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [view, setView] = useState<"count" | "board">("board");
@@ -90,7 +91,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [free, assignMode]);
 
-  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, mode, roomPrice, total, rates, assignMode, linePrices]);
+  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, mode, roomPrice, total, rates, assignMode, linePrices, memberRates]);
 
   const types = usableTypes(s.types);
   const sorted = [...picked].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
@@ -136,14 +137,29 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeIds.join("|"), nights]);
 
+  useEffect(() => {
+    setMemberRates((prev) =>
+      typeIds.map((tid, i) => {
+        const r = rateNum[tid];
+        if (r) return String(r);
+        if (i < prev.length && prev[i] !== "") return prev[i];
+        return "";
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeIds.join("|"), Object.values(rateNum).join("|")]);
+
+  const memberRateNums = memberRates.map((x) => Number(x || 0));
   const prices =
     mode === "rate"
       ? prefills
-      : mode === "room"
-        ? typeIds.map(() => Number(roomPrice || 0))
-        : mode === "total"
-          ? splitTotal(Number(total || 0), n)
-          : linePrices.map((x) => Number(x || 0));
+      : mode === "member"
+        ? memberRateNums.map((r) => r * nights)
+        : mode === "room"
+          ? typeIds.map(() => Number(roomPrice || 0))
+          : mode === "total"
+            ? splitTotal(Number(total || 0), n)
+            : linePrices.map((x) => Number(x || 0));
   const pickedTypes = types.filter((t) => countOf(t.id) > 0);
   const formula = rateFormula(
     pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
@@ -178,11 +194,21 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
     if (v) return setErr(v);
     if (over.length) return setErr(`${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 남은 객실이 모자라요. ${assignMode === "typeOnly" ? "실 수를" : "방을"} 다시 골라 주세요.`);
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
+    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
-    if (!sum) return setErr(mode === "room" ? "1실 가격을 적어 주세요." : mode === "line" ? "방마다 금액을 적어 주세요." : "총액을 적어 주세요.");
+    if (!sum)
+      return setErr(
+        mode === "room" ? "1실 가격을 적어 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 적어 주세요." : "총액을 적어 주세요.",
+      );
     setBusy(true);
     setErr(null);
     try {
+      const memberFlats =
+        mode === "member"
+          ? memberRateNums
+          : mode === "rate"
+            ? typeIds.map((tid) => rateNum[tid] ?? 0)
+            : prices.map((p) => (nights > 0 ? Math.round(p / nights) : 0));
       const list = groupDrafts({
         groupId,
         groupName,
@@ -192,6 +218,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
         roomIds: assignMode === "rooms" ? sorted : undefined,
         typeIds: assignMode === "typeOnly" ? typeIds : undefined,
         prices,
+        memberRates: memberFlats.some((x) => x > 0) ? memberFlats : undefined,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
         tentative,
@@ -458,8 +485,11 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
               <button type="button" className={mode === "rate" ? "on" : ""} onClick={() => setMode("rate")}>
                 타입별 1박 요금
               </button>
+              <button type="button" className={mode === "member" ? "on" : ""} onClick={() => setMode("member")}>
+                방별 1박 요금
+              </button>
               <button type="button" className={mode === "line" ? "on" : ""} onClick={() => setMode("line")}>
-                방별 금액
+                방별 총액
               </button>
               <button type="button" className={mode === "room" ? "on" : ""} onClick={() => setMode("room")}>
                 1실 가격
@@ -468,7 +498,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                 총액 나누기
               </button>
             </div>
-            {mode === "rate" || mode === "line" ? (
+            {mode === "rate" || mode === "line" || mode === "member" ? (
               <div className="grates">
                 {pickedTypes.length ? (
                   pickedTypes.map((t) => (
@@ -490,6 +520,37 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                 ) : (
                   <span className="muted sm">방을 고르면 요금 칸이 생겨요</span>
                 )}
+              </div>
+            ) : null}
+            {mode === "member" ? (
+              <div className="glines">
+                {lineRows.map((row) => (
+                  <label className="gline-row" key={row.key}>
+                    <span className="gl-lab">
+                      <b>{row.label}</b>
+                      <span className="muted sm">
+                        {row.sub} · {nights}박 = {won((Number(memberRates[row.i] || 0) || 0) * nights)}원
+                      </span>
+                    </span>
+                    <span className="inp price sm">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        aria-label={`${row.label} 1박 요금`}
+                        value={memberRates[row.i] ? won(Number(memberRates[row.i])) : ""}
+                        onChange={(e) => {
+                          const v = num(e.target.value);
+                          setMemberRates((prev) => {
+                            const next = typeIds.map((_, i) => prev[i] ?? "");
+                            next[row.i] = v;
+                            return next;
+                          });
+                        }}
+                      />
+                      원/박
+                    </span>
+                  </label>
+                ))}
               </div>
             ) : null}
             {mode === "line" ? (

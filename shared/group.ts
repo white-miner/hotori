@@ -1,5 +1,6 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
 import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stockTable } from "./ledger";
+import { syncStayNightRates } from "./nightrates";
 
 export const GROUP_NAME_MAX = 40;
 export const GROUP_ROOMS_MAX = 60;
@@ -103,6 +104,8 @@ export function groupDrafts(p: {
   /** 호실 미정 멤버의 타입 (길이 = 실 수). roomIds와 둘 중 하나만 */
   typeIds?: string[];
   prices: number[];
+  /** 방별 1박 단가 (있으면 night_rates 행렬을 채워요) */
+  memberRates?: number[];
   s: HotelSettings;
   guestsOf?: (typeId: string) => number | null;
   tentative?: boolean;
@@ -112,66 +115,79 @@ export function groupDrafts(p: {
   const now = new Date().toISOString();
   const tent = !!p.tentative;
   const ncx = !!p.noClean;
+  const withRates = (b: Booking, i: number): Booking => {
+    const flat = p.memberRates?.[i];
+    if (flat == null || flat <= 0 || !b.nights) return b;
+    return { ...b, nightRates: syncStayNightRates(b.checkIn, b.nights, { flat }) };
+  };
   if (p.typeIds?.length) {
-    return p.typeIds.map((typeId, i) => ({
-      id: `__g${i}`,
-      kind: "stay" as const,
-      status: "active" as const,
-      platformId: p.platformId,
-      price: p.prices[i] ?? 0,
-      guestName: p.groupName.trim(),
-      typeId,
-      roomId: null,
-      segments: null,
-      checkIn: p.checkIn,
-      nights: p.nights,
-      startTime: null,
-      endTime: null,
-      arrived: false,
-      tentative: tent,
-      noClean: ncx,
-      earlyOut: null,
-      checkedOutAt: null,
-      refund: null,
-      memo: null,
-      guests: p.guestsOf?.(typeId) ?? null,
-      groupId: p.groupId,
-      groupName: p.groupName.trim(),
-      cancelledAt: null,
-      createdAt: now,
-      updatedAt: now,
-    }));
+    return p.typeIds.map((typeId, i) =>
+      withRates(
+        {
+          id: `__g${i}`,
+          kind: "stay" as const,
+          status: "active" as const,
+          platformId: p.platformId,
+          price: p.prices[i] ?? 0,
+          guestName: p.groupName.trim(),
+          typeId,
+          roomId: null,
+          segments: null,
+          checkIn: p.checkIn,
+          nights: p.nights,
+          startTime: null,
+          endTime: null,
+          arrived: false,
+          tentative: tent,
+          noClean: ncx,
+          earlyOut: null,
+          checkedOutAt: null,
+          refund: null,
+          memo: null,
+          guests: p.guestsOf?.(typeId) ?? null,
+          groupId: p.groupId,
+          groupName: p.groupName.trim(),
+          cancelledAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        i,
+      ),
+    );
   }
   return (p.roomIds ?? []).map((id, i) => {
     const typeId = rmap.get(id)?.typeId ?? "";
-    return {
-      id: `__g${i}`,
-      kind: "stay" as const,
-      status: "active" as const,
-      platformId: p.platformId,
-      price: p.prices[i] ?? 0,
-      guestName: p.groupName.trim(),
-      typeId,
-      roomId: id,
-      segments: null,
-      checkIn: p.checkIn,
-      nights: p.nights,
-      startTime: null,
-      endTime: null,
-      arrived: false,
-      tentative: tent,
-      noClean: ncx,
-      earlyOut: null,
-      checkedOutAt: null,
-      refund: null,
-      memo: null,
-      guests: p.guestsOf?.(typeId) ?? null,
-      groupId: p.groupId,
-      groupName: p.groupName.trim(),
-      cancelledAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
+    return withRates(
+      {
+        id: `__g${i}`,
+        kind: "stay" as const,
+        status: "active" as const,
+        platformId: p.platformId,
+        price: p.prices[i] ?? 0,
+        guestName: p.groupName.trim(),
+        typeId,
+        roomId: id,
+        segments: null,
+        checkIn: p.checkIn,
+        nights: p.nights,
+        startTime: null,
+        endTime: null,
+        arrived: false,
+        tentative: tent,
+        noClean: ncx,
+        earlyOut: null,
+        checkedOutAt: null,
+        refund: null,
+        memo: null,
+        guests: p.guestsOf?.(typeId) ?? null,
+        groupId: p.groupId,
+        groupName: p.groupName.trim(),
+        cancelledAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      i,
+    );
   });
 }
 

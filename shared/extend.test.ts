@@ -124,7 +124,7 @@ test("박수↑·가격 미변경만 경고 (박수↓는 자동 재계산)", ()
 });
 
 test("repriceForNights: 70,000×20 → 12박이면 840,000 · 가산분 유지", () => {
-  const b = bk({ nights: 20, price: 1_400_000, typeId: "s" });
+  const b = bk({ nights: 20, price: 1_400_000, typeId: "s", checkIn: "2026-10-01" });
   const r = repriceForNights(b, 12, 70_000);
   assert.equal(r.rate, 70_000);
   assert.equal(r.price, 840_000);
@@ -134,11 +134,41 @@ test("repriceForNights: 70,000×20 → 12박이면 840,000 · 가산분 유지",
     price: 1_410_000,
     extraFee: 10_000,
     kind: "stay",
+    checkIn: "2026-10-01",
   });
   const r2 = repriceForNights(withAdd, 12);
   assert.equal(stayAddons(withAdd), 10_000);
   assert.equal(roomNightRate(withAdd), 70_000);
   assert.equal(r2.price, 840_000 + 10_000);
+});
+
+test("repriceForNights: 방별 flat · 행렬 축소는 뒤 밤 drop", () => {
+  const nights: Record<string, number> = {};
+  for (let i = 0; i < 3; i++) nights[`2026-10-${19 + i}`] = i === 0 ? 70_000 : 80_000;
+  const b = bk({
+    checkIn: "2026-10-19",
+    nights: 3,
+    price: 230_000,
+    nightRates: { flat: 70_000, nights },
+  });
+  assert.equal(roomNightRate(b, 80_000), 70_000);
+  const r = repriceForNights(b, 2);
+  assert.equal(r.price, 150_000);
+  assert.deepEqual(r.nightRates?.nights, { "2026-10-19": 70_000, "2026-10-20": 80_000 });
+});
+
+test("applyExtend: 밤 셀 추가 · 이중 가산 없음", () => {
+  const b = bk({
+    checkIn: "2026-10-19",
+    nights: 1,
+    price: 70_000,
+    roomId: "r301",
+    nightRates: { flat: 70_000, nights: { "2026-10-19": 70_000 } },
+  });
+  const d = applyExtend(b, 80_000);
+  assert.equal(d.nights, 2);
+  assert.equal(d.price, 150_000);
+  assert.equal(d.nightRates?.nights?.["2026-10-20"], 80_000);
 });
 
 test("unusedNightRefund: 20박 중 12박 이용 → 미사용 8박 × 단가", () => {
