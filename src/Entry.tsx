@@ -107,6 +107,7 @@ import {
   withPlannedCharges,
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
+import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, Inp, PriceInp, PriceRow, Stepper } from "./primitives";
 
 interface Props {
   data: HotelData;
@@ -119,6 +120,8 @@ interface Props {
   notify: (m: string, opt?: ToastOpt) => void;
   /** 중도 퇴실 되돌리기 (비운 밤이 다시 팔렸으면 막고 false) */
   undoEarlyOut: (id: string) => Promise<boolean>;
+  /** 새 예약 상세 → 간단 셸 (progressive disclosure) */
+  onOpenSimple?: (preset: Partial<Booking>) => void;
 }
 const TYPE_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"];
 const TYPE_LABEL = "QWERTYUIO";
@@ -148,7 +151,7 @@ function TimePick({ value, label, onPick }: { value: string; label: string; onPi
   );
 }
 
-export default function Entry({ data, today, req, onClose, onSaved, onBoardMove, notify, undoEarlyOut }: Props) {
+export default function Entry({ data, today, req, onClose, onSaved, onBoardMove, notify, undoEarlyOut, onOpenSimple }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const base = req.booking;
@@ -964,10 +967,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   }, [pk, arrival, cAuto, wAuto]);
   // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
   const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
-  const stepGuests = (d: number) => {
-    gTouched.current = true;
-    setGuests((g) => Math.max(1, Math.min(GUESTS_MAX, g + d)));
-  };
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
   const payTracked = long || isOnsite(L.plats.get(platformId)) || livePays.length > 0;
   const curPlat = L.plats.get(platformId);
@@ -1255,7 +1254,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
-        className="modal"
+        className="modal book-shell"
         onSubmit={(e) => {
           e.preventDefault();
           void save(false);
@@ -1263,7 +1262,29 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       >
         <div className="grab" />
         <div className="mh">
-          <h2>{isNew ? "예약 기록" : "예약 수정"}</h2>
+          <h2>{isNew ? "상세 예약" : "예약 수정"}</h2>
+          {isNew && kind === "stay" ? (
+            <BookingModeSeg
+              mode="detail"
+              onSimple={
+                onOpenSimple
+                  ? () =>
+                      onOpenSimple({
+                        kind: "stay",
+                        checkIn,
+                        nights,
+                        platformId,
+                        typeId,
+                        roomId,
+                        guestName: guestName || undefined,
+                        guestPhone: guestPhone || undefined,
+                        guests,
+                        price: Number(price) || undefined,
+                      })
+                  : undefined
+              }
+            />
+          ) : null}
           <div className="seg">
             <button type="button" className={kind === "stay" ? "on" : ""} onClick={() => setKind("stay")}>
               숙박
@@ -1698,15 +1719,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>
             플랫폼<em>*</em>
           </label>
-          <div className="chips scroll">
+          <ChipGroup scroll>
             {s.platforms.map((pl, k) => (
-              <button type="button" key={pl.id} className={`chip ${pl.id === platformId ? "on" : ""}`} onClick={() => setPlatformId(pl.id)}>
+              <Chip key={pl.id} active={pl.id === platformId} onClick={() => setPlatformId(pl.id)}>
                 <PlatBadge p={pl} />
                 {pl.name}
                 {k < 9 ? <i>{k + 1}</i> : null}
-              </button>
+              </Chip>
             ))}
-          </div>
+          </ChipGroup>
         </div>
 
         <div className="fld">
@@ -1786,10 +1807,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <label>
                 숙박 유형<em>*</em>
               </label>
-              <div className="chips">
-                <button
-                  type="button"
-                  className={`chip ${!long ? "on" : ""}`}
+              <ChipGroup>
+                <Chip
+                  active={!long}
                   aria-pressed={!long}
                   onClick={() => {
                     setStayMode("standard");
@@ -1797,10 +1817,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   }}
                 >
                   일반
-                </button>
-                <button
-                  type="button"
-                  className={`chip ${long ? "on" : ""}`}
+                </Chip>
+                <Chip
+                  active={long}
                   aria-pressed={long}
                   onClick={() => {
                     setStayMode("long_stay");
@@ -1810,8 +1829,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   }}
                 >
                   장기(퇴실 미정)
-                </button>
-              </div>
+                </Chip>
+              </ChipGroup>
             </div>
             {!long ? (
               <div className="fld">
@@ -2094,42 +2113,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>
             이름 · 연락처<em>*</em>
           </label>
-          <div className="two">
-            <input
-              ref={nameRef}
-              className="inp"
-              placeholder="손님 이름"
-              value={guestName}
-              maxLength={60}
-              onChange={(e) => setName(e.target.value)}
-              aria-label="이름"
-            />
-            <input
-              className="inp"
-              placeholder="010-1234-5678"
-              value={guestPhone}
-              maxLength={30}
-              inputMode="tel"
-              onChange={(e) => setPhone(e.target.value)}
-              aria-label="연락처"
-            />
-          </div>
+          <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
         </div>
 
         <div className="fld gfld">
           <label>인원</label>
           <div className="payb">
-            <div className="step gstep">
-              <button type="button" className="sb" aria-label="1명 줄이기" onClick={() => stepGuests(-1)}>
-                <Minus size={16} />
-              </button>
-              <span className="sv">
-                {guests}
-                <small>명</small>
-              </span>
-              <button type="button" className="sb" aria-label="1명 늘리기" onClick={() => stepGuests(1)}>
-                <Plus size={16} />
-              </button>
+            <Stepper
+              value={guests}
+              min={1}
+              max={GUESTS_MAX}
+              onChange={(n) => {
+                gTouched.current = true;
+                setGuests(n);
+              }}
+            >
               <span className="rng">
                 {sur.over ? (
                   <span className="gline warn">최대 {sur.max}명을 넘었어요 · 저장은 돼요</span>
@@ -2139,7 +2137,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <span className="muted">기본 {typeGuests(s.types.find((t) => t.id === typeId)).base}명 · 넘으면 1명마다 추가 요금</span>
                 )}
               </span>
-            </div>
+            </Stepper>
             {sur.over && sur.line ? <span className="gline">{sur.line}</span> : null}
             {extraFee > 0 || sur.total > 0 || xManual ? (
               <div className="xfee">
@@ -2147,7 +2145,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   판매 가격에 <b>추가 인원 {won(extraFee)}원</b> 포함{xManual ? " · 직접 고침" : ""}
                 </span>
                 {xEdit ? (
-                  <label className="inp price sm">
+                  <PriceInp sm>
                     <input
                       className="num"
                       inputMode="numeric"
@@ -2157,8 +2155,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       onChange={(e) => setXFee(Number(e.target.value.replace(/\D/g, "").slice(0, 8) || 0), true)}
                       onBlur={() => setXEdit(false)}
                     />
-                    원
-                  </label>
+                  </PriceInp>
                 ) : (
                   <button type="button" className="auto" onClick={() => setXEdit(true)}>
                     금액 바꾸기
@@ -2384,8 +2381,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             </label>
             {kind === "stay" ? (
               <>
-                <div className="price-row">
-                  <label className="inp price sm">
+                <PriceRow>
+                  <PriceInp sm suffix="원/박">
                     <input
                       className="num"
                       inputMode="numeric"
@@ -2394,10 +2391,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       onChange={(e) => setRateAndTotal(e.target.value)}
                       aria-label="1박 요금"
                     />
-                    원/박
-                  </label>
+                  </PriceInp>
                   <span className="muted sm">× {nights}박 =</span>
-                  <label className="inp price price-total">
+                  <PriceInp total>
                     <input
                       className="num"
                       inputMode="numeric"
@@ -2406,11 +2402,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       onChange={(e) => setTotalAndRate(e.target.value)}
                       aria-label="총액"
                     />
-                    원
-                  </label>
-                </div>
-                <div className="price-row wdwe">
-                  <label className="inp price sm">
+                  </PriceInp>
+                </PriceRow>
+                <PriceRow wdwe>
+                  <PriceInp sm suffix="평일">
                     <input
                       className="num"
                       inputMode="numeric"
@@ -2419,9 +2414,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
                       aria-label="평일 1박 기본"
                     />
-                    평일
-                  </label>
-                  <label className="inp price sm">
+                  </PriceInp>
+                  <PriceInp sm suffix="주말">
                     <input
                       className="num"
                       inputMode="numeric"
@@ -2430,13 +2424,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
                       aria-label="주말 1박 기본 (금·토)"
                     />
-                    주말
-                  </label>
+                  </PriceInp>
                   <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
-                </div>
+                </PriceRow>
               </>
             ) : (
-              <label className="inp price">
+              <PriceInp>
                 <input
                   className="num"
                   inputMode="numeric"
@@ -2445,8 +2438,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
                   aria-label="판매 가격"
                 />
-                원
-              </label>
+              </PriceInp>
             )}
             {kind === "stay" && Number(price || 0) > 0 ? (
               <div className="muted sm" style={{ marginTop: 6 }}>
@@ -2645,9 +2637,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         <div className="fld">
           <label>
             {moved ? "첫 방" : "호실"}
-            {kind === "stay" ? <span className="muted sm"> · 기본은 「간단 예약」(타입 재고만)</span> : null}
+            {kind === "stay" ? <span className="muted sm"> · 미배정=타입 재고</span> : null}
           </label>
-          <div className="chips">
+          <ChipGroup>
             <button
               type="button"
               className={`rchip lt ${roomId === null ? "on" : ""}`}
@@ -2682,10 +2674,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </button>
                 ) : null}
             {!sameType.length && !otherRooms && roomId !== null ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
-          </div>
+          </ChipGroup>
           {kind === "stay" && roomId === null ? (
-            <div className="muted sm" style={{ marginTop: 6 }}>
-              간단 예약(타입 홀드) · 호실은 「지금」 미배정의 「호실 정하기」 · 「임시 배치」는 방을 고른 뒤
+            <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
+              미배정 · 「지금」에서 호실 정하기
             </div>
           ) : null}
         </div>
@@ -2820,7 +2812,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 ) : null}
               </>
             ) : null}
-            <input className="inp" placeholder="메모 (선택)" maxLength={200} value={memo} onChange={(e) => setMemo(e.target.value)} />
+            <Inp placeholder="메모 (선택)" maxLength={200} value={memo} onChange={(e) => setMemo(e.target.value)} />
           </div>
         </div>
 
