@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   blockedNightsForRoom,
+  nextPaintedFromClick,
   nightPickGlance,
   nightPickSummary,
   orderNights,
@@ -51,9 +52,42 @@ test("11~12 → 2박 · 퇴 13", () => {
   });
 });
 
-test("역순 드래그(끝→시작)도 같은 매핑", () => {
+test("역순 선택(끝→시작)도 같은 매핑", () => {
   assert.deepEqual(stayFromPaintedNights("2026-10-21", "2026-10-11"), stayFromPaintedNights("2026-10-11", "2026-10-21"));
   assert.deepEqual(orderNights("2026-10-21", "2026-10-11"), { firstNight: "2026-10-11", lastNight: "2026-10-21" });
+});
+
+test("클릭: fresh → 1밤 / 밖 → 확장 / 끝 → 축소 / Shift → 앵커 범위", () => {
+  const painted = { firstNight: "2026-10-11", lastNight: "2026-10-13" };
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-20", { shiftKey: false, anchor: null, fresh: true }),
+    { firstNight: "2026-10-20", lastNight: "2026-10-20" },
+  );
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-15", { shiftKey: false, anchor: null, fresh: false }),
+    { firstNight: "2026-10-11", lastNight: "2026-10-15" },
+  );
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-09", { shiftKey: false, anchor: null, fresh: false }),
+    { firstNight: "2026-10-09", lastNight: "2026-10-13" },
+  );
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-11", { shiftKey: false, anchor: null, fresh: false }),
+    { firstNight: "2026-10-12", lastNight: "2026-10-13" },
+  );
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-13", { shiftKey: false, anchor: null, fresh: false }),
+    { firstNight: "2026-10-11", lastNight: "2026-10-12" },
+  );
+  assert.equal(nextPaintedFromClick(painted, "2026-10-12", { shiftKey: false, anchor: null, fresh: false }), null);
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-18", { shiftKey: true, anchor: "2026-10-15", fresh: false }),
+    { firstNight: "2026-10-15", lastNight: "2026-10-18" },
+  );
+  assert.deepEqual(
+    nextPaintedFromClick(painted, "2026-10-08", { shiftKey: true, anchor: null, fresh: false }),
+    { firstNight: "2026-10-08", lastNight: "2026-10-11" },
+  );
 });
 
 test("stay ↔ paint 왕복", () => {
