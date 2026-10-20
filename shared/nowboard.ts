@@ -1,6 +1,7 @@
 // 현장 현황 보드(「지금」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours } from "./extratime";
-import { type Booking, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights } from "./ledger";
+import { type Booking, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
+import { payState } from "./payment";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /** 칸·옆 패널에 쓰는 현장 상태 (우선순위 높은 것부터 판별) */
@@ -14,8 +15,10 @@ export interface NowFlags {
   noClean: boolean;
   /** 장기(퇴실 미정) */
   longStay: boolean;
-  /** 한글 짧은 라벨 */
+  /** 한글 짧은 라벨 (하단 단일 상태) */
   label: string;
+  /** 표시상 입실 완료 (저장 arrived 또는 체크인 시각 자동) */
+  arrived: boolean;
 }
 
 /** 퇴실 예정 윈도우: 실제 퇴실 시각 − 이 시간(상수, 설정 UI 없음) */
@@ -30,11 +33,19 @@ export interface NowClock {
 }
 
 export interface NowOpts {
-  stayTimes?: Pick<StayTimes, "checkOut">;
+  stayTimes?: Pick<StayTimes, "checkIn" | "checkOut">;
   clock?: NowClock;
 }
 
-const emptyFlags = (): NowFlags => ({ kind: "empty", tentative: false, group: false, noClean: false, longStay: false, label: "빈 방" });
+const emptyFlags = (): NowFlags => ({
+  kind: "empty",
+  tentative: false,
+  group: false,
+  noClean: false,
+  longStay: false,
+  label: "공실",
+  arrived: false,
+});
 
 function minutesOf(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -63,6 +74,7 @@ export function isCheckedOut(b: Pick<Booking, "checkedOutAt"> | null | undefined
 /**
  * 「지금」칸에 올릴지: 점유 밤이거나 퇴실일 아침(처리 전).
  * 재고 occupiesNight 식은 바꾸지 않음 — 보드 가시성만 분리.
+ * 체크아웃 시각이 지나도 checked_out_at 없으면 칸에 남김 (자동 공실 금지).
  */
 export function nowBoardVisible(b: Booking | null | undefined, date: string): boolean {
   if (!b || !isActive(b) || b.kind !== "stay" || isCheckedOut(b)) return false;
@@ -101,6 +113,40 @@ export function departingWindowOpen(
   return minutesOf(clock.time) >= minutesOf(win.time);
 }
 
+/**
+ * 설정 체크인 시각 도달: 벽일 ≥ 입실일 이고,
+ * 입실일 당일이면 시각 ≥ stayTimes.checkIn.
+ * 입실일 전날에는 false (체크인 시각만으로 숙박 전환 금지).
+ */
+export function checkInTimeReached(
+  checkInDate: string,
+  stayTimes: Pick<StayTimes, "checkIn"> = DEFAULT_STAY_TIMES,
+  clock: NowClock,
+): boolean {
+  if (clock.wallDate > checkInDate) return true;
+  if (clock.wallDate < checkInDate) return false;
+  return minutesOf(clock.time) >= minutesOf(stayTimes.checkIn);
+}
+
+/**
+ * 자동 입실 대상: 활성 숙박 · 보드 가시 · 미입실 · 입실일≤보드일 · 체크인 시각 도달.
+ * 효과는 표시상 숙박 + (UI가) arrived 저장. 퇴실/공실은 절대 자동이 아님.
+ */
+export function shouldAutoArrive(b: Booking | null | undefined, boardDate: string, opts?: NowOpts): boolean {
+  if (!b || !isActive(b) || b.kind !== "stay" || b.arrived || isCheckedOut(b)) return false;
+  if (!nowBoardVisible(b, boardDate)) return false;
+  if (boardDate < b.checkIn) return false;
+  const stayTimes = opts?.stayTimes ?? DEFAULT_STAY_TIMES;
+  const clock = opts?.clock ?? hotelWallClock();
+  return checkInTimeReached(b.checkIn, stayTimes, clock);
+}
+
+/** 저장 arrived 또는 자동 입실 조건 */
+export function effectiveArrived(b: Booking | null | undefined, boardDate: string, opts?: NowOpts): boolean {
+  if (!b) return false;
+  return !!b.arrived || shouldAutoArrive(b, boardDate, opts);
+}
+
 /** 오늘 밤·퇴실 아침을 점유/표시하는 활성 숙박의 현장 상태 */
 export function nowFlags(b: Booking | null | undefined, date: string, opts?: NowOpts): NowFlags {
   if (!nowBoardVisible(b, date)) return emptyFlags();
@@ -111,8 +157,9 @@ export function nowFlags(b: Booking | null | undefined, date: string, opts?: Now
   const longStay = booking.stayMode === "long_stay";
   const stayTimes = opts?.stayTimes ?? DEFAULT_STAY_TIMES;
   const clock = opts?.clock ?? hotelWallClock();
+  const arrived = effectiveArrived(booking, date, opts);
   const onCheckoutMorning = stayEnd(booking) === date;
-  const base = { tentative, group, noClean, longStay };
+  const base = { tentative, group, noClean, longStay, arrived };
 
   const rid = roomForNowBoard(booking, date);
   // 호실 없으면 미배정 우선 (퇴실 뱃지보다 배정이 먼저)
@@ -120,32 +167,32 @@ export function nowFlags(b: Booking | null | undefined, date: string, opts?: Now
     return { kind: "unassigned", ...base, label: "미배정" };
   }
 
+  // 장기: 약속 퇴실 없음 → 하단은 숙박 유지 (재고 창 종료로 퇴실예정 자동 켜지 않음)
+  if (longStay) {
+    if (!arrived) return { kind: "arriving", ...base, label: "숙박예약" };
+    return { kind: "inhouse", ...base, label: "숙박" };
+  }
+
   if (onCheckoutMorning) {
     if (departingWindowOpen(booking, date, stayTimes, clock)) {
-      // 장기: 약속 퇴실 없음 → 재고 창 종료 경고 (퇴실 예정과 다른 카피)
-      if (longStay) {
-        return { kind: "departing", ...base, label: "재고 창 종료" };
-      }
       if (clampHours(booking.lateOut)) {
+        // 슬롯은 하나 · 라벨만 「늦은 퇴실」
         return { kind: "lateOut", ...base, label: "늦은 퇴실" };
       }
-      return { kind: "departing", ...base, label: "퇴실 예정" };
+      return { kind: "departing", ...base, label: "퇴실예정" };
     }
     // 윈도우 전: 투숙 중 유지 (뱃지 안 켬)
-    if (booking.arrived) {
-      return { kind: "inhouse", ...base, label: "투숙 중" };
+    if (arrived) {
+      return { kind: "inhouse", ...base, label: "숙박" };
     }
-    return { kind: "arriving", ...base, label: "입실 예정" };
+    return { kind: "arriving", ...base, label: "숙박예약" };
   }
 
   // 점유 밤 (마지막 밤 포함): 퇴실 예정 아님
-  if (booking.checkIn === date && !booking.arrived) {
-    return { kind: "arriving", ...base, label: "입실 예정" };
+  if (arrived) {
+    return { kind: "inhouse", ...base, label: "숙박" };
   }
-  if (booking.arrived) {
-    return { kind: "inhouse", ...base, label: "투숙 중" };
-  }
-  return { kind: "arriving", ...base, label: "입실 예정" };
+  return { kind: "arriving", ...base, label: "숙박예약" };
 }
 
 export interface NowLists {
@@ -185,6 +232,7 @@ export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): Now
 /**
  * 「지금」보드 방→예약 맵.
  * nightBoard(재고) 위에 퇴실일 아침 가시성을 얹고, 퇴실처리된 칸은 비움.
+ * 같은 날 다음 예약(점유 밤)이 있으면 그쪽을 우선 → 퇴실처리 후 숙박예약으로 이어짐.
  */
 export function nowByRoom(bookings: Booking[], date: string): Map<string, Booking> {
   const byRoom = new Map<string, Booking>();
@@ -220,12 +268,17 @@ export function unassignedTypeCounts(list: Booking[]): { key: string; groupName:
 
 export const NOW_KIND_LABEL: Record<NowKind, string> = {
   lateOut: "늦은 퇴실",
-  departing: "퇴실 예정",
-  arriving: "입실 예정",
-  inhouse: "투숙 중",
+  departing: "퇴실예정",
+  arriving: "숙박예약",
+  inhouse: "숙박",
   unassigned: "미배정",
-  empty: "빈 방",
+  empty: "공실",
 };
+
+/** 하단 단일 상태가 퇴실처리 탭 대상인가 (lateOut 포함 · 슬롯 하나) */
+export function isDepartingStatus(kind: NowKind): boolean {
+  return kind === "departing" || kind === "lateOut";
+}
 
 /** 테스트·표시용: 이용 박수 라벨 */
 export function nowStayHint(b: Booking, date: string): string {
@@ -248,6 +301,17 @@ export function nowStayChips(b: Booking, date: string): string[] {
   const raw = Math.round((Date.parse(chipDate) - Date.parse(b.checkIn)) / 864e5) + 1;
   const night = Math.min(Math.max(raw, 1), u);
   return [`${u}박`, `${night}박째`];
+}
+
+/** N박 N일 칩 (박 = 진실, 일 = 박+1) */
+export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
+  nights: number;
+  days: number;
+  label: string;
+} {
+  const nights = usedNights(b) ?? b.nights ?? 0;
+  const days = nights > 0 ? nights + 1 : 0;
+  return { nights, days, label: nights > 0 ? `${nights}박 ${days}일` : "" };
 }
 
 /**
@@ -292,6 +356,34 @@ export function nowStayDates(b: Pick<Booking, "checkIn" | "nights" | "kind" | "e
 /** 화이트보드용 한 줄 = 점유 밤 구간 */
 export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): string {
   return nowNightRange(b).label;
+}
+
+/**
+ * 칸 금액 글랜스.
+ * 일반: 잔금 있으면 `잔금 ₩X`, 없으면 `₩price`.
+ * 장기: `미수 ₩X` (0이면 생략).
+ */
+export function nowAmountGlance(
+  b: Booking,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+): string | null {
+  if (b.stayMode === "long_stay") {
+    const left = payState(b, plat).left;
+    return left > 0 ? `미수 ₩${won(left)}` : null;
+  }
+  const ps = payState(b, plat);
+  if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
+  if (b.price > 0) return `₩${won(b.price)}`;
+  return null;
+}
+
+/** 메모 · 인원 (연락처 필드 없음 → 있는 것만) */
+export function nowMetaLine(b: Pick<Booking, "memo" | "guests">): string | null {
+  const parts: string[] = [];
+  const memo = b.memo?.trim();
+  if (memo) parts.push(memo);
+  if (b.guests != null && b.guests > 0) parts.push(`${b.guests}명`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 /**

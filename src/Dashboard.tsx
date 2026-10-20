@@ -4,11 +4,16 @@ import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from
 import {
   canCheckOut,
   hotelWallClock,
+  isDepartingStatus,
+  nowAmountGlance,
   nowByRoom,
   nowFlags,
   nowLists,
+  nowMetaLine,
   nowNightRange,
+  nowNightsDays,
   nowStayChips,
+  shouldAutoArrive,
   unassignedTypeCounts,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
@@ -16,6 +21,7 @@ import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
+import NowNightPopover from "./NowNightPopover";
 import {
   type BoardTab,
   type Booking,
@@ -276,12 +282,38 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     w.scrollLeft = Math.max(0, x - 3 * th.offsetWidth); // 오늘 앞 사흘도 보이게
   }, [view.from, view.to, tab]);
   const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
-  const nowOpts = useMemo(() => ({ stayTimes: s.stayTimes, clock: hotelWallClock() }), [s.stayTimes, data.syncedAt]);
+  // 분 단위로 벽시계를 갱신 → 체크인 시각 자동 숙박 · 퇴실예정 윈도우가 보드에 반영
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick((n) => n + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const nowOpts = useMemo(() => ({ stayTimes: s.stayTimes, clock: hotelWallClock() }), [s.stayTimes, data.syncedAt, nowTick]);
   const nowBoardMap = useMemo(() => nowByRoom(bookings, today), [bookings, today]);
   const nowSide = useMemo(() => nowLists(bookings, today, nowOpts), [bookings, today, nowOpts]);
   const [coBusy, setCoBusy] = useState<string | null>(null);
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
+  const [nightPopId, setNightPopId] = useState<string | null>(null);
+  const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
+  const autoArriveBusy = useRef(new Set<string>());
+  // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
+  useEffect(() => {
+    if (readOnly) return;
+    for (const b of bookings) {
+      if (!shouldAutoArrive(b, today, nowOpts)) continue;
+      if (autoArriveBusy.current.has(b.id)) continue;
+      autoArriveBusy.current.add(b.id);
+      void data
+        .patchBooking(b.id, { arrived: true })
+        .catch(() => {
+          /* 다음 tick에 재시도 */
+        })
+        .finally(() => {
+          autoArriveBusy.current.delete(b.id);
+        });
+    }
+  }, [bookings, today, nowOpts, readOnly, data]);
   // 같은 방 같은 날 늦은 퇴실 → 입실 · 빠른 입실이 앞 손님과 겹치면 경고 (막지는 않아요)
   const turn = useMemo(() => {
     const m = new Map<string, TurnWarn[]>();
@@ -683,6 +715,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 퇴실처리: 칸 하단 「퇴실예정」탭은 확인 필수 · 옆 패널도 동일 */
+  const doCheckOut = async (b: Booking, needConfirm = false) => {
+    if (readOnly || coBusy || !canCheckOut(b, today)) return;
+    if (needConfirm) {
+      const room = b.roomId ? L.roomLabel(b.roomId) ?? "" : "";
+      const dates = nowNightRange(b).label;
+      if (!window.confirm(`퇴실처리할까요?\n${room ? `${room} · ` : ""}${b.guestName} · ${dates}`)) return;
+    }
+    setCoBusy(b.id);
+    try {
+      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: new Date().toISOString(), arrived: true };
+      if (isLongStay(b) && stayEnd(b) > today) {
+        const n = nightsAtCheckout(b.checkIn, today);
+        patch.nights = n;
+        patch.segments = fitSegments(b.segments, b.roomId, n);
+      }
+      await data.patchBooking(b.id, patch);
+      notify(`${b.guestName} 님 퇴실처리했어요`);
+    } catch {
+      notify("퇴실처리를 저장하지 못했어요. 다시 해 주세요");
+    } finally {
+      setCoBusy(null);
+    }
+  };
+
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = nowBoardMap.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
@@ -697,10 +754,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (nowFilter === "tentative") return null;
       return (
         <div key={r.id} {...act} className={`cell em nowempty ${readOnly ? "ro" : ""}`} onClick={() => onNew({ checkIn: today, roomId: r.id, typeId: r.typeId ?? undefined })}>
-          <div className="cell-body">
+          <div className="cell-body nowstack sparse">
             {head}
             <TypeLine t={t} />
-            <div className="emt">빈 방</div>
+            <div className="nowstatus-slot">
+              <span className="nowstatus nk-empty">공실</span>
+            </div>
           </div>
         </div>
       );
@@ -709,16 +768,73 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (nowFilter === "tentative" && !f.tentative) return null;
     const stayChips = nowStayChips(b, today);
     const nights = nowNightRange(b);
+    const nd = nowNightsDays(b);
+    const amount = nowAmountGlance(b, L.plats.get(b.platformId));
+    const meta = nowMetaLine(b);
+    const popOpen = nightPopId === b.id;
+    const doEarlyIn = async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (readOnly || earlyBusy || b.arrived) return;
+      setEarlyBusy(b.id);
+      try {
+        await data.patchBooking(b.id, { arrived: true });
+        notify(`${b.guestName} 님 빠른 입실했어요`);
+      } catch {
+        notify("빠른 입실을 저장하지 못했어요. 다시 해 주세요");
+      } finally {
+        setEarlyBusy(null);
+      }
+    };
+    const onStatusTap = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (readOnly) return;
+      if (isDepartingStatus(f.kind) && canCheckOut(b, today)) {
+        void doCheckOut(b, true);
+        return;
+      }
+      onOpen(b, today);
+    };
     return (
       <div
         key={r.id}
         {...act}
-        className={`cell bk nowcell nk-${f.kind} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${b.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
+        className={`cell bk nowcell nk-${f.kind} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
         onClick={() => onOpen(b, today)}
       >
-        <div className="cell-body">
+        <div className="cell-body nowstack dense">
           {head}
           <TypeLine t={t} />
+          <div className="nowdate-row">
+            <button
+              type="button"
+              className="nowdate-btn"
+              aria-label={`점유 밤 ${nights.label}`}
+              aria-expanded={popOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setNightPopId(popOpen ? null : b.id);
+              }}
+            >
+              <span className="nowchip nowdate">{nights.label}</span>
+              <span className="nowdate-caret" aria-hidden>
+                ▾
+              </span>
+            </button>
+            {popOpen ? (
+              <NowNightPopover
+                booking={b}
+                bookings={bookings}
+                today={today}
+                roomLabel={L.roomLabel(r.id) ?? r.no}
+                onClose={() => setNightPopId(null)}
+                onOpen={() => {
+                  setNightPopId(null);
+                  onOpen(b, today);
+                }}
+              />
+            ) : null}
+          </div>
+          {nd.label ? <span className="nowchip nownights">{nd.label}</span> : null}
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span>{b.guestName}</span>
@@ -726,26 +842,33 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {f.tentative ? <span className="tenttag">임시</span> : null}
             {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
             {f.group ? <span className="grptag">단체</span> : null}
+            {stayChips.map((c) => (
+              <span key={c} className="nowchip soft">
+                {c}
+              </span>
+            ))}
           </div>
-          <div className="r3 nowfacts">
-            <span className={`nklab nk-${f.kind}`}>{f.label}</span>
-            <span className="nowchips nowdates" aria-label={`점유 밤 ${nights.label}`}>
-              <span className="nowchip nowdate">{nights.label}</span>
-              {stayChips.map((c) => (
-                <span key={c} className="nowchip">
-                  {c}
-                </span>
-              ))}
-            </span>
+          {amount ? (
+            <div className="nowamt" title={f.longStay ? "미수" : "요금·잔금"}>
+              {amount}
+            </div>
+          ) : null}
+          {meta ? <div className="nowmeta">{meta}</div> : null}
+          <div className="nowstatus-slot">
+            {!readOnly && f.kind === "arriving" && !b.arrived ? (
+              <button type="button" className="nowearly" disabled={earlyBusy === b.id} onClick={(e) => void doEarlyIn(e)}>
+                {earlyBusy === b.id ? "처리 중…" : "빠른 입실"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className={`nowstatus nk-${f.kind}${isDepartingStatus(f.kind) ? " tap" : ""}`}
+              onClick={onStatusTap}
+              title={isDepartingStatus(f.kind) ? "탭하면 퇴실처리" : f.label}
+            >
+              {f.label}
+            </button>
           </div>
-          {f.longStay && !readOnly
-            ? ((left) =>
-                left > 0 ? (
-                  <div className="nowdue" title="받을 돈(미수)">
-                    미수 {won(left)}
-                  </div>
-                ) : null)(payState(b, L.plats.get(b.platformId)).left)
-            : null}
         </div>
       </div>
     );
@@ -758,24 +881,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
       .filter((g) => g.floors.length);
     const uaCounts = unassignedTypeCounts(nowSide.unassigned);
-    const doCheckOut = async (b: Booking) => {
-      if (readOnly || coBusy || !canCheckOut(b, today)) return;
-      setCoBusy(b.id);
-      try {
-        const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: new Date().toISOString(), arrived: true };
-        if (isLongStay(b) && stayEnd(b) > today) {
-          const n = nightsAtCheckout(b.checkIn, today);
-          patch.nights = n;
-          patch.segments = fitSegments(b.segments, b.roomId, n);
-        }
-        await data.patchBooking(b.id, patch);
-        notify(`${b.guestName} 님 퇴실처리했어요`);
-      } catch {
-        notify("퇴실처리를 저장하지 못했어요. 다시 해 주세요");
-      } finally {
-        setCoBusy(null);
-      }
-    };
     const sideRow = (b: Booking, label: string, departing = false) => (
       <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""} ${isLongStay(b) ? "long" : ""}`}>
         <button type="button" className={`nowli ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
@@ -791,7 +896,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </span>
         </button>
         {departing && !readOnly && canCheckOut(b, today) ? (
-          <button type="button" className="nowext side nowco" disabled={coBusy === b.id} onClick={() => void doCheckOut(b)}>
+          <button type="button" className="nowext side nowco" disabled={coBusy === b.id} onClick={() => void doCheckOut(b, true)}>
             {coBusy === b.id ? "처리 중…" : "퇴실처리"}
           </button>
         ) : null}
@@ -887,14 +992,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               ) : null}
               {nowSide.departing.length ? (
                 <div className="nowsec">
-                  <h3>퇴실 예정 {nowSide.departing.length}</h3>
-                  {nowSide.departing.map((b) => sideRow(b, "퇴실 예정", true))}
+                  <h3>퇴실예정 {nowSide.departing.length}</h3>
+                  {nowSide.departing.map((b) => sideRow(b, "퇴실예정", true))}
                 </div>
               ) : null}
               {nowSide.arriving.length ? (
                 <div className="nowsec">
-                  <h3>입실 예정 {nowSide.arriving.length}</h3>
-                  {nowSide.arriving.map((b) => sideRow(b, "입실 예정"))}
+                  <h3>숙박예약 {nowSide.arriving.length}</h3>
+                  {nowSide.arriving.map((b) => sideRow(b, "숙박예약"))}
                 </div>
               ) : null}
               {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
@@ -904,13 +1009,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           <div className="lg nowlg">
             <span>
-              <i className="nkdot nk-arriving" />입실 예정
+              <i className="nkdot nk-empty" />공실
             </span>
             <span>
-              <i className="nkdot nk-inhouse" />투숙 중
+              <i className="nkdot nk-arriving" />숙박예약
             </span>
             <span>
-              <i className="nkdot nk-departing" />퇴실 예정
+              <i className="nkdot nk-inhouse" />숙박
+            </span>
+            <span>
+              <i className="nkdot nk-departing" />퇴실예정
             </span>
             <span>
               <i className="nkdot nk-lateOut" />늦은 퇴실

@@ -1365,7 +1365,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .beo.ncx.on, .chip.ncx.on { border-color: #c43c28; background: #ffe8e2; color: #7a180c; }
 .beo.cout.on { border-color: #1a5f3a; background: #e6f5ec; color: #0f3d26; }
 .nowext.nowco { border-color: #1a5f3a; color: #0f3d26; font-weight: 800; }
-/* 「지금」 칸: 상태 칩만 (액션 버튼 없음). 연박 진행·청소X 태그 */
+/* 「지금」 칸: 정보 스택 + 하단 단일 상태 */
 .nowfacts { align-items: center; gap: 6px; flex-wrap: wrap; }
 .nowchips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
 .nowchip {
@@ -1383,13 +1383,140 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   line-height: 1;
   white-space: nowrap;
 }
-/* 「지금」: 입실·퇴실 날짜는 항상 (화이트보드 한눈에) */
+.nowchip.soft { font-weight: 700; color: var(--ink3); background: #f7f7f7; }
+.nowchip.nownights { align-self: flex-start; }
+/* 「지금」: 점유 밤 날짜 (탭 → 캘린더) */
 .nowchip.nowdate {
   font-family: var(--num);
   color: var(--ink);
   background: #fff;
   border-color: #bbb;
 }
+.nowstack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 100%;
+}
+.nowstack.sparse { justify-content: flex-start; }
+.nowstack.dense { gap: 3px; }
+.nowdate-row { position: relative; align-self: flex-start; max-width: 100%; }
+.nowdate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  max-width: 100%;
+}
+.nowdate-btn:hover .nowchip.nowdate { border-color: #3b6fd9; color: #2f5fc4; }
+.nowdate-caret { font-size: 10px; color: var(--ink4); line-height: 1; }
+.nowamt {
+  font-family: var(--num);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.nowstack .nowdue, .nowamt { margin-top: 0; }
+.nowmeta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink3);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.nowstatus-slot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-top: 6px;
+}
+.nowstatus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.8em;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1.5px solid #9a9a9a;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink2);
+  cursor: default;
+}
+button.nowstatus { cursor: pointer; }
+.nowstatus.nk-empty { border-style: dashed; color: var(--ink4); background: transparent; }
+.nowstatus.nk-arriving { border-color: #3b6fd9; color: #2f5fc4; background: #eef3ff; }
+.nowstatus.nk-inhouse { border-color: var(--stay); color: var(--red-d); background: #fff7f7; }
+.nowstatus.nk-departing { border-color: #c47a12; color: #9a5b0a; background: #fff8ee; }
+.nowstatus.nk-lateOut { border-color: #b42318; color: #b42318; background: #ffeceb; }
+.nowstatus.tap:hover { filter: brightness(0.97); }
+.nowearly {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.nowearly:hover { background: #f4f4f4; }
+.nowearly:disabled { opacity: 0.6; cursor: default; }
+/* 점유 밤 읽기 팝오버 */
+.nownight-pop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  width: min(280px, 78vw);
+  padding: 10px 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+.nownight-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.nownight-h b { font-size: 13px; font-weight: 800; }
+.nownight-h .sb.ghost {
+  width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent;
+  font-size: 18px; line-height: 1; color: var(--ink3); cursor: pointer;
+}
+.nownight-grid .npick-d {
+  pointer-events: none;
+  min-height: 34px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nownight-grid .npick-d.sky {
+  background: #7dd3fc;
+  color: #0c4a6e;
+  border: 0;
+}
+.nownight-grid .npick-d.blk {
+  background: repeating-linear-gradient(135deg, #e8e8e8 0 3px, #f4f4f4 3px 6px);
+  color: #888;
+}
+.nownight-grid .npick-d.blk.sky {
+  background: repeating-linear-gradient(135deg, #38bdf8 0 3px, #7dd3fc 3px 6px);
+  color: #0c4a6e;
+}
+.nownight-sum { margin-top: 8px; flex-direction: column; align-items: flex-start; gap: 2px; }
+.nownight-open { width: 100%; margin-top: 8px; }
 .step.stayio { gap: 8px; }
 .step .rng.stayglance { font-weight: 600; }
 .now-page .nowext.side {
@@ -1506,6 +1633,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nklab.nk-inhouse { color: var(--red-d); }
 .nklab.nk-departing { color: #9a5b0a; }
 .nklab.nk-lateOut { color: #b42318; }
+.nkdot.nk-empty { border-style: dashed; border-color: #9a9a9a; background: #fff; }
 .nowside { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 14px; position: sticky; top: 10px; }
 .nowside-h { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
 .nowsec { margin-top: 10px; }
