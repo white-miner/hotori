@@ -62,7 +62,7 @@ import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
-import { openMemoCounts } from "../shared/roomMemo";
+import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import { payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
@@ -300,7 +300,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
   const memos = useRoomMemos(data.hotel!.id);
-  const openByRoom = useMemo(() => openMemoCounts(memos.list ?? []), [memos.list]);
+  const glanceByRoom = useMemo(() => openMemoGlances(memos.list ?? []), [memos.list]);
   const autoArriveBusy = useRef(new Set<string>());
   // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
   useEffect(() => {
@@ -750,22 +750,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
-    const openN = openByRoom.get(r.id) ?? 0;
+    const glance = glanceByRoom.get(r.id);
+    const openN = glance?.count ?? 0;
     const memoBubble =
       openN > 0 || !readOnly ? (
         <button
           type="button"
           className={`nowmemo ${openN ? "has" : "add"}`}
-          aria-label={openN ? `${r.no} 미해결 특이사항 ${openN}건` : `${r.no} 특이사항 적기`}
-          title={openN ? `특이사항 미해결 ${openN}` : "특이사항"}
+          aria-label={
+            openN
+              ? `${r.no} 미해결 특이사항 ${openN}건: ${glance!.preview}`
+              : `${r.no} 특이사항 적기`
+          }
+          title={openN ? glance!.title : "특이사항"}
           onClick={(e) => {
             e.stopPropagation();
             setNightPopId(null);
             setMemoRoomId(r.id);
           }}
         >
-          <MessageCircle size={openN ? 15 : 13} strokeWidth={openN ? 2.4 : 2} aria-hidden />
-          {openN ? <span className="nowmemo-n">{openN > 9 ? "9+" : openN}</span> : null}
+          <MessageCircle size={openN ? 14 : 13} strokeWidth={openN ? 2.4 : 2} aria-hidden />
+          {openN ? (
+            <>
+              <span className="nowmemo-txt">{glance!.preview}</span>
+              {openN > 1 ? (
+                <span className="nowmemo-n">+{openN - 1 > 9 ? "9+" : openN - 1}</span>
+              ) : null}
+            </>
+          ) : null}
         </button>
       ) : null;
     const head = (
