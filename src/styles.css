@@ -1128,10 +1128,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .payb { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .payota { padding: 9px 0; }
 .payota span { color: var(--ink4); }
-.paydep, .paybal { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.paydep .pl { font-size: 13px; font-weight: 700; color: var(--ink2); min-width: 30px; }
-.paydep .inp.price, .paybal .inp.price { width: 170px; flex: none; }
-.paydep input[type="date"].inp { width: 150px; flex: none; }
+.paydep, .paybal, .paytake { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.paydep .pl, .paytake .pl { font-size: 13px; font-weight: 700; color: var(--ink2); min-width: 30px; }
+.paydep .inp.price, .paybal .inp.price, .paytake .inp.price { width: 170px; flex: none; }
+.paydep input[type="date"].inp, .paytake input[type="date"].inp { width: 150px; flex: none; }
+.paytake .paybtns { display: flex; gap: 8px; margin-left: auto; }
 .payrow { display: flex; align-items: center; gap: 10px; background: var(--panel); border-radius: 12px; padding: 7px 8px 7px 12px; font-size: 13px; }
 .payrow b { font-weight: 800; }
 .payrow .num { font-weight: 750; }
@@ -1146,8 +1147,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .dueamt { color: var(--red) !important; font-weight: 800; white-space: nowrap; }
 .paidtag { font-size: 10.5px; font-weight: 750; color: var(--ink3); white-space: nowrap; }
 @media (max-width: 760px) {
-  .paydep .inp.price, .paybal .inp.price { width: 140px; }
-  .paydep input[type="date"].inp { width: 140px; }
+  .paydep .inp.price, .paybal .inp.price, .paytake .inp.price { width: 140px; }
+  .paydep input[type="date"].inp, .paytake input[type="date"].inp { width: 140px; }
+  .paytake .paybtns { margin-left: 0; width: 100%; }
+  .paytake .paybtns .btn { flex: 1; }
 }
 
 /* ---------- 인원 추가금 ---------- */
@@ -1184,7 +1187,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .xfee .inp.price { width: 150px; flex: none; height: 32px; }
 .xfee .auto { font-size: 12px; text-decoration: underline; color: var(--ink3); }
 .gcount { font-size: 10.5px; color: var(--ink3); font-weight: 700; white-space: nowrap; }
-.xfee .inp input:focus, .paydep .inp input:focus, .paybal .inp input:focus { outline: none; }
+.xfee .inp input:focus, .paydep .inp input:focus, .paybal .inp input:focus, .paytake .inp input:focus { outline: none; }
 
 /* ---------- 단체 예약 ---------- */
 .modal.grp { max-width: 760px; }

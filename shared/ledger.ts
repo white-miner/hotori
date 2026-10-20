@@ -134,6 +134,8 @@ export interface Booking {
   platformId: string;
   price: number; // 총액
   guestName: string;
+  /** 손님 연락처 (없으면 null) */
+  guestPhone?: string | null;
   typeId: string; // 판 타입
   roomId: string | null; // 방 (객실 이동이 있으면 첫 방)
   /** 객실 이동: 방별 박수 [{roomId: 301, nights: 1}, {roomId: 305, nights: 3}]. 없으면 roomId 한 방에 전부 */

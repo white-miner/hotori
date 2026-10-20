@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings } from "./ledger";
-import { type Payment, bookingCash, isOnsite, paidOf, payState, validatePayment } from "./payment";
+import { type Payment, bookingCash, isOnsite, paidOf, payKindLabel, payLineMain, payState, validatePayment } from "./payment";
 import { moneySummary } from "./expense";
 
 let n = 0;
@@ -77,6 +77,15 @@ test("받은 돈 검사", () => {
   assert.match(validatePayment(200_000_000, "card", "2026-10-19")!, /1억/);
   assert.match(validatePayment(1000, "bank", "2026-10-19")!, /카드/);
   assert.match(validatePayment(1000, "card", "")!, /날짜/);
+});
+
+test("내역 카피: 방법+금액이 먼저 · kind는 장기/표준 라벨", () => {
+  assert.equal(payLineMain("cash", 80000), "현금 80,000");
+  assert.equal(payLineMain("card", 80000), "카드 80,000");
+  assert.equal(payKindLabel("deposit"), "선금");
+  assert.equal(payKindLabel("balance"), "잔금");
+  assert.equal(payKindLabel("deposit", true), "선수");
+  assert.equal(payKindLabel("balance", true), "수납");
 });
 
 test("설정: 플랫폼의 현장 결제 값이 저장·불러오기 뒤에도 남아요", () => {

@@ -49,7 +49,7 @@ import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, PAY_KIND_LABEL, isOnsite, paySplit, splitLine, validatePayment } from "../shared/payment";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type PayKind, isOnsite, payKindLabel, payLineMain, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
@@ -177,6 +177,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, checkIn]);
   const [guestName, setName] = useState(base?.guestName ?? "");
+  const [guestPhone, setPhone] = useState(base?.guestPhone ?? "");
   const [price, setPrice] = useState(base ? String(base.price) : "");
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
   // 객실 이동 구간 (첫 구간 방 = roomId). 저장할 때 같이 저장돼요
@@ -217,9 +218,26 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [coupons, setCoupons] = useState<{ amount: string; hotel: boolean }[]>(() => (base?.coupons ?? []).map((c) => ({ amount: String(c.amount), hotel: c.hotel })));
   const [payOk, setPayOk] = useState(base?.payoutOk === true);
   const [payAmt, setPayAmt] = useState(base?.payoutOk && base.payoutAmount != null ? String(base.payoutAmount) : "");
-  // 선금·잔금: 선금은 저장할 때 같이, '잔금 받음'은 바로 저장
-  const [dep, setDep] = useState<{ amount: string; method: BookPayMethod; date: string }>({ amount: "", method: "card", date: today });
-  const [bal, setBal] = useState<{ method: BookPayMethod; amount: string } | null>(null);
+  // 결제 Option A: 금액 한 칸 공유 · [받기]/[선금]으로 kind 분기
+  const initLeft = (() => {
+    if (!base) return "";
+    const paid = (base.payments ?? []).reduce((n, x) => n + x.amount, 0);
+    if (isLongStay(base)) {
+      const due = (base.charges ?? []).reduce((n, x) => n + x.amount, 0);
+      const left = Math.max(0, due - paid);
+      return left > 0 ? String(left) : "";
+    }
+    const plat = s.platforms.find((p) => p.id === base.platformId);
+    const tracked = isOnsite(plat) || paid > 0;
+    if (!tracked) return "";
+    const left = Math.max(0, revenueOf(base) - paid);
+    return left > 0 ? String(left) : "";
+  })();
+  const [recv, setRecv] = useState<{ amount: string; method: BookPayMethod; date: string }>({
+    amount: initLeft,
+    method: "card",
+    date: today,
+  });
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
   // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
@@ -509,6 +527,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             platformId,
             price: 0,
             guestName,
+            guestPhone: guestPhone || null,
             typeId,
             roomId,
             segments: null,
@@ -539,6 +558,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     platformId,
     price: draftPrice,
     guestName,
+    guestPhone: guestPhone || null,
     typeId,
     roomId,
     segments: kind === "stay" ? fitSegments(segs, roomId, nights) : null,
@@ -681,33 +701,83 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const poLine = payoutLine(po);
   // 쿠폰 · 입금 칸: 플랫폼 예약이거나 수수료율이 있는 플랫폼 (또는 이미 쿠폰을 적었으면)
   const feeOn = !long && !!curPlat && (!isOnsite(curPlat) || !!curPlat.feeRate || coupons.length > 0);
-  const depAmt = payTracked && !livePays.length ? Number(dep.amount || 0) : 0;
-  const payPaid = livePays.reduce((n, x) => n + x.amount, 0) + depAmt;
+  const payPaid = livePays.reduce((n, x) => n + x.amount, 0);
   const longPay = long
     ? longPayState({
         status: "active",
         charges: draftBase.charges,
-        payments: [...livePays, ...(depAmt > 0 ? [{ id: "_dep", bookingId: "", kind: "deposit" as const, method: dep.method, amount: depAmt, bizDate: dep.date, createdAt: "" }] : [])],
+        payments: livePays,
       })
     : null;
   const payDue = longPay ? longPay.accrued : revenueOf({ ...draftBase, status: "active" });
   const payLeft = longPay ? Math.max(0, longPay.accrued - payPaid) : Math.max(0, payDue - payPaid);
-  const takeBalance = async () => {
-    if (!base || !bal || payBusy) return;
-    const amount = Number(bal.amount || 0);
-    const v = validatePayment(amount, bal.method, today);
+  // 잔금이 생겼는데 금액 칸이 비어 있으면 기본값으로 채워요 (선금용으로 비운 경우는 유지)
+  useEffect(() => {
+    if (!payTracked || payLeft <= 0) return;
+    setRecv((r) => (r.amount ? r : { ...r, amount: String(payLeft) }));
+  }, [payTracked, payLeft]);
+  const payNoteOf = (kind: PayKind, amount: number, method: BookPayMethod, left: number) =>
+    kind === "deposit"
+      ? long
+        ? `${guestName} 님 선수 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수 ${won(left)}원` : ""}`
+        : `${guestName} 님 선금 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : ""}`
+      : long
+        ? `${guestName} 님 미수 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[method]})${left ? ` · 남은 미수 ${won(left)}원` : " · 정산됨"}`
+        : `${guestName} 님 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`;
+  const recordPay = async (kind: PayKind) => {
+    if (payBusy || busy) return;
+    const amount = Number(recv.amount || 0);
+    const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
+    if (!long && kind === "deposit" && amount > draftBase.price) return setPayErr("선금이 판매 가격보다 커요.");
+    // 신규: 저장과 같은 턴에 결제 줄 기록 (선금·당일 완납)
+    if (!base) {
+      const draft = draftBase;
+      if (draft.kind === "stay" && draft.stayMode === "long_stay") {
+        const rv = validateLongStayRate(draft.longStayRate);
+        if (rv) return setPayErr(rv);
+        if (draftLongPreview && "err" in draftLongPreview) return setPayErr(draftLongPreview.err);
+      }
+      const bv = validateBooking(draft, s);
+      if (bv) return setPayErr(bv);
+      if (roomBusy && isActive(draft))
+        return setPayErr(
+          draft.kind === "stay" && busyLegs.length
+            ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
+            : `${L.roomLabel(roomId)}호는 그 ${draft.kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
+        );
+      setPayBusy(true);
+      setPayErr(null);
+      try {
+        const saved = await data.saveBooking(draft, true);
+        let payTail = "";
+        if (isActive(saved)) {
+          try {
+            await data.addPayment(saved.id, { kind, method: recv.method, amount, bizDate: recv.date });
+            const left = Math.max(0, payDue - amount);
+            payTail = ` · ${kind === "deposit" ? (long ? "선수" : "선금") : long ? "미수 수납" : "수납"} ${won(amount)}원(${BOOK_PAY_LABEL[recv.method]})`;
+            if (left) payTail += long ? ` · 미수 ${won(left)}원` : ` · 잔금 ${won(left)}원`;
+            else if (kind === "balance") payTail += long ? " · 정산됨" : " · 완납";
+          } catch (e) {
+            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
+          }
+        }
+        onSaved(`${saved.guestName} 님 예약을 기록했어요${payTail}`);
+      } catch (e) {
+        setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      } finally {
+        setPayBusy(false);
+      }
+      return;
+    }
+    if (!isActive(live ?? base)) return setPayErr("정상 예약만 받을 수 있어요.");
     setPayBusy(true);
     setPayErr(null);
     try {
-      await data.addPayment(base.id, { kind: "balance", method: bal.method, amount, bizDate: today });
-      setBal(null);
+      await data.addPayment(base.id, { kind, method: recv.method, amount, bizDate: recv.date });
       const left = Math.max(0, payDue - payPaid - amount);
-      notify(
-        long
-          ? `${guestName} 님 미수 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 미수 ${won(left)}원` : " · 정산됨"}`
-          : `${guestName} 님 잔금 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[bal.method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`,
-      );
+      setRecv((r) => ({ ...r, amount: left > 0 && kind === "balance" ? String(left) : "" }));
+      notify(payNoteOf(kind, amount, recv.method, left));
     } catch (e) {
       setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
     } finally {
@@ -787,25 +857,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
           : `${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
       );
-    if (depAmt > 0) {
-      const pv = validatePayment(depAmt, dep.method, dep.date);
-      if (pv) return setErr(`선금: ${pv}`);
-      if (!long && depAmt > draft.price) return setErr("선금이 판매 가격보다 커요.");
-    }
     setBusy(true);
     setErr(null);
     try {
       const saved = await data.saveBooking(draft, isNew);
-      // 선금: 예약을 저장한 다음 한 줄 적어요 (못 적으면 알려 드려요)
-      let depNote = "";
-      if (depAmt > 0 && isActive(saved)) {
-        try {
-          await data.addPayment(saved.id, { kind: "deposit", method: dep.method, amount: depAmt, bizDate: dep.date });
-          depNote = ` · 선금 ${won(depAmt)}원(${BOOK_PAY_LABEL[dep.method]})`;
-        } catch (e) {
-          depNote = ` · 선금은 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
-        }
-      }
       const t = L.types.get(saved.typeId);
       const tail =
         kind === "stay" && isActive(saved) && preview[0]
@@ -816,7 +871,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
           : override === "noshow"
             ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 금액은 매출에 남고 남은 객실이 늘었어요`
-            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}${depNote}`,
+            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
     } catch (e) {
@@ -1092,7 +1147,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </div>
                 ) : (
                   <div className="muted sm" style={{ marginTop: -4 }}>
-                    가격만 올리고 잔금이 생겨요 · 나중에 「잔금 받음」으로 적어요
+                    가격만 올리고 잔금이 생겨요 · 나중에 「받기」로 적어요
                   </div>
                 )}
               </>
@@ -1572,10 +1627,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="fld">
           <label>
-            {long ? "이름" : "이름 · 가격"}
-            <em>*</em>
+            이름 · 연락처<em>*</em>
           </label>
-          <div className={long ? "one" : "two"}>
+          <div className="two">
             <input
               ref={nameRef}
               className="inp"
@@ -1585,54 +1639,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               onChange={(e) => setName(e.target.value)}
               aria-label="이름"
             />
-            {!long ? (
-              <label className="inp price">
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  placeholder={kind === "stay" ? "총액" : "금액"}
-                  value={price ? won(Number(price)) : ""}
-                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  aria-label="판매 가격"
-                />
-                원{per ? <small>1박 평균 {won(per)}원</small> : null}
-              </label>
-            ) : null}
+            <input
+              className="inp"
+              placeholder="010-1234-5678"
+              value={guestPhone}
+              maxLength={30}
+              inputMode="tel"
+              onChange={(e) => setPhone(e.target.value)}
+              aria-label="연락처"
+            />
           </div>
         </div>
-        {long ? (
-          <div className="fld">
-            <label>누적 요금</label>
-            <div className="payb longacc">
-              <div className="payrow">
-                <b>청구 합계</b>
-                <span className="num">{won(payDue)}원</span>
-                <span className="muted">{(draftBase.charges ?? []).length}박 · 스케줄 적용</span>
-              </div>
-              <div className="payrow">
-                <b>받은 돈</b>
-                <span className="num">{won(payPaid)}원</span>
-              </div>
-              <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
-                받을 돈(미수) <b className="num">{won(payLeft)}원</b>
-                <span className="muted"> · {settleHint(settleCycle, payLeft)}</span>
-                <button type="button" className="btn sm line" onClick={() => setShowLedger((v) => !v)}>
-                  {showLedger ? "내역 닫기" : "내역"}
-                </button>
-              </div>
-              {showLedger ? (
-                <div className="longledger">
-                  {(draftBase.charges ?? []).map((c) => (
-                    <div className="payrow" key={c.id + c.nightDate}>
-                      <span>{dayLabel(c.nightDate)}</span>
-                      <span className="num">{won(c.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
 
         <div className="fld gfld">
           <label>인원</label>
@@ -1855,6 +1872,57 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
 
+        {long ? (
+          <div className="fld">
+            <label>누적 요금</label>
+            <div className="payb longacc">
+              <div className="payrow">
+                <b>청구 합계</b>
+                <span className="num">{won(payDue)}원</span>
+                <span className="muted">{(draftBase.charges ?? []).length}박 · 스케줄 적용</span>
+              </div>
+              <div className="payrow">
+                <b>받은 돈</b>
+                <span className="num">{won(payPaid)}원</span>
+              </div>
+              <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
+                받을 돈(미수) <b className="num">{won(payLeft)}원</b>
+                <span className="muted"> · {settleHint(settleCycle, payLeft)}</span>
+                <button type="button" className="btn sm line" onClick={() => setShowLedger((v) => !v)}>
+                  {showLedger ? "내역 닫기" : "내역"}
+                </button>
+              </div>
+              {showLedger ? (
+                <div className="longledger">
+                  {(draftBase.charges ?? []).map((c) => (
+                    <div className="payrow" key={c.id + c.nightDate}>
+                      <span>{dayLabel(c.nightDate)}</span>
+                      <span className="num">{won(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="fld">
+            <label>
+              판매 가격<em>*</em>
+            </label>
+            <label className="inp price">
+              <input
+                className="num"
+                inputMode="numeric"
+                placeholder={kind === "stay" ? "총액" : "금액"}
+                value={price ? won(Number(price)) : ""}
+                onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                aria-label="판매 가격"
+              />
+              원{per ? <small>1박 평균 {won(per)}원</small> : null}
+            </label>
+          </div>
+        )}
+
         <div className="fld pay">
           <label>{long ? "수납" : "결제"}</label>
           <div className="payb">
@@ -1864,46 +1932,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <>
                 {livePays.map((x) => (
                   <div className="payrow" key={x.id}>
-                    <b>{long ? "수납" : PAY_KIND_LABEL[x.kind]}</b>
-                    <span className="num">{won(x.amount)}원</span>
-                    <span className="muted">{BOOK_PAY_LABEL[x.method]} · {dayLabel(x.bizDate)}</span>
+                    <b>{payLineMain(x.method, x.amount)}</b>
+                    <span className="muted">
+                      {payKindLabel(x.kind, long)} · {dayLabel(x.bizDate)}
+                    </span>
                     <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
                       <X size={14} />
                     </button>
                   </div>
                 ))}
-                {livePays.length > 1 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
-                {!livePays.length ? (
-                  <div className="paydep">
-                    <span className="pl">{long ? "선수" : "선금"}</span>
-                    <label className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="없으면 비워 두세요"
-                        aria-label={long ? "선수금" : "선금"}
-                        value={dep.amount ? won(Number(dep.amount)) : ""}
-                        onChange={(e) => setDep({ ...dep, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                      />
-                      원
-                    </label>
-                    <div className="seg sm">
-                      {BOOK_PAY_METHODS.map((m) => (
-                        <button type="button" key={m} className={dep.method === m ? "on" : ""} onClick={() => setDep({ ...dep, method: m })}>
-                          {BOOK_PAY_LABEL[m]}
-                        </button>
-                      ))}
-                    </div>
-                    <input className="inp sm" type="date" aria-label="선금 받은 날" value={dep.date} onChange={(e) => e.target.value && setDep({ ...dep, date: e.target.value })} />
-                  </div>
-                ) : null}
+                {livePays.length > 0 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
                 <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                   {payLeft > 0 ? (
                     <>
                       {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
                       <span className="muted">
                         {" "}
-                        = {long ? "청구 합계" : "판매 가격"} {won(payDue)} − 받은 돈 {won(payPaid)}
+                        = {long ? "청구 합계" : "판매"} {won(payDue)} − 받은 {won(payPaid)}
                       </span>
                     </>
                   ) : payPaid > 0 ? (
@@ -1913,45 +1958,56 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   ) : (
                     <span className="muted">{long ? "요금표를 적으면 미수가 보여요" : "판매 가격을 적으면 잔금이 보여요"}</span>
                   )}
-                  {live && isActive(live) && payLeft > 0 && !bal ? (
-                    <button type="button" className="btn sm dark balbtn" onClick={() => setBal({ method: "card", amount: String(payLeft) })}>
-                      {long ? "미수 받기" : "잔금 받음"}
-                    </button>
-                  ) : null}
                 </div>
-                {bal ? (
-                  <div className="paybal">
-                    <div className="seg sm">
-                      {BOOK_PAY_METHODS.map((m) => (
-                        <button type="button" key={m} className={bal.method === m ? "on" : ""} onClick={() => setBal({ ...bal, method: m })}>
-                          {BOOK_PAY_LABEL[m]}
-                        </button>
-                      ))}
-                    </div>
-                    <label className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label={long ? "받은 미수" : "받은 잔금"}
-                        value={bal.amount ? won(Number(bal.amount)) : ""}
-                        onChange={(e) => setBal({ ...bal, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void takeBalance();
-                          }
-                        }}
-                      />
-                      원
-                    </label>
-                    <button type="button" className="btn sm" onClick={() => setBal(null)}>
-                      닫기
+                <div className="paytake">
+                  <label className="inp price sm">
+                    <span className="pl">금액</span>
+                    <input
+                      className="num"
+                      inputMode="numeric"
+                      placeholder={payLeft > 0 ? won(payLeft) : "0"}
+                      aria-label="받은 금액"
+                      value={recv.amount ? won(Number(recv.amount)) : ""}
+                      onChange={(e) => setRecv({ ...recv, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void recordPay(payLeft > 0 ? "balance" : "deposit");
+                        }
+                      }}
+                    />
+                    원
+                  </label>
+                  <div className="seg sm" role="group" aria-label="결제 방법">
+                    {BOOK_PAY_METHODS.map((m) => (
+                      <button type="button" key={m} className={recv.method === m ? "on" : ""} onClick={() => setRecv({ ...recv, method: m })}>
+                        {BOOK_PAY_LABEL[m]}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="inp sm"
+                    type="date"
+                    aria-label="받은 날"
+                    value={recv.date}
+                    onChange={(e) => e.target.value && setRecv({ ...recv, date: e.target.value })}
+                  />
+                  <div className="paybtns">
+                    <button
+                      type="button"
+                      className="btn sm dark"
+                      disabled={payBusy || payLeft <= 0}
+                      title={payLeft <= 0 ? (long ? "받을 미수가 없어요" : "받을 잔금이 없어요") : undefined}
+                      onClick={() => void recordPay("balance")}
+                    >
+                      {payBusy ? "저장 중…" : long ? "미수 받기" : "받기"}
                     </button>
-                    <button type="button" className="btn sm red" disabled={payBusy} onClick={() => void takeBalance()}>
-                      {payBusy ? "저장 중…" : "받음 기록"}
+                    <button type="button" className="btn sm line" disabled={payBusy} onClick={() => void recordPay("deposit")}>
+                      {long ? "선수" : "선금"}
                     </button>
                   </div>
-                ) : null}
+                </div>
+                {!base ? <div className="muted sm">아직 저장 전이에요 · 받기·선금을 누르면 예약과 함께 저장돼요</div> : null}
                 {payErr ? <div className="ferr">{payErr}</div> : null}
               </>
             )}
