@@ -66,6 +66,46 @@ export function isNightInRange(date: string, firstNight: string, lastNight: stri
   return date >= a && date <= b;
 }
 
+/**
+ * 클릭/Shift-클릭으로 다음 연속 밤 구간 계산 (드래그 없음).
+ * - fresh: 그 밤만
+ * - Shift: anchor(없으면 현재 시작) → 클릭일 범위
+ * - 밖: 연속 구간으로 확장
+ * - 양끝: 한 밤 줄임 (1박은 유지)
+ * - 중간: 변경 없음
+ */
+export function nextPaintedFromClick(
+  painted: PaintedNightRange,
+  clicked: string,
+  opts: { shiftKey: boolean; anchor: string | null; fresh: boolean },
+): PaintedNightRange | null {
+  const { firstNight, lastNight } = orderNights(painted.firstNight, painted.lastNight);
+
+  if (opts.fresh) return { firstNight: clicked, lastNight: clicked };
+
+  if (opts.shiftKey) {
+    const from = opts.anchor ?? firstNight;
+    return orderNights(from, clicked);
+  }
+
+  if (clicked < firstNight || clicked > lastNight) {
+    return orderNights(
+      clicked < firstNight ? clicked : firstNight,
+      clicked > lastNight ? clicked : lastNight,
+    );
+  }
+
+  if (clicked === firstNight && clicked === lastNight) return null;
+
+  if (clicked === firstNight) {
+    return { firstNight: addDays(firstNight, 1), lastNight };
+  }
+  if (clicked === lastNight) {
+    return { firstNight, lastNight: addDays(lastNight, -1) };
+  }
+  return null;
+}
+
 /** 구간이 막힌 밤을 하나라도 포함하면 true */
 export function rangeHitsBlocked(firstNight: string, lastNight: string, blocked: ReadonlySet<string>): boolean {
   const { checkIn, nights } = stayFromPaintedNights(firstNight, lastNight);
