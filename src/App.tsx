@@ -182,7 +182,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       if (entry || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
       if (e.code === "KeyN") {
         e.preventDefault();
-        openNew({ checkIn: selDate });
+        openSimple({ checkIn: selDate });
       } else if (e.code === "KeyM") {
         e.preventDefault();
         go("shop");
@@ -193,7 +193,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [entry, openNew, selDate]);
+  }, [entry, openSimple, selDate]);
 
   const { hotel } = data;
   if (!hotel)
@@ -235,9 +235,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             />
             <kbd>/</kbd>
           </label>
-          <button className="addbtn" aria-keyshortcuts="N" onClick={() => openNew({ checkIn: selDate })}>
+          <button className="addbtn" aria-keyshortcuts="N" onClick={() => openSimple({ checkIn: selDate })}>
             <Plus size={17} strokeWidth={2.4} />
-            예약 기록
+            간단 예약
           </button>
           <div className="menu-wrap">
             <button className="av" aria-label="메뉴" onClick={() => setMenu((m) => !m)}>
@@ -281,9 +281,9 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       )}
 
       {view === "shop" || view === "expenses" ? null : (
-        <button className="fab" onClick={() => openNew({ checkIn: selDate })}>
+        <button className="fab" onClick={() => openSimple({ checkIn: selDate })}>
           <Plus size={19} strokeWidth={2.4} />
-          기록
+          간단 예약
         </button>
       )}
       {/* 휴대폰: 아래 탭으로 한 번에 이동 */}
