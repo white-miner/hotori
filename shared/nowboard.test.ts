@@ -20,6 +20,8 @@ import {
   nowNightsDays,
   nowStayChips,
   nowStayHint,
+  nowStayNightIndex,
+  nowStaySummary,
   shouldAutoArrive,
   unassignedTypeCounts,
   type NowClock,
@@ -243,15 +245,26 @@ test("미배정 타입 카운트: 단체·타입별", () => {
   assert.equal(c.find((x) => !x.groupName && x.typeId === "s")?.n, 1);
 });
 
-test("연박 칩: 총 박수 + 몇 박째, 1박은 빈 배열 · 퇴실 아침은 마지막 박", () => {
+test("상단 숙박 요약: N박 N일 · k박째 · 1박·숙박예약은 진행 숨김", () => {
   const b = bk({ checkIn: "2026-10-10", nights: 11, arrived: true });
+  assert.equal(nowStayNightIndex(b, "2026-10-18"), 9);
+  assert.equal(nowStayNightIndex(b, "2026-10-10"), 1);
+  assert.equal(nowStayNightIndex(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), null);
+  // 숙박 중: 총박·일 + 진행
+  assert.equal(nowStaySummary(b, "2026-10-18"), "11박 12일 · 9박째");
+  assert.equal(nowStaySummary(b, "2026-10-10"), "11박 12일 · 1박째");
+  // 1박: 박째 없음
+  assert.equal(nowStaySummary(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박 2일");
+  // 숙박예약(입실 전): 진행 숨김
+  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: false }), "2026-10-19", false), "2박 3일");
+  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: true }), "2026-10-19", true), "2박 3일 · 1박째");
+  // 퇴실 아침 = 마지막 박
+  assert.equal(nowStaySummary(b, "2026-10-21"), "11박 12일 · 11박째");
+  assert.equal(nowStayHint(b, "2026-10-18"), "11박 12일 · 9박째");
+  assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박 2일");
+  // 레거시 칩 배열 (손님 줄에서는 더 이상 쓰지 않음)
   assert.deepEqual(nowStayChips(b, "2026-10-18"), ["11박", "9박째"]);
-  assert.deepEqual(nowStayChips(b, "2026-10-10"), ["11박", "1박째"]);
   assert.deepEqual(nowStayChips(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), []);
-  assert.equal(nowStayHint(b, "2026-10-18"), "11박 · 9박째");
-  assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박");
-  // stayEnd = 10/21, 퇴실 아침 칩 = 11박째
-  assert.deepEqual(nowStayChips(b, "2026-10-21"), ["11박", "11박째"]);
 });
 
 test("점유 밤 구간: 2박 입19·퇴21 → 보드 19~20 (퇴실 아침 제외)", () => {

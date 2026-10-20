@@ -280,30 +280,21 @@ export function isDepartingStatus(kind: NowKind): boolean {
   return kind === "departing" || kind === "lateOut";
 }
 
-/** 테스트·표시용: 이용 박수 라벨 */
-export function nowStayHint(b: Booking, date: string): string {
-  const chips = nowStayChips(b, date);
-  if (!chips.length) return "1박";
-  if (chips.length === 1) return chips[0]!;
-  return `${chips[0]} · ${chips[1]}`;
-}
-
 /**
- * 「지금」 칸 화이트보드 칩 (사실만 · 액션 아님).
- * 연박: `11박` + `9박째` (「11박 중 9박째」를 칩 둘로). 1박은 칩 없음.
- * 퇴실일 아침에는 마지막 박수로 고정.
+ * 오늘이 몇 번째 점유 밤인지 (1..nights).
+ * 1박·산출 불가 → null. 퇴실 아침(stayEnd)은 마지막 박으로 고정.
  */
-export function nowStayChips(b: Booking, date: string): string[] {
+export function nowStayNightIndex(b: Booking, date: string): number | null {
   const u = usedNights(b) ?? b.nights ?? 0;
-  if (u <= 1) return [];
+  if (u <= 1) return null;
   const end = stayEnd(b);
   const chipDate = date === end ? addDays(end, -1) : date;
   const raw = Math.round((Date.parse(chipDate) - Date.parse(b.checkIn)) / 864e5) + 1;
-  const night = Math.min(Math.max(raw, 1), u);
-  return [`${u}박`, `${night}박째`];
+  if (!Number.isFinite(raw)) return null;
+  return Math.min(Math.max(raw, 1), u);
 }
 
-/** N박 N일 칩 (박 = 진실, 일 = 박+1) */
+/** N박 N일 (박 = 진실, 일 = 박+1) */
 export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
   nights: number;
   days: number;
@@ -312,6 +303,34 @@ export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "
   const nights = usedNights(b) ?? b.nights ?? 0;
   const days = nights > 0 ? nights + 1 : 0;
   return { nights, days, label: nights > 0 ? `${nights}박 ${days}일` : "" };
+}
+
+/**
+ * 「지금」 상단 숙박 요약 (#4): `{nights}박 {days}일` (+ 해당 시 ` · {k}박째`).
+ * 1박 · 숙박예약(입실 전) · 진행 불가 → 총박·일만. 손님 줄 박 칩과 중복하지 않음.
+ */
+export function nowStaySummary(b: Booking, date: string, showProgress = true): string {
+  const nd = nowNightsDays(b);
+  if (!nd.label) return "";
+  if (!showProgress || nd.nights <= 1) return nd.label;
+  const k = nowStayNightIndex(b, date);
+  if (k == null) return nd.label;
+  return `${nd.label} · ${k}박째`;
+}
+
+/** @deprecated 상단 요약은 nowStaySummary. 레거시: 총박·박째 칩 둘 */
+export function nowStayChips(b: Booking, date: string): string[] {
+  const u = usedNights(b) ?? b.nights ?? 0;
+  if (u <= 1) return [];
+  const k = nowStayNightIndex(b, date);
+  if (k == null) return [`${u}박`];
+  return [`${u}박`, `${k}박째`];
+}
+
+/** 테스트·표시용: 이용 박수 라벨 (상단 요약과 동일 문법, 진행 포함) */
+export function nowStayHint(b: Booking, date: string): string {
+  const summary = nowStaySummary(b, date, true);
+  return summary || "1박";
 }
 
 /**

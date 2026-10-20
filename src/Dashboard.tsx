@@ -11,8 +11,7 @@ import {
   nowLists,
   nowMetaLine,
   nowNightRange,
-  nowNightsDays,
-  nowStayChips,
+  nowStaySummary,
   shouldAutoArrive,
   unassignedTypeCounts,
 } from "../shared/nowboard";
@@ -767,9 +766,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     const f = nowFlags(b, today, nowOpts);
     if (nowFilter === "tentative" && !f.tentative) return null;
-    const stayChips = nowStayChips(b, today);
     const nights = nowNightRange(b);
-    const nd = nowNightsDays(b);
+    // 숙박예약(입실 전)은 박째 숨김 · 1박도 총박·일만 (nowStaySummary)
+    const staySummary = nowStaySummary(b, today, f.kind !== "arriving");
     const amount = nowAmountGlance(b, L.plats.get(b.platformId));
     const meta = nowMetaLine(b);
     const popOpen = nightPopId === b.id;
@@ -835,7 +834,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               />
             ) : null}
           </div>
-          {nd.label ? <span className="nowchip nownights">{nd.label}</span> : null}
+          {staySummary ? <span className="nowchip nownights">{staySummary}</span> : null}
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span>{b.guestName}</span>
@@ -843,11 +842,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {f.tentative ? <span className="tenttag">임시</span> : null}
             {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
             {f.group ? <span className="grptag">단체</span> : null}
-            {stayChips.map((c) => (
-              <span key={c} className="nowchip soft">
-                {c}
-              </span>
-            ))}
           </div>
           {amount ? (
             <div className="nowamt" title={f.longStay ? "미수" : "요금·잔금"}>
