@@ -11,7 +11,7 @@ import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend } from "../s
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
-import { type Expense, expenseTotals, moneySummary } from "../shared/expense";
+import { type Expense, EXPENSE_PAY_LABEL, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
@@ -583,7 +583,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           onSave={async (d) => {
             const saved = await ex.save(d, exEdit === "new" ? undefined : exEdit.id);
             setExEdit(null);
-            notify(`${saved.category} ${won(saved.amount)}원 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"} · ${saved.method === "cash" ? "현금" : "카드"}`);
+            notify(`${saved.category} ${won(saved.amount)}원 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"} · ${EXPENSE_PAY_LABEL[saved.method]}`);
           }}
           onDelete={async () => {
             if (exEdit === "new") return;

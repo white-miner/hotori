@@ -1,21 +1,37 @@
-// 장부 › 지출: 목록 · 지출 창(+ 지출 / 고치기·지우기) · 월별 분류 합계와 엑셀 내보내기(Pro)
+// 지출: 상단 탭 · 장부 하위 탭 공용 — 목록 · 기록 창 · 월별 합계·엑셀(Pro)
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, Search } from "lucide-react";
+import { Download, Plus, Search, Wallet } from "lucide-react";
 import { addDays, dayLabel, won } from "../shared/ledger";
-import { type Expense, EXPENSE_AMOUNT_MAX, EXPENSE_MEMO_MAX, expenseTotals, monthlyByCategory, validateExpense } from "../shared/expense";
-import { PAY_LABEL, type PayMethod } from "../shared/shop";
+import {
+  type Expense,
+  type ExpensePayMethod,
+  EXPENSE_AMOUNT_MAX,
+  EXPENSE_MEMO_MAX,
+  EXPENSE_PAY_LABEL,
+  EXPENSE_PAY_METHODS,
+  expenseTotals,
+  isExpensePayMethod,
+  monthlyByCategory,
+  validateExpense,
+} from "../shared/expense";
 import { xlsx } from "../shared/xlsx";
-import type { ExpenseDraft } from "./data";
+import type { ExpenseDraft, HotelData } from "./data";
+import { useExpenses } from "./data";
 import { DateChip } from "./ui";
 
 const M_KEY = "hotori.expenseMethod";
-const lastMethod = (): PayMethod => {
+const lastMethod = (): ExpensePayMethod => {
   try {
-    return localStorage.getItem(M_KEY) === "card" ? "card" : "cash";
+    const v = localStorage.getItem(M_KEY);
+    return isExpensePayMethod(v) ? v : "cash";
   } catch {
     return "cash";
   }
 };
+
+function methodLabel(m: ExpensePayMethod): string {
+  return EXPENSE_PAY_LABEL[m];
+}
 
 export function ExpenseModal({
   base,
@@ -37,14 +53,14 @@ export function ExpenseModal({
   const cats = base && !categories.includes(base.category) ? [...categories, base.category] : categories;
   const [category, setCat] = useState(base?.category ?? "");
   const [amount, setAmount] = useState(base ? String(base.amount) : "");
-  const [method, setMethod] = useState<PayMethod>(base?.method ?? lastMethod());
+  const [method, setMethod] = useState<ExpensePayMethod>(base?.method ?? lastMethod());
   const [memo, setMemo] = useState(base?.memo ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const amtRef = useRef<HTMLInputElement>(null);
+  const memoRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    amtRef.current?.focus();
+    memoRef.current?.focus();
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -123,12 +139,26 @@ export function ExpenseModal({
         </div>
         <div className="fld">
           <label>
+            사용처·품목<em>*</em>
+          </label>
+          <input
+            ref={memoRef}
+            className="inp"
+            placeholder="예: 라면, 종이컵, 샴푸, 수도꼭지 수리…"
+            maxLength={EXPENSE_MEMO_MAX}
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            aria-label="사용처·품목"
+          />
+          <p className="fine">산 것·쓴 것을 그대로 적어 주세요. 품목 목록은 없어요.</p>
+        </div>
+        <div className="fld">
+          <label>
             금액<em>*</em>
           </label>
           <div className="two">
             <label className="inp price">
               <input
-                ref={amtRef}
                 className="num"
                 inputMode="numeric"
                 placeholder="금액"
@@ -139,17 +169,13 @@ export function ExpenseModal({
               원
             </label>
             <div className="seg paym" role="radiogroup" aria-label="결제 방법">
-              {(["card", "cash"] as const).map((m) => (
+              {EXPENSE_PAY_METHODS.map((m) => (
                 <button type="button" key={m} role="radio" aria-checked={method === m} className={method === m ? "on" : ""} onClick={() => setMethod(m)}>
-                  {PAY_LABEL[m]}
+                  {EXPENSE_PAY_LABEL[m]}
                 </button>
               ))}
             </div>
           </div>
-        </div>
-        <div className="fld">
-          <label>메모</label>
-          <input className="inp" placeholder="메모 (선택)" maxLength={EXPENSE_MEMO_MAX} value={memo} onChange={(e) => setMemo(e.target.value)} />
         </div>
         {err ? <div className="ferr">{err}</div> : null}
         <div className="mf">
@@ -177,7 +203,7 @@ export function ExpenseModal({
   );
 }
 
-type MethodF = "all" | PayMethod;
+type MethodF = "all" | ExpensePayMethod;
 export function ExpenseList({
   list,
   error,
@@ -215,10 +241,10 @@ export function ExpenseList({
   const monthCats = useMemo(() => [...new Set(months.flatMap((m) => [...m.byCategory.keys()]))], [months]);
 
   const exportXlsx = () => {
-    const data: (string | number | null)[][] = [["날짜", "분류", "결제", "금액", "메모"]];
+    const data: (string | number | null)[][] = [["날짜", "분류", "결제", "금액", "사용처·품목"]];
     for (const e of [...rows].sort((a, b) => a.bizDate.localeCompare(b.bizDate) || a.createdAt.localeCompare(b.createdAt)))
-      data.push([e.bizDate, e.category, PAY_LABEL[e.method], e.amount, e.memo ?? ""]);
-    data.push([], ["합계", "", "", t.amount, `카드 ${won(t.card)} · 현금 ${won(t.cash)}`]);
+      data.push([e.bizDate, e.category, methodLabel(e.method), e.amount, e.memo ?? ""]);
+    data.push([], ["합계", "", "", t.amount, `카드 ${won(t.card)} · 현금 ${won(t.cash)} · 이체 ${won(t.transfer)}`]);
     for (const [c, v] of t.byCategory) data.push(["", c, "", v, ""]);
     const bytes = xlsx("지출", data, [12, 10, 8, 14, 40]);
     const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -234,7 +260,7 @@ export function ExpenseList({
       <div className="filters">
         <label className="search ls">
           <Search size={16} />
-          <input value={q} placeholder="분류·메모" onChange={(e) => setQ(e.target.value)} />
+          <input value={q} placeholder="분류·사용처·품목" onChange={(e) => setQ(e.target.value)} />
         </label>
         <label className="fdate">
           날짜
@@ -255,6 +281,7 @@ export function ExpenseList({
               ["all", "전체"],
               ["card", "카드"],
               ["cash", "현금"],
+              ["transfer", "이체"],
             ] as const
           ).map(([k, l]) => (
             <button key={k} className={mf === k ? "on" : ""} onClick={() => setMf(k)}>
@@ -272,7 +299,7 @@ export function ExpenseList({
           <span>날짜</span>
           <span>분류</span>
           <span>결제</span>
-          <span>메모</span>
+          <span>사용처·품목</span>
           <span className="r">금액</span>
         </div>
         {list === null ? (
@@ -284,7 +311,7 @@ export function ExpenseList({
             <div key={e.id} role="button" tabIndex={0} className="erow" onClick={() => onOpen(e)} onKeyDown={(k) => k.key === "Enter" && onOpen(e)}>
               <span className="c-date">{dayLabel(e.bizDate)}</span>
               <span className="c-cat">{e.category}</span>
-              <span className={`c-pay ${e.method}`}>{PAY_LABEL[e.method]}</span>
+              <span className={`c-pay ${e.method}`}>{methodLabel(e.method)}</span>
               <span className="c-memo">{e.memo ?? ""}</span>
               <span className="c-amt r">{won(e.amount)}</span>
             </div>
@@ -296,7 +323,7 @@ export function ExpenseList({
             <span />
             <span />
             <span className="muted">
-              카드 {won(t.card)} · 현금 {won(t.cash)}
+              카드 {won(t.card)} · 현금 {won(t.cash)} · 이체 {won(t.transfer)}
             </span>
             <span className="c-amt r">{won(t.amount)}</span>
           </div>
@@ -349,5 +376,72 @@ export function ExpenseList({
         <div className="share-lock exlock">월별 분류 합계와 엑셀 내보내기는 Pro에서 쓸 수 있어요. 지출 기록은 Free에서도 모두 돼요.</div>
       )}
     </>
+  );
+}
+
+/** 상단 「지출」 전용 화면 */
+export function ExpensesPage({
+  data,
+  hotelId,
+  today,
+  notify,
+}: {
+  data: HotelData;
+  hotelId: string;
+  today: string;
+  notify: (m: string) => void;
+}) {
+  const [from, setFrom] = useState(addDays(today, -30));
+  const [to, setTo] = useState(today);
+  const [exEdit, setExEdit] = useState<Expense | "new" | null>(null);
+  const ex = useExpenses(hotelId, from, to);
+  const categories = data.hotel!.settings.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
+
+  return (
+    <main className="page expage">
+      <div className="ph">
+        <div>
+          <h1>
+            <Wallet size={22} strokeWidth={2.2} /> 지출
+          </h1>
+          <p className="muted">날짜별로 수리·비품 등을 적어요. 카드 · 현금 · 이체로 나눠요.</p>
+        </div>
+      </div>
+      {exEdit ? (
+        <ExpenseModal
+          base={exEdit === "new" ? null : exEdit}
+          today={today}
+          categories={categories}
+          onClose={() => setExEdit(null)}
+          onSave={async (d) => {
+            const saved = await ex.save(d, exEdit === "new" ? undefined : exEdit.id);
+            setExEdit(null);
+            notify(`${saved.category} ${won(saved.amount)}원 지출을 ${exEdit === "new" ? "적었어요" : "고쳤어요"} · ${methodLabel(saved.method)}`);
+          }}
+          onDelete={async () => {
+            if (exEdit === "new") return;
+            try {
+              await ex.remove(exEdit.id);
+              setExEdit(null);
+              notify("지출을 지웠어요");
+            } catch (e) {
+              notify(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+            }
+          }}
+        />
+      ) : null}
+      <ExpenseList
+        list={ex.list}
+        error={ex.error}
+        from={from}
+        to={to}
+        setFrom={setFrom}
+        setTo={setTo}
+        plan={data.hotel!.plan}
+        hotelName={data.hotel!.name}
+        onOpen={(e) => setExEdit(e)}
+        onAdd={() => setExEdit("new")}
+      />
+    </main>
   );
 }
