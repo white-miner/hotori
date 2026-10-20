@@ -83,6 +83,7 @@ import {
   windowExtendBlock,
   withPlannedCharges,
 } from "../shared/longstay";
+import NightPickCalendar from "./NightPickCalendar";
 
 interface Props {
   data: HotelData;
@@ -148,10 +149,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 숙박: 퇴실 = 입실 + 박수. 입실·박수 바꾸면 퇴실이, 퇴실 고르면 박수가 맞춰져요 (장기는 재고 창만)
   const checkOutDate = checkOutFromStayNights(checkIn, nights);
   const long = stayMode === "long_stay";
+  /** 표준 숙박 Entry: 「기간 입력」↔「날짜 선택」(장기·대실은 숨김) */
+  const [stayTab, setStayTab] = useState<"period" | "paint">("period");
   const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
+  useEffect(() => {
+    if (long || kind !== "stay") setStayTab("period");
+  }, [long, kind]);
   // 대실 시간: 적는 중인 글자(raw)는 그대로 두고, 알아볼 수 있으면 HH:MM으로 저장해요
   const [startRaw, setStartRaw] = useState(base?.startTime ?? "");
   const [endRaw, setEndRaw] = useState(base?.endTime ?? "");
@@ -1219,47 +1225,41 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         </div>
 
-        <div className="fld">
-          <label>
-            {kind === "stay" ? (
-              <>
-                입실<em>*</em>
-              </>
-            ) : (
-              <>
-                입실 날짜<em>*</em>
-              </>
-            )}
-          </label>
-          <div className="chips scroll">
-            {dateChips.map((c) => (
-              <button type="button" key={c.d} className={`chip ${checkIn === c.d ? "on" : ""}`} onClick={() => (kind === "stay" ? setStayCheckIn(c.d) : setCheckIn(c.d))}>
-                {c.l}
-              </button>
-            ))}
-            <label className={`chip datechip ${custom ? "on" : ""}`}>
-              <CalendarDays size={15} />
-              <span className="dl">{custom ? dayLabel(checkIn) : "날짜 고르기"}</span>
-              <input
-                ref={dateRef}
-                type="date"
-                min="2020-01-01"
-                max="2099-12-31"
-                value={checkIn}
-                onChange={(e) => e.target.value && (kind === "stay" ? setStayCheckIn(e.target.value) : setCheckIn(e.target.value))}
-                onClick={(e) => openPicker(e.currentTarget)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    openPicker(e.currentTarget);
-                  }
-                }}
-                aria-label="입실"
-                title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
-              />
+        {kind === "dayuse" ? (
+          <div className="fld">
+            <label>
+              입실 날짜<em>*</em>
             </label>
+            <div className="chips scroll">
+              {dateChips.map((c) => (
+                <button type="button" key={c.d} className={`chip ${checkIn === c.d ? "on" : ""}`} onClick={() => setCheckIn(c.d)}>
+                  {c.l}
+                </button>
+              ))}
+              <label className={`chip datechip ${custom ? "on" : ""}`}>
+                <CalendarDays size={15} />
+                <span className="dl">{custom ? dayLabel(checkIn) : "날짜 고르기"}</span>
+                <input
+                  ref={dateRef}
+                  type="date"
+                  min="2020-01-01"
+                  max="2099-12-31"
+                  value={checkIn}
+                  onChange={(e) => e.target.value && setCheckIn(e.target.value)}
+                  onClick={(e) => openPicker(e.currentTarget)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openPicker(e.currentTarget);
+                    }
+                  }}
+                  aria-label="입실"
+                  title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+                />
+              </label>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {kind === "stay" ? (
           <>
@@ -1285,6 +1285,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   aria-pressed={long}
                   onClick={() => {
                     setStayMode("long_stay");
+                    setStayTab("period");
                     if (isNew && nights < LONG_STAY_WINDOW_DEFAULT) setStayNights(LONG_STAY_WINDOW_DEFAULT);
                     if (!flatAmt) setFlatAmt("80000");
                   }}
@@ -1293,83 +1294,147 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 </button>
               </div>
             </div>
-            {long ? (
+            {!long ? (
               <div className="fld">
-                <label>퇴실</label>
-                <div className="step stayio">
-                  <span className="chip datechip on muted" aria-label="퇴실 미정">
-                    퇴실 미정
-                  </span>
-                  <span className="rng">손님 약속 퇴실 없음 · 아래 재고 창까지만 방을 막아 둬요</span>
+                <div className="seg wide staytabs" role="tablist" aria-label="숙박 기간 입력 방식">
+                  <button type="button" role="tab" aria-selected={stayTab === "period"} className={stayTab === "period" ? "on" : ""} onClick={() => setStayTab("period")}>
+                    기간 입력
+                  </button>
+                  <button type="button" role="tab" aria-selected={stayTab === "paint"} className={stayTab === "paint" ? "on" : ""} onClick={() => setStayTab("paint")}>
+                    날짜 선택
+                  </button>
                 </div>
+                {stayTab === "paint" ? <span className="muted sm staytab-sub">묵는 밤</span> : null}
               </div>
+            ) : null}
+            {!long && stayTab === "paint" ? (
+              <NightPickCalendar
+                checkIn={checkIn}
+                nights={nights}
+                bookings={data.bookings}
+                roomId={roomId}
+                excludeId={base?.id ?? "__draft__"}
+                today={today}
+                onPick={(cin, n) => {
+                  setCheckIn(cin);
+                  setNights(n);
+                }}
+                onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
+              />
             ) : (
-              <div className="fld">
-                <label>
-                  퇴실<em>*</em>
-                </label>
-                <div className="step stayio">
-                  <label className="chip datechip on">
-                    <CalendarDays size={15} />
-                    <span className="dl">{dayLabel(checkOutDate)}</span>
-                    <input
-                      type="date"
-                      min={addDays(checkIn, 1)}
-                      max={addDays(checkIn, 90)}
-                      value={checkOutDate}
-                      onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
-                      onClick={(e) => openPicker(e.currentTarget)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openPicker(e.currentTarget);
-                        }
-                      }}
-                      aria-label="퇴실"
-                      title="퇴실일을 고르면 박수가 맞춰져요"
-                    />
+              <>
+                <div className="fld">
+                  <label>
+                    입실<em>*</em>
                   </label>
-                  <span className="rng">
-                    <b>
-                      {dayLabel(checkOutDate)} {outTimeOf(s, { earlyIn, lateOut })}
-                    </b>{" "}
-                    퇴실 · 퇴실날은 다시 팔 수 있어요
-                  </span>
+                  <div className="chips scroll">
+                    {dateChips.map((c) => (
+                      <button type="button" key={c.d} className={`chip ${checkIn === c.d ? "on" : ""}`} onClick={() => setStayCheckIn(c.d)}>
+                        {c.l}
+                      </button>
+                    ))}
+                    <label className={`chip datechip ${custom ? "on" : ""}`}>
+                      <CalendarDays size={15} />
+                      <span className="dl">{custom ? dayLabel(checkIn) : "날짜 고르기"}</span>
+                      <input
+                        ref={dateRef}
+                        type="date"
+                        min="2020-01-01"
+                        max="2099-12-31"
+                        value={checkIn}
+                        onChange={(e) => e.target.value && setStayCheckIn(e.target.value)}
+                        onClick={(e) => openPicker(e.currentTarget)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openPicker(e.currentTarget);
+                          }
+                        }}
+                        aria-label="입실"
+                        title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+                      />
+                    </label>
+                  </div>
                 </div>
-              </div>
+                {long ? (
+                  <div className="fld">
+                    <label>퇴실</label>
+                    <div className="step stayio">
+                      <span className="chip datechip on muted" aria-label="퇴실 미정">
+                        퇴실 미정
+                      </span>
+                      <span className="rng">손님 약속 퇴실 없음 · 아래 재고 창까지만 방을 막아 둬요</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="fld">
+                    <label>
+                      퇴실<em>*</em>
+                    </label>
+                    <div className="step stayio">
+                      <label className="chip datechip on">
+                        <CalendarDays size={15} />
+                        <span className="dl">{dayLabel(checkOutDate)}</span>
+                        <input
+                          type="date"
+                          min={addDays(checkIn, 1)}
+                          max={addDays(checkIn, 90)}
+                          value={checkOutDate}
+                          onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
+                          onClick={(e) => openPicker(e.currentTarget)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openPicker(e.currentTarget);
+                            }
+                          }}
+                          aria-label="퇴실"
+                          title="퇴실일을 고르면 박수가 맞춰져요"
+                        />
+                      </label>
+                      <span className="rng">
+                        <b>
+                          {dayLabel(checkOutDate)} {outTimeOf(s, { earlyIn, lateOut })}
+                        </b>{" "}
+                        퇴실 · 퇴실날은 다시 팔 수 있어요
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="fld">
+                  <label>
+                    {long ? "재고 창" : "박수"}
+                    <em>*</em>
+                  </label>
+                  <div className="step">
+                    <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setStayNights(nights - 1)}>
+                      <Minus size={16} />
+                    </button>
+                    <span className="sv">
+                      {nights}
+                      <small>박</small>
+                    </span>
+                    <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setStayNights(nights + 1)}>
+                      <Plus size={16} />
+                    </button>
+                    <span
+                      className="rng stayglance"
+                      aria-label={long ? `재고 창 ${nights}박 · 판매 보류 끝 ${dayLabel(checkOutDate)}` : `입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}
+                    >
+                      {long ? (
+                        <>
+                          판매 보류 끝 <b>{dayLabel(checkOutDate)}</b> · 손님 약속이 아니라 이 밤까지 방을 막아요
+                        </>
+                      ) : (
+                        <>
+                          <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
-            <div className="fld">
-              <label>
-                {long ? "재고 창" : "박수"}
-                <em>*</em>
-              </label>
-              <div className="step">
-                <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setStayNights(nights - 1)}>
-                  <Minus size={16} />
-                </button>
-                <span className="sv">
-                  {nights}
-                  <small>박</small>
-                </span>
-                <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setStayNights(nights + 1)}>
-                  <Plus size={16} />
-                </button>
-                <span
-                  className="rng stayglance"
-                  aria-label={long ? `재고 창 ${nights}박 · 판매 보류 끝 ${dayLabel(checkOutDate)}` : `입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}
-                >
-                  {long ? (
-                    <>
-                      판매 보류 끝 <b>{dayLabel(checkOutDate)}</b> · 손님 약속이 아니라 이 밤까지 방을 막아요
-                    </>
-                  ) : (
-                    <>
-                      <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
-                    </>
-                  )}
-                </span>
-              </div>
-            </div>
             {long ? (
               <>
                 <div className="fld">
