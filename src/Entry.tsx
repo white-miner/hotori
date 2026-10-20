@@ -33,7 +33,6 @@ import {
   undoMove,
   type RoomSegment,
   isActive,
-  perNight,
   previewChange,
   stockLevel,
   stockTable,
@@ -63,6 +62,10 @@ import {
   nightRate,
   nightsChangedWithoutPrice,
   planExtend,
+  repriceForNights,
+  roomNightRate,
+  stayAddons,
+  unusedNightRefund,
   validateExtendRate,
 } from "../shared/extend";
 import {
@@ -189,6 +192,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [guestPhone, setPhone] = useState(base?.guestPhone ?? "");
   const [price, setPrice] = useState(base ? String(base.price) : "");
+  /** 표준 숙박 1박 요금 (편집 가능). 박수↓ 시 총액 = 이 값 × 박수 + 가산분 */
+  const initGroupRates = base?.groupId ? data.groups.get(base.groupId)?.rates ?? null : null;
+  const [rateStr, setRateStr] = useState(() => {
+    if (!base || base.kind !== "stay" || base.stayMode === "long_stay" || !base.nights) return "";
+    return String(roomNightRate(base, initGroupRates?.[base.typeId]));
+  });
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
   // 객실 이동 구간 (첫 구간 방 = roomId). 저장할 때 같이 저장돼요
   const [segs, setSegs] = useState<RoomSegment[] | null>(base?.segments ?? null);
@@ -311,7 +320,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setEoErr(null);
     setEx(null);
     setAs(null);
-    setEo({ date: ds.includes(today) ? today : ds[ds.length - 1], refund: "" });
+    const date = ds.includes(today) ? today : ds[ds.length - 1];
+    const sug = unusedNightRefund(live, date, groupRates?.[live.typeId]);
+    setEo({ date, refund: sug > 0 ? String(sug) : "" });
   };
   const openAs = () => {
     if (!live || !canAddSurcharge(live)) return;
@@ -340,18 +351,56 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         : nightRate(live, groupRates?.[live.typeId]);
     setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
   };
-  /** 저장된 일반 숙박에서 박수만 늘리면 「요금 그대로」경고 대신 1박 연장 패널 */
-  const setStayNights = (n: number) => {
-    const next = clampStayNights(n);
+  /** 박수↓이면 판매가 = 1박 × 새박수 + 가산분. 박수↑(저장본 대비)는 연장 패널. */
+  const applyStayNights = (nextRaw: number, opts?: { checkIn?: string }) => {
+    const next = clampStayNights(nextRaw);
     const saved = base?.nights ?? 0;
     if (base && !long && kind === "stay" && live && canExtend(live) && next > saved) {
       if (nights !== saved) setNights(saved);
+      if (opts?.checkIn != null && checkIn !== (base.checkIn ?? checkIn)) setCheckIn(base.checkIn);
       openEx();
       return;
     }
+    if (!long && kind === "stay" && next < nights && next >= 1) {
+      const typeRate = base?.groupId ? data.groups.get(base.groupId)?.rates?.[typeId] : undefined;
+      const snap = {
+        kind: "stay" as const,
+        price: Number(price || 0),
+        nights,
+        extraFee,
+        earlyIn,
+        lateOut,
+        timeFee,
+        arrival,
+        carFee,
+        walkOff,
+      };
+      const rate = Number(rateStr || 0) > 0 ? Math.round(Number(rateStr)) : roomNightRate(snap, typeRate);
+      const r = repriceForNights(snap, next, rate);
+      setRateStr(String(r.rate));
+      setPrice(String(r.price));
+    }
+    if (opts?.checkIn != null) setCheckIn(opts.checkIn);
     setNights(next);
   };
+  const setStayNights = (n: number) => applyStayNights(n);
   const setStayCheckOut = (d: string) => setStayNights(nightsFromStayDates(checkIn, d));
+  const setRateAndTotal = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 9);
+    setRateStr(digits);
+    if (long || kind !== "stay" || nights < 1) return;
+    const rate = Number(digits || 0);
+    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+    setPrice(String(Math.max(0, rate * nights + addons)));
+  };
+  const setTotalAndRate = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 9);
+    setPrice(digits);
+    if (long || kind !== "stay" || nights < 1) return;
+    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+    const room = Math.max(0, Number(digits || 0) - addons);
+    setRateStr(String(Math.round(room / nights)));
+  };
   const confirmAs = async () => {
     if (!live || !as || asBusy) return;
     setAsBusy(true);
@@ -1063,7 +1112,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const per = kind === "stay" ? perNight({ price: Number(price || 0), nights }) : null;
   const dateChips = [
     { d: today, l: `오늘 ${dayLabel(today)}` },
     { d: addDays(today, 1), l: `내일 ${dayLabel(addDays(today, 1))}` },
@@ -1465,13 +1513,29 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {earlyOutDates(live).length <= 6 ? (
                   <div className="chips">
                     {earlyOutDates(live).map((d) => (
-                      <button type="button" key={d} className={`chip ${eo.date === d ? "on" : ""}`} onClick={() => setEo({ ...eo, date: d })}>
+                      <button
+                        type="button"
+                        key={d}
+                        className={`chip ${eo.date === d ? "on" : ""}`}
+                        onClick={() => {
+                          const sug = unusedNightRefund(live, d, groupRates?.[live.typeId]);
+                          setEo({ date: d, refund: sug > 0 ? String(sug) : "" });
+                        }}
+                      >
                         {d === today ? `오늘 ${dayLabel(d)}` : dayLabel(d)}
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <select className="inp" value={eo.date} onChange={(e) => setEo({ ...eo, date: e.target.value })}>
+                  <select
+                    className="inp"
+                    value={eo.date}
+                    onChange={(e) => {
+                      const d = e.target.value;
+                      const sug = unusedNightRefund(live, d, groupRates?.[live.typeId]);
+                      setEo({ date: d, refund: sug > 0 ? String(sug) : "" });
+                    }}
+                  >
                     {earlyOutDates(live).map((d) => (
                       <option key={d} value={d}>
                         {d === today ? `오늘 ${dayLabel(d)}` : dayLabel(d)} · {daysBetween(live.checkIn, d)}박 이용
@@ -1503,7 +1567,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 원
               </label>
               <small>
-                결제 {won(live.price)}원 → 매출 {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원 · 환불은 {dayLabel(eo.date)} 매출에서 빠져요
+                미사용 {live.nights! - daysBetween(live.checkIn, eo.date)}박 × 단가 제안 · 결제 {won(live.price)}원 → 매출{" "}
+                {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원
               </small>
             </div>
             {eoErr ? <div className="ferr">{eoErr}</div> : null}
@@ -1651,17 +1716,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 roomId={roomId}
                 excludeId={base?.id ?? "__draft__"}
                 today={today}
-                onPick={(cin, n) => {
-                  const saved = base?.nights ?? 0;
-                  if (base && !long && live && canExtend(live) && cin === (base.checkIn ?? cin) && n > saved) {
-                    if (nights !== saved) setNights(saved);
-                    if (checkIn !== base.checkIn) setCheckIn(base.checkIn);
-                    openEx();
-                    return;
-                  }
-                  setCheckIn(cin);
-                  setNights(n);
-                }}
+                onPick={(cin, n) => applyStayNights(n, { checkIn: cin })}
                 onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
               />
             ) : (
@@ -1821,7 +1876,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {base && !long && nightsChangedWithoutPrice(base, draftBase) ? (
               <div className="nwarn" role="status">
                 <AlertTriangle size={16} />
-                <span>박수가 바뀌었는데 판매 가격은 그대로예요. 「{EXTEND_COPY}」으로 요금을 맞추거나 가격·잔금을 고쳐 주세요.</span>
+                <span>
+                  박수가 늘었는데 판매 가격은 그대로예요. 「{EXTEND_COPY}」으로 요금을 더하거나, 아래 총액을 고쳐 주세요.
+                </span>
               </div>
             ) : null}
           </>
@@ -2195,19 +2252,65 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         ) : (
           <div className="fld">
             <label>
-              판매 가격<em>*</em>
+              {kind === "stay" ? (
+                <>
+                  총액<em>*</em>
+                </>
+              ) : (
+                <>
+                  판매 가격<em>*</em>
+                </>
+              )}
             </label>
-            <label className="inp price">
-              <input
-                className="num"
-                inputMode="numeric"
-                placeholder={kind === "stay" ? "총액" : "금액"}
-                value={price ? won(Number(price)) : ""}
-                onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                aria-label="판매 가격"
-              />
-              원{per ? <small>1박 평균 {won(per)}원</small> : null}
-            </label>
+            {kind === "stay" ? (
+              <div className="price-row">
+                <label className="inp price sm">
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    placeholder="1박"
+                    value={rateStr ? won(Number(rateStr)) : ""}
+                    onChange={(e) => setRateAndTotal(e.target.value)}
+                    aria-label="1박 요금"
+                  />
+                  원/박
+                </label>
+                <span className="muted sm">× {nights}박 =</span>
+                <label className="inp price price-total">
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    placeholder="총액"
+                    value={price ? won(Number(price)) : ""}
+                    onChange={(e) => setTotalAndRate(e.target.value)}
+                    aria-label="총액"
+                  />
+                  원
+                </label>
+              </div>
+            ) : (
+              <label className="inp price">
+                <input
+                  className="num"
+                  inputMode="numeric"
+                  placeholder="금액"
+                  value={price ? won(Number(price)) : ""}
+                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                  aria-label="판매 가격"
+                />
+                원
+              </label>
+            )}
+            {kind === "stay" && Number(price || 0) > 0 ? (
+              <div className="muted sm" style={{ marginTop: 6 }}>
+                총액 = 1박 요금 × 박수
+                {(() => {
+                  const a = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+                  return a ? ` + 가산 ${won(a)}원` : "";
+                })()}
+                {" · "}박수 줄이면 자동으로 맞춰요
+              </div>
+            ) : null}
           </div>
         )}
 

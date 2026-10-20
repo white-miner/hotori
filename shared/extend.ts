@@ -5,6 +5,7 @@ import {
   type RoomSegment,
   addDays,
   dayLabel,
+  daysBetween,
   fitSegments,
   isActive,
   isEarlyOut,
@@ -16,7 +17,19 @@ import { type BookPayMethod, PAY_MAX } from "./payment";
 
 export const EXTEND_COPY = "1박 연장";
 export const NIGHTS_PRICE_WARN =
-  "박수가 바뀌었는데 판매 가격은 그대로예요. 가격·잔금을 맞추지 않으면 완납으로 보일 수 있어요. 그래도 저장할까요?";
+  "박수가 늘었는데 판매 가격은 그대로예요. 「1박 연장」으로 요금을 더하거나, 가격을 직접 고쳐 주세요. 그래도 저장할까요?";
+export const REPRICE_TOAST = "판매가를 1박 요금 × 박수에 맞췄어요";
+
+/** 박과 무관한 가산분 (추가인원·시간료·주차 − 도보할인). MVP 재계산 시 유지 */
+export function stayAddons(
+  b: Pick<Booking, "kind" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+): number {
+  const xf = Math.max(0, b.extraFee ?? 0);
+  const tf = b.kind === "stay" && (b.earlyIn || b.lateOut) ? Math.max(0, b.timeFee ?? 0) : 0;
+  const cf = b.arrival === "car" ? Math.max(0, b.carFee ?? 0) : 0;
+  const wo = b.arrival === "walk" ? Math.max(0, b.walkOff ?? 0) : 0;
+  return xf + tf + cf - wo;
+}
 
 /** 1박 단가 기본값: 타입/단체 요금이 있으면 그걸, 없으면 현재 판매가 ÷ 박수 */
 export function nightRate(b: Pick<Booking, "price" | "nights">, typeRate?: number | null): number {
@@ -24,6 +37,53 @@ export function nightRate(b: Pick<Booking, "price" | "nights">, typeRate?: numbe
   const n = b.nights ?? 0;
   if (n < 1) return 0;
   return Math.max(0, Math.round(b.price / n));
+}
+
+/**
+ * 객실료 1박 단가 (가산분 제외). 타입/단체 rates 우선 · 없으면 (price − addons) ÷ oldNights.
+ * 연장용 nightRate와 달리 박수↓ 재계산의 진실.
+ */
+export function roomNightRate(
+  b: Pick<Booking, "kind" | "price" | "nights" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  typeRate?: number | null,
+): number {
+  if (typeRate != null && typeRate > 0) return Math.round(typeRate);
+  const n = b.nights ?? 0;
+  if (n < 1) return 0;
+  const room = Math.max(0, b.price - stayAddons(b));
+  return Math.max(0, Math.round(room / n));
+}
+
+export interface RepriceResult {
+  rate: number;
+  addons: number;
+  price: number;
+}
+
+/** 박수 변경 시 판매가 = rate × newNights + 유지 가산분 */
+export function repriceForNights(
+  b: Pick<Booking, "kind" | "price" | "nights" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  newNights: number,
+  typeRate?: number | null,
+): RepriceResult {
+  const n = Math.max(1, Math.round(newNights));
+  const rate = roomNightRate(b, typeRate);
+  const addons = stayAddons(b);
+  return { rate, addons, price: Math.max(0, rate * n + addons) };
+}
+
+/** 중도 퇴실 환불 제안 = 미사용 박 × 단가 (수정 가능) */
+export function unusedNightRefund(
+  b: Pick<Booking, "kind" | "price" | "nights" | "checkIn" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  earlyOutOn: string,
+  typeRate?: number | null,
+): number {
+  const nights = b.nights ?? 0;
+  if (nights < 2) return 0;
+  const used = Math.max(0, Math.min(nights - 1, daysBetween(b.checkIn, earlyOutOn)));
+  const unused = nights - used;
+  if (unused <= 0) return 0;
+  return roomNightRate(b, typeRate) * unused;
 }
 
 /** 활성 숙박 · 중도 퇴실 아님 · 90박 미만 */
@@ -91,13 +151,18 @@ export function validateExtendRate(rate: number): string | null {
   return null;
 }
 
-/** 박수만 바뀌고 판매 가격이 그대로면 경고 (조용한 완납 과소청구 방지). 장기는 원장이 진실이라 제외 */
+/**
+ * 박수↑인데 판매가가 그대로면 경고 (연장 유도). 박수↓는 자동 재계산이라 여기 안 탐.
+ * 장기는 원장이 진실이라 제외.
+ */
 export function nightsChangedWithoutPrice(
   prev: Pick<Booking, "kind" | "nights" | "price" | "stayMode">,
   next: Pick<Booking, "kind" | "nights" | "price" | "stayMode">,
 ): boolean {
   if (next.stayMode === "long_stay" || prev.stayMode === "long_stay") return false;
-  return next.kind === "stay" && prev.kind === "stay" && (prev.nights ?? 0) !== (next.nights ?? 0) && prev.price === next.price;
+  const pn = prev.nights ?? 0;
+  const nn = next.nights ?? 0;
+  return next.kind === "stay" && prev.kind === "stay" && nn > pn && prev.price === next.price;
 }
 
 export type ExtendCollect = { method: BookPayMethod; amount: number } | null;

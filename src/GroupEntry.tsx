@@ -121,18 +121,18 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
 
   const rateNum: Record<string, number> = Object.fromEntries(Object.entries(rates).map(([k, v]) => [k, Number(v || 0)]));
   const prefills = ratePrices(typeIds, rateNum, nights);
-  // 방별 금액: 줄 수가 바뀌면 타입 요금으로 맞추고, 같은 줄은 손님이 고친 값을 유지
+  // 방별 금액: 방 수·박수 바뀌면 타입 1박×박수로 다시 채움 (직접 고친 뒤에도 박수↓면 맞춤)
   useEffect(() => {
-    setLinePrices((prev) => {
-      if (prev.length === typeIds.length) return prev;
-      return typeIds.map((tid, i) => {
-        if (i < prev.length && prev[i] !== "") return prev[i];
+    setLinePrices((prev) =>
+      typeIds.map((tid, i) => {
         const p = prefills[i];
-        return p ? String(p) : "";
-      });
-    });
+        if (p) return String(p);
+        if (i < prev.length && prev[i] !== "") return prev[i];
+        return "";
+      }),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeIds.join("|"), nights]);
+  }, [typeIds.join("|"), nights, Object.values(rateNum).join("|")]);
 
   const prices =
     mode === "rate"
@@ -574,26 +574,22 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
             ) : null}
             <span className="gline gtotal">
               {n && sum ? (
-                mode === "rate" ? (
-                  <>
-                    {formula} = <b>{won(sum)}원</b>
-                  </>
-                ) : mode === "line" ? (
-                  <>
-                    방별 합계 <b>{won(sum)}원</b>
-                  </>
-                ) : mode === "room" ? (
-                  <>
-                    {n}실 × {won(Number(roomPrice))} = <b>{won(sum)}원</b>
-                  </>
-                ) : (
-                  <>
-                    1실 {won(prices[n - 1] ?? 0)}
-                    {prices[0] !== prices[n - 1] ? ` (첫 방 ${won(prices[0])})` : ""} · 합계 <b>{won(sum)}원</b>
-                  </>
-                )
+                <>
+                  <span className="gtotal-lab">총액</span>{" "}
+                  <b className="num">{won(sum)}원</b>
+                  <span className="muted sm">
+                    {" · "}
+                    {mode === "rate"
+                      ? formula
+                      : mode === "line"
+                        ? "방별 합"
+                        : mode === "room"
+                          ? `${n}실 × ${won(Number(roomPrice))}`
+                          : `1실 ${won(prices[n - 1] ?? 0)}${prices[0] !== prices[n - 1] ? ` (첫 방 ${won(prices[0])})` : ""}`}
+                  </span>
+                </>
               ) : (
-                <span className="muted">방을 고르고 금액을 적으면 합계가 보여요</span>
+                <span className="muted">방을 고르고 금액을 적으면 총액이 보여요</span>
               )}
             </span>
           </div>
