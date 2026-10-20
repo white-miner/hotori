@@ -1659,6 +1659,71 @@ button.nowstatus { cursor: pointer; }
   box-shadow: inset 3px 0 0 #c43c28, inset 0 0 0 1px var(--nk-ring);
 }
 .nowcell .nklab { font-size: 11px; font-weight: 750; }
+/* 「지금」특이사항 말풍선 */
+.now-page .cell .r1 { gap: 4px; }
+.now-page .nowmemo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink3);
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+.now-page .nowmemo.add { opacity: 0.45; }
+.now-page .nowmemo.add:hover { opacity: 0.9; background: rgba(0, 0, 0, 0.04); }
+.now-page .nowmemo.has {
+  opacity: 1;
+  color: #1a5fb4;
+  background: #e8f1fc;
+  border-color: #b5d0f0;
+}
+.now-page .nowmemo.has:hover { background: #d9e9fa; }
+.now-page .nowmemo-n {
+  font-family: var(--num);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.room-memo-modal { width: 440px; max-width: 100%; }
+.rmemo-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.rmemo-row { display: flex; gap: 6px; align-items: center; }
+.rmemo-row .inp { flex: 1 1 auto; min-width: 0; }
+.rmemo-list { display: flex; flex-direction: column; gap: 8px; max-height: min(52vh, 420px); overflow-y: auto; }
+.rmemo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.rmemo-item.done { opacity: 0.72; background: #fafafa; }
+.rmemo-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; }
+.rmemo-body { flex: 1 1 140px; font-size: 14px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.35; }
+.rmemo-kind {
+  font-size: 11px;
+  font-weight: 750;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #eef2f7;
+  color: var(--ink2);
+}
+.rmemo-kind.k-delivery { background: #eef6ee; color: #2a6b2a; }
+.rmemo-st { font-size: 11.5px; font-weight: 700; color: var(--ink3); margin-left: auto; }
+.rmemo-st.s-open { color: #1a5fb4; }
+.rmemo-st.s-resolved { color: var(--ink4); }
+.rmemo-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .nklab.nk-arriving { color: #2f5fc4; }
 .nklab.nk-inhouse { color: var(--red-d); }
 .nklab.nk-departing { color: #9a5b0a; }

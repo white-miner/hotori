@@ -20,8 +20,9 @@ import { SURCHARGE_COPY, canAddSurcharge } from "../shared/addSurcharge";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, TriangleAlert } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
+import RoomMemoModal from "./RoomMemoModal";
 import {
   type BoardTab,
   type Booking,
@@ -57,10 +58,11 @@ import {
   won,
   legsOf,
 } from "../shared/ledger";
-import { type HotelData, WINDOW_BACK, queryStays } from "./data";
+import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
+import { openMemoCounts } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import { payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
@@ -296,6 +298,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [tentBusy, setTentBusy] = useState(false);
   const [nightPopId, setNightPopId] = useState<string | null>(null);
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
+  const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
+  const memos = useRoomMemos(data.hotel!.id);
+  const openByRoom = useMemo(() => openMemoCounts(memos.list ?? []), [memos.list]);
   const autoArriveBusy = useRef(new Set<string>());
   // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
   useEffect(() => {
@@ -745,9 +750,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
+    const openN = openByRoom.get(r.id) ?? 0;
+    const memoBubble =
+      openN > 0 || !readOnly ? (
+        <button
+          type="button"
+          className={`nowmemo ${openN ? "has" : "add"}`}
+          aria-label={openN ? `${r.no} 미해결 특이사항 ${openN}건` : `${r.no} 특이사항 적기`}
+          title={openN ? `특이사항 미해결 ${openN}` : "특이사항"}
+          onClick={(e) => {
+            e.stopPropagation();
+            setNightPopId(null);
+            setMemoRoomId(r.id);
+          }}
+        >
+          <MessageCircle size={openN ? 15 : 13} strokeWidth={openN ? 2.4 : 2} aria-hidden />
+          {openN ? <span className="nowmemo-n">{openN > 9 ? "9+" : openN}</span> : null}
+        </button>
+      ) : null;
     const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
         <FitText className={`no ${k}`} text={r.no} />
+        {memoBubble}
       </div>
     );
     if (!b || !isActive(b)) {
@@ -908,6 +932,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </div>
     );
     return (
+    <>
       <main className="page board-page now-page">
         <div className="main">
           {tabs}
@@ -916,7 +941,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <div>
               <h1>지금 · 현장 현황</h1>
               <div className="bdh-s">
-                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 칸을 누르면 같은 예약·단체 창으로 가요
+                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 말풍선은 특이사항 · 칸을 누르면 예약·단체 창
               </div>
             </div>
             <div className="dnav nowfilters">
@@ -1029,9 +1054,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span>
               <i className="nkdot nk-ncx" />청소X
             </span>
+            <span>
+              <MessageCircle size={12} strokeWidth={2.2} aria-hidden />특이사항
+            </span>
           </div>
         </div>
       </main>
+      {memoRoomId ? (
+        <RoomMemoModal
+          roomId={memoRoomId}
+          roomLabel={L.roomLabel(memoRoomId) ?? memoRoomId}
+          list={memos.list ?? []}
+          readOnly={readOnly}
+          onClose={() => setMemoRoomId(null)}
+          onSave={memos.save}
+          onSetStatus={memos.setStatus}
+          onRemove={memos.remove}
+          notify={notify}
+        />
+      ) : null}
+    </>
     );
   }
 
