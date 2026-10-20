@@ -398,6 +398,19 @@ export function nowAmountGlance(
   return null;
 }
 
+/** 간단 예약 패널 · 입실일 필터 (영업일 기준) */
+export type UaCheckInFilter = "today" | "week" | "month";
+
+/**
+ * 미배정 목록을 입실일(checkIn)로 거른다.
+ * 오늘: 당일 + 기한 지난 미배정 · 일주일/한달: today ~ today+6 / +29.
+ */
+export function filterUnassignedByCheckIn(list: Booking[], today: string, filter: UaCheckInFilter): Booking[] {
+  if (filter === "today") return list.filter((b) => b.checkIn <= today);
+  const end = addDays(today, filter === "week" ? 6 : 29);
+  return list.filter((b) => b.checkIn >= today && b.checkIn <= end);
+}
+
 /** 미배정/간단 예약 목록용 결제 모드 글랜스 (현장·전화) */
 export function simplePayGlance(b: Booking, onsite: boolean): string | null {
   if (!onsite || b.priceUnset) return null;
