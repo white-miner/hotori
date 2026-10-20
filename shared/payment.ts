@@ -27,6 +27,8 @@ export interface Payment {
   amount: number;
   bizDate: string;
   createdAt: string;
+  /** 추가금 등 보조 라벨 (`추가금 · 늦은 퇴실`). 없으면 Entry는 kind 라벨 */
+  note?: string | null;
 }
 export const PAY_MAX = 100_000_000;
 

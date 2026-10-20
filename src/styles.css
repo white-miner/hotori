@@ -251,6 +251,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .fld { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 14px; }
 .fld > label { font-size: 13px; font-weight: 650; color: var(--ink3); }
 .fld > label em { font-style: normal; color: var(--red); margin-left: 2px; }
+.fld > label.paylab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fld > label.paylab .chip { font-weight: 750; }
 .tchip { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 12px; border-radius: 16px; background: var(--panel); min-width: 96px; }
 .tchip:hover { background: var(--hover); }
 .tchip .t1 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 650; white-space: nowrap; }

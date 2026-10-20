@@ -49,7 +49,7 @@ import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type PayKind, isOnsite, payKindLabel, payLineMain, paySplit, splitLine, validatePayment } from "../shared/payment";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type PayKind, isOnsite, payLineMain, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
@@ -65,7 +65,19 @@ import {
   planExtend,
   validateExtendRate,
 } from "../shared/extend";
-import { canCheckOut, isCheckedOut } from "../shared/nowboard";
+import {
+  SURCHARGE_COPY,
+  SURCHARGE_REASON_LABEL,
+  SURCHARGE_REASONS,
+  type SurchargeReason,
+  canAddSurcharge,
+  defaultSurchargeAmount,
+  payLineSub,
+  planAddSurcharge,
+  suggestElapsedLateHours,
+  surchargeNotifyLine,
+} from "../shared/addSurcharge";
+import { canCheckOut, isCheckedOut, hotelWallClock } from "../shared/nowboard";
 import {
   LONG_STAY_WINDOW_DEFAULT,
   WINDOW_EXTEND_DEFAULT,
@@ -253,34 +265,139 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const groupRates = live?.groupId ? (data.groups.get(live.groupId)?.rates ?? null) : null;
   const defaultExRate = live && canExtend(live) ? nightRate(live, groupRates?.[live.typeId]) : 0;
   const [ex, setEx] = useState<{ rate: string; collect: boolean; method: BookPayMethod } | null>(() =>
-    req.openExtend && live && canExtend(live) ? { rate: String(defaultExRate), collect: true, method: "card" } : null,
+    req.openExtend && !req.openSurcharge && live && canExtend(live) ? { rate: String(defaultExRate), collect: true, method: "card" } : null,
   );
   const [exBusy, setExBusy] = useState(false);
   const [exErr, setExErr] = useState<string | null>(null);
+  // +추가금: 할증·시간료·기타 (박수 불변 · 받기/잔금)
+  const initAsHours = () => {
+    if (!live) return 1;
+    const cur = clampHours(live.lateOut);
+    if (cur >= 1) return cur;
+    const elapsed = suggestElapsedLateHours(s.stayTimes.checkOut, hotelWallClock().time);
+    return elapsed >= 1 ? elapsed : 1;
+  };
+  const [as, setAs] = useState<{
+    reason: SurchargeReason;
+    hours: number;
+    amount: string;
+    memo: string;
+    collect: boolean;
+    method: BookPayMethod;
+  } | null>(() => {
+    if (!req.openSurcharge || !live || !canAddSurcharge(live)) return null;
+    const hours = initAsHours();
+    return {
+      reason: clampHours(live.lateOut) ? "late_out" : suggestElapsedLateHours(s.stayTimes.checkOut, hotelWallClock().time) >= 1 ? "late_fee" : "late_out",
+      hours,
+      amount: String(defaultSurchargeAmount(s.extraHourFee, hours)),
+      memo: "",
+      collect: true,
+      method: "transfer",
+    };
+  });
+  const [asBusy, setAsBusy] = useState(false);
+  const [asErr, setAsErr] = useState<string | null>(null);
   const [winBusy, setWinBusy] = useState(false);
   const [showLedger, setShowLedger] = useState(false);
   const canEx = !!live && canExtend(live);
+  const canAs = !!live && canAddSurcharge(live);
   const eocRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (eo || ex) eocRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (eo || ex || as) eocRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!eo, !!ex]);
+  }, [!!eo, !!ex, !!as]);
   const openEo = () => {
     if (!live) return;
     const ds = earlyOutDates(live);
     setEoErr(null);
     setEx(null);
+    setAs(null);
     setEo({ date: ds.includes(today) ? today : ds[ds.length - 1], refund: "" });
+  };
+  const openAs = () => {
+    if (!live || !canAddSurcharge(live)) return;
+    setAsErr(null);
+    setEx(null);
+    setEo(null);
+    const hours = initAsHours();
+    const elapsed = suggestElapsedLateHours(s.stayTimes.checkOut, hotelWallClock().time);
+    setAs({
+      reason: clampHours(live.lateOut) ? "late_out" : elapsed >= 1 ? "late_fee" : "late_out",
+      hours,
+      amount: String(defaultSurchargeAmount(s.extraHourFee, hours)),
+      memo: "",
+      collect: true,
+      method: "transfer",
+    });
   };
   const openEx = () => {
     if (!live || !canExtend(live)) return;
     setExErr(null);
     setEo(null);
+    setAs(null);
     const rate =
       isLongStay(live) && live.longStayRate
         ? nightAmount(live.longStayRate, addDays(live.checkIn, live.nights ?? 0)) ?? 0
         : nightRate(live, groupRates?.[live.typeId]);
     setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
+  };
+  const confirmAs = async () => {
+    if (!live || !as || asBusy) return;
+    setAsBusy(true);
+    setAsErr(null);
+    try {
+      const amount = Number(as.amount || 0);
+      const planned = planAddSurcharge(live, {
+        reason: as.reason,
+        hours: as.hours,
+        amount,
+        memo: as.memo,
+        collect: as.collect,
+        method: as.method,
+        bizDate: today,
+      });
+      if ("err" in planned) return setAsErr(planned.err);
+      const next: Booking = {
+        ...live,
+        price: planned.draft.price,
+        lateOut: planned.draft.lateOut,
+        timeFee: planned.draft.timeFee,
+        memo: planned.draft.memo,
+        // nights · segments · stayEnd 불변
+      };
+      const saved = await data.saveBooking(next, false);
+      let collected = false;
+      if (planned.collectAmount > 0) {
+        try {
+          await data.addPayment(saved.id, {
+            kind: "balance",
+            method: as.method,
+            amount: planned.collectAmount,
+            bizDate: today,
+            note: planned.payNote,
+          });
+          collected = true;
+        } catch (e) {
+          onClose();
+          notify(
+            `${surchargeNotifyLine(saved.guestName, as.reason, amount, false, planned.draft.lateOut)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          return;
+        }
+      }
+      // 폼 상태 동기 (창을 닫지 않고 이어 볼 때도)
+      setPrice(String(saved.price));
+      setLateOut(clampHours(saved.lateOut));
+      setTimeFee(Math.max(0, saved.timeFee ?? 0));
+      setMemo(saved.memo ?? "");
+      setAs(null);
+      notify(surchargeNotifyLine(saved.guestName, as.reason, amount, collected, planned.draft.lateOut));
+    } catch (e) {
+      setAsErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setAsBusy(false);
+    }
   };
   const confirmEx = async () => {
     if (!live || !ex || exBusy) return;
@@ -1047,6 +1164,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>단체에 객실 추가</b>
               </button>
             ) : null}
+            {canAs ? (
+              <button type="button" className={`beo ${as ? "on" : ""}`} aria-expanded={!!as} onClick={() => (as ? setAs(null) : openAs())}>
+                <Plus size={17} />
+                <b>{SURCHARGE_COPY}</b>
+              </button>
+            ) : null}
             {canEx ? (
               <button type="button" className={`beo ${ex ? "on" : ""}`} aria-expanded={!!ex} onClick={() => (ex ? setEx(null) : openEx())}>
                 <CalendarPlus size={17} />
@@ -1079,6 +1202,155 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <span>
               {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
             </span>
+          </div>
+        ) : null}
+        {as && live ? (
+          <div className="eoc" role="group" aria-label={SURCHARGE_COPY} ref={eocRef}>
+            <div className="eoc-h">
+              <b>
+                {SURCHARGE_COPY}
+                {as.reason !== "other" && as.hours >= 1 ? ` · ${as.hours}시간 → 퇴실 ${outTimeOf(s, { lateOut: as.hours })}` : ""}
+              </b>
+              <span>
+                같은 날 할증·시간료예요 · 박수·다음 밤은 그대로예요
+                {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
+                {canEx ? ` · 밤을 늘리려면 「${EXTEND_COPY}」` : ""}
+              </span>
+            </div>
+            <div className="eoc-d">
+              <label>사유</label>
+              <div className="chips">
+                {SURCHARGE_REASONS.map((r) => (
+                  <button
+                    type="button"
+                    key={r}
+                    className={`chip ${as.reason === r ? "on" : ""}`}
+                    onClick={() => {
+                      const hours =
+                        r === "other"
+                          ? 0
+                          : r === "late_fee"
+                            ? Math.max(1, suggestElapsedLateHours(s.stayTimes.checkOut, hotelWallClock().time) || as.hours || 1)
+                            : Math.max(1, as.hours || 1);
+                      const amount =
+                        r === "other" ? as.amount : String(defaultSurchargeAmount(s.extraHourFee, hours));
+                      setAs({ ...as, reason: r, hours, amount });
+                    }}
+                  >
+                    {SURCHARGE_REASON_LABEL[r]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {as.reason !== "other" ? (
+              <div className="eoc-d">
+                <label>시간</label>
+                <div className="chips" style={{ alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="chip"
+                    aria-label="1시간 줄이기"
+                    disabled={as.hours <= (as.reason === "late_out" ? 1 : 0)}
+                    onClick={() => {
+                      const hours = Math.max(as.reason === "late_out" ? 1 : 0, as.hours - 1);
+                      setAs({ ...as, hours, amount: String(defaultSurchargeAmount(s.extraHourFee, hours)) });
+                    }}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <b>{as.hours ? `${as.hours}시간` : "없음"}</b>
+                  <button
+                    type="button"
+                    className="chip"
+                    aria-label="1시간 늘리기"
+                    disabled={as.hours >= EXTRA_HOURS_MAX}
+                    onClick={() => {
+                      const hours = Math.min(EXTRA_HOURS_MAX, as.hours + 1);
+                      setAs({ ...as, hours, amount: String(defaultSurchargeAmount(s.extraHourFee, hours)) });
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <span className="muted sm">퇴실 {outTimeOf(s, { lateOut: as.hours })} · 1시간 {won(s.extraHourFee)}원</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="eoc-r">
+              <label htmlFor="as-amount">금액</label>
+              <label className="inp price">
+                <input
+                  id="as-amount"
+                  className="num"
+                  inputMode="numeric"
+                  value={as.amount ? Number(as.amount).toLocaleString("ko-KR") : ""}
+                  onChange={(e) => setAs({ ...as, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmAs();
+                    }
+                  }}
+                />
+                원
+              </label>
+              <small>
+                저장 후 판매 {won(live.price + Number(as.amount || 0))}원
+                {Number(as.amount || 0) === 0 ? " · 0원이면 기록만 (받기 없음)" : ""}
+              </small>
+            </div>
+            <div className="eoc-r">
+              <label htmlFor="as-memo">메모{as.reason === "other" ? " *" : ""}</label>
+              <input
+                id="as-memo"
+                className="inp"
+                maxLength={80}
+                placeholder={as.reason === "other" ? "미니바 · 파손 등 (필수)" : "합의 15시까지 · 14시 무단 (선택)"}
+                value={as.memo}
+                onChange={(e) => setAs({ ...as, memo: e.target.value })}
+              />
+            </div>
+            {Number(as.amount || 0) > 0 ? (
+              <>
+                <div className="eoc-d">
+                  <label>수납</label>
+                  <div className="chips">
+                    <button type="button" className={`chip ${as.collect ? "on" : ""}`} onClick={() => setAs({ ...as, collect: true })}>
+                      지금 받기
+                    </button>
+                    <button type="button" className={`chip ${!as.collect ? "on" : ""}`} onClick={() => setAs({ ...as, collect: false })}>
+                      잔금으로 남김
+                    </button>
+                  </div>
+                </div>
+                {as.collect ? (
+                  <div className="eoc-d">
+                    <label>방법</label>
+                    <div className="chips">
+                      {BOOK_PAY_METHODS.map((m) => (
+                        <button type="button" key={m} className={`chip ${as.method === m ? "on" : ""}`} onClick={() => setAs({ ...as, method: m })}>
+                          {BOOK_PAY_LABEL[m]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="muted sm" style={{ marginTop: -4 }}>
+                    판매가만 올리고 잔금이 생겨요 · 가격만 조용히 올리는 경로는 없어요
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="muted sm">0원 · 사유·늦은 퇴실만 기록해요</div>
+            )}
+            {asErr ? <div className="ferr">{asErr}</div> : null}
+            <div className="eoc-a">
+              <button type="button" className="btn" onClick={() => setAs(null)}>
+                취소
+              </button>
+              <button type="button" className="btn dark" disabled={asBusy} onClick={() => void confirmAs()}>
+                {asBusy ? "저장 중…" : Number(as.amount || 0) > 0 && as.collect ? "지금 받기" : "확정"}
+              </button>
+            </div>
           </div>
         ) : null}
         {ex && live ? (
@@ -1924,18 +2196,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         )}
 
         <div className="fld pay">
-          <label>{long ? "수납" : "결제"}</label>
+          <label className="paylab">
+            <span>{long ? "수납" : "결제"}</span>
+            {canAs && !as ? (
+              <button type="button" className="chip sm" onClick={openAs} title="늦은 퇴실·레이트·기타 할증을 한 번에">
+                {SURCHARGE_COPY}
+              </button>
+            ) : null}
+          </label>
           <div className="payb">
             {!payTracked ? (
               <div className="muted sm payota">플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span></div>
             ) : (
               <>
                 {livePays.map((x) => (
-                  <div className="payrow" key={x.id}>
+                  <div className="payrow" key={x.id} title={x.note?.trim() || undefined}>
                     <b>{payLineMain(x.method, x.amount)}</b>
-                    <span className="muted">
-                      {payKindLabel(x.kind, long)} · {dayLabel(x.bizDate)}
-                    </span>
+                    <span className="muted">{payLineSub(x.kind, x.bizDate, x.note, long)}</span>
                     <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
                       <X size={14} />
                     </button>

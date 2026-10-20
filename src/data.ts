@@ -93,6 +93,7 @@ interface PaymentRow {
   amount: number;
   biz_date: string;
   created_at: string;
+  note?: string | null;
 }
 interface ChargeRow {
   id: string;
@@ -101,7 +102,7 @@ interface ChargeRow {
   amount: number;
   created_at: string;
 }
-const PAY_COLS = "id,booking_id,kind,method,amount,biz_date,created_at";
+const PAY_COLS = "id,booking_id,kind,method,amount,biz_date,created_at,note";
 const CHARGE_COLS = "id,booking_id,night_date,amount,created_at";
 const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
@@ -111,6 +112,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   amount: r.amount,
   bizDate: r.biz_date,
   createdAt: r.created_at,
+  note: r.note?.trim() ? r.note.trim().slice(0, 80) : null,
 });
 const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   id: r.id,
@@ -469,10 +471,11 @@ export function useHotelData(hotelId: string) {
     [hotelId, refresh],
   );
   // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
-  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: BookPayMethod; amount: number; bizDate: string }) => {
+  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: BookPayMethod; amount: number; bizDate: string; note?: string | null }) => {
+    const note = p.note?.trim() ? p.note.trim().slice(0, 80) : null;
     const { data, error } = await supabase
       .from("booking_payments")
-      .insert({ booking_id: bookingId, kind: p.kind, method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate })
+      .insert({ booking_id: bookingId, kind: p.kind, method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate, note })
       .select(PAY_COLS)
       .single();
     if (error) throw error;
