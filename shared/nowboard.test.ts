@@ -1,19 +1,26 @@
-// 현장 현황 보드: 영업일 기준 상태 파생 · 옆 패널 분류 · 퇴실 윈도우 · 밤 구간 날짜
+// 현장 현황 보드: 영업일 기준 상태 파생 · 옆 패널 분류 · 퇴실 윈도우 · 밤 구간 날짜 · 자동 입실
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking } from "./ledger";
 import {
   canCheckOut,
+  checkInTimeReached,
   checkoutMorningVisible,
   departingWindowOpen,
+  effectiveArrived,
+  isDepartingStatus,
+  nowAmountGlance,
   nowBoardVisible,
   nowByRoom,
   nowDateLine,
   nowFlags,
   nowLists,
+  nowMetaLine,
   nowNightRange,
+  nowNightsDays,
   nowStayChips,
   nowStayHint,
+  shouldAutoArrive,
   unassignedTypeCounts,
   type NowClock,
 } from "./nowboard";
@@ -45,34 +52,50 @@ const bk = (p: Partial<Booking>): Booking => ({
 });
 
 const clock = (time: string, wallDate = "2026-10-21"): NowClock => ({ wallDate, time });
-const stay = { checkOut: "12:00" };
+const stay = { checkIn: "16:00", checkOut: "12:00" };
+const onsite = { name: "현장", onsite: true };
 
-test("지금 상태: 입실 예정 · 투숙 · 마지막 밤은 투숙(퇴실 예정 아님)", () => {
+test("지금 상태: 숙박예약 · 숙박 · 마지막 밤은 숙박(퇴실예정 아님)", () => {
   const date = "2026-10-19";
-  assert.equal(nowFlags(bk({ arrived: false, checkIn: date }), date).kind, "arriving");
+  const beforeIn = { stayTimes: stay, clock: clock("15:00", date) };
+  assert.equal(nowFlags(bk({ arrived: false, checkIn: date }), date, beforeIn).kind, "arriving");
+  assert.equal(nowFlags(bk({ arrived: false, checkIn: date }), date, beforeIn).label, "숙박예약");
   assert.equal(nowFlags(bk({ arrived: true, checkIn: date, nights: 3 }), date).kind, "inhouse");
-  // 1박: 입실일 밤은 투숙, 퇴실 아침(다음날)에 퇴실 예정
+  assert.equal(nowFlags(bk({ arrived: true, checkIn: date, nights: 3 }), date).label, "숙박");
+  // 1박: 입실일 밤은 숙박, 퇴실 아침(다음날)에 퇴실예정
   assert.equal(nowFlags(bk({ arrived: true, checkIn: date, nights: 1 }), date).kind, "inhouse");
   assert.equal(
     nowFlags(bk({ arrived: true, checkIn: date, nights: 1 }), "2026-10-20", { stayTimes: stay, clock: clock("06:00", "2026-10-20") }).kind,
     "departing",
   );
   assert.equal(
+    nowFlags(bk({ arrived: true, checkIn: date, nights: 1 }), "2026-10-20", { stayTimes: stay, clock: clock("06:00", "2026-10-20") }).label,
+    "퇴실예정",
+  );
+  assert.equal(
     nowFlags(bk({ arrived: true, checkIn: date, nights: 1, lateOut: 2 }), "2026-10-20", { stayTimes: stay, clock: clock("08:00", "2026-10-20") }).kind,
     "lateOut",
   );
+  assert.equal(
+    nowFlags(bk({ arrived: true, checkIn: date, nights: 1, lateOut: 2 }), "2026-10-20", { stayTimes: stay, clock: clock("08:00", "2026-10-20") }).label,
+    "늦은 퇴실",
+  );
+  assert.equal(isDepartingStatus("lateOut"), true);
+  assert.equal(isDepartingStatus("departing"), true);
+  assert.equal(isDepartingStatus("inhouse"), false);
   assert.equal(nowFlags(bk({ arrived: true, tentative: true, checkIn: date, nights: 3 }), date).tentative, true);
   assert.equal(nowFlags(bk({ arrived: true, noClean: true, checkIn: date, nights: 3 }), date).noClean, true);
   assert.equal(nowFlags(bk({ roomId: null, checkIn: date }), date).kind, "unassigned");
   assert.equal(nowFlags(null, date).kind, "empty");
+  assert.equal(nowFlags(null, date).label, "공실");
   assert.equal(nowFlags(null, date).noClean, false);
 });
 
-test("2박 3일: 마지막 밤은 투숙, 퇴실 아침 06:00부터 퇴실 예정", () => {
+test("2박 3일: 마지막 밤은 숙박, 퇴실 아침 06:00부터 퇴실예정 · 시각 경과 후에도 유지", () => {
   // 입 10/19 · 2박 · 퇴실 아침 10/21 · 보드 밤 19~20
   const b = bk({ arrived: true, checkIn: "2026-10-19", nights: 2 });
   assert.equal(nowFlags(b, "2026-10-19").kind, "inhouse");
-  assert.equal(nowFlags(b, "2026-10-20").kind, "inhouse"); // 마지막 점유 밤 — 퇴실 예정 아님
+  assert.equal(nowFlags(b, "2026-10-20").kind, "inhouse"); // 마지막 점유 밤 — 퇴실예정 아님
   assert.equal(nowBoardVisible(b, "2026-10-21"), true);
   assert.equal(checkoutMorningVisible(b, "2026-10-21"), true);
   assert.equal(
@@ -86,10 +109,11 @@ test("2박 3일: 마지막 밤은 투숙, 퇴실 아침 06:00부터 퇴실 예�
   assert.equal(
     nowFlags(b, "2026-10-21", { stayTimes: stay, clock: clock("15:00", "2026-10-21") }).kind,
     "departing",
-  ); // 미처리면 계속 퇴실 예정
+  ); // 미처리면 계속 퇴실예정 · 자동 공실 금지
+  assert.equal(nowNightsDays(b).label, "2박 3일");
 });
 
-test("늦은 퇴실: lateOut 반영한 윈도우 · 라벨 우선", () => {
+test("늦은 퇴실: lateOut 반영한 윈도우 · 라벨 우선(슬롯 하나)", () => {
   const b = bk({ arrived: true, checkIn: "2026-10-19", nights: 2, lateOut: 2 }); // 실제 퇴실 14:00 → 08:00부터
   assert.equal(departingWindowOpen(b, "2026-10-21", stay, clock("07:59", "2026-10-21")), false);
   assert.equal(departingWindowOpen(b, "2026-10-21", stay, clock("08:00", "2026-10-21")), true);
@@ -99,34 +123,87 @@ test("늦은 퇴실: lateOut 반영한 윈도우 · 라벨 우선", () => {
   );
 });
 
-test("퇴실처리 후 빈 칸 · 되돌리기 전제", () => {
+test("퇴실처리 후 빈 칸 · 되돌리기 전제 · 당일 다음 예약은 숙박예약", () => {
   const b = bk({ arrived: true, checkIn: "2026-10-19", nights: 2, checkedOutAt: "2026-10-21T03:00:00.000Z" });
   assert.equal(nowBoardVisible(b, "2026-10-21"), false);
   assert.equal(nowFlags(b, "2026-10-21", { stayTimes: stay, clock: clock("10:00", "2026-10-21") }).kind, "empty");
   assert.equal(nowByRoom([b], "2026-10-21").has("r301"), false);
   assert.equal(canCheckOut(bk({ arrived: true, checkIn: "2026-10-19", nights: 2 }), "2026-10-21"), true);
   assert.equal(canCheckOut(b, "2026-10-21"), false);
-  // 장기: 입실일부터 퇴실처리 가능 · 재고 창 종료 라벨
+
+  // 퇴실처리된 아침 + 당일 입실 다음 예약 → 칸은 다음 예약(숙박예약)
+  const next = bk({
+    id: "next",
+    roomId: "r301",
+    checkIn: "2026-10-21",
+    nights: 1,
+    arrived: false,
+    guestName: "다음",
+  });
+  const map = nowByRoom(
+    [
+      { ...b, id: "gone", checkedOutAt: "2026-10-21T03:00:00.000Z" },
+      next,
+    ],
+    "2026-10-21",
+  );
+  assert.equal(map.get("r301")?.id, "next");
+  assert.equal(
+    nowFlags(map.get("r301"), "2026-10-21", { stayTimes: stay, clock: clock("10:00", "2026-10-21") }).kind,
+    "arriving",
+  );
+
+  // 장기: 입실일부터 퇴실처리 가능 · 재고 창 끝나도 하단은 숙박(퇴실예정 자동 끔)
   assert.equal(canCheckOut(bk({ stayMode: "long_stay", checkIn: "2026-10-11", nights: 7, arrived: true }), "2026-10-15"), true);
   assert.equal(
     nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-14", nights: 7, arrived: true, roomId: "r301" }), "2026-10-21", {
       stayTimes: stay,
       clock: clock("10:00", "2026-10-21"),
+    }).kind,
+    "inhouse",
+  );
+  assert.equal(
+    nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-14", nights: 7, arrived: true, roomId: "r301" }), "2026-10-21", {
+      stayTimes: stay,
+      clock: clock("10:00", "2026-10-21"),
     }).label,
-    "재고 창 종료",
+    "숙박",
   );
   assert.equal(nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-19", nights: 7, arrived: true, roomId: "r301" }), "2026-10-19").longStay, true);
 });
 
-test("중도 퇴실: stayEnd가 앞당겨진 날 아침에 퇴실 예정", () => {
+test("중도 퇴실: stayEnd가 앞당겨진 날 아침에 퇴실예정", () => {
   const b = bk({ arrived: true, checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20" });
-  // used nights → stayEnd 10/20. 마지막 점유 밤 10/19 = 투숙
+  // used nights → stayEnd 10/20. 마지막 점유 밤 10/19 = 숙박
   assert.equal(nowFlags(b, "2026-10-19").kind, "inhouse");
   assert.equal(nowFlags(b, "2026-10-20", { stayTimes: stay, clock: clock("06:00", "2026-10-20") }).kind, "departing");
   assert.equal(nowFlags(b, "2026-10-21", { stayTimes: stay, clock: clock("10:00", "2026-10-21") }).kind, "empty");
 });
 
-test("옆 패널: 임시·미배정·퇴실·늦은퇴실·입실예정 분류 (퇴실일 기준)", () => {
+test("자동 입실: 체크인 시각 전후 · 입실일 전날 금지 · 빠른 입실", () => {
+  const date = "2026-10-19";
+  const b = bk({ arrived: false, checkIn: date, nights: 2, roomId: "r301" });
+  assert.equal(checkInTimeReached(date, stay, clock("15:59", date)), false);
+  assert.equal(checkInTimeReached(date, stay, clock("16:00", date)), true);
+  assert.equal(shouldAutoArrive(b, date, { stayTimes: stay, clock: clock("15:59", date) }), false);
+  assert.equal(shouldAutoArrive(b, date, { stayTimes: stay, clock: clock("16:00", date) }), true);
+  assert.equal(nowFlags(b, date, { stayTimes: stay, clock: clock("15:59", date) }).kind, "arriving");
+  assert.equal(nowFlags(b, date, { stayTimes: stay, clock: clock("16:00", date) }).kind, "inhouse");
+  assert.equal(nowFlags(b, date, { stayTimes: stay, clock: clock("16:00", date) }).arrived, true);
+  // 입실일 전날: 시각만으로 숙박 전환 금지
+  assert.equal(shouldAutoArrive(b, "2026-10-18", { stayTimes: stay, clock: clock("16:00", "2026-10-18") }), false);
+  // 이미 점유 밤인데 미입실 → 체크인 시각 지난 뒤 자동
+  const mid = bk({ arrived: false, checkIn: "2026-10-18", nights: 3, roomId: "r301" });
+  assert.equal(shouldAutoArrive(mid, "2026-10-19", { stayTimes: stay, clock: clock("10:00", "2026-10-19") }), true);
+  assert.equal(nowFlags(mid, "2026-10-19", { stayTimes: stay, clock: clock("10:00", "2026-10-19") }).kind, "inhouse");
+  // 빠른 입실 = arrived true → 즉시 숙박
+  assert.equal(effectiveArrived(bk({ arrived: true, checkIn: date }), date, { stayTimes: stay, clock: clock("10:00", date) }), true);
+  assert.equal(nowFlags(bk({ arrived: true, checkIn: date }), date, { stayTimes: stay, clock: clock("10:00", date) }).kind, "inhouse");
+  // 이미 arrived면 자동 대상 아님
+  assert.equal(shouldAutoArrive(bk({ arrived: true, checkIn: date }), date, { stayTimes: stay, clock: clock("16:00", date) }), false);
+});
+
+test("옆 패널: 임시·미배정·퇴실·늦은퇴실·숙박예약 분류 (퇴실일 기준)", () => {
   const date = "2026-10-20";
   const opts = { stayTimes: stay, clock: clock("10:00", date) };
   const list = [
@@ -187,4 +264,28 @@ test("점유 밤 구간: 2박 입19·퇴21 → 보드 19~20 (퇴실 아침 제�
   assert.equal(nowNightRange(one).label, "10/19");
   const eo = bk({ checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20", arrived: true });
   assert.equal(nowNightRange(eo).label, "10/18~19"); // stayEnd=20 → 마지막 밤 19
+});
+
+test("금액 글랜스 · 메타 줄", () => {
+  assert.equal(nowAmountGlance(bk({ price: 180000 }), null), "₩180,000");
+  assert.equal(
+    nowAmountGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
+    "잔금 ₩130,000",
+  );
+  assert.equal(
+    nowAmountGlance(
+      bk({
+        stayMode: "long_stay",
+        price: 0,
+        charges: [{ id: "c1", bookingId: "b", nightDate: "2026-10-19", amount: 80000, createdAt: "" }],
+        payments: [],
+      }),
+      onsite,
+    ),
+    "미수 ₩80,000",
+  );
+  assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
+  assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연 · 2명");
+  assert.equal(nowMetaLine({ memo: null, guests: 3 }), "3명");
+  assert.equal(nowMetaLine({ memo: null, guests: null }), null);
 });
