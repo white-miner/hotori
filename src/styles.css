@@ -1644,11 +1644,13 @@ button.nowstatus { cursor: pointer; }
   .now-ua { margin: 0 0 10px; padding: 10px 12px 12px; }
   .now-ua-new { margin-left: 0; width: 100%; }
 }
-/* 간단 예약 축약 폼 — Entry와 같은 .inp / .chip / .step / .price-row 재사용 */
+/* 예약 셸 — 간단·상세 공통 (Phase 2) · Entry chip/pill DNA */
+.modal.book-shell .mh { flex-wrap: wrap; gap: var(--space-3); }
+.modal.book-shell .book-mode { flex-shrink: 0; }
 .modal.simple-book { max-width: 560px; }
 .modal.simple-book .fld.simple-nights { align-items: start; }
-.modal.simple-book .fld.simple-nights > label { padding-top: 8px; }
-.simple-price { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.modal.simple-book .fld.simple-nights > label { padding-top: var(--space-3); }
+.simple-price { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }

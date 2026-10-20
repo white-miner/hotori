@@ -21,7 +21,7 @@ import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { lookups } from "./ui";
-import { Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
+import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import NightPickCalendar from "./NightPickCalendar";
 
 type PayMode = "prepaid" | "postpaid" | "deposit";
@@ -166,7 +166,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
-        className="modal simple-book"
+        className="modal book-shell simple-book"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -175,7 +175,27 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         <div className="grab" />
         <div className="mh">
           <h2>간단 예약</h2>
-          <span className="muted sm">전화·현장·OTA를 빠르게 · 호실은 지금 또는 나중에</span>
+          <BookingModeSeg
+            mode="simple"
+            onDetail={
+              onOpenFull
+                ? () =>
+                    onOpenFull({
+                      kind: "stay",
+                      checkIn,
+                      nights,
+                      platformId,
+                      typeId,
+                      roomId: assignNow ? roomId : null,
+                      guestName: guestName || undefined,
+                      guestPhone: guestPhone || undefined,
+                      guests,
+                      price: priceUnset ? undefined : price || undefined,
+                    })
+                : undefined
+            }
+          />
+          <span className="muted sm">전화·현장·OTA · 호실은 지금 또는 나중에</span>
           <button type="button" className="x" onClick={onClose} aria-label="닫기">
             ×
           </button>
@@ -197,7 +217,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               }}
               onBlocked={() => notify("그 밤은 이미 다른 예약이 있어요")}
             />
-            <div className="muted sm" style={{ marginTop: 6 }}>
+            <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
               {md(checkIn)} 입실 · {nights}박 · {md(addDays(checkIn, nights))} 퇴실
             </div>
           </div>
@@ -374,7 +394,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               지금 방 배정
             </label>
             {assignNow ? (
-              <div className="chips" style={{ marginTop: 8 }}>
+              <ChipGroup style={{ marginTop: "var(--space-3)" }}>
                 {sameType.map((r) => (
                   <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""}`} onClick={() => setRoomId(r.id)}>
                     {bpre(r.buildingId)}
@@ -395,7 +415,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       </button>
                     ) : null}
                 {!sameType.length && !otherRooms ? <span className="muted sm">이 타입은 그 기간에 빈 방이 없어요</span> : null}
-              </div>
+              </ChipGroup>
             ) : null}
           </div>
         </div>
@@ -403,28 +423,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         {err ? <div className="err">{err}</div> : null}
 
         <div className="mf">
-          {onOpenFull ? (
-            <button
-              type="button"
-              className="btn line"
-              onClick={() =>
-                onOpenFull({
-                  kind: "stay",
-                  checkIn,
-                  nights,
-                  platformId,
-                  typeId,
-                  roomId: assignNow ? roomId : null,
-                  guestName: guestName || undefined,
-                  guestPhone: guestPhone || undefined,
-                  guests,
-                  price: priceUnset ? undefined : price || undefined,
-                })
-              }
-            >
-              풀 Entry로
-            </button>
-          ) : null}
           <span className="grow" />
           <button type="button" className="btn line" onClick={onClose}>
             취소

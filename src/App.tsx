@@ -314,6 +314,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           onClose={() => setEntry(null)}
           notify={notify}
           undoEarlyOut={undoEarlyOut}
+          onOpenSimple={(preset) => setEntry({ preset, simple: true, n: Date.now() })}
           onBoardMove={
             entry.night && entry.booking && view === "board"
               ? () => {
