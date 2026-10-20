@@ -22,7 +22,7 @@ interface Props {
   today: string;
   query: string;
   setQuery: (q: string) => void;
-  onOpen: (b: Booking, opts?: { openExtend?: boolean }) => void;
+  onOpen: (b: Booking, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   notify: (m: string) => void;
 }
 type LTab = "bookings" | "expenses";

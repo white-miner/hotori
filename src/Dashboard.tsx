@@ -17,6 +17,7 @@ import {
   unassignedTypeCounts,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
+import { SURCHARGE_COPY, canAddSurcharge } from "../shared/addSurcharge";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -70,7 +71,7 @@ interface Props {
   today: string;
   selDate: string;
   setSelDate: (d: string) => void;
-  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean }) => void;
+  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
   notify: (m: string, opt?: ToastOpt) => void;
   /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
@@ -898,6 +899,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {departing && !readOnly && canCheckOut(b, today) ? (
           <button type="button" className="nowext side nowco" disabled={coBusy === b.id} onClick={() => void doCheckOut(b, true)}>
             {coBusy === b.id ? "처리 중…" : "퇴실처리"}
+          </button>
+        ) : null}
+        {departing && !readOnly && canAddSurcharge(b) ? (
+          <button type="button" className="nowext side" onClick={() => onOpen(b, today, { openSurcharge: true })}>
+            {SURCHARGE_COPY}
           </button>
         ) : null}
         {departing && !readOnly && canExtend(b) ? (
