@@ -727,7 +727,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!base || tentBusy) return;
     // 임시 배치 = 방 점유 후 신호. 미배정(타입 홀드)에서는 켤 수 없어요
     if (!roomId) {
-      setInErr("임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「예약만」이에요.");
+      setInErr("임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「간단 예약」이에요.");
       return;
     }
     const next = !tentative;
@@ -743,7 +743,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setTentBusy(false);
     }
   };
-  /** 방 고르기 · 예약만(미배정). 방 지우면 임시도 끔 */
+  /** 방 고르기 · 간단 예약(미배정). 방 지우면 임시도 끔 */
   const pickRoom = (id: string | null) => {
     setRoomId(id);
     if (!id) {
@@ -828,6 +828,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     status,
     platformId,
     price: draftPrice,
+    // Entry에서 판매가를 적으면 금액미정 해제
+    priceUnset: !!(base?.priceUnset && !(Number(draftPrice) > 0)),
     guestName,
     guestPhone: guestPhone || null,
     typeId,
@@ -2643,16 +2645,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         <div className="fld">
           <label>
             {moved ? "첫 방" : "호실"}
-            {kind === "stay" ? <span className="muted sm"> · 기본은 「예약만」(타입 재고만)</span> : null}
+            {kind === "stay" ? <span className="muted sm"> · 기본은 「간단 예약」(타입 재고만)</span> : null}
           </label>
           <div className="chips">
             <button
               type="button"
               className={`rchip lt ${roomId === null ? "on" : ""}`}
               onClick={() => pickRoom(null)}
-              title="호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
+              title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
             >
-              예약만
+              간단 예약
             </button>
             {sameType.map((r) => (
               <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => pickRoom(r.id)}>
@@ -2683,7 +2685,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
           {kind === "stay" && roomId === null ? (
             <div className="muted sm" style={{ marginTop: 6 }}>
-              타입 재고만 막아요 · 호실은 「지금」 미배정의 「호실 정하기」 · 「임시 배치」는 방을 고른 뒤
+              간단 예약(타입 홀드) · 호실은 「지금」 미배정의 「호실 정하기」 · 「임시 배치」는 방을 고른 뒤
             </div>
           ) : null}
         </div>

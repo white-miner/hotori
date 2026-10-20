@@ -233,7 +233,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       });
       // info 없이 → booking_groups는 그대로, 멤버 줄만 추가
       await data.saveGroup(list);
-      const how = assignMode === "typeOnly" ? `${n}실(예약만·호실 미정)` : `${n}실`;
+      const how = assignMode === "typeOnly" ? `${n}실(간단 예약·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(`단체 ${groupName}에 ${how} 추가했어요 · 합계 ${won(sum)}원${tentTag}${noClean ? " · 청소X" : ""}`);
     } catch (e) {
@@ -377,7 +377,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
             <div className="gtop">
               <div className="seg sm">
                 <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")} title="호실 미정 · 타입 재고만">
-                  예약만
+                  간단 예약
                 </button>
                 <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
                   호실까지
@@ -630,12 +630,12 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                 className={`chip ${tentative ? "on" : ""}`}
                 aria-pressed={tentative}
                 onClick={() => setTentative((t) => !t)}
-                title="방 점유 · 확정 전 (예약만과 다름)"
+                title="방 점유 · 확정 전 (간단 예약과 다름)"
               >
                 {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
               </button>
             ) : (
-              <span className="muted sm">예약만 · 임시 배치 아님</span>
+              <span className="muted sm">간단 예약 · 임시 배치 아님</span>
             )}
             <button type="button" className={`chip ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} onClick={() => setNoClean((t) => !t)} title="청소하지 않음">
               {noClean ? <Check size={14} strokeWidth={2.6} /> : null}청소X

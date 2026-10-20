@@ -133,7 +133,9 @@ export interface Booking {
   kind: Kind;
   status: Status;
   platformId: string;
-  price: number; // 총액
+  price: number; // 총액 (금액미정이면 0 + priceUnset)
+  /** 판매가 미확정(금액미정). true면 price는 0 · 잔금/완납은 확정 전까지 보류 */
+  priceUnset?: boolean;
   guestName: string;
   /** 손님 연락처 (없으면 null) */
   guestPhone?: string | null;
@@ -1074,12 +1076,16 @@ export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.platforms.some((p) => p.id === b.platformId)) return "플랫폼을 골라 주세요.";
   if (!s.types.some((t) => t.id === b.typeId && typeLabel(t))) return "객실 타입을 골라 주세요.";
   if (!b.guestName.trim()) return "손님 이름을 적어 주세요.";
-  if (!Number.isFinite(b.price) || b.price < 0) return "판매 가격을 적어 주세요.";
+  if (b.priceUnset) {
+    if (b.price !== 0) return "금액미정이면 판매 가격은 비워 두세요.";
+  } else if (!Number.isFinite(b.price) || b.price < 0) {
+    return "판매 가격을 적어 주세요.";
+  }
   if ((b.coupons ?? []).reduce((n, c) => n + (c.amount > 0 ? c.amount : 0), 0) > b.price) return "쿠폰 합계가 판매 가격보다 커요. 판매 가격은 쿠폰 빼기 전 금액이에요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
     if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";
-    if (b.tentative && !b.roomId) return "임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「예약만」(타입 홀드)예요.";
+    if (b.tentative && !b.roomId) return "임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「간단 예약」(타입 홀드)예요.";
   } else {
     if (!b.startTime || !b.endTime || !TIME_RE.test(b.startTime) || !TIME_RE.test(b.endTime))
       return "대실은 이용 시간을 꼭 적어 주세요. 예: 12:00~14:00";

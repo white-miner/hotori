@@ -257,7 +257,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         rates: typeRatesPersist && Object.keys(typeRatesPersist).length ? typeRatesPersist : null,
         extras: [],
       });
-      const how = assignMode === "typeOnly" ? `${n}실(예약만·호실 미정)` : `${n}실`;
+      const how = assignMode === "typeOnly" ? `${n}실(간단 예약·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(
         `단체 ${name.trim()} ${how} · ${nights}박 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
@@ -401,7 +401,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
             <div className="gtop">
               <div className="seg sm">
                 <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")} title="호실 미정 · 타입 재고만">
-                  예약만
+                  간단 예약
                 </button>
                 <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
                   호실까지
@@ -698,7 +698,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 className={`chip ${tentative ? "on" : ""}`}
                 aria-pressed={tentative}
                 onClick={() => setTentative((t) => !t)}
-                title="방 점유 · 확정 전 (예약만/미배정과 다름)"
+                title="방 점유 · 확정 전 (간단 예약/미배정과 다름)"
               >
                 {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
               </button>
@@ -711,7 +711,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           <div className="fld">
             <label>배치</label>
             <div className="payb">
-              <span className="muted sm">예약만(타입 홀드) · 호실 미정 · 타입 재고만 차감 · 임시 배치 아님</span>
+              <span className="muted sm">간단 예약(타입 홀드) · 호실 미정 · 타입 재고만 차감 · 임시 배치 아님</span>
             </div>
           </div>
         )}

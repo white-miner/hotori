@@ -387,6 +387,7 @@ export function nowAmountGlance(
   b: Booking,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
 ): string | null {
+  if (b.priceUnset) return "금액미정";
   if (b.stayMode === "long_stay") {
     const left = payState(b, plat).left;
     return left > 0 ? `미수 ₩${won(left)}` : null;
@@ -394,6 +395,16 @@ export function nowAmountGlance(
   const ps = payState(b, plat);
   if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
   if (b.price > 0) return `₩${won(b.price)}`;
+  return null;
+}
+
+/** 미배정/간단 예약 목록용 결제 모드 글랜스 (현장·전화) */
+export function simplePayGlance(b: Booking, onsite: boolean): string | null {
+  if (!onsite || b.priceUnset) return null;
+  const paid = (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
+  if (paid <= 0) return "후불";
+  if (b.price > 0 && paid >= b.price) return "선불";
+  if ((b.payments ?? []).some((p) => p.kind === "deposit")) return "선금";
   return null;
 }
 
