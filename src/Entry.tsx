@@ -2683,7 +2683,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
           {kind === "stay" && roomId === null ? (
             <div className="muted sm" style={{ marginTop: 6 }}>
-              타입 재고만 막아요 · 호실은 나중에 「지금」에서 배치(Next) · 「임시 배치」는 방을 고른 뒤
+              타입 재고만 막아요 · 호실은 「지금」 미배정의 「호실 정하기」 · 「임시 배치」는 방을 고른 뒤
             </div>
           ) : null}
         </div>

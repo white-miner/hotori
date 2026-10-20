@@ -1580,6 +1580,50 @@ button.nowstatus { cursor: pointer; }
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
+/* 타입 홀드 입구·출구: 「지금」 미배정 패널 (한눈에보다 먼저·크게) */
+.now-ua {
+  margin: 0 0 14px;
+  padding: 12px 14px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.now-ua-h {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.now-ua-h h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.now-ua-h h2 small {
+  font-size: 13px;
+  font-weight: 750;
+  color: var(--ink3);
+  margin-left: 4px;
+}
+.now-ua-new { margin-left: auto; }
+.now-ua-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.now-ua-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+.now-ua-row.open { background: #f7f8fa; border: 1px solid var(--line); }
+.now-ua-item { background: transparent; margin: 0; }
+.now-ua-pick { margin-top: 2px; padding: 4px 2px 2px; }
+.now-ua-empty { margin-top: 8px; padding: 4px 2px; }
+@media (max-width: 760px) {
+  .now-ua { margin: 0 0 10px; padding: 10px 12px 12px; }
+  .now-ua-new { margin-left: 0; width: 100%; }
+}
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }

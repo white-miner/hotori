@@ -960,6 +960,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="dnav nowfilters">
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="btn sm dark"
+                  title="호실 없이 타입·손님만 먼저 받아요 (타입 홀드)"
+                  onClick={() => onNew({ kind: "stay", checkIn: today, roomId: null })}
+                >
+                  예약만 · 호실 미정
+                </button>
+              ) : null}
               <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} onClick={() => setNowFilter("all")}>
                 전체
               </button>
@@ -977,6 +987,85 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {buildingTabs}
+          <section className="now-ua" aria-label="미배정 예약">
+            <div className="now-ua-h">
+              <h2 title="타입 재고만 · 임시 배치 아님">
+                미배정 <small>{nowSide.unassigned.length}</small>
+              </h2>
+              <span className="muted sm">호실 미정 · 타입 재고만 막혀 있어요</span>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="btn sm line now-ua-new"
+                  title="호실 없이 타입·손님만 먼저 받아요"
+                  onClick={() => onNew({ kind: "stay", checkIn: today, roomId: null })}
+                >
+                  + 예약만 · 호실 미정
+                </button>
+              ) : null}
+            </div>
+            {nowSide.unassigned.length ? (
+              <div className="now-ua-list">
+                {nowSide.unassigned.map((b) => {
+                  const open = assigning === b.id;
+                  const free = open ? freeRooms(s, bookings, b) : null;
+                  const options = free
+                    ? allRooms(s)
+                        .filter((r) => free.has(r.id))
+                        .sort((a, c) => Number(a.typeId !== b.typeId) - Number(c.typeId !== b.typeId))
+                    : [];
+                  return (
+                    <div key={b.id} className={`now-ua-row ${open ? "open" : ""}`}>
+                      <button type="button" className="nowli now-ua-item" onClick={() => onOpen(b, today)} disabled={readOnly}>
+                        <span className="nowli-t">미배정</span>
+                        <b>{b.guestName}</b>
+                        <span className="muted sm">
+                          {typeLabel(L.types.get(b.typeId))}
+                          {b.nights ? ` · ${b.nights}박` : ""}
+                          {b.groupName ? ` · ${b.groupName}` : ""}
+                          {b.checkIn !== today ? ` · ${md(b.checkIn)} 입실` : ""}
+                        </span>
+                      </button>
+                      {isActive(b) && !readOnly ? (
+                        <button
+                          type="button"
+                          className="nowext side"
+                          onClick={() => setAssigning(open ? null : b.id)}
+                        >
+                          {open ? "닫기" : "호실 정하기"}
+                        </button>
+                      ) : null}
+                      {open ? (
+                        <div className="rpick now-ua-pick">
+                          {options.length ? (
+                            options.slice(0, 24).map((r) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`}
+                                title={L.roomLabel(r.id) ?? r.no}
+                                onClick={() => void assign(b, r.id)}
+                              >
+                                {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
+                                {r.no}
+                                {r.typeId !== b.typeId ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
+                              </button>
+                            ))
+                          ) : (
+                            <span className="muted">그 기간에 빈 방이 없어요</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="muted sm now-ua-empty">
+                미배정 예약이 없어요 · 「예약만 · 호실 미정」으로 타입만 먼저 받을 수 있어요
+              </div>
+            )}
+          </section>
           <div className="nowlayout">
             <div className="nowgrid">
               {multi && bScope === "all" ? null : null}
@@ -998,10 +1087,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
             <aside className="nowside" aria-label="현장 목록">
               <div className="nowside-h">한눈에</div>
-              {uaCounts.length ? (
-                <div className="nowsec">
-                  <h3 title="타입 재고만 · 임시 배치 아님">미배정 {nowSide.unassigned.length}</h3>
-                  {uaCounts.map((g) => (
+              <div className="nowsec">
+                <h3 title="타입 재고만 · 임시 배치 아님">미배정 {nowSide.unassigned.length}</h3>
+                {uaCounts.length ? (
+                  uaCounts.map((g) => (
                     <button
                       type="button"
                       key={g.key}
@@ -1015,9 +1104,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                         {typeLabel(L.types.get(g.typeId))} {g.n}
                       </b>
                     </button>
-                  ))}
-                </div>
-              ) : null}
+                  ))
+                ) : (
+                  <div className="muted sm nowempty-side">없음 · 위 「미배정」에서 받아요</div>
+                )}
+              </div>
               {nowSide.tentative.length ? (
                 <div className="nowsec">
                   <h3 title="방 점유 · 확정 전 (미배정과 다름)">임시 {nowSide.tentative.length}</h3>
@@ -1042,8 +1133,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   {nowSide.arriving.map((b) => sideRow(b, "숙박예약"))}
                 </div>
               ) : null}
-              {!uaCounts.length && !nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
-                <div className="muted sm nowempty-side">오늘 눈에 띄는 미배정·임시·퇴실 일정이 없어요</div>
+              {!nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
+                <div className="muted sm nowempty-side">임시·퇴실·숙박예약 일정은 없어요</div>
               ) : null}
             </aside>
           </div>
