@@ -12,6 +12,10 @@ import {
   nightsChangedWithoutPrice,
   planExtend,
   planGroupExtend,
+  repriceForNights,
+  roomNightRate,
+  stayAddons,
+  unusedNightRefund,
 } from "./extend";
 
 let n = 0;
@@ -108,12 +112,39 @@ test("수납 제안: collect면 단가만큼, 아니면 0 (잔금)", () => {
   assert.equal(planExtend(b, 100000, true).draft.price, 200000);
 });
 
-test("박수 변경·가격 미변경 경고 조건", () => {
+test("박수↑·가격 미변경만 경고 (박수↓는 자동 재계산)", () => {
   const a = bk({ nights: 1, price: 100000 });
-  const b = { ...a, nights: 2, price: 100000 };
-  const c = { ...a, nights: 2, price: 200000 };
-  assert.equal(nightsChangedWithoutPrice(a, b), true);
-  assert.equal(nightsChangedWithoutPrice(a, c), false);
+  const up = { ...a, nights: 2, price: 100000 };
+  const upOk = { ...a, nights: 2, price: 200000 };
+  const down = { ...a, nights: 20, price: 1400000 };
+  const shrunk = { ...down, nights: 12, price: 1400000 };
+  assert.equal(nightsChangedWithoutPrice(a, up), true);
+  assert.equal(nightsChangedWithoutPrice(a, upOk), false);
+  assert.equal(nightsChangedWithoutPrice(down, shrunk), false);
+});
+
+test("repriceForNights: 70,000×20 → 12박이면 840,000 · 가산분 유지", () => {
+  const b = bk({ nights: 20, price: 1_400_000, typeId: "s" });
+  const r = repriceForNights(b, 12, 70_000);
+  assert.equal(r.rate, 70_000);
+  assert.equal(r.price, 840_000);
+  assert.equal(r.addons, 0);
+  const withAdd = bk({
+    nights: 20,
+    price: 1_410_000,
+    extraFee: 10_000,
+    kind: "stay",
+  });
+  const r2 = repriceForNights(withAdd, 12);
+  assert.equal(stayAddons(withAdd), 10_000);
+  assert.equal(roomNightRate(withAdd), 70_000);
+  assert.equal(r2.price, 840_000 + 10_000);
+});
+
+test("unusedNightRefund: 20박 중 12박 이용 → 미사용 8박 × 단가", () => {
+  const b = bk({ checkIn: "2026-10-01", nights: 20, price: 1_400_000 });
+  assert.equal(unusedNightRefund(b, "2026-10-13", 70_000), 560_000);
+  assert.equal(1_400_000 - 560_000, 840_000);
 });
 
 test("단체 연장: 타입 요금으로 방마다 가산, 겹치면 막음", () => {

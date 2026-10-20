@@ -7,7 +7,7 @@ import GroupAdd from "./GroupAdd";
 import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
-import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend } from "../shared/extend";
+import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
@@ -268,15 +268,30 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     const nm = gEdit.name.trim();
     if (!nm) return notify("단체명을 적어 주세요");
     const dateChanged = gEdit.checkIn !== g.checkIn || gEdit.nights !== g.nights;
+    const nightsUp = gEdit.nights > g.nights;
+    const nightsDown = gEdit.nights < g.nights;
     if (dateChanged) {
       const block = groupDateBlock(data.hotel!.settings, data.bookings, g.members, gEdit.checkIn, gEdit.nights);
       if (block) return notify(block);
-      if (gEdit.nights !== g.nights && !window.confirm(NIGHTS_PRICE_WARN)) return;
+      // 박수↑만 경고(연장 유도). 박수↓는 단가×박수로 자동 맞춤.
+      if (nightsUp && !window.confirm(NIGHTS_PRICE_WARN)) return;
     }
     setGBusy(true);
     try {
       await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name, ...(dateChanged ? { checkIn: gEdit.checkIn, nights: gEdit.nights } : {}) });
-      notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}`);
+      let repriceNote = "";
+      if (nightsDown) {
+        const rates = data.groups.get(g.groupId)?.rates ?? null;
+        let sum = 0;
+        for (const m of g.members.filter((x) => isActive(x))) {
+          const next = repriceForNights(m, gEdit.nights, rates?.[m.typeId]);
+          sum += next.price;
+          const cur = data.bookings.find((x) => x.id === m.id) ?? m;
+          await data.saveBooking({ ...cur, checkIn: gEdit.checkIn, nights: gEdit.nights, price: next.price }, false);
+        }
+        repriceNote = ` · 판매가 맞춤 합 ${won(sum)}원`;
+      }
+      notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}${repriceNote}`);
       setGEdit(null);
     } catch (e) {
       notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
