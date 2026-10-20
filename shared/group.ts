@@ -121,6 +121,7 @@ export function groupDrafts(p: {
     return { ...b, nightRates: syncStayNightRates(b.checkIn, b.nights, { flat }) };
   };
   if (p.typeIds?.length) {
+    // 타입만(미배정)은 임시 배치가 아님 — roomId 있을 때만 tentative
     return p.typeIds.map((typeId, i) =>
       withRates(
         {
@@ -138,7 +139,7 @@ export function groupDrafts(p: {
           startTime: null,
           endTime: null,
           arrived: false,
-          tentative: tent,
+          tentative: false,
           noClean: ncx,
           earlyOut: null,
           checkedOutAt: null,

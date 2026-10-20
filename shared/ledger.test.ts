@@ -339,6 +339,12 @@ test("객실 타입은 이름 하나(최대 12글자) — 옛 약자 데이터�
   assert.equal(validateBooking(bk({ typeId: "new" }), s2), "객실 타입을 골라 주세요.");
 });
 
+test("임시 배치는 방 있을 때만 · 미배정+tentative는 거절", () => {
+  assert.equal(validateBooking(bk({ roomId: "r201", tentative: true }), S), null);
+  assert.match(validateBooking(bk({ roomId: null, tentative: true }), S) ?? "", /임시 배치/);
+  assert.equal(validateBooking(bk({ roomId: null, tentative: false }), S), null);
+});
+
 test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1", () => {
   const two = normalizeSettings({
     ...M,

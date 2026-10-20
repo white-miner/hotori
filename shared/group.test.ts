@@ -89,7 +89,8 @@ test("단체 타입만: 호실 없이 타입×수 · 재고 차감 · 방별 금
   assert.match(validateGroup({ name: "한빛", platformId: "p", nights: 2, roomIds: [], prices: [1], free, typeOnly: [{ typeId: "s", count: 1 }] })!, /두 실/);
   const list = groupDrafts({ groupId: "g1", groupName: "한빛", platformId: "p", checkIn: "2026-10-19", nights: 2, typeIds, prices, s: S, tentative: true });
   assert.equal(list.length, 3);
-  assert.ok(list.every((b) => b.roomId === null && b.tentative));
+  // 타입만(미배정)은 tentative 요청이 와도 false — 임시는 방 있을 때만
+  assert.ok(list.every((b) => b.roomId === null && !b.tentative));
   assert.deepEqual(list.map((b) => [b.typeId, b.price]), [["s", 110000], ["s", 120000], ["t", 200000]]);
   const imp = groupStockImpactByTypes(S, [], "2026-10-19", 2, { s: 2, t: 1 });
   assert.deepEqual(imp.find((x) => x.typeId === "s"), { typeId: "s", n: 2, before: 8, after: 6 });

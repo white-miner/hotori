@@ -61,7 +61,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
-  const [assignMode, setAssignMode] = useState<AssignMode>("rooms");
+  const [assignMode, setAssignMode] = useState<AssignMode>("typeOnly");
   const [mode, setMode] = useState<PriceMode>(info?.rates && Object.keys(info.rates).length ? "rate" : "line");
   const [rates, setRates] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(info?.rates ?? {}).map(([k, v]) => [k, String(v)])),
@@ -180,6 +180,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
     setTypeCounts({});
     setNote(null);
     setView(m === "rooms" ? "board" : "count");
+    if (m === "typeOnly") setTentative(false);
   };
 
   const save = async () => {
@@ -192,7 +193,13 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       typeOnly: assignMode === "typeOnly" ? typeOnlySlots : undefined,
     });
     if (v) return setErr(v);
-    if (over.length) return setErr(`${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 남은 객실이 모자라요. ${assignMode === "typeOnly" ? "실 수를" : "방을"} 다시 골라 주세요.`);
+    if (
+      over.length &&
+      !window.confirm(
+        `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
+      )
+    )
+      return;
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
     if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
@@ -221,13 +228,14 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
         memberRates: memberFlats.some((x) => x > 0) ? memberFlats : undefined,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
-        tentative,
+        tentative: assignMode === "rooms" && tentative,
         noClean,
       });
       // info 없이 → booking_groups는 그대로, 멤버 줄만 추가
       await data.saveGroup(list);
-      const how = assignMode === "typeOnly" ? `${n}실(타입만)` : `${n}실`;
-      onSaved(`단체 ${groupName}에 ${how} 추가했어요 · 합계 ${won(sum)}원${tentative ? " · 임시" : ""}${noClean ? " · 청소X" : ""}`);
+      const how = assignMode === "typeOnly" ? `${n}실(예약만·호실 미정)` : `${n}실`;
+      const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
+      onSaved(`단체 ${groupName}에 ${how} 추가했어요 · 합계 ${won(sum)}원${tentTag}${noClean ? " · 청소X" : ""}`);
     } catch (e) {
       setErr(e instanceof Error ? `추가하지 못했어요: ${e.message}` : "추가하지 못했어요. 다시 시도해 주세요");
     } finally {
@@ -368,11 +376,11 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
           <div className="payb">
             <div className="gtop">
               <div className="seg sm">
-                <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
-                  호실 고르기
+                <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")} title="호실 미정 · 타입 재고만">
+                  예약만
                 </button>
-                <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")}>
-                  타입만
+                <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
+                  호실까지
                 </button>
               </div>
               <span className="gsum">
@@ -616,9 +624,19 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
         <div className="fld">
           <label>표시</label>
           <div className="payb" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-            <button type="button" className={`chip ${tentative ? "on" : ""}`} aria-pressed={tentative} onClick={() => setTentative((t) => !t)}>
-              {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
-            </button>
+            {assignMode === "rooms" ? (
+              <button
+                type="button"
+                className={`chip ${tentative ? "on" : ""}`}
+                aria-pressed={tentative}
+                onClick={() => setTentative((t) => !t)}
+                title="방 점유 · 확정 전 (예약만과 다름)"
+              >
+                {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
+              </button>
+            ) : (
+              <span className="muted sm">예약만 · 임시 배치 아님</span>
+            )}
             <button type="button" className={`chip ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} onClick={() => setNoClean((t) => !t)} title="청소하지 않음">
               {noClean ? <Check size={14} strokeWidth={2.6} /> : null}청소X
             </button>
@@ -644,7 +662,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                       <ArrowRight size={16} />
                       <span className={r.after <= 0 ? "tred" : ""}>{r.after < 0 ? `−${-r.after}` : r.after}</span>
                     </span>
-                    {r.after < 0 ? <span className="w tred">모자라요</span> : null}
+                    {r.after < 0 ? <span className="w tred">오버부킹 · 저장은 경고 후 가능</span> : null}
                   </div>
                 );
               })}

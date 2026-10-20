@@ -58,7 +58,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
-  const [assignMode, setAssignMode] = useState<AssignMode>("rooms");
+  const [assignMode, setAssignMode] = useState<AssignMode>("typeOnly");
   const [mode, setMode] = useState<PriceMode>("rate");
   const [rates, setRates] = useState<Record<string, string>>({});
   const [payMode, setPayMode] = useState<GroupPayMode>("prepaid");
@@ -186,6 +186,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     setTypeCounts({});
     setNote(null);
     setView("count");
+    if (m === "typeOnly") setTentative(false); // 미배정 = 타입 홀드 · 임시 아님
   };
 
   const save = async () => {
@@ -200,7 +201,14 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       typeOnly: assignMode === "typeOnly" ? typeOnlySlots : undefined,
     });
     if (v) return setErr(v);
-    if (over.length) return setErr(`${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 남은 객실이 모자라요. ${assignMode === "typeOnly" ? "실 수를" : "방을"} 다시 골라 주세요.`);
+    // 타입 오버부킹: 경고만 · 저장 허용 (호실 모드의 물리 방 겹침은 free/validate에서 차단)
+    if (
+      over.length &&
+      !window.confirm(
+        `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
+      )
+    )
+      return;
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
     if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
@@ -233,7 +241,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         memberRates: memberFlats.some((x) => x > 0) ? memberFlats : undefined,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
-        tentative,
+        tentative: assignMode === "rooms" && tentative,
       });
       const typeRatesPersist =
         mode === "rate" || mode === "line" || mode === "member"
@@ -249,9 +257,10 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         rates: typeRatesPersist && Object.keys(typeRatesPersist).length ? typeRatesPersist : null,
         extras: [],
       });
-      const how = assignMode === "typeOnly" ? `${n}실(타입만)` : `${n}실`;
+      const how = assignMode === "typeOnly" ? `${n}실(예약만·호실 미정)` : `${n}실`;
+      const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(
-        `단체 ${name.trim()} ${how} · ${nights}박 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentative ? " · 임시" : ""}`,
+        `단체 ${name.trim()} ${how} · ${nights}박 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
       );
     } catch (e) {
       setErr(e instanceof Error ? `하나도 저장하지 않았어요: ${e.message}` : "하나도 저장하지 않았어요. 다시 시도해 주세요");
@@ -391,11 +400,11 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           <div className="payb">
             <div className="gtop">
               <div className="seg sm">
-                <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
-                  호실 고르기
+                <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")} title="호실 미정 · 타입 재고만">
+                  예약만
                 </button>
-                <button type="button" className={assignMode === "typeOnly" ? "on" : ""} onClick={() => switchAssign("typeOnly")}>
-                  타입만
+                <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
+                  호실까지
                 </button>
               </div>
               <span className="gsum">
@@ -680,15 +689,32 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           </div>
         </div>
 
-        <div className="fld">
-          <label>배치</label>
-          <div className="payb">
-            <button type="button" className={`chip ${tentative ? "on" : ""}`} aria-pressed={tentative} onClick={() => setTentative((t) => !t)}>
-              {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
-            </button>
-            <span className="muted sm">{tentative ? "임시라도 재고는 막혀요. 「지금」 보드에서 나중에 확정할 수 있어요." : "확정 배치로 저장해요"}</span>
+        {assignMode === "rooms" ? (
+          <div className="fld">
+            <label>배치</label>
+            <div className="payb">
+              <button
+                type="button"
+                className={`chip ${tentative ? "on" : ""}`}
+                aria-pressed={tentative}
+                onClick={() => setTentative((t) => !t)}
+                title="방 점유 · 확정 전 (예약만/미배정과 다름)"
+              >
+                {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
+              </button>
+              <span className="muted sm">
+                {tentative ? "임시라도 재고는 막혀요. 「지금」에서 나중에 확정할 수 있어요." : "호실까지 잡은 뒤 · 확정 배치로 저장해요"}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="fld">
+            <label>배치</label>
+            <div className="payb">
+              <span className="muted sm">예약만(타입 홀드) · 호실 미정 · 타입 재고만 차감 · 임시 배치 아님</span>
+            </div>
+          </div>
+        )}
 
         <div className="fld gpay">
           <label>결제</label>
@@ -720,8 +746,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           {impact.length ? (
             <>
               <div className="pt">
-                저장하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 남은 객실 (가장 적은 날)
-                {tentative ? " · 임시라도 만실이 될 수 있어요" : ""}
+                저장하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 남은 객실 (가장 적은 날 · 호텔 전체)
+                {assignMode === "rooms" && tentative ? " · 임시라도 만실이 될 수 있어요" : ""}
               </div>
               {impact.map((r) => {
                 const t = L.types.get(r.typeId);
@@ -736,7 +762,11 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                       <ArrowRight size={16} />
                       <span className={r.after <= 0 ? "tred" : ""}>{r.after < 0 ? `−${-r.after}` : r.after}</span>
                     </span>
-                    {r.after < 0 ? <span className="w tred">모자라요 · 저장할 수 없어요</span> : r.after === 0 ? <span className="w tred">만실이 돼요</span> : null}
+                    {r.after < 0 ? (
+                      <span className="w tred">오버부킹 · 저장은 경고 후 가능</span>
+                    ) : r.after === 0 ? (
+                      <span className="w tred">만실이 돼요</span>
+                    ) : null}
                   </div>
                 );
               })}

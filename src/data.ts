@@ -255,7 +255,8 @@ function toRow(b: Booking) {
     start_time: stay ? null : b.startTime,
     end_time: stay ? null : b.endTime,
     arrived: b.arrived,
-    tentative: b.tentative === true,
+    // 임시 배치는 방 있을 때만 (미배정 roomId=null 은 타입 홀드)
+    tentative: b.tentative === true && !!b.roomId,
     no_clean: b.noClean === true,
     // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
@@ -440,7 +441,6 @@ export function useHotelData(hotelId: string) {
       if (patch.arrived !== undefined) row.arrived = patch.arrived;
       if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
       if (patch.status !== undefined) row.status = patch.status;
-      if (patch.tentative !== undefined) row.tentative = patch.tentative;
       if (patch.noClean !== undefined) row.no_clean = patch.noClean;
       if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
       if (patch.nights !== undefined) row.nights = patch.nights;
@@ -448,9 +448,26 @@ export function useHotelData(hotelId: string) {
       if (patch.segments !== undefined) {
         row.room_segments = patch.segments?.map((x) => ({ room: x.roomId, nights: x.nights })) ?? null;
       }
-      setBookings((list) =>
-        list.map((x) => (x.id === id ? { ...x, ...patch, ...(patch.roomId !== undefined ? { segments: null } : {}) } : x)),
-      );
+      // 방 지우면 임시도 끔 · 임시=true는 방이 있을 때만 (타입 홀드와 분리)
+      setBookings((list) => {
+        const cur = list.find((x) => x.id === id);
+        const nextRoom = patch.roomId !== undefined ? patch.roomId : cur?.roomId ?? null;
+        let nextTent = patch.tentative !== undefined ? patch.tentative : !!cur?.tentative;
+        if (!nextRoom) nextTent = false;
+        if (patch.tentative !== undefined || patch.roomId === null || (patch.tentative === true && !nextRoom)) {
+          row.tentative = nextTent;
+        }
+        return list.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                ...patch,
+                ...(patch.roomId !== undefined ? { segments: null } : {}),
+                tentative: nextTent,
+              }
+            : x,
+        );
+      });
       const { data, error } = await supabase.from("bookings").update(row).eq("id", id).select(COLS).single();
       if (error) {
         void refresh();

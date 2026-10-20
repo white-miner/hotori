@@ -1000,7 +1000,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <div className="nowside-h">한눈에</div>
               {uaCounts.length ? (
                 <div className="nowsec">
-                  <h3>미배정 {nowSide.unassigned.length}</h3>
+                  <h3 title="타입 재고만 · 임시 배치 아님">미배정 {nowSide.unassigned.length}</h3>
                   {uaCounts.map((g) => (
                     <button
                       type="button"
@@ -1020,7 +1020,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               ) : null}
               {nowSide.tentative.length ? (
                 <div className="nowsec">
-                  <h3>임시 {nowSide.tentative.length}</h3>
+                  <h3 title="방 점유 · 확정 전 (미배정과 다름)">임시 {nowSide.tentative.length}</h3>
                   {nowSide.tentative.map((b) => sideRow(b, "임시"))}
                 </div>
               ) : null}
@@ -1128,7 +1128,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {rangeNav}
           {buildingTabs}
           {scopeId && unassigned ? (
-            <div className="b-note">방을 안 정한 숙박 {unassigned}건은 어느 건물인지 몰라서 '전체'에만 들어가요.</div>
+            <div className="b-note">미배정(타입 홀드) {unassigned}건은 호텔 전체 재고에서만 차감돼요 · 건물 탭에서는 '전체'에만 보여요.</div>
           ) : null}
           <div ref={wideRef} className={`stock-wrap big ${viewDates.length > DAYS ? "wide" : ""}`}>
             <div className="stock" style={{ ["--days" as string]: viewDates.length }}>
@@ -1207,7 +1207,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {rangeNav}
           {buildingTabs}
           {scopeId && unassigned ? (
-            <div className="b-note">방을 안 정한 숙박 {unassigned}건은 어느 건물인지 몰라서 '전체'에만 보여요.</div>
+            <div className="b-note">미배정(타입 홀드) {unassigned}건은 호텔 전체 재고 · 건물 탭에서는 '전체'에만 보여요.</div>
           ) : null}
           <RoomCalendar
             s={s}

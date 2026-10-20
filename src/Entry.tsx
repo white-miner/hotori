@@ -725,6 +725,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const toggleTent = async () => {
     if (!base || tentBusy) return;
+    // 임시 배치 = 방 점유 후 신호. 미배정(타입 홀드)에서는 켤 수 없어요
+    if (!roomId) {
+      setInErr("임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「예약만」이에요.");
+      return;
+    }
     const next = !tentative;
     setTentBusy(true);
     setInErr(null);
@@ -736,6 +741,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setInErr("임시 배치를 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setTentBusy(false);
+    }
+  };
+  /** 방 고르기 · 예약만(미배정). 방 지우면 임시도 끔 */
+  const pickRoom = (id: string | null) => {
+    setRoomId(id);
+    if (!id) {
+      setTentative(false);
+      setSegs(null);
+      setMv(null);
     }
   };
   const toggleNoClean = async () => {
@@ -824,7 +838,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     startTime: kind === "dayuse" ? startTime : null,
     endTime: kind === "dayuse" ? endTime : null,
     arrived,
-    tentative,
+    tentative: !!roomId && tentative,
     noClean,
     earlyOut: base?.earlyOut ?? null,
     checkedOutAt,
@@ -1115,15 +1129,27 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
           : `${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
       );
+    // 타입 오버부킹: 경고만 · 저장 허용 (물리 방 겹침은 위에서 차단)
+    const typeOver = kind === "stay" && isActive(draft) && preview.some((r) => r.after < 0);
+    if (
+      typeOver &&
+      !override &&
+      !window.confirm("타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.")
+    )
+      return;
     setBusy(true);
     setErr(null);
     try {
       const saved = await data.saveBooking(draft, isNew);
       const t = L.types.get(saved.typeId);
-      const tail =
-        kind === "stay" && isActive(saved) && preview[0]
-          ? ` · ${L.types.get(preview[0].typeId)?.name} 남은 객실 ${preview[0].after}`
+      const hold =
+        kind === "stay" && isActive(saved) && !saved.roomId
+          ? ` · ${t?.name ?? "타입"} ${saved.nights}박 · 재고 반영 · 호실 미정`
           : "";
+      const tail =
+        !hold && kind === "stay" && isActive(saved) && preview[0]
+          ? ` · ${L.types.get(preview[0].typeId)?.name} 남은 객실 ${preview[0].after}`
+          : hold;
       onSaved(
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
@@ -1289,8 +1315,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{checkedOutAt ? "퇴실처리됨 · 취소" : "퇴실처리"}</b>
               </button>
             ) : null}
-            {base.kind === "stay" ? (
-              <button type="button" className={`beo tent ${tentative ? "on" : ""}`} aria-pressed={tentative} disabled={tentBusy} onClick={() => void toggleTent()}>
+            {base.kind === "stay" && roomId ? (
+              <button type="button" className={`beo tent ${tentative ? "on" : ""}`} aria-pressed={tentative} disabled={tentBusy} onClick={() => void toggleTent()} title="방 점유 · 확정 전 (타입 홀드와 다름)">
                 <b>{tentative ? "임시 · 확정하기" : "임시 배치"}</b>
               </button>
             ) : null}
@@ -1684,19 +1710,20 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         <div className="fld">
           <label>
             객실 타입<em>*</em>
+            {kind === "stay" ? <span className="muted sm"> · 호텔 전체 남은 재고 (미배정도 차감)</span> : null}
           </label>
           <div className="chips scroll">
             {pickTypes.map((t, k) => {
               const r = minRemain(t.id);
               const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
               return (
-                <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)}>
+                <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
                   <span className="t1">
                     <TypeBadge t={t} />
                   </span>
                   {kind === "stay" ? (
                     <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                      남은 <b>{r}</b>
+                      남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
                       {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
                     </span>
                   ) : k < 9 ? (
@@ -1706,6 +1733,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               );
             })}
           </div>
+          {kind === "stay" && minRemain(typeId) <= 0 ? (
+            <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`} style={{ marginTop: 6 }}>
+              {minRemain(typeId) < 0
+                ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
+                : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+            </div>
+          ) : null}
         </div>
 
         {kind === "dayuse" ? (
@@ -2607,13 +2641,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         ) : null}
 
         <div className="fld">
-          <label>{moved ? "첫 방" : "방 번호"}</label>
+          <label>
+            {moved ? "첫 방" : "호실"}
+            {kind === "stay" ? <span className="muted sm"> · 기본은 「예약만」(타입 재고만)</span> : null}
+          </label>
           <div className="chips">
-            <button type="button" className={`rchip lt ${roomId === null ? "on" : ""}`} onClick={() => setRoomId(null)}>
-              나중에 정하기
+            <button
+              type="button"
+              className={`rchip lt ${roomId === null ? "on" : ""}`}
+              onClick={() => pickRoom(null)}
+              title="호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
+            >
+              예약만
             </button>
             {sameType.map((r) => (
-              <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => setRoomId(r.id)}>
+              <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => pickRoom(r.id)}>
                 {bpre(r.buildingId)}
                 {r.no}
               </button>
@@ -2625,7 +2667,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     key={r.id}
                     className={`rchip other ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`}
                     title={L.roomLabel(r.id) ?? r.no}
-                    onClick={() => setRoomId(r.id)}
+                    onClick={() => pickRoom(r.id)}
                   >
                     {bpre(r.buildingId)}
                     {r.no}
@@ -2637,8 +2679,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     다른 타입 방 +{otherType.length}
                   </button>
                 ) : null}
-            {!sameType.length && !otherRooms ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
+            {!sameType.length && !otherRooms && roomId !== null ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
           </div>
+          {kind === "stay" && roomId === null ? (
+            <div className="muted sm" style={{ marginTop: 6 }}>
+              타입 재고만 막아요 · 호실은 나중에 「지금」에서 배치(Next) · 「임시 배치」는 방을 고른 뒤
+            </div>
+          ) : null}
         </div>
 
         {!isNew && kind === "stay" && nights >= 2 && roomId ? (
@@ -2753,8 +2800,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <button type="button" className={`chip ${arrived ? "on" : ""}`} aria-pressed={arrived} onClick={() => setArrived((a) => !a)}>
                   {arrived ? <Check size={14} strokeWidth={2.6} /> : null}입실 완료
                 </button>
-                {kind === "stay" ? (
-                  <button type="button" className={`chip ${tentative ? "on" : ""}`} aria-pressed={tentative} onClick={() => setTentative((t) => !t)} title="임시라도 재고는 막혀요">
+                {kind === "stay" && roomId ? (
+                  <button
+                    type="button"
+                    className={`chip ${tentative ? "on" : ""}`}
+                    aria-pressed={tentative}
+                    onClick={() => setTentative((t) => !t)}
+                    title="방 점유 · 확정 전 (재고는 막혀요). 미배정과는 달라요"
+                  >
                     {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
                   </button>
                 ) : null}
