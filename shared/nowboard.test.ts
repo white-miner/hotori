@@ -8,6 +8,7 @@ import {
   checkoutMorningVisible,
   departingWindowOpen,
   effectiveArrived,
+  filterUnassignedByCheckIn,
   isDepartingStatus,
   nowAmountGlance,
   nowBoardVisible,
@@ -278,6 +279,29 @@ test("점유 밤 구간: 2박 입19·퇴21 → 보드 19~20 (퇴실 아침 제�
   assert.equal(nowNightRange(one).label, "10/19");
   const eo = bk({ checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20", arrived: true });
   assert.equal(nowNightRange(eo).label, "10/18~19"); // stayEnd=20 → 마지막 밤 19
+});
+
+test("간단 예약 입실일 필터: 오늘(기한초과 포함) · 일주일 · 한달", () => {
+  const list = [
+    bk({ id: "past", checkIn: "2026-10-18", roomId: null }),
+    bk({ id: "td", checkIn: "2026-10-20", roomId: null }),
+    bk({ id: "w", checkIn: "2026-10-25", roomId: null }),
+    bk({ id: "m", checkIn: "2026-11-10", roomId: null }),
+    bk({ id: "far", checkIn: "2026-12-01", roomId: null }),
+  ];
+  const today = "2026-10-20";
+  assert.deepEqual(
+    filterUnassignedByCheckIn(list, today, "today").map((b) => b.id),
+    ["past", "td"],
+  );
+  assert.deepEqual(
+    filterUnassignedByCheckIn(list, today, "week").map((b) => b.id),
+    ["td", "w"],
+  );
+  assert.deepEqual(
+    filterUnassignedByCheckIn(list, today, "month").map((b) => b.id),
+    ["td", "w", "m"],
+  );
 });
 
 test("금액 글랜스 · 메타 줄", () => {

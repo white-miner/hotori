@@ -1578,7 +1578,7 @@ button.nowstatus { cursor: pointer; }
 /* ---------- 「지금」 현장 현황 ---------- */
 /* board-page의 오른쪽 .side 칸(372px)은 「지금」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
-.now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
 /* 타입 홀드 입구·출구: 「지금」 미배정 패널 (한눈에보다 먼저·크게) */
 .now-ua {
@@ -1854,8 +1854,87 @@ button.nowstatus { cursor: pointer; }
 .nklab.nk-departing { color: #9a5b0a; }
 .nklab.nk-lateOut { color: #b42318; }
 .nkdot.nk-empty { border-style: dashed; border-color: #9a9a9a; background: #fff; }
-.nowside { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 14px; position: sticky; top: 10px; }
+.nowside { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 14px; position: sticky; top: 10px; min-width: 0; }
 .nowside-h { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+.nowside-modes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+}
+.nowside-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: var(--ink3);
+  cursor: pointer;
+  line-height: 1.2;
+}
+.nowside-mode small {
+  font-family: var(--num);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ink2);
+}
+.nowside-mode.on {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.nowside-body { min-width: 0; }
+.nsel-head { margin-bottom: 8px; }
+.nsel-no { font-family: var(--num); font-size: 20px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+.nsel-sub { font-size: 12px; font-weight: 650; color: var(--ink2); margin-top: 2px; }
+.nsel-body { display: flex; flex-direction: column; gap: 6px; }
+.nsel-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 6px; align-items: start; font-size: 12.5px; }
+.nsel-k { color: var(--ink3); font-weight: 700; padding-top: 1px; }
+.nsel-v { min-width: 0; font-weight: 650; word-break: break-word; }
+.nsel-memobtn {
+  display: inline; padding: 0; border: 0; background: none; text-align: left;
+  font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.nsel-memobtn.muted { color: var(--ink3); text-decoration: none; }
+.nsel-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.nsel-acts .btn { width: 100%; }
+.nsel-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.35; color: var(--ink2); }
+.nsel-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.nsel-filters .chip { padding: 4px 8px; font-size: 11.5px; height: 28px; }
+.nsel-filters .chip small { margin-left: 3px; font-family: var(--num); font-weight: 800; }
+.nsel-filters .chip.on small { color: rgba(255, 255, 255, 0.75); }
+.nsel-note { margin: 0 0 8px; }
+.side-ua-list { display: flex; flex-direction: column; gap: 6px; }
+.side-ua-row { padding: 4px; }
+.linkish {
+  display: inline; padding: 0; border: 0; background: none; color: var(--ink);
+  font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.nowco-zone { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.nowco-zone-h {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left;
+}
+.nowco-zone-h h3 { margin: 0; }
+.nowco-zone.collapsed .nowco-zone-h { opacity: 0.85; }
+.nowco-zone-b { margin-top: 6px; }
+.nowco-zone-b p { margin: 0; }
+.now-page .cell.nowsel {
+  outline: 2px solid #1c1c1e;
+  outline-offset: 1px;
+  z-index: 1;
+}
 .nowsec { margin-top: 10px; }
 .nowsec h3 { font-size: 12px; font-weight: 750; color: var(--ink2); margin: 0 0 6px; }
 .nowli-wrap { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }

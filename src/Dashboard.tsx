@@ -14,15 +14,13 @@ import {
   nowStaySummary,
   shouldAutoArrive,
   simplePayGlance,
-  unassignedTypeCounts,
 } from "../shared/nowboard";
-import { EXTEND_COPY, canExtend } from "../shared/extend";
-import { SURCHARGE_COPY, canAddSurcharge } from "../shared/addSurcharge";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
+import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
 import {
   type BoardTab,
@@ -303,8 +301,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [nightPopId, setNightPopId] = useState<string | null>(null);
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [sideMode, setSideMode] = useState<SideMode>("simple");
   const memos = useRoomMemos(data.hotel!.id);
   const glanceByRoom = useMemo(() => openMemoGlances(memos.list ?? []), [memos.list]);
+  const selectRoom = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    setSideMode("room");
+    setNightPopId(null);
+  };
   const autoArriveBusy = useRef(new Set<string>());
   // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
   useEffect(() => {
@@ -795,8 +800,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
+      const emptySel = selectedRoomId === r.id;
       return (
-        <div key={r.id} {...act} className={`cell em nowempty ${readOnly ? "ro" : ""}`} onClick={() => onNew({ checkIn: today, roomId: r.id, typeId: r.typeId ?? undefined })}>
+        <div
+          key={r.id}
+          {...act}
+          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""}`}
+          onClick={() => selectRoom(r.id)}
+        >
           <div className="cell-body nowstack sparse">
             {head}
             <TypeLine t={t} />
@@ -835,14 +846,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         void doCheckOut(b, true);
         return;
       }
-      onOpen(b, today);
+      selectRoom(r.id);
     };
+    const occupiedSel = selectedRoomId === r.id;
     return (
       <div
         key={r.id}
         {...act}
-        className={`cell bk nowcell nk-${f.kind} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
-        onClick={() => onOpen(b, today)}
+        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
+        onClick={() => selectRoom(r.id)}
       >
         <div className="cell-body nowstack dense">
           {head}
@@ -918,38 +930,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const groupsNow = (multi ? s.buildings : s.buildings.slice(0, 1))
       .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
       .filter((g) => g.floors.length);
-    const uaCounts = unassignedTypeCounts(nowSide.unassigned);
-    const sideRow = (b: Booking, label: string, departing = false) => (
-      <div key={b.id} className={`nowli-wrap ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""} ${isLongStay(b) ? "long" : ""}`}>
-        <button type="button" className={`nowli ${b.tentative ? "tent" : ""} ${b.noClean ? "ncx" : ""}`} onClick={() => onOpen(b, today)} disabled={readOnly}>
-          <span className="nowli-t">{label}</span>
-          <b>{b.guestName}</b>
-          <span className="muted sm">
-            {b.roomId ? `${L.roomLabel(b.roomId)}호` : typeLabel(L.types.get(b.typeId))}
-            {b.groupName ? ` · ${b.groupName}` : ""}
-            {isLongStay(b) ? " · 장기" : ""}
-            {b.tentative ? " · 임시" : ""}
-            {b.noClean ? " · 청소X" : ""}
-            {isLongStay(b) && payState(b, L.plats.get(b.platformId)).left > 0 ? ` · 미수 ${won(payState(b, L.plats.get(b.platformId)).left)}` : ""}
-          </span>
-        </button>
-        {departing && !readOnly && canCheckOut(b, today) ? (
-          <button type="button" className="nowext side nowco" disabled={coBusy === b.id} onClick={() => void doCheckOut(b, true)}>
-            {coBusy === b.id ? "처리 중…" : "퇴실처리"}
-          </button>
-        ) : null}
-        {departing && !readOnly && canAddSurcharge(b) ? (
-          <button type="button" className="nowext side" onClick={() => onOpen(b, today, { openSurcharge: true })}>
-            {SURCHARGE_COPY}
-          </button>
-        ) : null}
-        {departing && !readOnly && canExtend(b) ? (
-          <button type="button" className="nowext side" onClick={() => onOpen(b, today, { openExtend: true })}>
-            {EXTEND_COPY}
-          </button>
-        ) : null}
-      </div>
-    );
     return (
     <>
       <main className="page board-page now-page">
@@ -960,7 +940,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <div>
               <h1>지금 · 현장 현황</h1>
               <div className="bdh-s">
-                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 말풍선은 특이사항 · 칸을 누르면 예약·단체 창
+                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 말풍선은 특이사항 · 칸을 누르면 우측 상세
               </div>
             </div>
             <div className="dnav nowfilters">
@@ -1094,58 +1074,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 </section>
               ))}
             </div>
-            <aside className="nowside" aria-label="현장 목록">
-              <div className="nowside-h">한눈에</div>
-              <div className="nowsec">
-                <h3 title="타입 재고만 · 임시 배치 아님">미배정 {nowSide.unassigned.length}</h3>
-                {uaCounts.length ? (
-                  uaCounts.map((g) => (
-                    <button
-                      type="button"
-                      key={g.key}
-                      className="nowli"
-                      disabled={readOnly}
-                      onClick={() => g.bookings[0] && onOpen(g.bookings[0], today)}
-                    >
-                      <span className="nowli-t">미배정</span>
-                      <b>
-                        {g.groupName ? `${g.groupName} · ` : ""}
-                        {typeLabel(L.types.get(g.typeId))} {g.n}
-                      </b>
-                    </button>
-                  ))
-                ) : (
-                  <div className="muted sm nowempty-side">없음 · 위 「미배정」에서 받아요</div>
-                )}
-              </div>
-              {nowSide.tentative.length ? (
-                <div className="nowsec">
-                  <h3 title="방 점유 · 확정 전 (미배정과 다름)">임시 {nowSide.tentative.length}</h3>
-                  {nowSide.tentative.map((b) => sideRow(b, "임시"))}
-                </div>
-              ) : null}
-              {nowSide.lateOut.length ? (
-                <div className="nowsec">
-                  <h3>늦은 퇴실 {nowSide.lateOut.length}</h3>
-                  {nowSide.lateOut.map((b) => sideRow(b, "늦은 퇴실", true))}
-                </div>
-              ) : null}
-              {nowSide.departing.length ? (
-                <div className="nowsec">
-                  <h3>퇴실예정 {nowSide.departing.length}</h3>
-                  {nowSide.departing.map((b) => sideRow(b, "퇴실예정", true))}
-                </div>
-              ) : null}
-              {nowSide.arriving.length ? (
-                <div className="nowsec">
-                  <h3>숙박예약 {nowSide.arriving.length}</h3>
-                  {nowSide.arriving.map((b) => sideRow(b, "숙박예약"))}
-                </div>
-              ) : null}
-              {!nowSide.tentative.length && !nowSide.lateOut.length && !nowSide.departing.length && !nowSide.arriving.length ? (
-                <div className="muted sm nowempty-side">임시·퇴실·숙박예약 일정은 없어요</div>
-              ) : null}
-            </aside>
+            <NowSidePanel
+              today={today}
+              s={s}
+              L={L}
+              bookings={bookings}
+              unassigned={nowSide.unassigned}
+              lateOut={nowSide.lateOut}
+              departing={nowSide.departing}
+              selectedRoomId={selectedRoomId}
+              selectedBooking={selectedRoomId ? (nowBoardMap.get(selectedRoomId) ?? null) : null}
+              mode={sideMode}
+              onMode={setSideMode}
+              glanceByRoom={glanceByRoom}
+              readOnly={readOnly}
+              multi={multi}
+              assigning={assigning}
+              setAssigning={setAssigning}
+              coBusy={coBusy}
+              onAssign={(bk, roomId) => void assign(bk, roomId)}
+              onOpen={onOpen}
+              onSimple={onSimple}
+              onCheckOut={(bk, need) => void doCheckOut(bk, need)}
+              onMemo={setMemoRoomId}
+              nowOpts={nowOpts}
+            />
           </div>
           <div className="lg nowlg">
             <span>
