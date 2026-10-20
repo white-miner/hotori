@@ -61,6 +61,33 @@ export function openMemoCounts(list: RoomMemo[]): Map<string, number> {
   return m;
 }
 
+/** 「지금」말풍선용: 최신 미해결 본문 미리보기 + 건수 (+툴팁용 전체) */
+export type OpenMemoGlance = { count: number; preview: string; title: string };
+
+export function openMemoGlances(list: RoomMemo[]): Map<string, OpenMemoGlance> {
+  type Acc = { count: number; preview: string; createdAt: string; bodies: string[] };
+  const acc = new Map<string, Acc>();
+  for (const x of list) {
+    if (x.status !== "open") continue;
+    const cur = acc.get(x.roomId);
+    if (!cur) {
+      acc.set(x.roomId, { count: 1, preview: x.body, createdAt: x.createdAt, bodies: [x.body] });
+      continue;
+    }
+    cur.count += 1;
+    cur.bodies.push(x.body);
+    if (x.createdAt.localeCompare(cur.createdAt) > 0) {
+      cur.preview = x.body;
+      cur.createdAt = x.createdAt;
+    }
+  }
+  const out = new Map<string, OpenMemoGlance>();
+  for (const [roomId, a] of acc) {
+    out.set(roomId, { count: a.count, preview: a.preview, title: a.bodies.join(" · ") });
+  }
+  return out;
+}
+
 /** 한 방 목록: 미해결 위 · 최신순 */
 export function memosForRoom(list: RoomMemo[], roomId: string): RoomMemo[] {
   return list

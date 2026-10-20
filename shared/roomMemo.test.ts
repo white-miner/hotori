@@ -4,6 +4,7 @@ import {
   memosForRoom,
   openForHandoff,
   openMemoCounts,
+  openMemoGlances,
   validateRoomMemoDraft,
   type RoomMemo,
 } from "./roomMemo";
@@ -37,6 +38,22 @@ test("openMemoCounts: 미해결만 방마다 센다", () => {
   assert.equal(c.get("r601"), 2);
   assert.equal(c.has("r502"), false);
   assert.equal(c.get("r306"), 1);
+});
+
+test("openMemoGlances: 최신 미해결 미리보기 + 건수", () => {
+  const list = [
+    memo({ roomId: "r601", body: "인터넷 안됨", createdAt: "2026-10-20T01:00:00.000Z" }),
+    memo({ roomId: "r601", body: "리모컨 없음", createdAt: "2026-10-20T03:00:00.000Z" }),
+    memo({ roomId: "r502", body: "변기 막힘", status: "resolved", resolvedAt: "2026-10-20T12:00:00.000Z" }),
+    memo({ roomId: "r306", body: "마우스 추가지급", kind: "delivery" }),
+  ];
+  const g = openMemoGlances(list);
+  assert.equal(g.get("r601")?.count, 2);
+  assert.equal(g.get("r601")?.preview, "리모컨 없음");
+  assert.match(g.get("r601")?.title ?? "", /인터넷 안됨/);
+  assert.equal(g.has("r502"), false);
+  assert.equal(g.get("r306")?.preview, "마우스 추가지급");
+  assert.equal(g.get("r306")?.count, 1);
 });
 
 test("memosForRoom: 미해결 위 · 최신순", () => {
