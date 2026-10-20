@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   blockedNightsForRoom,
+  monthGrid,
   nextPaintedFromClick,
   nightPickGlance,
   nightPickSummary,
@@ -28,6 +29,23 @@ const bk = (p: Partial<Booking> & Pick<Booking, "id" | "checkIn" | "nights" | "r
   createdAt: "",
   updatedAt: "",
   ...p,
+});
+
+test("monthGrid dow: 일=0…토=6, 1일이 목요일이어도 정렬", () => {
+  // 2026-10-01 = 목 (UTC). 예전 (dow0+i)%7 버그는 화·수에 sa/su가 붙음
+  const cells = monthGrid("2026-10-01");
+  assert.equal(cells[0].dow, 0, "첫 칸은 일요일");
+  assert.equal(cells[0].date, "2026-09-27");
+  const oct1 = cells.find((c) => c.date === "2026-10-01")!;
+  assert.equal(oct1.dow, 4, "10/1 목");
+  const sat = cells.find((c) => c.date === "2026-10-03")!;
+  const sun = cells.find((c) => c.date === "2026-10-04")!;
+  assert.equal(sat.dow, 6);
+  assert.equal(sun.dow, 0);
+  for (const c of cells) {
+    const [y, m, d] = c.date.split("-").map(Number);
+    assert.equal(c.dow, new Date(Date.UTC(y, m - 1, d)).getUTCDay(), c.date);
+  }
 });
 
 test("11~21 칠함 → 11박 · 입 11 · 퇴 22", () => {
