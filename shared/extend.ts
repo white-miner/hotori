@@ -14,6 +14,14 @@ import {
   won,
 } from "./ledger";
 import { type BookPayMethod, PAY_MAX } from "./payment";
+import {
+  type StayNightRates,
+  appendNightAmount,
+  hasFullNightMatrix,
+  memberFlatRate,
+  priceFromNightMatrix,
+  syncStayNightRates,
+} from "./nightrates";
 
 export const EXTEND_COPY = "1박 연장";
 export const NIGHTS_PRICE_WARN =
@@ -31,22 +39,28 @@ export function stayAddons(
   return xf + tf + cf - wo;
 }
 
-/** 1박 단가 기본값: 타입/단체 요금이 있으면 그걸, 없으면 현재 판매가 ÷ 박수 */
-export function nightRate(b: Pick<Booking, "price" | "nights">, typeRate?: number | null): number {
-  if (typeRate != null && typeRate > 0) return Math.round(typeRate);
+/** 1박 단가 기본값: 방별 flat → 타입/단체 요금 → 판매가 ÷ 박수 */
+export function nightRate(
+  b: Pick<Booking, "price" | "nights" | "nightRates">,
+  typeRate?: number | null,
+): number {
+  const flat = memberFlatRate(b.nightRates, typeRate);
+  if (flat > 0) return flat;
   const n = b.nights ?? 0;
   if (n < 1) return 0;
   return Math.max(0, Math.round(b.price / n));
 }
 
 /**
- * 객실료 1박 단가 (가산분 제외). 타입/단체 rates 우선 · 없으면 (price − addons) ÷ oldNights.
+ * 객실료 1박 단가 (가산분 제외). 방별 flat → 타입 rates → (price − addons) ÷ oldNights.
  * 연장용 nightRate와 달리 박수↓ 재계산의 진실.
  */
 export function roomNightRate(
-  b: Pick<Booking, "kind" | "price" | "nights" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  b: Pick<Booking, "kind" | "price" | "nights" | "nightRates" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
   typeRate?: number | null,
 ): number {
+  const flat = memberFlatRate(b.nightRates, null);
+  if (flat > 0) return flat;
   if (typeRate != null && typeRate > 0) return Math.round(typeRate);
   const n = b.nights ?? 0;
   if (n < 1) return 0;
@@ -58,23 +72,45 @@ export interface RepriceResult {
   rate: number;
   addons: number;
   price: number;
+  nightRates?: StayNightRates | null;
 }
 
-/** 박수 변경 시 판매가 = rate × newNights + 유지 가산분 */
+/**
+ * 박수 변경 시 판매가.
+ * · 밤 행렬 있으면 Σ 셀(+가산) · 축소는 뒤 밤 drop · 확장은 기본 단가 셀 추가
+ * · 없으면 rate × newNights + 가산분
+ */
 export function repriceForNights(
-  b: Pick<Booking, "kind" | "price" | "nights" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  b: Pick<
+    Booking,
+    "kind" | "price" | "nights" | "checkIn" | "nightRates" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff"
+  >,
   newNights: number,
   typeRate?: number | null,
 ): RepriceResult {
   const n = Math.max(1, Math.round(newNights));
-  const rate = roomNightRate(b, typeRate);
   const addons = stayAddons(b);
-  return { rate, addons, price: Math.max(0, rate * n + addons) };
+  const rate = roomNightRate(b, typeRate);
+  const checkIn = b.checkIn;
+  if (checkIn && (b.nightRates?.nights || b.nightRates?.flat || b.nightRates?.weekday || b.nightRates?.weekend)) {
+    const prev = {
+      ...b.nightRates,
+      flat: b.nightRates?.flat ?? rate,
+    };
+    const nightRates = syncStayNightRates(checkIn, n, prev, { typeRate: typeRate ?? rate });
+    if (hasFullNightMatrix(checkIn, n, nightRates)) {
+      return { rate: nightRates.flat ?? rate, addons, price: priceFromNightMatrix(nightRates, addons), nightRates };
+    }
+  }
+  return { rate, addons, price: Math.max(0, rate * n + addons), nightRates: b.nightRates ?? null };
 }
 
 /** 중도 퇴실 환불 제안 = 미사용 박 × 단가 (수정 가능) */
 export function unusedNightRefund(
-  b: Pick<Booking, "kind" | "price" | "nights" | "checkIn" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff">,
+  b: Pick<
+    Booking,
+    "kind" | "price" | "nights" | "checkIn" | "nightRates" | "extraFee" | "earlyIn" | "lateOut" | "timeFee" | "arrival" | "carFee" | "walkOff"
+  >,
   earlyOutOn: string,
   typeRate?: number | null,
 ): number {
@@ -100,21 +136,31 @@ export interface ExtendDraft {
   checkOut: string;
   /** 새로 점유하는 밤 (입실 + 옛 박수) */
   extraNight: string;
+  nightRates?: StayNightRates | null;
 }
 
-/** 박수 +1 · 가격 + rate · fitSegments */
-export function applyExtend(b: Pick<Booking, "checkIn" | "nights" | "price" | "roomId" | "segments">, rate: number): ExtendDraft {
+/** 박수 +1 · 가격 + rate · fitSegments · 밤 셀 추가(있으면) */
+export function applyExtend(
+  b: Pick<Booking, "checkIn" | "nights" | "price" | "roomId" | "segments" | "nightRates">,
+  rate: number,
+): ExtendDraft {
   const nights = (b.nights ?? 0) + 1;
   const r = Math.max(0, Math.round(rate));
   const price = b.price + r;
   const segments = fitSegments(b.segments, b.roomId, nights);
+  const extraNight = addDays(b.checkIn, nights - 1);
+  const nightRates =
+    b.nightRates?.nights || b.nightRates?.flat
+      ? appendNightAmount(b.nightRates, extraNight, r)
+      : b.nightRates ?? null;
   return {
     nights,
     price,
     segments,
     rate: r,
     checkOut: addDays(b.checkIn, nights),
-    extraNight: addDays(b.checkIn, nights - 1),
+    extraNight,
+    nightRates,
   };
 }
 
@@ -178,8 +224,11 @@ export function planExtend(b: Booking, rate: number, collect: boolean): ExtendPl
   return { draft, collectAmount: collect && draft.rate > 0 ? draft.rate : 0 };
 }
 
-/** 단체: 방마다 단가 (단체 타입 요금 우선) */
-export function groupMemberRate(b: Pick<Booking, "price" | "nights" | "typeId">, rates: Record<string, number> | null | undefined): number {
+/** 단체: 방마다 단가 (방별 flat → 단체 타입 요금) */
+export function groupMemberRate(
+  b: Pick<Booking, "price" | "nights" | "typeId" | "nightRates">,
+  rates: Record<string, number> | null | undefined,
+): number {
   return nightRate(b, rates?.[b.typeId]);
 }
 

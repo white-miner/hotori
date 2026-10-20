@@ -284,10 +284,19 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
         const rates = data.groups.get(g.groupId)?.rates ?? null;
         let sum = 0;
         for (const m of g.members.filter((x) => isActive(x))) {
-          const next = repriceForNights(m, gEdit.nights, rates?.[m.typeId]);
+          const next = repriceForNights({ ...m, checkIn: gEdit.checkIn }, gEdit.nights, rates?.[m.typeId]);
           sum += next.price;
           const cur = data.bookings.find((x) => x.id === m.id) ?? m;
-          await data.saveBooking({ ...cur, checkIn: gEdit.checkIn, nights: gEdit.nights, price: next.price }, false);
+          await data.saveBooking(
+            {
+              ...cur,
+              checkIn: gEdit.checkIn,
+              nights: gEdit.nights,
+              price: next.price,
+              nightRates: next.nightRates ?? cur.nightRates,
+            },
+            false,
+          );
         }
         repriceNote = ` · 판매가 맞춤 합 ${won(sum)}원`;
       }
@@ -313,7 +322,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       for (const m of planned.ok.members) {
         const cur = data.bookings.find((x) => x.id === m.id);
         if (!cur) continue;
-        await data.saveBooking({ ...cur, nights: m.draft.nights, price: m.draft.price, segments: m.draft.segments }, false);
+        await data.saveBooking(
+          {
+            ...cur,
+            nights: m.draft.nights,
+            price: m.draft.price,
+            segments: m.draft.segments,
+            nightRates: m.draft.nightRates ?? cur.nightRates,
+          },
+          false,
+        );
       }
       let payNote = "";
       if (gExt.collect && planned.ok.totalRate > 0) {
