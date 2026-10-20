@@ -10,6 +10,15 @@ export const isBookPayMethod = (v: unknown): v is BookPayMethod => v === "card" 
 
 export type PayKind = "deposit" | "balance";
 export const PAY_KIND_LABEL: Record<PayKind, string> = { deposit: "선금", balance: "잔금" };
+/** 장기: 선수 / 수납 · 표준: 선금 / 잔금 */
+export function payKindLabel(kind: PayKind, long = false): string {
+  if (long) return kind === "deposit" ? "선수" : "수납";
+  return PAY_KIND_LABEL[kind];
+}
+/** Entry 내역 주 카피: `현금 80,000` */
+export function payLineMain(method: BookPayMethod, amount: number): string {
+  return `${BOOK_PAY_LABEL[method]} ${won(amount)}`;
+}
 export interface Payment {
   id: string;
   bookingId: string;

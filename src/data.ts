@@ -46,6 +46,7 @@ interface BookingRow {
   platform_id: string;
   price: number;
   guest_name: string;
+  guest_phone?: string | null;
   type_id: string;
   room_id: string | null;
   room_segments?: unknown; // 객실 이동 [{room, nights}] (없으면 null)
@@ -119,7 +120,7 @@ const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,guest_name,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금) · 장기 원장도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
@@ -182,6 +183,7 @@ export function fromRow(r: BookingRow): Booking {
     platformId: r.platform_id,
     price: r.price,
     guestName: r.guest_name,
+    guestPhone: r.guest_phone ?? null,
     typeId: r.type_id,
     roomId: r.room_id,
     segments: segsFromRow(r.room_segments, r.nights),
@@ -229,6 +231,7 @@ function toRow(b: Booking) {
     platform_id: b.platformId,
     price: Math.round(b.price),
     guest_name: b.guestName.trim(),
+    guest_phone: t(b.guestPhone, 30),
     type_id: b.typeId,
     room_id: b.roomId,
     // 객실 이동: 박수·첫 방에 맞춰 보내요 (첫 구간 방 = room_id)
