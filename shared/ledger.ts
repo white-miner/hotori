@@ -76,7 +76,7 @@ export interface HotelSettings {
   platforms: Platform[];
   lowThreshold: number;
   shopItems: ShopItem[]; // 매점 물품 (위에서부터 매점 화면 순서)
-  expenseCategories: ExpenseCategory[]; // 지출 분류 (없으면 기본: 비품·식자재·세탁·수리·공과금·기타)
+  expenseCategories: ExpenseCategory[]; // 지출 분류 (없으면 기본: 수리·비품구매·식자재·세탁·공과금·기타)
   /** 인원 추가 요금 등급 (없으면 기본: 일반 1만/2만 · 특수 2만/3만) */
   surchargeTiers: SurchargeTier[];
   /** 특별일: 주말 요금을 받는 날 (밤 기준 YYYY-MM-DD) */

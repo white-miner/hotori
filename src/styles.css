@@ -932,6 +932,9 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .erow .c-cat { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .erow .c-pay { justify-self: start; font-size: 11.5px; font-weight: 750; border-radius: 999px; padding: 2px 9px; background: var(--panel); color: var(--ink2); }
 .erow .c-pay.cash { background: #fff; box-shadow: inset 0 0 0 1px var(--dark); }
+.erow .c-pay.transfer { background: #eef3f8; color: var(--ink2); }
+.expage .ph h1 { display: inline-flex; align-items: center; gap: 8px; }
+.expage .ph .muted { margin-top: 6px; font-size: 13.5px; }
 .erow .c-memo { color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .erow .c-amt { font-family: var(--num); font-weight: 800; font-size: 15px; }
 .exmonth { margin-top: 18px; background: var(--panel2); border-radius: 22px; padding: 16px 18px; }
@@ -956,7 +959,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .empty-setup .btn + .btn,
 .empty-setup .btn + a.btn { margin-top: 4px; }
 .seg.paym { justify-self: start; height: 44px; }
-.seg.paym button { padding: 0 22px; font-size: 14px; font-weight: 700; }
+.seg.paym button { padding: 0 14px; font-size: 13.5px; font-weight: 700; }
+@media (min-width: 560px) {
+  .seg.paym button { padding: 0 18px; font-size: 14px; }
+}
 @media (max-width: 760px) {
   .ltabs { width: 100%; display: flex; }
   .ltabs button { flex: 1; }

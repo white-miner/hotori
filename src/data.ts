@@ -14,7 +14,7 @@ import {
   normalizeSettings,
 } from "../shared/ledger";
 import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
-import type { Expense } from "../shared/expense";
+import { type Expense, isExpensePayMethod } from "../shared/expense";
 import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
@@ -935,7 +935,7 @@ const fromExpRow = (r: ExpenseRow): Expense => ({
   bizDate: r.biz_date,
   category: r.category,
   amount: r.amount,
-  method: r.payment_method === "cash" ? "cash" : "card",
+  method: isExpensePayMethod(r.payment_method) ? r.payment_method : "card",
   memo: r.memo,
   createdAt: r.created_at,
 });

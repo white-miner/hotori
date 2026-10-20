@@ -2,7 +2,7 @@
 import { type Booking, type Platform, revenueOf } from "./ledger";
 import { won } from "./ledger";
 
-/** 예약 결제 방법: 카드 · 현금 · 이체 (이체는 현금 시재에 안 들어가요). 매점·지출은 카드·현금만 */
+/** 예약 결제 방법: 카드 · 현금 · 이체 (이체는 현금 시재에 안 들어가요). 매점은 카드·현금, 지출은 카드·현금·이체 */
 export type BookPayMethod = "card" | "cash" | "transfer";
 export const BOOK_PAY_METHODS: BookPayMethod[] = ["card", "cash", "transfer"];
 export const BOOK_PAY_LABEL: Record<BookPayMethod, string> = { card: "카드", cash: "현금", transfer: "이체" };

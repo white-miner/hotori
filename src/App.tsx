@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { BookOpen, LayoutGrid, LogOut, Menu, Plus, Search, Settings as Gear, ShoppingBag } from "lucide-react";
+import { BookOpen, LayoutGrid, LogOut, Menu, Plus, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
@@ -8,20 +8,22 @@ import { Brand, isTypingTarget, lookups } from "./ui";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
+import { ExpensesPage } from "./Expenses";
 import Ledger from "./Ledger";
 import Settings from "./Settings";
 import Shop from "./Shop";
 
-type View = "board" | "ledger" | "shop" | "settings";
+type View = "board" | "ledger" | "expenses" | "shop" | "settings";
 const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
   { id: "board", label: "보드", icon: LayoutGrid },
   { id: "ledger", label: "장부", icon: BookOpen },
+  { id: "expenses", label: "지출", icon: Wallet },
   { id: "shop", label: "매점", icon: ShoppingBag },
   { id: "settings", label: "설정", icon: Gear },
 ];
 const viewFromHash = (): View => {
   const h = location.hash.replace(/^#\/?/, "").split("/")[0] ?? "";
-  return h === "ledger" || h === "settings" || h === "shop" ? h : "board";
+  return h === "ledger" || h === "expenses" || h === "settings" || h === "shop" ? h : "board";
 };
 
 export default function App() {
@@ -265,13 +267,15 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         />
       ) : view === "ledger" ? (
         <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b, opts) => setEntry({ booking: b, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge })} notify={notify} />
+      ) : view === "expenses" ? (
+        <ExpensesPage data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : view === "shop" ? (
         <Shop data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : (
         <Settings data={data} email={email} notify={notify} />
       )}
 
-      {view === "shop" ? null : (
+      {view === "shop" || view === "expenses" ? null : (
         <button className="fab" onClick={() => openNew({ checkIn: selDate })}>
           <Plus size={19} strokeWidth={2.4} />
           기록

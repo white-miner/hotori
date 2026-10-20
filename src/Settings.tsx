@@ -1075,7 +1075,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             지출 분류 <span className="tag">{s.expenseCategories.filter((c) => c.name.trim()).length}개</span>
           </h3>
-          <div className="sub">장부 › 지출에서 이 순서대로 골라요. 이름을 바꾸거나 지워도 지난 지출은 그때 이름 그대로 남아요.</div>
+          <div className="sub">상단 「지출」·장부 › 지출에서 이 순서대로 골라요. 기본은 수리·비품구매 등이에요. 이름을 바꾸거나 지워도 지난 지출은 그때 이름 그대로 남아요.</div>
           {s.expenseCategories.map((c, i) => (
             <div className="trow exrow" key={c.id}>
               <span className="ord">
