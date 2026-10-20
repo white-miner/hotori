@@ -944,16 +944,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="dnav nowfilters">
-              {!readOnly ? (
-                <button
-                  type="button"
-                  className="btn sm dark"
-                  title="간단 예약 · 호실은 지금 또는 나중에 (타입 홀드)"
-                  onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}
-                >
-                  간단 예약
-                </button>
-              ) : null}
               <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} onClick={() => setNowFilter("all")}>
                 전체
               </button>
