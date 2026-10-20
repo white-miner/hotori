@@ -770,7 +770,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null;
     const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
-        <FitText className={`no ${k}`} text={r.no} />
+        {/* FitText+말풍선 flex/cqw로 호수가 사라지던 회귀 → 평문 고정 표시 */}
+        <span className={`no ${k}`} title={r.no}>
+          {r.no}
+        </span>
         {memoBubble}
       </div>
     );
