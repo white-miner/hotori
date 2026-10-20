@@ -14,6 +14,7 @@ import {
   paintedNightsFromStay,
   rangeHitsBlocked,
   stayFromPaintedNights,
+  type PaintedNightRange,
 } from "../shared/nightpick";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -30,22 +31,22 @@ interface Props {
 }
 
 export default function NightPickCalendar({ checkIn, nights, bookings, roomId, excludeId, today, onPick, onBlocked }: Props) {
-  const painted = useMemo(() => paintedNightsFromStay(checkIn, nights), [checkIn, nights]);
+  const paintedFromProps = useMemo(() => paintedNightsFromStay(checkIn, nights), [checkIn, nights]);
+  /** 연속 클릭이 props 반영 전에 쌓이도록 로컬 구간 유지 (호버로는 절대 안 바꿈) */
+  const [painted, setPainted] = useState<PaintedNightRange>(paintedFromProps);
   const [month, setMonth] = useState(() => monthOf(checkIn));
   /** Shift-클릭 범위 기준(마지막 클릭) */
   const [anchor, setAnchor] = useState<string | null>(null);
   /** 선택 해제 후 다음 클릭은 그 밤만 */
   const [fresh, setFresh] = useState(false);
-  const [hover, setHover] = useState<string | null>(null);
 
   useEffect(() => {
     setMonth(monthOf(checkIn));
   }, [checkIn]);
 
-  const preview = useMemo(() => {
-    if (!hover) return painted;
-    return nextPaintedFromClick(painted, hover, { shiftKey: false, anchor, fresh }) ?? painted;
-  }, [anchor, fresh, hover, painted]);
+  useEffect(() => {
+    setPainted(paintedFromProps);
+  }, [paintedFromProps]);
 
   const cells = useMemo(() => monthGrid(month), [month]);
   const blocked = useMemo(() => {
@@ -55,16 +56,16 @@ export default function NightPickCalendar({ checkIn, nights, bookings, roomId, e
   }, [bookings, roomId, excludeId, month]);
 
   const commit = useCallback(
-    (a: string, b: string) => {
-      const range = orderNights(a, b);
+    (next: PaintedNightRange) => {
+      const range = orderNights(next.firstNight, next.lastNight);
       if (rangeHitsBlocked(range.firstNight, range.lastNight, blocked)) {
         onBlocked();
         return false;
       }
       const stay = stayFromPaintedNights(range.firstNight, range.lastNight);
+      setPainted(range);
       onPick(stay.checkIn, stay.nights);
       setFresh(false);
-      setHover(null);
       return true;
     },
     [blocked, onBlocked, onPick],
@@ -78,13 +79,12 @@ export default function NightPickCalendar({ checkIn, nights, bookings, roomId, e
     const next = nextPaintedFromClick(painted, date, { shiftKey, anchor, fresh });
     setAnchor(date);
     if (!next) return;
-    commit(next.firstNight, next.lastNight);
+    commit(next);
   };
 
   const clear = () => {
     setAnchor(null);
     setFresh(true);
-    setHover(null);
   };
 
   return (
@@ -112,7 +112,7 @@ export default function NightPickCalendar({ checkIn, nights, bookings, roomId, e
       <div className="npick-grid" role="grid" aria-label="묵는 밤 선택">
         {cells.map((c) => {
           const blockedDay = blocked.has(c.date);
-          const selected = isNightInRange(c.date, preview.firstNight, preview.lastNight);
+          const selected = isNightInRange(c.date, painted.firstNight, painted.lastNight);
           const isToday = c.date === today;
           const out = !c.inMonth;
           const cls = [
@@ -137,10 +137,6 @@ export default function NightPickCalendar({ checkIn, nights, bookings, roomId, e
               aria-pressed={selected}
               title={blockedDay ? "이미 예약됨" : undefined}
               onClick={(e) => !out && onCellClick(c.date, blockedDay, e.shiftKey)}
-              onPointerEnter={() => {
-                if (!out) setHover(c.date);
-              }}
-              onPointerLeave={() => setHover((h) => (h === c.date ? null : h))}
             >
               <span className="num">{Number(c.date.slice(8))}</span>
             </button>
@@ -148,7 +144,7 @@ export default function NightPickCalendar({ checkIn, nights, bookings, roomId, e
         })}
       </div>
       <div className="npick-sum" role="status" aria-live="polite">
-        <b>{nightPickSummary(preview.firstNight, preview.lastNight)}</b>
+        <b>{nightPickSummary(painted.firstNight, painted.lastNight)}</b>
         <span className="muted sm">{blocked.size > 0 ? "빗금 = 이 방 이미 예약된 밤" : "방을 고르면 막힌 밤이 보여요"}</span>
       </div>
     </div>

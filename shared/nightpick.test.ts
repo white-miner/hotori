@@ -90,6 +90,19 @@ test("클릭: fresh → 1밤 / 밖 → 확장 / 끝 → 축소 / Shift → 앵�
   );
 });
 
+test("클릭 20→21→22 한 밤씩 연박 확장", () => {
+  let cur = nextPaintedFromClick(
+    { firstNight: "2026-10-01", lastNight: "2026-10-01" },
+    "2026-10-20",
+    { shiftKey: false, anchor: null, fresh: true },
+  )!;
+  assert.deepEqual(cur, { firstNight: "2026-10-20", lastNight: "2026-10-20" });
+  cur = nextPaintedFromClick(cur, "2026-10-21", { shiftKey: false, anchor: "2026-10-20", fresh: false })!;
+  assert.deepEqual(cur, { firstNight: "2026-10-20", lastNight: "2026-10-21" });
+  cur = nextPaintedFromClick(cur, "2026-10-22", { shiftKey: false, anchor: "2026-10-21", fresh: false })!;
+  assert.deepEqual(cur, { firstNight: "2026-10-20", lastNight: "2026-10-22" });
+});
+
 test("stay ↔ paint 왕복", () => {
   const paint = paintedNightsFromStay("2026-10-11", 11);
   assert.deepEqual(paint, { firstNight: "2026-10-11", lastNight: "2026-10-21" });
