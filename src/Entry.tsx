@@ -165,8 +165,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [stayTab, setStayTab] = useState<"period" | "paint">("period");
   const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
   const setStayCheckIn = (d: string) => setCheckIn(d);
-  const setStayNights = (n: number) => setNights(clampStayNights(n));
-  const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
   useEffect(() => {
     if (long || kind !== "stay") setStayTab("period");
   }, [long, kind]);
@@ -342,6 +340,18 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         : nightRate(live, groupRates?.[live.typeId]);
     setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
   };
+  /** 저장된 일반 숙박에서 박수만 늘리면 「요금 그대로」경고 대신 1박 연장 패널 */
+  const setStayNights = (n: number) => {
+    const next = clampStayNights(n);
+    const saved = base?.nights ?? 0;
+    if (base && !long && kind === "stay" && live && canExtend(live) && next > saved) {
+      if (nights !== saved) setNights(saved);
+      openEx();
+      return;
+    }
+    setNights(next);
+  };
+  const setStayCheckOut = (d: string) => setStayNights(nightsFromStayDates(checkIn, d));
   const confirmAs = async () => {
     if (!live || !as || asBusy) return;
     setAsBusy(true);
@@ -1046,7 +1056,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       }
       if (kind === "stay" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
-        setNights((n) => clampStayNights(n + (e.key === "ArrowRight" ? 1 : -1)));
+        setStayNights(nights + (e.key === "ArrowRight" ? 1 : -1));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1166,7 +1176,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             ) : null}
             {canAs ? (
               <button type="button" className={`beo ${as ? "on" : ""}`} aria-expanded={!!as} onClick={() => (as ? setAs(null) : openAs())}>
-                <Plus size={17} />
                 <b>{SURCHARGE_COPY}</b>
               </button>
             ) : null}
@@ -1318,7 +1327,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       지금 받기
                     </button>
                     <button type="button" className={`chip ${!as.collect ? "on" : ""}`} onClick={() => setAs({ ...as, collect: false })}>
-                      잔금으로 남김
+                      후불
                     </button>
                   </div>
                 </div>
@@ -1335,7 +1344,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </div>
                 ) : (
                   <div className="muted sm" style={{ marginTop: -4 }}>
-                    판매가만 올리고 잔금이 생겨요 · 가격만 조용히 올리는 경로는 없어요
+                    판매가만 올리고 후불이 생겨요 · 가격만 조용히 올리는 경로는 없어요
                   </div>
                 )}
               </>
@@ -1365,7 +1374,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <span>
                 {isLongStay(live)
                   ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수 받기」로"
-                  : "판매 가격에 오늘 요금을 더하고, 지금 받거나 잔금으로 남겨 둬요"}
+                  : "판매 가격에 오늘 요금을 더하고, 지금 받거나 후불로 남겨 둬요"}
                 {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
               </span>
             </div>
@@ -1402,7 +1411,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       지금 받기
                     </button>
                     <button type="button" className={`chip ${!ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: false })}>
-                      잔금으로 남기기
+                      후불
                     </button>
                   </div>
                 </div>
@@ -1419,7 +1428,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </div>
                 ) : (
                   <div className="muted sm" style={{ marginTop: -4 }}>
-                    가격만 올리고 잔금이 생겨요 · 나중에 「받기」로 적어요
+                    가격만 올리고 후불이 생겨요 · 나중에 「받기」로 적어요
                   </div>
                 )}
               </>
@@ -1643,6 +1652,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 excludeId={base?.id ?? "__draft__"}
                 today={today}
                 onPick={(cin, n) => {
+                  const saved = base?.nights ?? 0;
+                  if (base && !long && live && canExtend(live) && cin === (base.checkIn ?? cin) && n > saved) {
+                    if (nights !== saved) setNights(saved);
+                    if (checkIn !== base.checkIn) setCheckIn(base.checkIn);
+                    openEx();
+                    return;
+                  }
                   setCheckIn(cin);
                   setNights(n);
                 }}

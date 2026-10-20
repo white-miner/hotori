@@ -431,7 +431,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                           지금 받기
                         </button>
                         <button type="button" className={`chip ${!gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: false })}>
-                          잔금으로 남기기
+                          후불
                         </button>
                       </span>
                       {gExt.collect ? (
