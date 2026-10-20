@@ -224,23 +224,30 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </div>
         </div>
 
-        <div className="simple-guest-row">
-          <div className="fld">
-            <label>
-              이름<em>*</em>
-            </label>
-            <input ref={nameRef} value={guestName} onChange={(e) => setName(e.target.value)} placeholder="손님 이름" autoComplete="name" />
-          </div>
-          <div className="fld">
-            <label>
-              연락처<em>*</em>
-            </label>
+        <div className="fld">
+          <label>
+            이름 · 연락처<em>*</em>
+          </label>
+          <div className="two">
             <input
+              ref={nameRef}
+              className="inp"
+              value={guestName}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="손님 이름"
+              autoComplete="name"
+              maxLength={60}
+              aria-label="이름"
+            />
+            <input
+              className="inp"
               value={guestPhone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="전화"
+              placeholder="010-1234-5678"
               inputMode="tel"
               autoComplete="tel"
+              maxLength={30}
+              aria-label="연락처"
             />
           </div>
         </div>
@@ -299,31 +306,29 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               금액미정
             </label>
             {!priceUnset ? (
-              <div className="simple-price-row">
+              <div className="price-row">
                 <label className="inp price sm">
-                  <span className="muted sm">1박</span>
                   <input
                     className="num"
                     inputMode="numeric"
                     aria-label="1박 요금"
                     value={rateStr !== "" ? won(Number(rateStr)) : ""}
-                    placeholder="0"
+                    placeholder="1박"
                     onChange={(e) => {
                       setRateStr(e.target.value.replace(/\D/g, "").slice(0, 9));
                       setPriceTouched(false);
                     }}
                   />
-                  원
+                  원/박
                 </label>
-                <span className="muted sm">× {nights}박 →</span>
-                <label className="inp price sm">
-                  <span className="muted sm">{onsite ? "총액" : "판매금"}</span>
+                <span className="muted sm">× {nights}박 =</span>
+                <label className="inp price price-total">
                   <input
                     className="num"
                     inputMode="numeric"
                     aria-label={onsite ? "총액" : "판매금"}
                     value={priceStr !== "" ? won(Number(priceStr)) : ""}
-                    placeholder={suggested > 0 ? won(suggested) : "0"}
+                    placeholder={suggested > 0 ? won(suggested) : onsite ? "총액" : "판매금"}
                     onChange={(e) => {
                       setPriceStr(e.target.value.replace(/\D/g, "").slice(0, 9));
                       setPriceTouched(true);
@@ -373,13 +378,13 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                 </div>
               ) : null}
               {payMode === "deposit" && !priceUnset ? (
-                <div className="simple-price-row" style={{ marginTop: 8 }}>
+                <div className="price-row" style={{ marginTop: 8 }}>
                   <label className="inp price sm">
-                    <span className="muted sm">선금</span>
                     <input
                       className="num"
                       inputMode="numeric"
                       aria-label="선금"
+                      placeholder="선금"
                       value={depAmt !== "" ? won(Number(depAmt)) : ""}
                       onChange={(e) => setDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
                     />
