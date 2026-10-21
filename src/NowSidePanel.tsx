@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ArrowRightLeft } from "lucide-react";
 import {
   canCheckOut,
   filterUnassignedByCheckIn,
@@ -66,6 +67,10 @@ interface Props {
   bookCtaLabel?: string | null;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
   onMemo: (roomId: string) => void;
+  /** 점유/예약 단실 → 현황 보드 객실 이동 모드 */
+  onRoomMove?: () => void;
+  /** 이동 모드 중이면 CTA 비활성 */
+  moving?: boolean;
   nowOpts?: Parameters<typeof nowFlags>[2];
 }
 
@@ -91,6 +96,8 @@ export default function NowSidePanel({
   bookCtaLabel,
   onCheckOut,
   onMemo,
+  onRoomMove,
+  moving = false,
   nowOpts,
 }: Props) {
   const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
@@ -293,18 +300,30 @@ export default function NowSidePanel({
                     </span>
                   </div>
                   <div className="nsel-acts">
+                    {!readOnly && onRoomMove ? (
+                      <button
+                        type="button"
+                        className="btn sm dark"
+                        disabled={moving}
+                        onClick={onRoomMove}
+                        aria-label="객실 이동"
+                      >
+                        <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
+                        {moving ? "이동 중…" : "객실 이동"}
+                      </button>
+                    ) : null}
                     {!readOnly ? (
-                      <button type="button" className="btn sm dark" onClick={() => onOpen(b, today)}>
+                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
                         예약 기록 열기
                       </button>
                     ) : null}
                     {!readOnly && f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
-                      <button type="button" className="btn sm line" disabled={coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
+                      <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
                         {coBusy === b.id ? "처리 중…" : "퇴실처리"}
                       </button>
                     ) : null}
                     {!readOnly ? (
-                      <button type="button" className="btn sm line" onClick={() => onMemo(selectedRoomId!)}>
+                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId!)}>
                         호실 특이사항
                       </button>
                     ) : null}

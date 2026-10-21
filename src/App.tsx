@@ -98,10 +98,12 @@ export interface EntryRequest {
   /** 「현황」공실 복수선택 → Path B 호실 prefill (다타입 OK · #70) */
   roomIds?: string[];
 }
-/** 객실 배치에서 빈 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
+/** 객실 배치·현황에서 빈/점유 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
 export interface BoardMove {
   id: string;
   night: string;
+  /** 현황 운영패널 → now · Entry/배치 기본 → rooms */
+  tab?: "now" | "rooms";
 }
 export interface ToastOpt {
   action?: { label: string; run: () => void };
@@ -328,6 +330,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           onSimple={openSimple}
           notify={notify}
           move={boardMove}
+          onMoveStart={(m) => setBoardMove(m)}
           onMoveEnd={() => setBoardMove(null)}
         />
       ) : view === "ledger" ? (
