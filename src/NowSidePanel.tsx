@@ -25,6 +25,7 @@ import {
 } from "../shared/ledger";
 import { isOnsite, payState } from "../shared/payment";
 import type { OpenMemoGlance } from "../shared/roomMemo";
+import AssignRoomPick from "./AssignRoomPick";
 import { PlatBadge, lookups } from "./ui";
 
 export type SideMode = "room" | "simple" | "out";
@@ -166,11 +167,6 @@ export default function NowSidePanel({
   const uaRow = (x: Booking) => {
     const open = assigning === x.id;
     const free = open ? freeRooms(s, bookings, x) : null;
-    const options = free
-      ? allRooms(s)
-          .filter((r) => free.has(r.id))
-          .sort((a, c) => Number(a.typeId !== x.typeId) - Number(c.typeId !== x.typeId))
-      : [];
     const p = L.plats.get(x.platformId);
     const glanceAmt = nowAmountGlance(x, p);
     const payG = simplePayGlance(x, isOnsite(p));
@@ -204,25 +200,17 @@ export default function NowSidePanel({
             </button>
           ) : null}
         </div>
-        {open ? (
+        {open && free ? (
           <div className="side-ua-pick rpick">
-            {options.length ? (
-              options.slice(0, 24).map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className={`rchip ${r.typeId !== x.typeId ? "other" : ""}`}
-                  title={L.roomLabel(r.id) ?? r.no}
-                  onClick={() => onAssign(x, r.id)}
-                >
-                  {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
-                  {r.no}
-                  {r.typeId !== x.typeId ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
-                </button>
-              ))
-            ) : (
-              <span className="muted sm">그 기간에 빈 방이 없어요</span>
-            )}
+            <AssignRoomPick
+              s={s}
+              L={L}
+              free={free}
+              typeId={x.typeId}
+              multi={multi}
+              dense
+              onPick={(roomId) => onAssign(x, roomId)}
+            />
           </div>
         ) : null}
       </div>

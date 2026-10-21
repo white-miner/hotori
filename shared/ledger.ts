@@ -1053,6 +1053,29 @@ export function freeRooms(
   return free;
 }
 
+/**
+ * 호실 배정 칩용: 본관·별관 빈 방을 **하나의 목록**으로.
+ * 정렬: 예약 타입 일치 → 방 번호 → 건물 순서. (건물 탭/필터로 한쪽을 숨기지 않음)
+ * 예전 flat+slice(0,N)은 본관이 앞에 와서 별관이 잘렸음.
+ */
+export function assignableRooms(
+  s: HotelSettings,
+  free: Set<string>,
+  typeId: string | null | undefined,
+): PlacedRoom[] {
+  const bs = s.buildings?.length ? s.buildings : [DEFAULT_BUILDING];
+  const bIdx = new Map(bs.map((b, i) => [b.id, i]));
+  return allRooms(s)
+    .filter((r) => free.has(r.id))
+    .sort((a, c) => {
+      const t = Number(a.typeId !== typeId) - Number(c.typeId !== typeId);
+      if (t) return t;
+      const n = a.no.localeCompare(c.no, "ko", { numeric: true });
+      if (n) return n;
+      return (bIdx.get(a.buildingId) ?? 0) - (bIdx.get(c.buildingId) ?? 0);
+    });
+}
+
 export function perNight(b: Pick<Booking, "price" | "nights">): number | null {
   return b.nights && b.nights > 1 ? Math.round(b.price / b.nights) : null;
 }

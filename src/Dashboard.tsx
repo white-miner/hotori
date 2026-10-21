@@ -19,6 +19,7 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
+import AssignRoomPick from "./AssignRoomPick";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
 import {
@@ -37,7 +38,6 @@ import {
   isMultiBuilding,
   unassignedStays,
   dayLabel,
-  allRooms,
   firstOverbooking,
   freeRooms,
   fitSegments,
@@ -1273,11 +1273,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               const open = assigning === b.id;
               const free = open ? freeRooms(s, bookings, b) : null;
               const t = L.types.get(b.typeId);
-              const options = free
-                ? allRooms(s)
-                    .filter((r) => free.has(r.id))
-                    .sort((a, c) => Number(a.typeId !== b.typeId) - Number(c.typeId !== b.typeId))
-                : [];
               return (
                 <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
                   <div className="itr">
@@ -1298,19 +1293,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       </button>
                     ) : null}
                   </div>
-                  {open ? (
+                  {open && free ? (
                     <div className="rpick">
-                      {options.length ? (
-                        options.slice(0, 24).map((r) => (
-                          <button key={r.id} className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => void assign(b, r.id)}>
-                            {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
-                            {r.no}
-                            {r.typeId !== b.typeId ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
-                          </button>
-                        ))
-                      ) : (
-                        <span className="muted">그 기간에 빈 방이 없어요</span>
-                      )}
+                      <AssignRoomPick
+                        s={s}
+                        L={L}
+                        free={free}
+                        typeId={b.typeId}
+                        multi={multi}
+                        onPick={(roomId) => void assign(b, roomId)}
+                      />
                     </div>
                   ) : null}
                 </div>
