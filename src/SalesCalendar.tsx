@@ -237,7 +237,7 @@ export default function SalesCalendar({
           {visibleWeeks.map((band) => (
             <div
               key={band.start}
-              className={`sales-week${band.start === todayWeek ? " cur" : ""}${band.start < todayWeek ? " past-w" : ""}`}
+              className={`sales-week${band.start === todayWeek ? " cur" : ""}`}
               role="list"
             >
               {band.dates.map((d) => {
