@@ -19,6 +19,7 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
+import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
@@ -41,9 +42,11 @@ import {
   unassignedStays,
   dayLabel,
   firstOverbooking,
+  checkedOutRoomOverlaps,
   freeRooms,
   fitSegments,
   isActive,
+  legConflicts,
   isEarlyOut,
   usedNights,
   md,
@@ -341,10 +344,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignBusy, setAssignBusy] = useState(false);
   const [typeConfirm, setTypeConfirm] = useState<{ booking: Booking; roomId: string } | null>(null);
+  const [checkoutChoice, setCheckoutChoice] = useState<{
+    booking: Booking;
+    roomId: string;
+    overlaps: Booking[];
+  } | null>(null);
   /** 「방배정」모드: 「배치」칸 체크 · 본관·별관 한 풀 · 입실일로 보드 맞춤 */
   const setAssigningMode = (id: string | null) => {
     setAssigning(id);
     setTypeConfirm(null);
+    setCheckoutChoice(null);
     if (id) {
       const bk = bookings.find((x) => x.id === id && isActive(x) && !x.roomId);
       setSideMode("simple");
@@ -473,18 +482,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!assigning) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (typeConfirm) setTypeConfirm(null);
+        if (checkoutChoice) setCheckoutChoice(null);
+        else if (typeConfirm) setTypeConfirm(null);
         else setAssigningMode(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [assigning, typeConfirm, multi]);
+  }, [assigning, typeConfirm, checkoutChoice, multi]);
 
   const commitAssign = async (b: Booking, roomId: string) => {
     if (assignBusy) return;
     setAssignBusy(true);
     setTypeConfirm(null);
+    setCheckoutChoice(null);
     try {
       await data.patchBooking(b.id, { roomId });
       notify(`${b.guestName} 님 → ${L.roomLabel(roomId)}호`);
@@ -500,9 +511,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** 동타입=즉시 · 이타입=승인 모달 (칩·체크 공통) */
-  const requestAssign = (b: Booking, roomId: string) => {
-    if (readOnly || assignBusy) return;
+  /** 동타입=즉시 · 이타입=승인 모달 */
+  const gateTypeThenAssign = (b: Booking, roomId: string) => {
     const room = L.rooms.get(roomId) ?? allRooms(s).find((r) => r.id === roomId);
     if (!room) {
       notify("방을 찾지 못했어요");
@@ -514,6 +524,96 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     setTypeConfirm({ booking: b, roomId });
   };
+
+  /** 덮어쓰기: 퇴실 건 roomId 유지 · 새 손님만 배정 (충돌 SoT가 checkedOut 제외) */
+  const overwriteThenAssign = (b: Booking, roomId: string) => {
+    setCheckoutChoice(null);
+    gateTypeThenAssign(b, roomId);
+  };
+
+  /** 퇴실 숙박을 다른 방/미배정으로 옮긴 뒤 새 배정 */
+  const relocateThenAssign = async (b: Booking, roomId: string, overlaps: Booking[], relocateTo: string | null) => {
+    if (assignBusy) return;
+    if (relocateTo) {
+      for (const old of overlaps) {
+        const draft = { ...old, roomId: relocateTo };
+        if (legConflicts(bookings, draft).length) {
+          notify(`${L.roomLabel(relocateTo) ?? relocateTo}호에 다른 투숙이 있어요. 다른 방이나 미배정을 골라 주세요.`);
+          return;
+        }
+      }
+    }
+    setAssignBusy(true);
+    setCheckoutChoice(null);
+    try {
+      for (const old of overlaps) {
+        await data.patchBooking(old.id, { roomId: relocateTo });
+      }
+      const moved =
+        relocateTo == null
+          ? `${overlaps.map((o) => o.guestName).join(", ")} 님 → 미배정`
+          : `${overlaps.map((o) => o.guestName).join(", ")} 님 → ${L.roomLabel(relocateTo)}호`;
+      notify(moved);
+      setAssignBusy(false);
+      gateTypeThenAssign(b, roomId);
+    } catch (e) {
+      notify(saveFailMessage(e, "퇴실 숙박을 옮기지 못했어요"));
+      setAssignBusy(false);
+    }
+  };
+
+  /** 칩·체크 공통: 활성 겹침 하드 · 퇴실완료만 겹치면 선택 모달 · 타입 게이트 */
+  const requestAssign = (b: Booking, roomId: string) => {
+    if (readOnly || assignBusy) return;
+    const room = L.rooms.get(roomId) ?? allRooms(s).find((r) => r.id === roomId);
+    if (!room) {
+      notify("방을 찾지 못했어요");
+      return;
+    }
+    const draft = { ...b, roomId };
+    if (legConflicts(bookings, draft).length) {
+      notify("이 방에 투숙 중인 예약이 있어요. 퇴실처리하거나 그 예약을 옮긴 뒤 배정하세요.");
+      return;
+    }
+    const overlaps = checkedOutRoomOverlaps(bookings, draft);
+    if (overlaps.length) {
+      setTypeConfirm(null);
+      setCheckoutChoice({ booking: b, roomId, overlaps });
+      return;
+    }
+    gateTypeThenAssign(b, roomId);
+  };
+
+  const renderAssignModals = () => (
+    <>
+      {checkoutChoice ? (
+        <AssignCheckoutChoice
+          s={s}
+          L={L}
+          multi={multi}
+          booking={checkoutChoice.booking}
+          roomId={checkoutChoice.roomId}
+          overlaps={checkoutChoice.overlaps}
+          bookings={bookings}
+          busy={assignBusy}
+          onCancel={() => setCheckoutChoice(null)}
+          onOverwrite={() => overwriteThenAssign(checkoutChoice.booking, checkoutChoice.roomId)}
+          onRelocate={(to) => void relocateThenAssign(checkoutChoice.booking, checkoutChoice.roomId, checkoutChoice.overlaps, to)}
+        />
+      ) : null}
+      {typeConfirm ? (
+        <AssignTypeConfirm
+          L={L}
+          bookedTypeId={typeConfirm.booking.typeId}
+          roomTypeId={(L.rooms.get(typeConfirm.roomId) ?? allRooms(s).find((r) => r.id === typeConfirm.roomId))?.typeId}
+          roomLabel={L.roomLabel(typeConfirm.roomId) ?? typeConfirm.roomId}
+          guestName={typeConfirm.booking.guestName}
+          onCancel={() => setTypeConfirm(null)}
+          onApprove={() => void commitAssign(typeConfirm.booking, typeConfirm.roomId)}
+        />
+      ) : null}
+    </>
+  );
 
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
@@ -1150,17 +1250,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           notify={notify}
         />
       ) : null}
-      {typeConfirm ? (
-        <AssignTypeConfirm
-          L={L}
-          bookedTypeId={typeConfirm.booking.typeId}
-          roomTypeId={(L.rooms.get(typeConfirm.roomId) ?? allRooms(s).find((r) => r.id === typeConfirm.roomId))?.typeId}
-          roomLabel={L.roomLabel(typeConfirm.roomId) ?? typeConfirm.roomId}
-          guestName={typeConfirm.booking.guestName}
-          onCancel={() => setTypeConfirm(null)}
-          onApprove={() => void commitAssign(typeConfirm.booking, typeConfirm.roomId)}
-        />
-      ) : null}
+      {renderAssignModals()}
     </>
   );
   }
@@ -1465,17 +1555,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
       </aside>
     </main>
-    {typeConfirm ? (
-      <AssignTypeConfirm
-        L={L}
-        bookedTypeId={typeConfirm.booking.typeId}
-        roomTypeId={(L.rooms.get(typeConfirm.roomId) ?? allRooms(s).find((r) => r.id === typeConfirm.roomId))?.typeId}
-        roomLabel={L.roomLabel(typeConfirm.roomId) ?? typeConfirm.roomId}
-        guestName={typeConfirm.booking.guestName}
-        onCancel={() => setTypeConfirm(null)}
-        onApprove={() => void commitAssign(typeConfirm.booking, typeConfirm.roomId)}
-      />
-    ) : null}
+    {renderAssignModals()}
     </>
   );
 }

@@ -511,6 +511,14 @@ export function effectiveTypeId(b: Pick<Booking, "typeId" | "roomId">, rooms: Ma
 
 // ---------- 밤 차지 ----------
 export const isActive = (b: Pick<Booking, "status">) => b.status === "active";
+
+/**
+ * 물리 방을 아직 쓰는 활성 숙박.
+ * 퇴실처리(`checkedOutAt`)되면 장부는 남지만 충돌·빈방에서 제외 (보드 공실과 맞춤).
+ */
+export function occupiesRoom(b: Pick<Booking, "status" | "checkedOutAt">): boolean {
+  return isActive(b) && !b.checkedOutAt;
+}
 export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">, date: string): boolean {
   if (b.kind !== "stay" || !b.nights) return false;
   return b.checkIn <= date && date < addDays(b.checkIn, usedNights(b) ?? b.nights);
@@ -747,7 +755,7 @@ export function boardMoveTargets(s: HotelSettings, bookings: Booking[], b: Booki
   }
   const free = freeRooms(s, bookings, b);
   for (const x of bookings) {
-    if (x.id === b.id || !isActive(x) || x.kind !== "stay") continue;
+    if (x.id === b.id || !occupiesRoom(x) || x.kind !== "stay") continue;
     const r = roomOnNight(x, b.checkIn);
     if (r) free.delete(r);
   }
@@ -759,8 +767,24 @@ export function boardMoveTargets(s: HotelSettings, bookings: Booking[], b: Booki
 export function legConflicts(bookings: Booking[], draft: Booking): Leg[] {
   if (draft.kind !== "stay") return [];
   const mine = legsOf(draft).filter((l) => l.roomId);
-  const others = bookings.filter((b) => b.id !== draft.id && isActive(b) && b.kind === "stay").flatMap((b) => legsOf(b));
+  // 퇴실처리된 건은 물리 충돌에서 제외 (장부·재고는 유지)
+  const others = bookings.filter((b) => b.id !== draft.id && occupiesRoom(b) && b.kind === "stay").flatMap((b) => legsOf(b));
   return mine.filter((m) => others.some((o) => legsClash(m, o)));
+}
+
+/**
+ * 퇴실처리된 숙박 중 draft와 같은 방·밤이 겹치는 건.
+ * freeRooms에는 안 막히지만 배정 시 「덮어쓰기 / 퇴실 숙박 이동」 선택 모달용.
+ */
+export function checkedOutRoomOverlaps(bookings: Booking[], draft: Booking): Booking[] {
+  if (draft.kind !== "stay") return [];
+  const mine = legsOf(draft).filter((l) => l.roomId);
+  if (!mine.length) return [];
+  return bookings.filter((b) => {
+    if (b.id === draft.id || !isActive(b) || b.kind !== "stay" || !b.checkedOutAt) return false;
+    const other = legsOf(b).filter((l) => l.roomId);
+    return mine.some((m) => other.some((o) => legsClash(m, o)));
+  });
 }
 /** 구간 둘이 같은 방에서 밤이 겹치는지 */
 export function legsClash(a: Leg, b: Leg): boolean {
@@ -1043,7 +1067,8 @@ export function freeRooms(
 ): Set<string> {
   const free = new Set(allRooms(s).map((r) => r.id));
   for (const b of bookings) {
-    if (b.id === draft.id || !isActive(b) || !b.roomId) continue;
+    // 퇴실처리 = 물리 점유 아님 → 칸/칩에 노출 (활성 투숙만 막음)
+    if (b.id === draft.id || !occupiesRoom(b) || !b.roomId) continue;
     if (draft.kind === "stay") {
       if (b.kind === "stay") for (const l of legsOf(b)) if (l.roomId && nightsOverlap(l, draft)) free.delete(l.roomId);
     } else if (b.kind === "dayuse" && b.checkIn === draft.checkIn && timesOverlap(b, draft as Booking)) {
