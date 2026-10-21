@@ -800,18 +800,20 @@ export interface RoomSwapPlan {
 /**
  * A를 toRoomId로 옮길 때 그 방을 쓰는 활성 숙박 B가 정확히 1건이고,
  * A↔B 맞교환 후 제3자와 안 겹치면 계획을 돌려요. 아니면 null.
+ * · 퍼즐 맞교환 = 숙박 전체 A↔B (원자). night 인자는 무시 — 보드가 중간 밤이어도
+ *   점유↔점유를 막지 않음 (605↔608 · 퇴실예정/숙박/숙박예약 무관).
  * · 퇴실완료만 겹침 → null (덮어쓰기 모달 경로)
- * · 중간 밤부터 이동(whole=false) → null
- * · 만실에서 602↔508 같은 통째 맞교환용
+ * · 빈 방 → null (일반 이동 경로)
  */
 export function proposeRoomSwap(
   bookings: Booking[],
   a: Booking,
   toRoomId: string,
-  night?: string,
+  _night?: string,
 ): RoomSwapPlan | null {
   if (a.kind !== "stay" || !occupiesRoom(a) || !toRoomId) return null;
-  const night0 = night ?? a.checkIn;
+  // 항상 첫 밤·전체 숙박 기준 (부분 이동 ≠ 맞교환)
+  const night0 = a.checkIn;
   const w = boardMoveWindow(a, night0);
   if (!w.whole || w.nights <= 0) return null;
   const fromRoomId = roomOnNight(a, night0) ?? a.roomId;

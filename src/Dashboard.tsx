@@ -552,7 +552,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setMoving(false);
     }
   };
-  /** 현황 운영패널 · 단실 점유만 — 공실/복수 공실은 숨김 */
+  /** 현황 운영패널 · 단실 점유만 — 공실/복수 공실은 숨김.
+   * night = checkIn: 퍼즐 맞교환·전체 이동 (today면 중간 밤 whole=false로 점유 타깃이 전부 죽음).
+   * 퇴실예정/숙박/숙박예약 셀 상태 게이트 없음. */
   const startOpsRoomMove = () => {
     if (readOnly || selectedRoomIds.length !== 1) return;
     const rid = selectedRoomIds[0];
@@ -560,7 +562,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!b || !isActive(b) || b.kind !== "stay") return;
     setAssigningMode(null);
     setSideMode("room");
-    onMoveStart({ id: b.id, night: today, tab: "now" });
+    onMoveStart({ id: b.id, night: b.checkIn, tab: "now" });
   };
   const mvCellBits = (r: { id: string; typeId?: string | null; no: string }) => {
     const mvSwap = !!mvB && swapTargets.has(r.id);

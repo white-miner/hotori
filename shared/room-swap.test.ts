@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   type Booking,
   boardMoveTargets,
+  boardMoveWindow,
   boardSwapTargets,
   checkedOutRoomOverlaps,
   freeRooms,
@@ -100,10 +101,20 @@ test("퇴실완료만 겹치면 swap null · checkedOut overlaps", () => {
   assert.equal(checkedOutRoomOverlaps([ghost, a], draft).length, 1);
 });
 
-test("중간 밤 이동은 맞교환 제안 안 함", () => {
-  const a = bk({ id: "a", roomId: "r602", checkIn: "2026-10-19", nights: 3 });
-  const b = bk({ id: "b", roomId: "r508", checkIn: "2026-10-20", nights: 2 });
-  assert.equal(proposeRoomSwap([a, b], a, "r508", "2026-10-20"), null);
+test("중간 밤 night 인자여도 전체 숙박 퍼즐 맞교환 (605↔608 회귀)", () => {
+  // 예전: night=today → whole=false → null (운영패널 버그). 지금은 night 무시·전체 A↔B.
+  const a = bk({ id: "a", guestName: "A", roomId: "r605", checkIn: "2026-10-19", nights: 3 });
+  const b = bk({ id: "b", guestName: "B", roomId: "r508", checkIn: "2026-10-19", nights: 2 });
+  const mid = "2026-10-20";
+  assert.equal(boardMoveWindow(a, mid).whole, false);
+  const plan = proposeRoomSwap([a, b], a, "r508", mid);
+  assert.ok(plan);
+  assert.equal(plan!.fromRoomId, "r605");
+  assert.equal(plan!.toRoomId, "r508");
+  assert.deepEqual(plan!.aPlace, { roomId: "r508", segments: null });
+  assert.deepEqual(plan!.bPlace, { roomId: "r605", segments: null });
+  const map = boardSwapTargets(S, [a, b], a, mid);
+  assert.equal(map.has("r508"), true);
 });
 
 test("제3자가 원 방에 있으면 swap 불가", () => {
@@ -121,4 +132,11 @@ test("boardSwapTargets: 508만 맞교환 후보", () => {
   assert.equal(map.has("r508"), true);
   assert.equal(map.has("r605"), false);
   assert.equal(boardMoveTargets(S, [a, b], a, "2026-10-19").has("r605"), true);
+});
+
+test("숙박↔숙박예약·퇴실예정 무관: occupiesRoom이면 맞교환", () => {
+  const a = bk({ id: "a", roomId: "r602", checkIn: "2026-10-19", nights: 2, arrived: true });
+  const b = bk({ id: "b", roomId: "r508", checkIn: "2026-10-20", nights: 1, arrived: false });
+  assert.ok(proposeRoomSwap([a, b], a, "r508", "2026-10-21"));
+  assert.equal(boardSwapTargets(S, [a, b], a, "2026-10-21").has("r508"), true);
 });
