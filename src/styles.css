@@ -206,8 +206,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-gchip.lv-stop small { color: var(--badge-stop); }
 
 .sales-dates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
   overflow: visible;
   padding: var(--space-4);
@@ -215,12 +215,43 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   background: var(--panel2);
 }
 .sales-picking .sales-dates { margin-bottom: var(--space-6); }
+.sales-past-toggle {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--ink3);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.sales-past-toggle:hover { color: var(--ink2); background: rgba(0, 0, 0, 0.06); }
+.sales-week {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: var(--space-3);
+}
 .sales-day {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
+.sales-day.past {
+  opacity: 0.58;
+}
+.sales-day.past .sales-day-h b,
+.sales-day.past .sales-day-h > span:not(.sales-day-check) { color: var(--ink4); }
+.sales-day.past.sa:not(.sel):not(.pick) .sales-day-h b,
+.sales-day.past.sa:not(.sel):not(.pick) .sales-day-h > span:not(.sales-day-check),
+.sales-day.past.su:not(.sel):not(.pick) .sales-day-h b,
+.sales-day.past.su:not(.sel):not(.pick) .sales-day-h > span:not(.sales-day-check) { color: var(--ink4); }
+.sales-day.past .sales-tcard { background: rgba(255, 255, 255, 0.72); }
+.sales-day.past.sel,
+.sales-day.past.pick,
+.sales-day.past.td { opacity: 1; }
 .sales-day-h {
   position: relative;
   display: flex;
@@ -381,9 +412,9 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-sheet .actrow .btn { gap: var(--space-chip); }
 
 @media (max-width: 720px) {
-  .sales-dates {
+  .sales-dates { padding: var(--space-3); gap: var(--space-2); }
+  .sales-week {
     grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-    padding: var(--space-3);
     gap: var(--space-2);
   }
   .sales-tcard { padding: var(--space-2) var(--space-3); border-radius: var(--radius-inp-sm); }
