@@ -2,7 +2,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings } from "./ledger";
-import { type Payment, bookingCash, isOnsite, paidOf, payKindLabel, payLineMain, payState, validatePayment } from "./payment";
+import {
+  type Payment,
+  bookingCash,
+  defaultBookingPlatformId,
+  isOnsite,
+  paidOf,
+  payKindLabel,
+  payLineMain,
+  payState,
+  validateGuestPhone,
+  validatePayment,
+} from "./payment";
 import { moneySummary } from "./expense";
 
 let n = 0;
@@ -24,6 +35,28 @@ test("현장 결제: 이름에 현장·전화가 있으면 켜지고, 설정에�
   assert.equal(isOnsite({ name: "현장", onsite: false }), false);
   assert.equal(isOnsite({ name: "에어비앤비", onsite: true }), true);
   assert.equal(isOnsite(null), false);
+});
+
+test("연락처: OTA는 빈 번호 OK · 현장·전화만 필수", () => {
+  assert.equal(validateGuestPhone(ota, ""), null);
+  assert.equal(validateGuestPhone(ota, "   "), null);
+  assert.equal(validateGuestPhone(ota, null), null);
+  assert.match(validateGuestPhone(onsite, "")!, /연락처/);
+  assert.match(validateGuestPhone(onsite, "  ")!, /연락처/);
+  assert.equal(validateGuestPhone(onsite, "010-1111-2222"), null);
+  assert.equal(validateGuestPhone(null, ""), null);
+});
+
+test("간단 예약 기본 채널: 현장이 맨 위여도 첫 OTA를 고름", () => {
+  const plats = [
+    { id: "p-walk", name: "현장·전화" },
+    { id: "p-ya", name: "야놀자" },
+    { id: "p-ag", name: "아고다" },
+  ];
+  assert.equal(defaultBookingPlatformId(plats), "p-ya");
+  assert.equal(defaultBookingPlatformId(plats, "p-ag"), "p-ag");
+  assert.equal(defaultBookingPlatformId(plats, "missing"), "p-ya");
+  assert.equal(defaultBookingPlatformId([{ id: "p-walk", name: "현장·전화" }]), "p-walk");
 });
 
 test("현장 예약: 선금 50,000 받으면 잔금 100,000, 잔금 받으면 완납", () => {

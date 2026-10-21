@@ -39,6 +39,25 @@ export function isOnsite(p: Pick<Platform, "name"> & { onsite?: boolean | null }
   return /현장|전화/.test(p.name);
 }
 
+type OnsitePlat = Pick<Platform, "name"> & { onsite?: boolean | null };
+type IdPlat = OnsitePlat & Pick<Platform, "id">;
+
+/**
+ * 연락처 필수 = 현장·전화(`isOnsite`)만.
+ * OTA 등 플랫폼은 빈 연락처로 저장 가능. 간단 예약·Entry·결제 저장이 이 함수만 써요.
+ */
+export function validateGuestPhone(plat: OnsitePlat | null | undefined, phone: string | null | undefined): string | null {
+  if (!isOnsite(plat)) return null;
+  if (phone?.trim()) return null;
+  return "현장·전화 채널은 연락처가 필요해요.";
+}
+
+/** 간단 예약 기본 채널: 프리셋 → 첫 OTA(비현장) → 첫 플랫폼. 현장이 맨 위여도 OTA 빈 연락처 저장이 기본 경로. */
+export function defaultBookingPlatformId(platforms: IdPlat[], presetId?: string | null): string {
+  if (presetId && platforms.some((p) => p.id === presetId)) return presetId;
+  return platforms.find((p) => !isOnsite(p))?.id ?? platforms[0]?.id ?? "";
+}
+
 export const paidOf = (b: Pick<Booking, "payments">) => (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
 
 export interface PayState {

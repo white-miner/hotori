@@ -20,7 +20,15 @@ import {
 import { autoPick, GROUP_ROOMS_MAX, groupDrafts, groupStockImpactByTypes } from "../shared/group";
 import { syncStayNightRates } from "../shared/nightrates";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, isOnsite, validatePayment } from "../shared/payment";
+import {
+  BOOK_PAY_LABEL,
+  BOOK_PAY_METHODS,
+  type BookPayMethod,
+  defaultBookingPlatformId,
+  isOnsite,
+  validateGuestPhone,
+  validatePayment,
+} from "../shared/payment";
 import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
@@ -46,7 +54,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const L = useMemo(() => lookups(s), [s]);
   const p = req.preset ?? {};
   const pickTypes = s.types.filter((t) => typeLabel(t));
-  const [platformId, setPlatformId] = useState(p.platformId ?? s.platforms[0]?.id ?? "");
+  const [platformId, setPlatformId] = useState(() => defaultBookingPlatformId(s.platforms, p.platformId));
   const [typeId, setTypeId] = useState(p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(p.checkIn ?? today);
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
@@ -167,8 +175,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   async function save() {
     if (!guestName.trim()) return setErr("이름을 적어 주세요.");
-    // 현장·전화만 연락처 필수 · OTA 등은 선택
-    if (onsite && !guestPhone.trim()) return setErr("연락처를 적어 주세요.");
+    // 현장·전화만 연락처 필수 · OTA 등은 선택 (HTML required · multi-room decorate 동일 규칙)
+    const phoneErr = validateGuestPhone(plat, guestPhone);
+    if (phoneErr) return setErr(phoneErr);
     if (!priceUnset && (!Number.isFinite(price) || price < 0 || (price === 0 && !rateStr && !priceStr)))
       return setErr("1박 요금·판매금을 적거나 금액미정을 켜 주세요.");
     if (assignNow && roomIds.length !== roomCount)
@@ -380,7 +389,14 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <label>
             이름<em>*</em> · 연락처{onsite ? <em>*</em> : null}
           </label>
-          <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
+          <GuestNamePhone
+            nameRef={nameRef}
+            name={guestName}
+            phone={guestPhone}
+            onName={setName}
+            onPhone={setPhone}
+            phoneRequired={onsite}
+          />
         </div>
 
         <div className="fld">
