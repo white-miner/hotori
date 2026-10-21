@@ -560,7 +560,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <label>채널</label>
           <ChipGroup>
             {s.platforms.map((pl) => (
-              <Chip key={pl.id} active={pl.id === platformId} onClick={() => setPlatformId(pl.id)} title={isOnsite(pl) ? "현장/전화" : "플랫폼"}>
+              <Chip
+                key={pl.id}
+                active={!walkInImmediate && pl.id === platformId}
+                onClick={() => {
+                  setWalkInImmediate(false);
+                  setPlatformId(pl.id);
+                }}
+                title={isOnsite(pl) ? "현장/전화" : "플랫폼"}
+              >
                 {pl.name}
               </Chip>
             ))}
@@ -570,11 +578,16 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               onClick={() => {
                 setWalkInImmediate((v) => {
                   const next = !v;
-                  if (next) setPathAOpen(false);
+                  if (next) {
+                    setPathAOpen(false);
+                    // 바로 입실 ↔ 채널 배타 · 저장/결제는 현장·전화 플랫폼
+                    const onsitePlat = s.platforms.find((x) => isOnsite(x));
+                    if (onsitePlat) setPlatformId(onsitePlat.id);
+                  }
                   return next;
                 });
               }}
-              title="이름·연락처 없이 즉시 숙박"
+              title="이름·연락처 없이 즉시 숙박 · 채널과 배타"
             >
               바로 입실
             </Chip>
