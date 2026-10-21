@@ -19,6 +19,7 @@ import {
   duplicateRoomNos,
   floorsOf,
   freeRooms,
+  assignableRooms,
   moveFloor,
   nightBoard,
   normalizeSettings,
@@ -292,6 +293,20 @@ test("겹치는 예약 확인은 방 번호가 아니라 그 건물의 그 방 �
   assert.equal(remaining(M, [main201], "s", "2026-10-18"), 2);
   const annexSd = bk({ typeId: "s", roomId: "ra202" });
   assert.equal(remaining(M, [annexSd], "sd", "2026-10-18"), 1, "별관 SD 방에 배정하면 SD에서 빠져요");
+});
+
+test("호실 배정 목록은 본관·별관을 하나의 목록으로 두고, 타입 일치를 앞에 둬요", () => {
+  const free = freeRooms(M, [], { id: "new", kind: "stay", checkIn: "2026-10-19", nights: 1, startTime: null, endTime: null });
+  const rooms = assignableRooms(M, free, "s");
+  const ids = rooms.map((r) => r.id);
+  // 같은 번호면 본관→별관; 타입 s가 다른 타입보다 앞
+  assert.deepEqual(
+    ids.filter((id) => rooms.find((r) => r.id === id)!.typeId === "s"),
+    ["r201", "ra201", "r202"],
+  );
+  assert.ok(ids.includes("ra201") && ids.includes("ra202"), "별관이 목록에 있어야 해요");
+  assert.ok(ids.includes("r201") && ids.includes("r203"), "본관도 같은 목록에");
+  assert.equal(rooms.findIndex((r) => r.typeId === "s") < rooms.findIndex((r) => r.typeId === "sd"), true);
 });
 
 test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 그 층·방도 지워져요", () => {
