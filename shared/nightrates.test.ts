@@ -6,10 +6,12 @@ import {
   fillNightAmounts,
   hasFullNightMatrix,
   memberFlatRate,
+  nightRatesFromTotal,
   occupiedNightDates,
   parseStayNightRates,
   priceFromNightMatrix,
   setNightAmount,
+  splitAmountLast,
   sumNightAmounts,
   syncStayNightRates,
 } from "./nightrates.ts";
@@ -66,4 +68,23 @@ test("parseStayNightRates: 깨진 값 걸러냄", () => {
   });
   assert.equal(p?.flat, 70_000);
   assert.deepEqual(p?.nights, { "2026-10-19": 70_000 });
+});
+
+test("splitAmountLast: 나머지 마지막 칸 · 합 = 총액", () => {
+  assert.deepEqual(splitAmountLast(460_000, 5), [92_000, 92_000, 92_000, 92_000, 92_000]);
+  assert.deepEqual(splitAmountLast(460_001, 5), [92_000, 92_000, 92_000, 92_000, 92_001]);
+  assert.equal(splitAmountLast(460_001, 5).reduce((a, b) => a + b, 0), 460_001);
+  assert.deepEqual(splitAmountLast(100, 0), []);
+  assert.deepEqual(splitAmountLast(7, 3), [2, 2, 3]);
+});
+
+test("nightRatesFromTotal: A1 야놀자 5박 460000 · Σ = 총액", () => {
+  const r = nightRatesFromTotal("2026-10-20", 5, 460_000);
+  assert.equal(sumNightAmounts(r.nights), 460_000);
+  assert.equal(priceFromNightMatrix(r), 460_000);
+  assert.equal(hasFullNightMatrix("2026-10-20", 5, r), true);
+  assert.deepEqual(occupiedNightDates("2026-10-20", 5), Object.keys(r.nights ?? {}).sort());
+  const uneven = nightRatesFromTotal("2026-10-20", 5, 460_001);
+  assert.equal(uneven.nights?.["2026-10-24"], 92_001);
+  assert.equal(sumNightAmounts(uneven.nights), 460_001);
 });

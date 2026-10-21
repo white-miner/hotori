@@ -88,11 +88,15 @@ import {
 import {
   type StayNightRates,
   hasFullNightMatrix,
+  nightRatesFromTotal,
   priceFromNightMatrix,
   refillFromDefaults,
   setNightAmount,
   syncStayNightRates,
 } from "../shared/nightrates";
+
+/** 플랫폼 판매금: 박당 | 총액(기본 · OTA 총액 그대로) */
+type SalesMode = "perNight" | "total";
 import {
   SURCHARGE_COPY,
   SURCHARGE_REASON_LABEL,
@@ -230,6 +234,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!base || base.kind !== "stay" || base.stayMode === "long_stay" || !base.nights) return "";
     return String(roomNightRate(base, initGroupRates?.[base.typeId]));
   });
+  /** 플랫폼 전용 판매금 모드 · 기본 총액 */
+  const [salesMode, setSalesMode] = useState<SalesMode>("total");
   /** 방×밤 요금 행렬 (있으면 총액 = Σ 셀 + 가산) */
   const [nightRates, setNightRates] = useState<StayNightRates | null>(() => {
     if (!base || base.kind !== "stay" || base.stayMode === "long_stay" || !base.nights) return null;
@@ -404,42 +410,51 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       return;
     }
     if (!long && kind === "stay" && next >= 1 && (next !== nights || nextCheckIn !== checkIn)) {
-      const typeRate = base?.groupId ? data.groups.get(base.groupId)?.rates?.[typeId] : undefined;
-      const rate = Number(rateStr || 0) > 0 ? Math.round(Number(rateStr)) : roomNightRate(
-        { kind: "stay", price: Number(price || 0), nights, nightRates, extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff },
-        typeRate,
-      );
-      const prevRates: StayNightRates = {
-        ...(nightRates ?? {}),
-        flat: rate || nightRates?.flat || null,
-        weekday: wdStr ? Number(wdStr) : nightRates?.weekday ?? null,
-        weekend: weStr ? Number(weStr) : nightRates?.weekend ?? null,
-      };
-      const synced = syncStayNightRates(nextCheckIn, next, prevRates, { typeRate: typeRate ?? rate });
-      setNightRates(synced);
       const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-      if (hasFullNightMatrix(nextCheckIn, next, synced)) {
-        setRateStr(String(synced.flat ?? rate));
-        setPrice(String(priceFromNightMatrix(synced, addons)));
-      } else if (next < nights) {
-        const snap = {
-          kind: "stay" as const,
-          price: Number(price || 0),
-          nights,
-          checkIn: nextCheckIn,
-          nightRates: synced,
-          extraFee,
-          earlyIn,
-          lateOut,
-          timeFee,
-          arrival,
-          carFee,
-          walkOff,
+      const platNow = s.platforms.find((x) => x.id === platformId);
+      // 플랫폼 총액 모드: 총액 유지 · night_rates만 재분배(나머지 마지막 박)
+      if (salesMode === "total" && !isOnsite(platNow) && Number(price || 0) > 0) {
+        const room = Math.max(0, Number(price || 0) - addons);
+        const redistributed = nightRatesFromTotal(nextCheckIn, next, room);
+        setNightRates(redistributed);
+        setRateStr(String(redistributed.flat ?? (next >= 1 ? Math.floor(room / next) : 0)));
+      } else {
+        const typeRate = base?.groupId ? data.groups.get(base.groupId)?.rates?.[typeId] : undefined;
+        const rate = Number(rateStr || 0) > 0 ? Math.round(Number(rateStr)) : roomNightRate(
+          { kind: "stay", price: Number(price || 0), nights, nightRates, extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff },
+          typeRate,
+        );
+        const prevRates: StayNightRates = {
+          ...(nightRates ?? {}),
+          flat: rate || nightRates?.flat || null,
+          weekday: wdStr ? Number(wdStr) : nightRates?.weekday ?? null,
+          weekend: weStr ? Number(weStr) : nightRates?.weekend ?? null,
         };
-        const r = repriceForNights(snap, next, rate);
-        setRateStr(String(r.rate));
-        setPrice(String(r.price));
-        if (r.nightRates) setNightRates(r.nightRates);
+        const synced = syncStayNightRates(nextCheckIn, next, prevRates, { typeRate: typeRate ?? rate });
+        setNightRates(synced);
+        if (hasFullNightMatrix(nextCheckIn, next, synced)) {
+          setRateStr(String(synced.flat ?? rate));
+          setPrice(String(priceFromNightMatrix(synced, addons)));
+        } else if (next < nights) {
+          const snap = {
+            kind: "stay" as const,
+            price: Number(price || 0),
+            nights,
+            checkIn: nextCheckIn,
+            nightRates: synced,
+            extraFee,
+            earlyIn,
+            lateOut,
+            timeFee,
+            arrival,
+            carFee,
+            walkOff,
+          };
+          const r = repriceForNights(snap, next, rate);
+          setRateStr(String(r.rate));
+          setPrice(String(r.price));
+          if (r.nightRates) setNightRates(r.nightRates);
+        }
       }
     }
     if (opts?.checkIn != null) setCheckIn(opts.checkIn);
@@ -470,6 +485,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (long || kind !== "stay" || nights < 1) return;
     const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
     const room = Math.max(0, Number(digits || 0) - addons);
+    const platNow = s.platforms.find((x) => x.id === platformId);
+    // 플랫폼 총액 모드: Σ = 총액(나머지 마지막 박). 박당/현장은 기존 균등 flat.
+    if (salesMode === "total" && !isOnsite(platNow)) {
+      const next = nightRatesFromTotal(checkIn, nights, room);
+      setNightRates(next);
+      setRateStr(String(next.flat ?? Math.floor(room / nights)));
+      return;
+    }
     const rate = Math.round(room / nights);
     setRateStr(String(rate));
     // 총액 오버라이드: flat·셀을 균등 단가로 맞춤 (이후 행렬이 진실)
@@ -2482,64 +2505,119 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <div className="fld">
             <label>
               {kind === "stay" ? (
-                <>
-                  총액<em>*</em>
-                </>
+                !isOnsite(curPlat) ? (
+                  <>
+                    판매금<em>*</em>
+                  </>
+                ) : (
+                  <>
+                    총액<em>*</em>
+                  </>
+                )
               ) : (
                 <>
                   판매 가격<em>*</em>
                 </>
               )}
             </label>
+            {kind === "stay" && !isOnsite(curPlat) ? (
+              <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesMode === "perNight"}
+                  className={salesMode === "perNight" ? "on" : ""}
+                  onClick={() => setSalesMode("perNight")}
+                >
+                  박당
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesMode === "total"}
+                  className={salesMode === "total" ? "on" : ""}
+                  onClick={() => setSalesMode("total")}
+                >
+                  총액
+                </button>
+              </div>
+            ) : null}
             {kind === "stay" ? (
-              <>
-                <PriceRow>
-                  <PriceInp sm suffix="원/박">
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      placeholder="1박"
-                      value={rateStr ? won(Number(rateStr)) : ""}
-                      onChange={(e) => setRateAndTotal(e.target.value)}
-                      aria-label="1박 요금"
-                    />
-                  </PriceInp>
-                  <span className="muted sm">× {nights}박 =</span>
-                  <PriceInp total>
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      placeholder="총액"
-                      value={price ? won(Number(price)) : ""}
-                      onChange={(e) => setTotalAndRate(e.target.value)}
-                      aria-label="총액"
-                    />
-                  </PriceInp>
-                </PriceRow>
-                <PriceRow wdwe>
-                  <PriceInp sm suffix="평일">
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      placeholder="평일"
-                      value={wdStr ? won(Number(wdStr)) : ""}
-                      onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
-                      aria-label="평일 1박 기본"
-                    />
-                  </PriceInp>
-                  <PriceInp sm suffix="주말">
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      placeholder="주말"
-                      value={weStr ? won(Number(weStr)) : ""}
-                      onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
-                      aria-label="주말 1박 기본 (금·토)"
-                    />
-                  </PriceInp>
-                  <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
-                </PriceRow>
-              </>
+              salesMode === "total" && !isOnsite(curPlat) ? (
+                <>
+                  <PriceRow>
+                    <PriceInp total>
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="총액"
+                        value={price ? won(Number(price)) : ""}
+                        onChange={(e) => setTotalAndRate(e.target.value)}
+                        aria-label="판매금 총액"
+                      />
+                    </PriceInp>
+                  </PriceRow>
+                  <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
+                    플랫폼 총액 그대로
+                    {Number(price || 0) > 0 ? (
+                      <>
+                        {" · "}
+                        <b>{won(Number(price))}원</b>
+                        {nights > 1 ? ` · ${nights}박` : null}
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <PriceRow>
+                    <PriceInp sm suffix="원/박">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="1박"
+                        value={rateStr ? won(Number(rateStr)) : ""}
+                        onChange={(e) => setRateAndTotal(e.target.value)}
+                        aria-label="1박 요금"
+                      />
+                    </PriceInp>
+                    <span className="muted sm">× {nights}박 =</span>
+                    <PriceInp total>
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="총액"
+                        value={price ? won(Number(price)) : ""}
+                        onChange={(e) => setTotalAndRate(e.target.value)}
+                        aria-label={!isOnsite(curPlat) ? "판매금" : "총액"}
+                      />
+                    </PriceInp>
+                  </PriceRow>
+                  <PriceRow wdwe>
+                    <PriceInp sm suffix="평일">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="평일"
+                        value={wdStr ? won(Number(wdStr)) : ""}
+                        onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
+                        aria-label="평일 1박 기본"
+                      />
+                    </PriceInp>
+                    <PriceInp sm suffix="주말">
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder="주말"
+                        value={weStr ? won(Number(weStr)) : ""}
+                        onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
+                        aria-label="주말 1박 기본 (금·토)"
+                      />
+                    </PriceInp>
+                    <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
+                  </PriceRow>
+                </>
+              )
             ) : (
               <PriceInp>
                 <input
@@ -2552,7 +2630,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 />
               </PriceInp>
             )}
-            {kind === "stay" && Number(price || 0) > 0 ? (
+            {kind === "stay" && Number(price || 0) > 0 && !(salesMode === "total" && !isOnsite(curPlat)) ? (
               <div className="muted sm" style={{ marginTop: 6 }}>
                 {hasFullNightMatrix(checkIn, nights, nightRates)
                   ? "총액 = 선택 밤 금액 합"

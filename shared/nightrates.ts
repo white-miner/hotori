@@ -197,3 +197,36 @@ export function memberFlatRate(
   }
   return 0;
 }
+
+/**
+ * 총액을 n칸으로 나눔. 몫은 floor, **남는 원은 마지막 칸**.
+ * (플랫폼 OTA 총액 → 박·호실 분배용. 균등 강제 금지.)
+ */
+export function splitAmountLast(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const t = Math.max(0, Math.round(Number(total) || 0));
+  const per = Math.floor(t / n);
+  const rem = t - per * n;
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? per + rem : per));
+}
+
+/**
+ * 플랫폼 총액 → StayNightRates. `price` 진실 = total, 행렬 Σ = total (나머지 마지막 박).
+ * UI에 박당을 강요하지 않기 위한 저장용 분배.
+ */
+export function nightRatesFromTotal(checkIn: string, nights: number, total: number): StayNightRates {
+  const dates = occupiedNightDates(checkIn, nights);
+  if (!dates.length) return { flat: null, weekday: null, weekend: null, nights: null };
+  const amounts = splitAmountLast(total, dates.length);
+  const map: NightAmountMap = {};
+  dates.forEach((d, i) => {
+    map[d] = amounts[i]!;
+  });
+  const flat = amounts.length ? Math.floor(Math.max(0, Math.round(total)) / amounts.length) : 0;
+  return {
+    flat: flat > 0 ? flat : null,
+    weekday: null,
+    weekend: null,
+    nights: map,
+  };
+}

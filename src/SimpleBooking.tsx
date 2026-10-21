@@ -26,7 +26,7 @@ import {
   groupStockImpact,
   groupStockImpactByTypes,
 } from "../shared/group";
-import { syncStayNightRates } from "../shared/nightrates";
+import { nightRatesFromTotal, splitAmountLast, syncStayNightRates } from "../shared/nightrates";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
 import {
@@ -49,6 +49,8 @@ import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 
 type PayMode = "prepaid" | "postpaid" | "deposit";
+/** 플랫폼 판매금 입력: 박당 = rate×박 · 총액 = OTA 총액 그대로 (기본) */
+type SalesMode = "perNight" | "total";
 
 interface Props {
   data: HotelData;
@@ -122,6 +124,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     return out;
   });
   const [priceUnset, setPriceUnset] = useState(!!p.priceUnset);
+  /** 플랫폼 전용 · 기본 총액(OTA 붙여넣기) */
+  const [salesMode, setSalesMode] = useState<SalesMode>("total");
+  const [totalStr, setTotalStr] = useState(() => (p.price != null && p.price > 0 ? String(p.price) : ""));
   /** Path B · #71 roomIds / 단실 roomId prefill → 배치도에 선택 상태 */
   const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
@@ -164,12 +169,42 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const rateNum: Record<string, number> = Object.fromEntries(
     Object.entries(rates).map(([k, v]) => [k, Number(v || 0)]),
   );
-  const linePrices = priceUnset ? effectiveTypeIds.map(() => 0) : ratePrices(effectiveTypeIds, rateNum, nights);
-  const sumPrice = linePrices.reduce((a, b) => a + b, 0);
-  const formula = rateFormula(
-    pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
-    nights,
-  );
+  /** 플랫폼 + 총액 모드: 입력 총액이 그룹/예약 판매금 (균등 박당 강제 없음) */
+  const platformTotalMode = !onsite && salesMode === "total";
+  const totalNum = Math.max(0, Math.round(Number(totalStr || 0)));
+  const linePrices = priceUnset
+    ? effectiveTypeIds.map(() => 0)
+    : platformTotalMode
+      ? splitAmountLast(totalNum, Math.max(1, effectiveTypeIds.length || 1)).slice(0, effectiveTypeIds.length)
+      : ratePrices(effectiveTypeIds, rateNum, nights);
+  const sumPrice = priceUnset ? 0 : platformTotalMode ? totalNum : linePrices.reduce((a, b) => a + b, 0);
+  const formula = platformTotalMode
+    ? ""
+    : rateFormula(
+        pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
+        nights,
+      );
+
+  const switchSalesMode = (mode: SalesMode) => {
+    if (mode === salesMode) return;
+    if (mode === "total") {
+      const fromRates = ratePrices(effectiveTypeIds, rateNum, nights).reduce((a, b) => a + b, 0);
+      if (fromRates > 0) setTotalStr(String(fromRates));
+    } else if (totalNum > 0 && pickedTypes.length) {
+      // 총액 → 박당: 타입별 균등 몫을 박수로 나눈 단가(표시용). 저장은 박당 모드 규칙.
+      const roomN = Math.max(1, effectiveTypeIds.length);
+      const perRoom = Math.floor(totalNum / roomN);
+      const perNight = nights >= 1 ? Math.floor(perRoom / nights) : 0;
+      if (perNight > 0) {
+        setRates((m) => {
+          const next = { ...m };
+          for (const t of pickedTypes) next[t.id] = String(perNight);
+          return next;
+        });
+      }
+    }
+    setSalesMode(mode);
+  };
 
   // free set: probe booking with primary type (room-free check is per-room in freeRooms)
   const probe: Booking = {
@@ -279,7 +314,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     });
   }
 
-  useEffect(() => setErr(null), [typeCounts, roomIds, nights, checkIn, rates, payMode, priceUnset, walkInImmediate]);
+  useEffect(() => setErr(null), [typeCounts, roomIds, nights, checkIn, rates, totalStr, salesMode, payMode, priceUnset, walkInImmediate]);
 
   // 날짜 바뀌어 불가해진 선택 호실 정리
   useEffect(() => {
@@ -309,16 +344,24 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     if (n > GROUP_ROOMS_MAX) return setErr(`한 번에 ${GROUP_ROOMS_MAX}실까지예요.`);
 
     if (!priceUnset) {
-      const missing = slots.filter((x) => !(rateNum[x.typeId] > 0));
-      if (missing.length) return setErr("타입마다 1박 요금을 적거나 금액미정을 켜 주세요.");
+      if (platformTotalMode) {
+        if (!(totalNum > 0)) return setErr("판매금을 적거나 금액미정을 켜 주세요.");
+      } else {
+        const missing = slots.filter((x) => !(rateNum[x.typeId] > 0));
+        if (missing.length) return setErr("타입마다 1박 요금을 적거나 금액미정을 켜 주세요.");
+      }
     }
 
     if (walkInImmediate && roomIds.length < 1)
       return setErr("바로 입실은 배치도에서 호실을 골라 주세요.");
 
     const saveTypeIds = pathB ? roomIds.map((id) => rmap.get(id)?.typeId ?? "") : expandTypeSlots(slots);
-    const prices = priceUnset ? saveTypeIds.map(() => 0) : ratePrices(saveTypeIds, rateNum, nights);
-    const totalSale = prices.reduce((a, b) => a + b, 0);
+    const prices = priceUnset
+      ? saveTypeIds.map(() => 0)
+      : platformTotalMode
+        ? splitAmountLast(totalNum, saveTypeIds.length)
+        : ratePrices(saveTypeIds, rateNum, nights);
+    const totalSale = priceUnset ? 0 : platformTotalMode ? totalNum : prices.reduce((a, b) => a + b, 0);
 
     if (onsite && payMode === "deposit" && !priceUnset) {
       const amt = Number(depAmt || 0);
@@ -365,9 +408,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     setErr(null);
     try {
       const phone = guestPhone.trim() || null;
-      const memberRates = !priceUnset ? saveTypeIds.map((tid) => rateNum[tid] ?? 0) : undefined;
+      const memberRates =
+        !priceUnset && !platformTotalMode ? saveTypeIds.map((tid) => rateNum[tid] ?? 0) : undefined;
       const ratesPersist =
-        !priceUnset
+        !priceUnset && !platformTotalMode
           ? Object.fromEntries(
               slots
                 .map((x) => [x.typeId, rateNum[x.typeId] ?? 0] as const)
@@ -375,31 +419,33 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             )
           : null;
 
+      const ratesForBooking = (typeId: string, roomPrice: number) => {
+        if (priceUnset || !(roomPrice > 0)) return null;
+        if (platformTotalMode) return nightRatesFromTotal(checkIn, nights, roomPrice);
+        const flat = rateNum[typeId] ?? 0;
+        return flat > 0 ? syncStayNightRates(checkIn, nights, { flat }) : null;
+      };
+
       const decorate = (b: Booking): Booking => ({
         ...b,
         guestName: name,
         guestPhone: phone,
         priceUnset,
         price: priceUnset ? 0 : b.price,
-        nightRates:
-          !priceUnset && (memberRates?.[0] ?? 0) > 0
-            ? syncStayNightRates(checkIn, nights, { flat: rateNum[b.typeId] ?? 0 })
-            : b.nightRates,
+        nightRates: ratesForBooking(b.typeId, priceUnset ? 0 : b.price) ?? b.nightRates,
         guests,
         arrived: walkInImmediate,
       });
 
       // 1타입 1실 → saveBooking (그룹 강제 금지)
       if (n === 1 && slots.length <= 1) {
+        const onePrice = prices[0] ?? 0;
         const one: Booking = decorate({
           ...ready,
           roomId: pathB ? roomIds[0] ?? null : null,
           typeId: saveTypeIds[0] ?? primaryTypeId,
-          price: prices[0] ?? 0,
-          nightRates:
-            !priceUnset && (rateNum[saveTypeIds[0]] ?? 0) > 0
-              ? syncStayNightRates(checkIn, nights, { flat: rateNum[saveTypeIds[0]] })
-              : null,
+          price: onePrice,
+          nightRates: ratesForBooking(saveTypeIds[0] ?? primaryTypeId, onePrice),
         });
         const saved = await data.saveBooking(one, true);
         let payTail = "";
@@ -710,52 +756,105 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         <div className="fld">
           <label>{onsite ? "요금" : "판매금"}</label>
           <div className="simple-price">
+            {!onsite ? (
+              <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesMode === "perNight"}
+                  className={salesMode === "perNight" ? "on" : ""}
+                  onClick={() => switchSalesMode("perNight")}
+                >
+                  박당
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={salesMode === "total"}
+                  className={salesMode === "total" ? "on" : ""}
+                  onClick={() => switchSalesMode("total")}
+                >
+                  총액
+                </button>
+              </div>
+            ) : null}
             <label className="ck">
               <input
                 type="checkbox"
                 checked={priceUnset}
                 onChange={(e) => {
                   setPriceUnset(e.target.checked);
-                  if (e.target.checked) setRates({});
+                  if (e.target.checked) {
+                    setRates({});
+                    setTotalStr("");
+                  }
                 }}
               />
               금액미정
             </label>
             {!priceUnset ? (
-              <>
-                {pickedTypes.length ? (
-                  pickedTypes.map((t) => (
-                    <PriceRow key={t.id} style={{ marginTop: "var(--space-chip)" }}>
-                      <span className="muted sm" style={{ minWidth: "4.5em" }}>
-                        {typeLabel(t)}
-                      </span>
-                      <PriceInp sm suffix="원/박">
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          aria-label={`${typeLabel(t)} 1박 요금`}
-                          value={rates[t.id] !== undefined && rates[t.id] !== "" ? won(Number(rates[t.id])) : ""}
-                          placeholder="1박"
-                          onChange={(e) =>
-                            setRates((m) => ({ ...m, [t.id]: e.target.value.replace(/\D/g, "").slice(0, 9) }))
-                          }
-                        />
-                      </PriceInp>
-                      <span className="muted sm">
-                        × {nights}박 × {countOf(t.id)}실
-                      </span>
-                    </PriceRow>
-                  ))
-                ) : (
-                  <span className="muted sm">호실 또는 타입을 먼저 골라 주세요</span>
-                )}
-                {sumPrice > 0 ? (
+              platformTotalMode ? (
+                <>
+                  <PriceRow style={{ marginTop: "var(--space-chip)" }}>
+                    <PriceInp total>
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        aria-label="판매금 총액"
+                        placeholder="총액"
+                        value={totalStr !== "" ? won(Number(totalStr)) : ""}
+                        onChange={(e) => setTotalStr(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                      />
+                    </PriceInp>
+                  </PriceRow>
                   <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                    {formula ? `${formula} = ` : null}
-                    <b>{won(sumPrice)}원</b>
+                    플랫폼 총액 그대로
+                    {totalNum > 0 ? (
+                      <>
+                        {" · "}
+                        <b>{won(totalNum)}원</b>
+                        {effectiveTypeIds.length > 1 ? ` · ${effectiveTypeIds.length}실` : null}
+                        {nights > 1 ? ` · ${nights}박` : null}
+                      </>
+                    ) : null}
                   </div>
-                ) : null}
-              </>
+                </>
+              ) : (
+                <>
+                  {pickedTypes.length ? (
+                    pickedTypes.map((t) => (
+                      <PriceRow key={t.id} style={{ marginTop: "var(--space-chip)" }}>
+                        <span className="muted sm" style={{ minWidth: "4.5em" }}>
+                          {typeLabel(t)}
+                        </span>
+                        <PriceInp sm suffix="원/박">
+                          <input
+                            className="num"
+                            inputMode="numeric"
+                            aria-label={`${typeLabel(t)} 1박 요금`}
+                            value={rates[t.id] !== undefined && rates[t.id] !== "" ? won(Number(rates[t.id])) : ""}
+                            placeholder="1박"
+                            onChange={(e) =>
+                              setRates((m) => ({ ...m, [t.id]: e.target.value.replace(/\D/g, "").slice(0, 9) }))
+                            }
+                          />
+                        </PriceInp>
+                        <span className="muted sm">
+                          × {nights}박 × {countOf(t.id)}실
+                        </span>
+                      </PriceRow>
+                    ))
+                  ) : (
+                    <span className="muted sm">호실 또는 타입을 먼저 골라 주세요</span>
+                  )}
+                  {sumPrice > 0 ? (
+                    <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
+                      {formula ? `${formula} = ` : null}
+                      <b>{won(sumPrice)}원</b>
+                    </div>
+                  ) : null}
+                </>
+              )
             ) : (
               <span className="muted sm">협상 후 Entry에서 확정</span>
             )}
