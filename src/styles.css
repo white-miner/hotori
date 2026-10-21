@@ -145,6 +145,31 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lv-low { background: var(--dark); color: var(--ink); }
 .lv-full { background: var(--red-s); color: var(--red-d); box-shadow: inset 0 0 0 1.5px var(--red); }
 .lv-over { background: var(--red); color: #fff; }
+.lv-stop { background: var(--ink); color: #fff; display: inline-flex !important; align-items: center; justify-content: center; width: 22px; height: 16px; }
+
+/* ---------- 판매 캘린더 ---------- */
+.sales-hint { margin-top: 6px; max-width: 36em; }
+.sales-glance { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.sales-gchip { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 8px; border-radius: 999px; background: var(--panel); font-weight: 650; }
+.sales-gchip:hover { background: var(--hover); }
+.sales-gchip b { font-family: var(--num); font-size: 16px; font-weight: 800; }
+.sales-gchip small { font-size: 11.5px; color: var(--ink3); font-weight: 500; }
+.sales-gchip.lv-low { background: var(--dark); }
+.sales-gchip.lv-full { background: var(--red-s); color: var(--red-d); }
+.sales-gchip.lv-over { background: var(--red); color: #fff; }
+.sales-gchip.lv-over small { color: rgba(255,255,255,0.75); }
+.sales-grid .srow { grid-template-columns: 150px repeat(var(--days, 7), minmax(52px, 1fr)); }
+.sales-tn { text-align: left; width: 100%; background: transparent; border: 0; cursor: pointer; }
+.sales-sc { height: 52px; flex-direction: column; gap: 1px; padding: 4px 2px; font-size: 15px; line-height: 1.1; }
+.sales-sc .sales-rem { font-size: 16px; font-weight: 800; }
+.sales-sc .sales-rate { font-family: "PV", var(--num); font-size: 10px; font-weight: 650; color: var(--ink3); letter-spacing: -0.02em; }
+.sales-sc.lv-stop { background: var(--ink); color: #fff; }
+.sales-sc.lv-stop .sales-stop { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.sales-sc.lv-stop small { color: rgba(255,255,255,0.8); margin: 0; font-size: 9px; }
+.sales-sc.we:not(.lv-stop):not(.lv-over):not(.lv-full):not(.lv-low) { background: rgba(0, 0, 0, 0.028); }
+.sales-sheet { max-width: 420px; }
+.sales-sheet .actrow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+.sales-sheet .actrow .btn { gap: 6px; }
 
 .stock-wrap { overflow-x: auto; border-radius: 22px; background: var(--panel2); }
 .stock { padding: 12px 14px; min-width: 640px; }

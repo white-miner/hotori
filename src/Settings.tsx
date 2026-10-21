@@ -88,7 +88,7 @@ function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | 
       <h3>
         현황 공유 링크 <span className={`tag ${pro ? "" : "pro"}`}>Pro</span>
       </h3>
-      <div className="sub">직원이 로그인 없이 재고 현황·객실 배치(대실·방 미배정 목록 포함)를 볼 수 있어요. 보기만 되고, 판매 가격과 메모는 보이지 않아요.</div>
+      <div className="sub">직원이 로그인 없이 판매 캘린더·객실 배치(대실·방 미배정 목록 포함)를 볼 수 있어요. 보기만 되고, 판매 가격과 메모는 보이지 않아요.</div>
       {!pro ? (
         <>
           <div className="share-lock">현황 공유 링크는 Pro에서 쓸 수 있어요.</div>
@@ -731,7 +731,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             객실 타입 <span className="tag">{s.types.length}개</span>
           </h3>
-          <div className="sub">방 칸과 재고 현황 표에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
+          <div className="sub">방 칸과 판매 캘린더에 그대로 보여요 (최대 {TYPE_NAME_MAX}글자) · 오른쪽 숫자는 그 타입으로 지정된 방 수예요</div>
           {s.types.map((t, i) => (
             <div className="trow" key={t.id}>
               <span className="ord">

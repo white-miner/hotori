@@ -107,6 +107,7 @@ import {
   withPlannedCharges,
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
+import { stopSellDatesForStay } from "../shared/salesCalendar";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, Inp, PriceInp, PriceRow, Stepper } from "./primitives";
 
 interface Props {
@@ -1130,6 +1131,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
           : `${L.roomLabel(roomId)}호는 그 ${kind === "stay" ? "기간" : "시간"}에 다른 예약이 있어요.`,
       );
+    // 판매중지: 신규·기간 변경 시 해당 숙박일 차단 (취소·노쇼는 통과)
+    if (kind === "stay" && isActive(draft) && !override && draft.nights) {
+      const stopped = stopSellDatesForStay(s, draft.typeId, draft.checkIn, draft.nights);
+      if (stopped.length)
+        return setErr(`판매중지된 숙박일이 있어요 (${stopped.map(md).join(", ")}). 판매 캘린더에서 중지를 풀어 주세요.`);
+    }
     // 타입 오버부킹: 경고만 · 저장 허용 (물리 방 겹침은 위에서 차단)
     const typeOver = kind === "stay" && isActive(draft) && preview.some((r) => r.after < 0);
     if (

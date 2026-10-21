@@ -49,7 +49,6 @@ import {
   nightBoard,
   orderedFloors,
   stayEnd,
-  stockLevel,
   stockTable,
   typeLabel,
   typeTotals,
@@ -63,6 +62,7 @@ import { pastelColor } from "../shared/floorColor";
 import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
+import SalesCalendar from "./SalesCalendar";
 import { isOnsite, payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
@@ -210,10 +210,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const oversAll = useMemo(() => (scopeId ? allOverbookings(s, tableAll, dates) : overs), [s, tableAll, dates, scopeId, overs]);
   const unassigned = useMemo(() => (scopeId ? unassignedStays(s, bookings, dates) : 0), [s, bookings, dates, scopeId]);
 
-  // 재고 현황 보는 기간: 14일(기본) · 주(월~일) · 월 · 기간. 고른 방식은 기기마다 기억해요. 공유 보기는 14일만.
+  // 판매 캘린더·객실 캘린더 기간: 주(기본 7일) · 14일 · 월 · 기간. 기기마다 기억. 공유 보기는 14일만.
   const [periodRaw, setPeriodRaw] = useState<StockPeriod>(() => {
     const v = lsGet(P_KEY);
-    return isStockPeriod(v) ? v : "d14";
+    return isStockPeriod(v) ? v : "week"; // 판매 캘린더 기본 7일(주)
   });
   const period: StockPeriod = readOnly ? "d14" : periodRaw;
   const [anchor, setAnchor] = useState(today);
@@ -440,17 +440,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       })
       .catch(() => notify("방을 배정하지 못했어요"));
 
-  const stockCell = (typeId: string, d: string) => {
-    const r = viewTable.get(typeId)?.get(d) ?? 0;
-    const lv = stockLevel(r, totals.get(typeId) ?? 0, s.lowThreshold);
-    return (
-      <button key={d} className={`sc lv-${lv} ${d === selDate ? "selc" : ""} ${d === today ? "tdc" : ""}`} onClick={() => goRooms(d)} title={`${dayLabel(d)} 밤 객실 배치 보기`}>
-        {r < 0 ? `−${-r}` : r}
-        {lv === "over" ? <small>초과</small> : lv === "full" ? <small>만실</small> : null}
-      </button>
-    );
-  };
-
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
@@ -598,7 +587,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
-  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 현황 · 재고 · 배치 · 캘린더 (+주차)
+  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 현황 · 판매 캘린더 · 배치 · 캘린더 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
@@ -610,7 +599,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </button>
       <button role="tab" aria-selected={tab === "stock"} className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}>
-        재고
+        판매 캘린더
         {(over ? overs : oversAll).length ? (
           <span className="obdot num" aria-label={`오버부킹 ${(over ? overs : oversAll).length}건`}>
             {(over ? overs : oversAll).length}
@@ -630,7 +619,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
     </div>
   );
-  // 오버부킹이 하나라도 있으면 두 탭 모두 맨 위에 빨간 알림 (누르면 재고 현황)
+  // 오버부킹이 하나라도 있으면 맨 위 빨간 알림 (누르면 판매 캘린더)
   const bName = (id: string) => (id === "all" ? "전체" : (L.buildings.get(id)?.name ?? ""));
   const shownOver = over ?? overAll;
   const shownOvers = over ? overs : oversAll;
@@ -675,7 +664,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     </div>
   ) : null;
 
-  // 재고 현황과 객실 캘린더는 보는 기간(14일·주·월·기간)을 함께 써요
+  // 판매 캘린더와 객실 캘린더는 보는 기간(주·14일·월·기간)을 함께 써요
   const periodSeg = readOnly ? null : (
     <div className="seg period" role="tablist" aria-label="보는 기간">
       {PERIODS.map((p) => (
@@ -956,7 +945,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 </button>
               ) : null}
               <button type="button" className="btn sm line" onClick={() => setTab("rooms")}>
-                재고·배치로
+                판매·배치로
               </button>
             </div>
           </div>
@@ -1137,80 +1126,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   if (tab === "stock")
     return (
-      <main className="page board-page one">
-        <div className="main">
-          {tabs}
-          {banner}
-          <div className="hl">
-            <div>
-              <div className="hl-t">
-                <h1>재고 현황</h1>
-                {periodSeg}
-              </div>
-              <div className="when">
-                {nowLabel()} · 남은 객실{scopeId ? ` · ${bName(scopeId)}만` : ""}
-              </div>
-              {over ? null : <div className="hl-ok">앞으로 14일 오버부킹 없음</div>}
-            </div>
-            <div className="lg">
-              <span>
-                <i className="lv-ok bordered">5</i>여유
-              </span>
-              <span>
-                <i className="lv-low">2</i>적음 ({s.lowThreshold}실 이하)
-              </span>
-              <span>
-                <i className="lv-full">0</i>만실
-              </span>
-              <span>
-                <i className="lv-over">−1</i>초과 (오버부킹)
-              </span>
-            </div>
-          </div>
-
-          {rangeNav}
-          {buildingTabs}
-          {scopeId && unassigned ? (
-            <div className="b-note">미배정(타입 홀드) {unassigned}건은 호텔 전체 재고에서만 차감돼요 · 건물 탭에서는 '전체'에만 보여요.</div>
-          ) : null}
-          <div ref={wideRef} className={`stock-wrap big ${viewDates.length > DAYS ? "wide" : ""}`}>
-            <div className="stock" style={{ ["--days" as string]: viewDates.length }}>
-              <div className="srow shead">
-                <div className="th lab">객실 타입</div>
-                {viewDates.map((d) => (
-                  <button
-                    key={d}
-                    className={`th ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${["토", "일"].includes(weekday(d)) ? "we" : ""}`}
-                    onClick={() => goRooms(d)}
-                    title={`${dayLabel(d)} 밤 객실 배치 보기`}
-                  >
-                    <b>{md(d)}</b>
-                    {d === today ? "오늘" : weekday(d)}
-                  </button>
-                ))}
-              </div>
-              {s.types.filter((t) => (totals.get(t.id) ?? 0) > 0 || (!scopeId && typeLabel(t))).map((t) => (
-                <div className="srow" key={t.id}>
-                  <div className="tn">
-                    <TypeBadge t={t} />
-                    <small>{totals.get(t.id) ?? 0}실</small>
-                  </div>
-                  {viewDates.map((d) => stockCell(t.id, d))}
-                </div>
-              ))}
-              <div className="srow total">
-                <div className="tn"><span className="tl-l">합계</span><span className="tl-s">합계</span></div>
-                {viewDates.map((d) => (
-                  <button key={d} className={`sc ${d === selDate ? "selc" : ""} ${["토", "일"].includes(weekday(d)) ? "we" : ""}`} onClick={() => goRooms(d)}>
-                    {s.types.reduce((n, t) => n + Math.max(0, viewTable.get(t.id)?.get(d) ?? 0), 0)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <p className="stock-hint">날짜나 숫자를 누르면 그날 밤 객실 배치로 가요</p>
-        </div>
-      </main>
+      <SalesCalendar
+        data={data}
+        s={s}
+        today={today}
+        selDate={selDate}
+        viewDates={viewDates}
+        viewTable={viewTable}
+        totals={totals}
+        scopeId={scopeId}
+        unassigned={unassigned}
+        readOnly={readOnly}
+        rangeNav={rangeNav}
+        buildingTabs={buildingTabs}
+        periodSeg={periodSeg}
+        banner={banner}
+        tabs={tabs}
+        bName={bName}
+        over={over}
+        wideRef={wideRef}
+        notify={(m) => notify(m)}
+        onSimple={onSimple}
+      />
     );
 
   if (tab === "parking" && s.parking.enabled)
@@ -1276,7 +1213,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="bdh">
           <div>
             <h1>객실 배치 · 재고</h1>
-            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실) · 점선은 임시" : "선택한 날 밤 배치 · 칸을 누르면 예약·단체 창 · 점선「임시」는 나중에 고쳐도 되고 재고는 막혀 있어요 · 현장은 「현황」 탭"}</div>
+            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실) · 점선은 임시" : "선택한 숙박일 배치 · 칸을 누르면 예약·단체 창 · 점선「임시」는 나중에 고쳐도 되고 재고는 막혀 있어요 · 현장은 「현황」 탭"}</div>
           </div>
           <div className="dnav">
             <span className="cnt-m">
