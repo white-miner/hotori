@@ -17,7 +17,6 @@ import {
   type HotelSettings,
   type Room,
   allRooms,
-  freeRooms,
   isActive,
   md,
   typeLabel,
@@ -25,7 +24,6 @@ import {
 } from "../shared/ledger";
 import { isOnsite, payState } from "../shared/payment";
 import type { OpenMemoGlance } from "../shared/roomMemo";
-import AssignRoomPick from "./AssignRoomPick";
 import { PlatBadge, lookups } from "./ui";
 
 export type SideMode = "room" | "simple" | "out";
@@ -48,7 +46,6 @@ interface Props {
   today: string;
   s: HotelSettings;
   L: L;
-  bookings: Booking[];
   unassigned: Booking[];
   lateOut: Booking[];
   departing: Booking[];
@@ -58,11 +55,9 @@ interface Props {
   onMode: (m: SideMode) => void;
   glanceByRoom: Map<string, OpenMemoGlance>;
   readOnly?: boolean;
-  multi?: boolean;
   assigning: string | null;
   setAssigning: (id: string | null) => void;
   coBusy: string | null;
-  onAssign: (b: Booking, roomId: string) => void;
   onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   onSimple: (preset?: Partial<Booking>) => void;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
@@ -74,7 +69,6 @@ export default function NowSidePanel({
   today,
   s,
   L,
-  bookings,
   unassigned,
   lateOut,
   departing,
@@ -84,11 +78,9 @@ export default function NowSidePanel({
   onMode,
   glanceByRoom,
   readOnly = false,
-  multi = false,
   assigning,
   setAssigning,
   coBusy,
-  onAssign,
   onOpen,
   onSimple,
   onCheckOut,
@@ -166,14 +158,12 @@ export default function NowSidePanel({
 
   const uaRow = (x: Booking) => {
     const open = assigning === x.id;
-    const free = open ? freeRooms(s, bookings, x) : null;
     const p = L.plats.get(x.platformId);
     const glanceAmt = nowAmountGlance(x, p);
     const payG = simplePayGlance(x, isOnsite(p));
-    // Dense row: facts + compact 「호실」 action. Path A assign stays reachable —
-    // never a full-height empty drop zone under each booking.
+    // Dense row + 「방배정」 → 「현황」 칸 체크박스 (칩 펼침/빈 존 금지)
     return (
-      <div key={x.id} className={`side-ua-row ${open ? "open" : ""}`}>
+      <div key={x.id} className={`side-ua-row ${open ? "open assigning" : ""}`}>
         <div className="side-ua-main">
           <button type="button" className="side-ua-info" onClick={() => onOpen(x, today)} disabled={readOnly}>
             <span className="side-ua-l1">
@@ -191,28 +181,16 @@ export default function NowSidePanel({
           {isActive(x) && !readOnly ? (
             <button
               type="button"
-              className="side-ua-assign"
-              aria-expanded={open}
-              aria-label={open ? "호실 선택 닫기" : "호실 정하기"}
+              className={`side-ua-assign ${open ? "on" : ""}`}
+              aria-pressed={open}
+              aria-label={open ? "방배정 취소" : "방배정"}
               onClick={() => setAssigning(open ? null : x.id)}
             >
-              {open ? "닫기" : "호실"}
+              {open ? "취소" : "방배정"}
             </button>
           ) : null}
         </div>
-        {open && free ? (
-          <div className="side-ua-pick rpick">
-            <AssignRoomPick
-              s={s}
-              L={L}
-              free={free}
-              typeId={x.typeId}
-              multi={multi}
-              dense
-              onPick={(roomId) => onAssign(x, roomId)}
-            />
-          </div>
-        ) : null}
+        {open ? <p className="muted sm side-ua-hint">현황 칸 체크 → 바로 배정</p> : null}
       </div>
     );
   };
@@ -332,7 +310,7 @@ export default function NowSidePanel({
                       <button type="button" className="linkish" onClick={() => onMode("simple")}>
                         간단 예약
                       </button>
-                      에서 호실 정하기
+                      에서 방배정
                     </p>
                   ) : null}
                   {!readOnly ? (
