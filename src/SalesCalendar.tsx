@@ -1,6 +1,6 @@
 /**
- * 판매 캘린더 — 타입 × 숙박일 격자 (남은 칸 + 기본 단가 + 판매중지).
- * 셀 → 시트: 요금 수정 · 판매중지 · 간단 예약 Path A 프리필.
+ * 판매 캘린더 — 숙박일 우선 (날짜 열 × 타입 카드: 남은 칸 + 기본 단가 + 판매중지).
+ * 카드 → 시트: 요금 수정 · 판매중지 · 간단 예약 Path A 프리필.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Ban, CalendarPlus, X } from "lucide-react";
@@ -126,7 +126,7 @@ export default function SalesCalendar({
               {periodSeg}
             </div>
             <div className="when">
-              {scopeId ? `${bName(scopeId)} · ` : ""}타입별 남은 칸 · 기본 단가 · 판매중지
+              {scopeId ? `${bName(scopeId)} · ` : ""}숙박일별 타입 · 남은 칸 · 기본 단가 · 판매중지
             </div>
             {over ? null : <div className="hl-ok">이 창 오버부킹 없음</div>}
             <p className="muted sm sales-hint">여기 숫자는 타입 기본가예요. 예약마다 방 요금은 따로 둘 수 있어요.</p>
@@ -180,68 +180,64 @@ export default function SalesCalendar({
           <div className="b-note">미배정 {unassigned}건은 호텔 전체 재고에서만 차감돼요 · 건물 탭에서는 '전체'에만 보여요.</div>
         ) : null}
 
-        <div ref={wideRef} className={`stock-wrap big sales-wrap ${viewDates.length > 14 ? "wide" : ""}`}>
-          <div className="stock sales-grid" style={{ ["--days" as string]: viewDates.length }}>
-            <div className="srow shead">
-              <div className="th lab">객실 타입</div>
-              {viewDates.map((d) => (
-                <div
-                  key={d}
-                  className={`th ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${["토", "일"].includes(weekday(d)) ? "we" : ""}`}
-                >
+        <div
+          ref={wideRef}
+          className={`sales-dates ${viewDates.length > 14 ? "wide" : ""}`}
+          role="list"
+          aria-label="숙박일별 타입 재고"
+        >
+          {viewDates.map((d) => {
+            const we = isWeekendNight(d, s.specialDates);
+            const dayWe = ["토", "일"].includes(weekday(d));
+            return (
+              <section
+                key={d}
+                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""}`}
+                role="listitem"
+              >
+                <header className="sales-day-h">
                   <b>{md(d)}</b>
-                  {d === today ? "오늘" : weekday(d)}
-                </div>
-              ))}
-            </div>
-            {types.map((t) => (
-              <div className="srow" key={t.id}>
-                <button
-                  type="button"
-                  className="tn sales-tn"
-                  onClick={() => !readOnly && setTypeEdit(t.id)}
-                  title={readOnly ? undefined : "평일·주말 기본 요금"}
-                >
-                  <TypeBadge t={t} />
-                  <small>
-                    {totals.get(t.id) ?? 0}실
-                    {glance.get(t.id)?.stopped ? ` · 중지` : ""}
-                  </small>
-                </button>
-                {viewDates.map((d) => {
-                  const rem = viewTable.get(t.id)?.get(d) ?? 0;
-                  const stopped = isStopSell(s, t.id, d);
-                  const sell = sellableRemaining(rem, stopped);
-                  const rate = baseRateFor(s, t.id, d);
-                  const lv = stopped ? "stop" : stockLevel(rem, totals.get(t.id) ?? 0, s.lowThreshold);
-                  const we = isWeekendNight(d, s.specialDates);
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`sc sales-sc lv-${lv} ${d === selDate ? "selc" : ""} ${d === today ? "tdc" : ""} ${we ? "we" : ""}`}
-                      onClick={() => setCell({ typeId: t.id, date: d })}
-                      title={`${dayLabel(d)} · ${typeLabel(t)} · ${stopped ? "판매중지" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
-                    >
-                      {stopped ? (
-                        <span className="sales-stop">
-                          <Ban size={14} strokeWidth={2.4} />
-                          <small>중지</small>
+                  <span>{d === today ? "오늘" : weekday(d)}</span>
+                </header>
+                <div className="sales-day-types">
+                  {types.map((t) => {
+                    const rem = viewTable.get(t.id)?.get(d) ?? 0;
+                    const stopped = isStopSell(s, t.id, d);
+                    const sell = sellableRemaining(rem, stopped);
+                    const rate = baseRateFor(s, t.id, d);
+                    const lv = stopped ? "stop" : stockLevel(rem, totals.get(t.id) ?? 0, s.lowThreshold);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`sales-tcard lv-${lv}`}
+                        onClick={() => setCell({ typeId: t.id, date: d })}
+                        title={`${dayLabel(d)} · ${typeLabel(t)} · ${stopped ? "판매중지" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
+                      >
+                        <span className="sales-tcard-type">
+                          <TypeBadge t={t} />
+                          <span className="sales-tcard-name">{typeLabel(t)}</span>
                         </span>
-                      ) : (
-                        <>
-                          <span className="sales-rem">{sell < 0 ? `−${-sell}` : sell}</span>
-                          <span className="sales-rate">{rate > 0 ? won(rate) : "—"}</span>
-                        </>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+                        {stopped ? (
+                          <span className="sales-tcard-stop">
+                            <Ban size={14} strokeWidth={2.4} />
+                            판매중지
+                          </span>
+                        ) : (
+                          <span className="sales-tcard-meta">
+                            <b className="num">{sell < 0 ? `−${-sell}` : sell}</b>
+                            <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
-        <p className="stock-hint">칸을 누르면 요금·판매중지·간단 예약으로 이어져요</p>
+        <p className="stock-hint">타입을 누르면 요금·판매중지·간단 예약으로 이어져요</p>
       </div>
 
       {cell ? (
