@@ -29,6 +29,7 @@ import {
   isOnsite,
   validateGuestPhone,
   validatePayment,
+  walkInDisplayName,
 } from "../shared/payment";
 import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
@@ -81,6 +82,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [payMode, setPayMode] = useState<PayMode>("postpaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
+  /** 「바로 입실」: 이름·연락처 생략 · 호실 필수 · arrived */
+  const [walkInImmediate, setWalkInImmediate] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -101,6 +104,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   const price = priceUnset ? 0 : Number(priceStr || 0);
   const roomId = roomIds[0] ?? null;
+  const pathB = assignNow || walkInImmediate;
   const draft: Booking = {
     id: "__simple__",
     kind: "stay",
@@ -111,13 +115,13 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     guestName,
     guestPhone: guestPhone.trim() || null,
     typeId,
-    roomId: assignNow ? roomId : null,
+    roomId: pathB ? roomId : null,
     segments: null,
     checkIn,
     nights,
     startTime: null,
     endTime: null,
-    arrived: false,
+    arrived: walkInImmediate,
     tentative: false,
     memo: null,
     guests,
@@ -134,9 +138,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const sameType = allRooms.filter((r) => r.typeId === typeId && free.has(r.id));
   const otherType = allRooms.filter((r) => r.typeId !== typeId && free.has(r.id));
   const busyLegs =
-    assignNow && roomCount === 1 && roomId
+    pathB && roomCount === 1 && roomId
       ? legConflicts(data.bookings, draft)
-      : assignNow && roomCount > 1
+      : pathB && roomCount > 1
         ? roomIds.flatMap((rid) => legConflicts(data.bookings, { ...draft, roomId: rid }))
         : [];
   const preview = previewChange(s, data.bookings, draft);
@@ -175,19 +179,25 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   }
 
   async function save() {
-    if (!guestName.trim()) return setErr("이름을 적어 주세요.");
-    // 현장·전화만 연락처 필수 · OTA 등은 선택 (HTML required · multi-room decorate 동일 규칙)
-    const phoneErr = validateGuestPhone(plat, guestPhone);
+    const name = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
+    if (!name) return setErr("이름을 적어 주세요.");
+    // 현장·전화만 연락처 필수 · 「바로 입실」·OTA는 선택 (HTML required · multi-room decorate 동일)
+    const phoneErr = validateGuestPhone(plat, guestPhone, { walkInImmediate });
     if (phoneErr) return setErr(phoneErr);
     if (!priceUnset && (!Number.isFinite(price) || price < 0 || (price === 0 && !rateStr && !priceStr)))
       return setErr("1박 요금·판매금을 적거나 금액미정을 켜 주세요.");
-    if (assignNow && roomIds.length !== roomCount)
+    // 바로 입실 = 즉시 숙박 → 호실 필수 (Path B)
+    if (pathB && roomIds.length !== roomCount)
       return setErr(
-        roomCount === 1
-          ? "지금 배정하려면 호실을 골라 주세요."
-          : `지금 배정하려면 호실 ${roomCount}실을 골라 주세요 (지금 ${roomIds.length}실).`,
+        walkInImmediate
+          ? roomCount === 1
+            ? "바로 입실은 호실을 골라 주세요."
+            : `바로 입실은 호실 ${roomCount}실을 골라 주세요.`
+          : roomCount === 1
+            ? "지금 배정하려면 호실을 골라 주세요."
+            : `지금 배정하려면 호실 ${roomCount}실을 골라 주세요 (지금 ${roomIds.length}실).`,
       );
-    if (assignNow && roomCount > sameType.length && roomIds.every((id) => L.rooms.get(id)?.typeId === typeId))
+    if (pathB && roomCount > sameType.length && roomIds.every((id) => L.rooms.get(id)?.typeId === typeId))
       return setErr(`이 타입 빈 방이 ${sameType.length}실뿐이에요 · ${roomCount}실을 배정할 수 없어요.`);
     if (onsite && payMode === "deposit" && !priceUnset) {
       const amt = Number(depAmt || 0);
@@ -196,7 +206,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       const cap = roomCount > 1 ? price * roomCount : price;
       if (amt > cap) return setErr("선금이 판매금보다 커요.");
     }
-    const v = validateBooking(draft, s);
+    const ready: Booking = { ...draft, guestName: name, arrived: walkInImmediate };
+    const v = validateBooking(ready, s);
     if (v) return setErr(v);
     if (busyLegs.length)
       return setErr(`${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호`).join(", ")}는 그 기간에 다른 예약이 있어요.`);
@@ -221,15 +232,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       const nightRates = !priceUnset && rate > 0 ? syncStayNightRates(checkIn, nights, { flat: rate }) : null;
       const decorate = (b: Booking): Booking => ({
         ...b,
+        guestName: name,
         guestPhone: phone,
         priceUnset,
         price: priceUnset ? 0 : b.price,
         nightRates: nightRates ?? b.nightRates,
         guests,
+        arrived: walkInImmediate,
       });
 
       if (roomCount === 1) {
-        const saved = await data.saveBooking(decorate({ ...draft, roomId: assignNow ? roomId : null }), true);
+        const saved = await data.saveBooking(decorate({ ...ready, roomId: pathB ? roomId : null }), true);
         let payTail = "";
         if (onsite && !priceUnset && isOnsite(s.platforms.find((x) => x.id === saved.platformId))) {
           try {
@@ -259,16 +272,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       const memberRates = !priceUnset && rate > 0 ? Array.from({ length: roomCount }, () => rate) : undefined;
       const drafts = groupDrafts({
         groupId,
-        groupName: guestName.trim(),
+        groupName: name,
         platformId,
         checkIn,
         nights,
-        roomIds: assignNow ? roomIds : undefined,
-        typeIds: assignNow ? undefined : Array.from({ length: roomCount }, () => typeId),
+        roomIds: pathB ? roomIds : undefined,
+        typeIds: pathB ? undefined : Array.from({ length: roomCount }, () => typeId),
         prices,
         memberRates,
         s,
         guestsOf: () => guests,
+        arrived: walkInImmediate,
       }).map(decorate);
 
       const savedList = await data.saveGroup(drafts, {
@@ -301,11 +315,11 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
         }
       }
-      const path = assignNow
+      const path = pathB
         ? ` · ${savedList.map((b) => (b.roomId ? `${L.roomLabel(b.roomId)}호` : "?")).join(", ")}`
         : ` · 미배정 ${roomCount}실(타입 재고)`;
       const unset = priceUnset ? " · 금액미정" : "";
-      onSaved(`${guestName.trim()} 님 간단 예약 ${roomCount}실했어요${path}${unset}${payTail}`);
+      onSaved(`${name} 님 간단 예약 ${roomCount}실했어요${path}${unset}${payTail}`);
     } catch (e) {
       setErr(saveFailMessage(e));
     } finally {
@@ -338,7 +352,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       nights,
                       platformId,
                       typeId,
-                      roomId: assignNow ? roomId : null,
+                      roomId: pathB ? roomId : null,
                       guestName: guestName || undefined,
                       guestPhone: guestPhone || undefined,
                       guests,
@@ -360,7 +374,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               checkIn={checkIn}
               nights={nights}
               bookings={data.bookings}
-              roomId={assignNow ? roomId : null}
+              roomId={pathB ? roomId : null}
               today={today}
               onPick={(ci, n) => {
                 setCheckIn(ci);
@@ -383,12 +397,26 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                 {pl.name}
               </Chip>
             ))}
+            <Chip
+              active={walkInImmediate}
+              tone="info"
+              onClick={() => {
+                setWalkInImmediate((v) => {
+                  const next = !v;
+                  if (next) setAssignNow(true);
+                  return next;
+                });
+              }}
+              title="이름·연락처 없이 즉시 숙박"
+            >
+              바로 입실
+            </Chip>
           </ChipGroup>
         </div>
 
         <div className="fld">
           <label>
-            이름<em>*</em> · 연락처{onsite ? <em>*</em> : null}
+            이름{walkInImmediate ? null : <em>*</em>} · 연락처{onsite && !walkInImmediate ? <em>*</em> : null}
           </label>
           <GuestNamePhone
             nameRef={nameRef}
@@ -396,8 +424,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             phone={guestPhone}
             onName={setName}
             onPhone={setPhone}
-            phoneRequired={onsite}
+            phoneRequired={onsite && !walkInImmediate}
           />
+          {walkInImmediate ? <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 나중에 Entry에서 수정</div> : null}
         </div>
 
         <div className="fld">
@@ -570,19 +599,20 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             <label className="ck">
               <input
                 type="checkbox"
-                checked={assignNow}
+                checked={assignNow || walkInImmediate}
+                disabled={walkInImmediate}
                 onChange={(e) => {
                   setAssignNow(e.target.checked);
                   if (!e.target.checked) setRoomIds([]);
                   else if (roomCount > 1) fillRooms();
                 }}
               />
-              지금 방 배정
-              {assignNow && roomCount > 1 ? (
+              {walkInImmediate ? "바로 입실 · 호실 필수" : "지금 방 배정"}
+              {(assignNow || walkInImmediate) && roomCount > 1 ? (
                 <span className="muted sm"> · {roomIds.length}/{roomCount}실</span>
               ) : null}
             </label>
-            {assignNow ? (
+            {assignNow || walkInImmediate ? (
               <ChipGroup style={{ marginTop: "var(--space-3)" }}>
                 {roomCount > 1 ? (
                   <Chip sm onClick={fillRooms}>
@@ -637,13 +667,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <button type="submit" className="btn dark" disabled={busy}>
             {busy
               ? "저장 중…"
-              : assignNow
-                ? roomCount > 1
-                  ? `${roomCount}실 방까지 저장`
-                  : "방까지 저장"
-                : roomCount > 1
-                  ? `${roomCount}실 간단 예약`
-                  : "간단 예약 저장"}
+              : walkInImmediate
+                ? "바로 입실 저장"
+                : pathB
+                  ? roomCount > 1
+                    ? `${roomCount}실 방까지 저장`
+                    : "방까지 저장"
+                  : roomCount > 1
+                    ? `${roomCount}실 간단 예약`
+                    : "간단 예약 저장"}
           </button>
         </div>
       </form>

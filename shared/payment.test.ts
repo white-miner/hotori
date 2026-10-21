@@ -11,8 +11,11 @@ import {
   payKindLabel,
   payLineMain,
   payState,
+  isWalkInPlaceholderName,
   validateGuestPhone,
   validatePayment,
+  walkInDisplayName,
+  WALKIN_IMMEDIATE_PREFIX,
 } from "./payment";
 import { moneySummary } from "./expense";
 
@@ -37,7 +40,7 @@ test("현장 결제: 이름에 현장·전화가 있으면 켜지고, 설정에�
   assert.equal(isOnsite(null), false);
 });
 
-test("연락처: OTA는 빈 번호 OK · 현장·전화만 필수", () => {
+test("연락처: OTA는 빈 번호 OK · 현장·전화만 필수 · 바로 입실이면 현장도 선택", () => {
   assert.equal(validateGuestPhone(ota, ""), null);
   assert.equal(validateGuestPhone(ota, "   "), null);
   assert.equal(validateGuestPhone(ota, null), null);
@@ -45,6 +48,16 @@ test("연락처: OTA는 빈 번호 OK · 현장·전화만 필수", () => {
   assert.match(validateGuestPhone(onsite, "  ")!, /연락처/);
   assert.equal(validateGuestPhone(onsite, "010-1111-2222"), null);
   assert.equal(validateGuestPhone(null, ""), null);
+  assert.equal(validateGuestPhone(onsite, "", { walkInImmediate: true }), null);
+  assert.equal(validateGuestPhone(onsite, "  ", { walkInImmediate: true }), null);
+});
+
+test("바로 입실 표시명: M/D · prefix 감지", () => {
+  assert.equal(walkInDisplayName("2026-10-21"), `${WALKIN_IMMEDIATE_PREFIX} 10/21`);
+  assert.equal(walkInDisplayName("bad"), WALKIN_IMMEDIATE_PREFIX);
+  assert.equal(isWalkInPlaceholderName("바로입실"), true);
+  assert.equal(isWalkInPlaceholderName("바로입실 10/21"), true);
+  assert.equal(isWalkInPlaceholderName("김손님"), false);
 });
 
 test("간단 예약 기본 채널: 현장이 맨 위여도 첫 OTA를 고름", () => {

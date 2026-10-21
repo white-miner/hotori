@@ -110,11 +110,14 @@ export function groupDrafts(p: {
   guestsOf?: (typeId: string) => number | null;
   tentative?: boolean;
   noClean?: boolean;
+  /** 「바로 입실」저장 시 true */
+  arrived?: boolean;
 }): Booking[] {
   const rmap = new Map(allRooms(p.s).map((r) => [r.id, r]));
   const now = new Date().toISOString();
   const tent = !!p.tentative;
   const ncx = !!p.noClean;
+  const arr = !!p.arrived;
   const withRates = (b: Booking, i: number): Booking => {
     const flat = p.memberRates?.[i];
     if (flat == null || flat <= 0 || !b.nights) return b;
@@ -138,7 +141,7 @@ export function groupDrafts(p: {
           nights: p.nights,
           startTime: null,
           endTime: null,
-          arrived: false,
+          arrived: arr,
           tentative: false,
           noClean: ncx,
           earlyOut: null,
@@ -173,7 +176,7 @@ export function groupDrafts(p: {
         nights: p.nights,
         startTime: null,
         endTime: null,
-        arrived: false,
+        arrived: arr,
         tentative: tent,
         noClean: ncx,
         earlyOut: null,

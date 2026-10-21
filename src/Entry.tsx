@@ -57,11 +57,13 @@ import {
   type BookPayMethod,
   type PayKind,
   isOnsite,
+  isWalkInPlaceholderName,
   payLineMain,
   paySplit,
   splitLine,
   validateGuestPhone,
   validatePayment,
+  walkInDisplayName,
 } from "../shared/payment";
 import { saveFailMessage } from "../shared/errors";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
@@ -219,6 +221,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   }, [kind, checkIn]);
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [guestPhone, setPhone] = useState(base?.guestPhone ?? "");
+  /** 「바로 입실」: 이름·연락처 생략 · 호실 필수 · arrived */
+  const [walkInImmediate, setWalkInImmediate] = useState(() => isWalkInPlaceholderName(base?.guestName));
   const [price, setPrice] = useState(base ? String(base.price) : "");
   /** 표준 숙박 1박 요금 (편집 가능). 박수↓ 시 총액 = 이 값 × 박수 + 가산분 */
   const initGroupRates = base?.groupId ? data.groups.get(base.groupId)?.rates ?? null : null;
@@ -887,6 +891,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       : null;
   const draftPrice =
     long && draftLongPreview && !("err" in draftLongPreview) ? draftLongPreview.price : Number(price || 0);
+  const resolvedGuestName = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
   const draftBase: Booking = {
     id: base?.id ?? "__draft__",
     kind,
@@ -895,7 +900,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     price: draftPrice,
     // Entry에서 판매가를 적으면 금액미정 해제
     priceUnset: !!(base?.priceUnset && !(Number(draftPrice) > 0)),
-    guestName,
+    guestName: resolvedGuestName || guestName,
     guestPhone: guestPhone || null,
     typeId,
     roomId,
@@ -904,7 +909,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     nights: kind === "stay" ? nights : null,
     startTime: kind === "dayuse" ? startTime : null,
     endTime: kind === "dayuse" ? endTime : null,
-    arrived,
+    arrived: walkInImmediate ? true : arrived,
     tentative: !!roomId && tentative,
     noClean,
     earlyOut: base?.earlyOut ?? null,
@@ -1069,9 +1074,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!base) {
       const draft = draftBase;
       {
-        const phoneErr = validateGuestPhone(curPlat, guestPhone);
+        const phoneErr = validateGuestPhone(curPlat, guestPhone, { walkInImmediate });
         if (phoneErr) return setPayErr(phoneErr);
       }
+      if (walkInImmediate && draft.kind === "stay" && !draft.roomId) return setPayErr("바로 입실은 호실을 골라 주세요.");
       if (draft.kind === "stay" && draft.stayMode === "long_stay") {
         const rv = validateLongStayRate(draft.longStayRate);
         if (rv) return setPayErr(rv);
@@ -1172,11 +1178,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
   async function save(again = false, override?: Status) {
     const draft = override ? { ...draftBase, status: override } : draftBase;
-    // 현장·전화만 연락처 필수 · OTA 등은 선택 (간단 예약과 동일 · validateGuestPhone SoT)
+    // 현장·전화만 연락처 필수 · 「바로 입실」·OTA는 선택 (간단 예약과 동일 · validateGuestPhone SoT)
     {
-      const phoneErr = validateGuestPhone(curPlat, guestPhone);
+      const phoneErr = validateGuestPhone(curPlat, guestPhone, { walkInImmediate });
       if (phoneErr) return setErr(phoneErr);
     }
+    if (walkInImmediate && draft.kind === "stay" && !draft.roomId) return setErr("바로 입실은 호실을 골라 주세요.");
     if (draft.kind === "stay" && draft.stayMode === "long_stay") {
       const rv = validateLongStayRate(draft.longStayRate);
       if (rv) return setErr(rv);
@@ -2189,16 +2196,36 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="fld">
           <label>
-            이름<em>*</em> · 연락처{isOnsite(curPlat) ? <em>*</em> : null}
+            이름{walkInImmediate ? null : <em>*</em>} · 연락처{isOnsite(curPlat) && !walkInImmediate ? <em>*</em> : null}
           </label>
+          <ChipGroup style={{ marginBottom: "var(--space-chip)" }}>
+            <Chip
+              sm
+              active={walkInImmediate}
+              tone="info"
+              onClick={() => {
+                setWalkInImmediate((v) => {
+                  const next = !v;
+                  if (next) setArrived(true);
+                  return next;
+                });
+              }}
+              title="이름·연락처 없이 즉시 숙박"
+            >
+              바로 입실
+            </Chip>
+          </ChipGroup>
           <GuestNamePhone
             nameRef={nameRef}
             name={guestName}
             phone={guestPhone}
             onName={setName}
             onPhone={setPhone}
-            phoneRequired={isOnsite(curPlat)}
+            phoneRequired={isOnsite(curPlat) && !walkInImmediate}
           />
+          {walkInImmediate ? (
+            <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 호실 필수 · 숙박으로 입실</div>
+          ) : null}
         </div>
 
         <div className="fld gfld">

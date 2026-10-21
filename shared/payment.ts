@@ -42,11 +42,31 @@ export function isOnsite(p: Pick<Platform, "name"> & { onsite?: boolean | null }
 type OnsitePlat = Pick<Platform, "name"> & { onsite?: boolean | null };
 type IdPlat = OnsitePlat & Pick<Platform, "id">;
 
+/** 「바로 입실」자동 표시명 prefix · guest_name CHECK(≥1) 충족 · 보드 힌트 감지 */
+export const WALKIN_IMMEDIATE_PREFIX = "바로입실";
+
+/** 빈 이름일 때 저장용 표시명 (`바로입실 10/21`) */
+export function walkInDisplayName(checkIn: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(checkIn);
+  if (!m) return WALKIN_IMMEDIATE_PREFIX;
+  return `${WALKIN_IMMEDIATE_PREFIX} ${Number(m[2])}/${Number(m[3])}`;
+}
+
+export function isWalkInPlaceholderName(name: string | null | undefined): boolean {
+  const t = name?.trim() ?? "";
+  return t === WALKIN_IMMEDIATE_PREFIX || t.startsWith(`${WALKIN_IMMEDIATE_PREFIX} `);
+}
+
 /**
- * 연락처 필수 = 현장·전화(`isOnsite`)만.
+ * 연락처 필수 = 현장·전화(`isOnsite`)만. 「바로 입실」ON이면 현장·전화도 선택.
  * OTA 등 플랫폼은 빈 연락처로 저장 가능. 간단 예약·Entry·결제 저장이 이 함수만 써요.
  */
-export function validateGuestPhone(plat: OnsitePlat | null | undefined, phone: string | null | undefined): string | null {
+export function validateGuestPhone(
+  plat: OnsitePlat | null | undefined,
+  phone: string | null | undefined,
+  opts?: { walkInImmediate?: boolean },
+): string | null {
+  if (opts?.walkInImmediate) return null;
   if (!isOnsite(plat)) return null;
   if (phone?.trim()) return null;
   return "현장·전화 채널은 연락처가 필요해요.";
