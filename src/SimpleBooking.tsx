@@ -16,6 +16,7 @@ import {
   won,
 } from "../shared/ledger";
 import { syncStayNightRates } from "../shared/nightrates";
+import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, isOnsite, validatePayment } from "../shared/payment";
 import { GUESTS_MAX } from "../shared/surcharge";
 import type { HotelData } from "./data";
@@ -49,10 +50,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [guestName, setName] = useState("");
   const [guestPhone, setPhone] = useState("");
   const [guests, setGuests] = useState(1);
-  const [rateStr, setRateStr] = useState("");
+  const [rateStr, setRateStr] = useState(() => {
+    const fromPreset = p.nightRates?.flat ?? p.nightRates?.weekday ?? null;
+    if (fromPreset != null && fromPreset > 0) return String(fromPreset);
+    const tid = p.typeId ?? usableTypes(s.types)[0]?.id ?? "";
+    const ci = p.checkIn ?? today;
+    const br = tid ? baseRateFor(s, tid, ci) : 0;
+    return br > 0 ? String(br) : "";
+  });
   const [priceStr, setPriceStr] = useState("");
   const [priceTouched, setPriceTouched] = useState(false);
-  const [priceUnset, setPriceUnset] = useState(false);
+  const [priceUnset, setPriceUnset] = useState(!!p.priceUnset);
   const [assignNow, setAssignNow] = useState(false); // Path B
   const [roomId, setRoomId] = useState<string | null>(null);
   const [otherRooms, setOtherRooms] = useState(false);
@@ -128,6 +136,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     if (v) return setErr(v);
     if (busyLegs.length)
       return setErr(`${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호`).join(", ")}는 그 기간에 다른 예약이 있어요.`);
+    const stopped = stopSellDatesForStay(s, typeId, checkIn, nights);
+    if (stopped.length) {
+      return setErr(`판매중지된 숙박일이 있어요 (${stopped.map(md).join(", ")}). 판매 캘린더에서 중지를 풀어 주세요.`);
+    }
     if (typeOver && !window.confirm("타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.")) return;
 
     setBusy(true);
@@ -215,7 +227,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                 setNights(n);
                 setPriceTouched(false);
               }}
-              onBlocked={() => notify("그 밤은 이미 다른 예약이 있어요")}
+              onBlocked={() => notify("그 숙박일은 이미 다른 예약이 있어요")}
             />
             <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
               {md(checkIn)} 입실 · {nights}박 · {md(addDays(checkIn, nights))} 퇴실

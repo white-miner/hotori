@@ -3,6 +3,14 @@ import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
 import type { LongStayRate, NightCharge, SettleCycle, StayMode } from "./longstay";
 import type { StayNightRates } from "./nightrates";
+import {
+  type TypeRateOverridesMap,
+  type TypeRatesMap,
+  type TypeStopSellMap,
+  normalizeTypeRateOverrides,
+  normalizeTypeRates,
+  normalizeTypeStopSell,
+} from "./salesCalendar";
 import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
@@ -90,6 +98,12 @@ export interface HotelSettings {
   parking: ParkingSettings;
   /** 카드 수수료율 % (현장 카드 결제에만, 없으면 없음) */
   cardFeeRate: number | null;
+  /** 판매 캘린더: 타입별 평일/주말/기본 1박 (기본값만 · 예약 진실은 night_rates) */
+  typeRates: TypeRatesMap;
+  /** 판매 캘린더: 타입×숙박일 요금 오버라이드 */
+  typeRateOverrides: TypeRateOverridesMap;
+  /** 판매 캘린더: 타입×숙박일 판매 중지 */
+  typeStopSell: TypeStopSellMap;
 }
 export interface ShopItem {
   id: string;
@@ -215,7 +229,24 @@ export const HOTEL_TIME_ZONE = "Asia/Seoul";
 export const DEFAULT_BUILDING: Building = { id: "b-main", name: "본관" };
 
 export function emptySettings(): HotelSettings {
-  return { buildings: [{ ...DEFAULT_BUILDING }], floors: [], types: [], platforms: [], lowThreshold: 2, shopItems: [], expenseCategories: normalizeExpenseCategories(undefined), surchargeTiers: normalizeTiers(undefined), specialDates: [], stayTimes: normalizeStayTimes(undefined), extraHourFee: DEFAULT_HOUR_FEE, parking: normalizeParking(undefined), cardFeeRate: null };
+  return {
+    buildings: [{ ...DEFAULT_BUILDING }],
+    floors: [],
+    types: [],
+    platforms: [],
+    lowThreshold: 2,
+    shopItems: [],
+    expenseCategories: normalizeExpenseCategories(undefined),
+    surchargeTiers: normalizeTiers(undefined),
+    specialDates: [],
+    stayTimes: normalizeStayTimes(undefined),
+    extraHourFee: DEFAULT_HOUR_FEE,
+    parking: normalizeParking(undefined),
+    cardFeeRate: null,
+    typeRates: {},
+    typeRateOverrides: {},
+    typeStopSell: {},
+  };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
   const s = (raw && typeof raw === "object" ? raw : {}) as Partial<HotelSettings>;
@@ -261,6 +292,9 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     extraHourFee: normalizeHourFee((s as { extraHourFee?: unknown }).extraHourFee),
     parking: normalizeParking((s as { parking?: unknown }).parking),
     cardFeeRate: normalizeRate((s as { cardFeeRate?: unknown }).cardFeeRate),
+    typeRates: normalizeTypeRates((s as { typeRates?: unknown }).typeRates),
+    typeRateOverrides: normalizeTypeRateOverrides((s as { typeRateOverrides?: unknown }).typeRateOverrides),
+    typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
   };
 }
 
