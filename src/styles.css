@@ -1971,7 +1971,9 @@ button.nowstatus { cursor: pointer; }
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
-/* 미배정 행 — 우측 「운영」 간단 예약: dense stacked rows (no full-height 호실 drop zone) */
+/* 미배정 행 — 우측 「운영」 간단 예약: dense stacked rows (no full-height 호실 drop zone)
+   CRITICAL: rows must NOT flex-shrink. max-height + min-height:0 + flex-shrink:1
+   crushed every row into the viewport → text overlap / stack collapse (#55 leftover). */
 .side-ua-list {
   display: flex;
   flex-direction: column;
@@ -1982,10 +1984,12 @@ button.nowstatus { cursor: pointer; }
   padding: 0 2px;
 }
 .side-ua-row {
+  flex: none; /* document-flow stack — scroll for overflow, never crush */
+  position: relative;
   padding: 0;
   border-radius: 8px;
   background: transparent;
-  min-height: 0;
+  min-height: auto;
 }
 .side-ua-row.open {
   background: #f7f8fa;
@@ -1997,6 +2001,7 @@ button.nowstatus { cursor: pointer; }
   align-items: center;
   gap: 4px;
   min-width: 0;
+  flex: none;
 }
 .side-ua-info {
   flex: 1 1 auto;
