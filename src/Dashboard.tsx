@@ -21,6 +21,7 @@ import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpe
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
+import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
@@ -64,7 +65,15 @@ import { saveFailMessage } from "../shared/errors";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
-import { boardMove, boardMoveTargets, boardMoveWindow, placementOf, roomOnNight } from "../shared/ledger";
+import {
+  boardMove,
+  boardMoveTargets,
+  boardMoveWindow,
+  boardSwapTargets,
+  placementOf,
+  roomOnNight,
+  type RoomSwapPlan,
+} from "../shared/ledger";
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
@@ -370,15 +379,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setTab("rooms");
     }
   };
-  // ---------- 객실 배치에서 옮기기 ----------
+  // ---------- 객실 배치에서 옮기기 (+ 활성 투숙 맞교환) ----------
   const mvB = !readOnly && move ? (bookings.find((x) => x.id === move.id && isActive(x)) ?? null) : null;
   const mvNight = mvB ? (mvB.kind === "dayuse" ? mvB.checkIn : move!.night) : null;
   const [pick, setPick] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const [swapChoice, setSwapChoice] = useState<RoomSwapPlan | null>(null);
+  const [swapTypeGate, setSwapTypeGate] = useState<RoomSwapPlan | null>(null);
   const targets = useMemo(() => (mvB && mvNight ? boardMoveTargets(s, bookings, mvB, mvNight) : new Set<string>()), [s, bookings, mvB, mvNight]);
+  const swapTargets = useMemo(
+    () => (mvB && mvNight && mvB.kind === "stay" ? boardSwapTargets(s, bookings, mvB, mvNight) : new Map<string, RoomSwapPlan>()),
+    [s, bookings, mvB, mvNight],
+  );
   const mvFrom = mvB && mvNight ? (mvB.kind === "stay" ? roomOnNight(mvB, mvNight) : mvB.roomId) : null;
   useEffect(() => {
-    if (!move) return setPick(null);
+    if (!move) {
+      setPick(null);
+      setSwapChoice(null);
+      setSwapTypeGate(null);
+      return;
+    }
     // 옮길 예약이 없어졌거나 취소됐으면 끝
     if (!bookings.some((x) => x.id === move.id && isActive(x))) return onMoveEnd();
     const b = bookings.find((x) => x.id === move.id)!;
@@ -386,6 +406,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setTab("rooms");
     setFloorTab((f) => (f === "dayuse" ? "all" : f));
     setPick(null);
+    setSwapChoice(null);
+    setSwapTypeGate(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [move?.id, move?.night]);
   useEffect(() => {
@@ -393,20 +415,78 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
+      if (swapChoice || swapTypeGate) {
+        setSwapChoice(null);
+        setSwapTypeGate(null);
+        return;
+      }
       if (pick) setPick(null);
       else onMoveEnd();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mvB, pick, onMoveEnd]);
+  }, [mvB, pick, swapChoice, swapTypeGate, onMoveEnd]);
   const roomName = (id: string | null | undefined) => {
     if (!id) return "방 미배정";
     const r = L.rooms.get(id);
     const sameB = !multi || !mvFrom || L.rooms.get(mvFrom)?.building?.id === r?.building?.id;
     return `${sameB ? (r?.no ?? "?") : (L.roomLabel(id) ?? "?")}호`;
   };
+  const swapNeedsTypeConfirm = (plan: RoomSwapPlan) => {
+    const aType = L.rooms.get(plan.toRoomId)?.typeId ?? null;
+    const bType = L.rooms.get(plan.fromRoomId)?.typeId ?? null;
+    return (plan.a.typeId ?? null) !== aType || (plan.b.typeId ?? null) !== bType;
+  };
+  /** A→Y · B→X · 중간 null로 unique 점유 충돌 회피 */
+  const doSwap = async (plan: RoomSwapPlan) => {
+    if (moving) return;
+    const aBefore = placementOf(plan.a);
+    const bBefore = placementOf(plan.b);
+    setMoving(true);
+    setSwapChoice(null);
+    setSwapTypeGate(null);
+    try {
+      await data.setPlacement(plan.a.id, { roomId: null, segments: null });
+      try {
+        await data.setPlacement(plan.b.id, plan.bPlace);
+        await data.setPlacement(plan.a.id, plan.aPlace);
+      } catch (e) {
+        await data.setPlacement(plan.a.id, aBefore).catch(() => {});
+        await data.setPlacement(plan.b.id, bBefore).catch(() => {});
+        throw e;
+      }
+      setPick(null);
+      onMoveEnd();
+      notify(
+        `${plan.a.guestName || "손님"} ↔ ${plan.b.guestName || "손님"} 맞교환 · ${roomName(plan.toRoomId)}↔${roomName(plan.fromRoomId)}`,
+      );
+    } catch {
+      notify("맞교환하지 못했어요. 다시 해 주세요");
+    } finally {
+      setMoving(false);
+    }
+  };
+  const requestSwap = (plan: RoomSwapPlan) => {
+    setPick(null);
+    setSwapTypeGate(null);
+    setSwapChoice(plan);
+  };
+  const confirmSwap = (plan: RoomSwapPlan) => {
+    if (swapNeedsTypeConfirm(plan)) {
+      setSwapChoice(null);
+      setSwapTypeGate(plan);
+      return;
+    }
+    void doSwap(plan);
+  };
   const doMove = async () => {
     if (!mvB || !mvNight || !pick || moving) return;
+    // 점유 방이면 맞교환 (빈 방만 여기로)
+    const swap = swapTargets.get(pick);
+    if (swap) {
+      requestSwap(swap);
+      return;
+    }
     const b = mvB;
     const to = pick;
     const before = placementOf(b);
@@ -608,6 +688,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onRelocate={(to) => void relocateThenAssign(checkoutChoice.booking, checkoutChoice.roomId, checkoutChoice.overlaps, to)}
         />
       ) : null}
+      {swapChoice ? (
+        <AssignSwapConfirm
+          L={L}
+          plan={swapChoice}
+          busy={moving}
+          onCancel={() => setSwapChoice(null)}
+          onConfirm={() => confirmSwap(swapChoice)}
+        />
+      ) : null}
+      {swapTypeGate ? (
+        <AssignTypeConfirm
+          L={L}
+          bookedTypeId={swapTypeGate.a.typeId}
+          roomTypeId={(L.rooms.get(swapTypeGate.toRoomId) ?? allRooms(s).find((r) => r.id === swapTypeGate.toRoomId))?.typeId}
+          roomLabel={L.roomLabel(swapTypeGate.toRoomId) ?? swapTypeGate.toRoomId}
+          guestName={swapTypeGate.a.guestName}
+          onCancel={() => setSwapTypeGate(null)}
+          onApprove={() => void doSwap(swapTypeGate)}
+        />
+      ) : null}
       {typeConfirm ? (
         <AssignTypeConfirm
           L={L}
@@ -641,11 +741,25 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         대실 {d.startTime}~{d.endTime}
       </span>
     ));
-    // 옮기는 중: 옮길 수 있는 빈 방(초록), 같은 타입은 더 진하게, 나머지는 흐리게
-    const mvOk = !!mvB && targets.has(r.id);
+    // 옮기는 중: 빈 방(초록) · 맞교환 가능 점유(파란빛) · 같은 타입 더 진하게 · 나머지 흐리게
+    const mvSwap = !!mvB && swapTargets.has(r.id);
+    const mvOk = !!mvB && (targets.has(r.id) || mvSwap);
     const mvSame = mvOk && r.typeId === mvB!.typeId;
-    const mvCls = mvB ? (mvOk ? `mvt ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}` : r.id === mvFrom ? "mvsrc" : "mvoff") : "";
-    const mvClick = mvB ? () => mvOk && setPick(r.id) : null;
+    const mvCls = mvB
+      ? mvOk
+        ? `mvt ${mvSwap ? "swap" : ""} ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}`
+        : r.id === mvFrom
+          ? "mvsrc"
+          : "mvoff"
+      : "";
+    const mvClick = mvB
+      ? () => {
+          if (!mvOk) return;
+          const plan = swapTargets.get(r.id);
+          if (plan) requestSwap(plan);
+          else setPick(r.id);
+        }
+      : null;
     // 「방배정」: 빈 칸 체크 (옮기기 중이면 옮기기 우선)
     const canAssign = !mvB && !!assignBk && assignEligible.has(r.id);
     const sameType = canAssign && r.typeId === assignBk!.typeId;
@@ -1392,7 +1506,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <>
                 <span className="mvbq">
                   <span>
-                    <b>{mvB.guestName || "손님"}</b>님을 옮길 빈 방을 누르세요
+                    <b>{mvB.guestName || "손님"}</b>님을 옮길 방·맞교환 방을 누르세요
                   </span>
                   <small>
                     {mvB.kind === "dayuse"
@@ -1402,7 +1516,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                           return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 ${dayLabel(w.checkIn)}부터 ${w.nights}박`}`;
                         })()}
                     {" · "}
-                    {targets.size ? `빈 방 ${targets.size}곳` : "옮길 수 있는 빈 방이 없어요"}
+                    {targets.size || swapTargets.size
+                      ? `빈 방 ${targets.size}곳${swapTargets.size ? ` · 맞교환 ${swapTargets.size}곳` : ""}`
+                      : "옮길 수 있는 방이 없어요"}
                   </small>
                 </span>
                 <button className="btn line" onClick={onMoveEnd}>
