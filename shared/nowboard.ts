@@ -1,4 +1,4 @@
-// 현장 현황 보드(「지금」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
+// 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours } from "./extratime";
 import { type Booking, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { payState } from "./payment";
@@ -72,7 +72,7 @@ export function isCheckedOut(b: Pick<Booking, "checkedOutAt"> | null | undefined
 }
 
 /**
- * 「지금」칸에 올릴지: 점유 밤이거나 퇴실일 아침(처리 전).
+ * 「현황」칸에 올릴지: 점유 밤이거나 퇴실일 아침(처리 전).
  * 재고 occupiesNight 식은 바꾸지 않음 — 보드 가시성만 분리.
  * 체크아웃 시각이 지나도 checked_out_at 없으면 칸에 남김 (자동 공실 금지).
  */
@@ -87,7 +87,7 @@ export function checkoutMorningVisible(b: Booking | null | undefined, date: stri
   return stayEnd(b) === date && !occupiesNight(b, date);
 }
 
-/** 「지금」칸에 쓸 호실: 점유 밤이면 그날 방, 퇴실 아침이면 마지막 점유 밤 방 */
+/** 「현황」칸에 쓸 호실: 점유 밤이면 그날 방, 퇴실 아침이면 마지막 점유 밤 방 */
 export function roomForNowBoard(b: Booking, date: string): string | null | undefined {
   if (occupiesNight(b, date)) return roomOnNight(b, date);
   if (stayEnd(b) === date) return roomOnNight(b, addDays(stayEnd(b), -1));
@@ -203,7 +203,7 @@ export interface NowLists {
   arriving: Booking[];
 }
 
-/** 오늘 「지금」에 보이는 활성 숙박을 옆 패널용으로 분류 */
+/** 오늘 「현황」에 보이는 활성 숙박을 옆 패널용으로 분류 */
 export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): NowLists {
   const active = bookings.filter((b) => nowBoardVisible(b, date));
   const unassigned: Booking[] = [];
@@ -231,7 +231,7 @@ export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): Now
 }
 
 /**
- * 「지금」보드 방→예약 맵.
+ * 「현황」보드 방→예약 맵.
  * nightBoard(재고) 위에 퇴실일 아침 가시성을 얹고, 퇴실처리된 칸은 비움.
  * 같은 날 다음 예약(점유 밤)이 있으면 그쪽을 우선 → 퇴실처리 후 숙박예약으로 이어짐.
  */
@@ -307,7 +307,7 @@ export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "
 }
 
 /**
- * 「지금」 상단 숙박 요약 (#4): `{nights}박 {days}일` (+ 해당 시 ` · {k}박째`).
+ * 「현황」 상단 숙박 요약 (#4): `{nights}박 {days}일` (+ 해당 시 ` · {k}박째`).
  * 1박 · 숙박예약(입실 전) · 진행 불가 → 총박·일만. 손님 줄 박 칩과 중복하지 않음.
  */
 export function nowStaySummary(b: Booking, date: string, showProgress = true): string {
@@ -335,7 +335,7 @@ export function nowStayHint(b: Booking, date: string): string {
 }
 
 /**
- * 「지금」 칸 날짜: **점유 밤** 구간 `checkIn ~ (stayEnd−1)`.
+ * 「현황」 칸 날짜: **점유 밤** 구간 `checkIn ~ (stayEnd−1)`.
  * 퇴실 아침(stayEnd)은 구간에 넣지 않음 (예: 2박 입19·퇴21 → `10/19~20`).
  * Entry는 입·퇴·박을 쓰고, 보드는 밤 구간만 쓴다.
  */

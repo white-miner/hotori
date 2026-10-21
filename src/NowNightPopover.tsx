@@ -1,4 +1,4 @@
-/** 「지금」칸 날짜 탭 → 점유 밤 읽기 전용 캘린더 팝오버 */
+/** 「현황」칸 날짜 탭 → 점유 밤 읽기 전용 캘린더 팝오버 */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type Booking, addDays, md, stayEnd, usedNights, weekday } from "../shared/ledger";

@@ -23,7 +23,7 @@ export function Brand({ sub, onHome }: { sub?: string; onHome?: () => void }) {
   return (
     <div className="brand">
       {onHome ? (
-        // 로고: 처음 화면(보드 › 「지금」 · 오늘)으로. 새로 고침 없이 보기만 처음으로 돌려요
+        // 로고: 처음 화면(보드 › 「현황」 · 오늘)으로. 새로 고침 없이 보기만 처음으로 돌려요
         <a
           className="brand-home"
           href="#/board/now"

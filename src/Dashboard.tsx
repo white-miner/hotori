@@ -97,7 +97,7 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
-/** 현황판 탭: 주소(#/board/now · stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 「지금」 */
+/** 현황판 탭: 주소(#/board/now · stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 「현황」 */
 const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
@@ -598,11 +598,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
-  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 지금 · 재고 · 배치 · 캘린더 (+주차)
+  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 현황 · 재고 · 배치 · 캘린더 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
-        지금
+        현황
         {nowSide.tentative.length ? (
           <span className="obdot tentdot num" aria-label={`임시 ${nowSide.tentative.length}건`}>
             {nowSide.tentative.length}
@@ -938,7 +938,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {banner}
           <div className="bdh">
             <div>
-              <h1>지금 · 현장 현황</h1>
+              <h1>현황</h1>
               <div className="bdh-s">
                 영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 말풍선은 특이사항 · 칸을 누르면 우측 상세
               </div>
@@ -1276,7 +1276,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="bdh">
           <div>
             <h1>객실 배치 · 재고</h1>
-            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실) · 점선은 임시" : "선택한 날 밤 배치 · 칸을 누르면 예약·단체 창 · 점선「임시」는 나중에 고쳐도 되고 재고는 막혀 있어요 · 현장은 「지금」 탭"}</div>
+            <div className="bdh-s">{readOnly ? "보기 전용 · 가는 테두리는 입실 전, 굵은 테두리는 입실 완료 (빨강 숙박 · 파랑 대실) · 점선은 임시" : "선택한 날 밤 배치 · 칸을 누르면 예약·단체 창 · 점선「임시」는 나중에 고쳐도 되고 재고는 막혀 있어요 · 현장은 「현황」 탭"}</div>
           </div>
           <div className="dnav">
             <span className="cnt-m">

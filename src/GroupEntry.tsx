@@ -703,7 +703,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 {tentative ? <Check size={14} strokeWidth={2.6} /> : null}임시 배치
               </button>
               <span className="muted sm">
-                {tentative ? "임시라도 재고는 막혀요. 「지금」에서 나중에 확정할 수 있어요." : "호실까지 잡은 뒤 · 확정 배치로 저장해요"}
+                {tentative ? "임시라도 재고는 막혀요. 「현황」에서 나중에 확정할 수 있어요." : "호실까지 잡은 뒤 · 확정 배치로 저장해요"}
               </span>
             </div>
           </div>

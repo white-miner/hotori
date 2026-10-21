@@ -1,4 +1,4 @@
-// 객실 특이사항: 「지금」보드 화이트보드 말풍선 · 호텔 단위 저장 · 인수인계(handoff)용 스키마
+// 객실 특이사항: 「현황」보드 화이트보드 말풍선 · 호텔 단위 저장 · 인수인계(handoff)용 스키마
 // kind: issue=특이사항 · delivery=전달사항 (MVP 기본 issue, 인수인계에서 미해결 둘 다 pull)
 // status: open=미해결 · resolved=해결
 // UI 1차 라벨은 「특이사항」(메모라고 부르지 않음). 테이블명 room_memos는 기술 식별자.
@@ -61,7 +61,7 @@ export function openMemoCounts(list: RoomMemo[]): Map<string, number> {
   return m;
 }
 
-/** 「지금」말풍선용: 최신 미해결 본문 미리보기 + 건수 (+툴팁용 전체) */
+/** 「현황」말풍선용: 최신 미해결 본문 미리보기 + 건수 (+툴팁용 전체) */
 export type OpenMemoGlance = { count: number; preview: string; title: string };
 
 export function openMemoGlances(list: RoomMemo[]): Map<string, OpenMemoGlance> {

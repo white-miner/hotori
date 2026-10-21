@@ -1,4 +1,4 @@
-/** 「지금」객실 특이사항: 목록 · 추가 · 해결/미해결 · 수정 · 전달사항 */
+/** 「현황」객실 특이사항: 목록 · 추가 · 해결/미해결 · 수정 · 전달사항 */
 import { useEffect, useRef, useState } from "react";
 import {
   ROOM_MEMO_BODY_MAX,
