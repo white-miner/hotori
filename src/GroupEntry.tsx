@@ -1,6 +1,7 @@
 // 단체 예약 만들기: 방 여러 개를 한 번에 (모두 되거나 모두 안 돼요)
 // · 호실 지정 / 타입만(호실 나중에) · 방별 1박 · 방별 총액(타입 요금 프리필)
 import { useEffect, useMemo, useState } from "react";
+import { saveFailMessage } from "../shared/errors";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
 import {
   type HotelSettings,
@@ -263,7 +264,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         `단체 ${name.trim()} ${how} · ${nights}박 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
       );
     } catch (e) {
-      setErr(e instanceof Error ? `하나도 저장하지 않았어요: ${e.message}` : "하나도 저장하지 않았어요. 다시 시도해 주세요");
+      setErr(saveFailMessage(e, "하나도 저장하지 않았어요"));
     } finally {
       setBusy(false);
     }

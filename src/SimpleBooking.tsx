@@ -20,6 +20,7 @@ import {
 import { autoPick, GROUP_ROOMS_MAX, groupDrafts, groupStockImpactByTypes } from "../shared/group";
 import { syncStayNightRates } from "../shared/nightrates";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
+import { saveFailMessage } from "../shared/errors";
 import {
   BOOK_PAY_LABEL,
   BOOK_PAY_METHODS,
@@ -306,7 +307,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       const unset = priceUnset ? " · 금액미정" : "";
       onSaved(`${guestName.trim()} 님 간단 예약 ${roomCount}실했어요${path}${unset}${payTail}`);
     } catch (e) {
-      setErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setErr(saveFailMessage(e));
     } finally {
       setBusy(false);
     }

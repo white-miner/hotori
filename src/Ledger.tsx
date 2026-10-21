@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { saveFailMessage } from "../shared/errors";
 import { Check, ChevronRight, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
@@ -258,7 +259,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       const r = await data.patchGroup(g.groupId, what === "in" ? { arrived: true } : { status: "cancelled" });
       notify(what === "in" ? `단체 ${g.name} ${r.length}실 모두 입실 완료` : `단체 ${g.name} ${r.length}실을 취소했어요`);
     } catch (e) {
-      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      notify(saveFailMessage(e));
     } finally {
       setGBusy(false);
     }
@@ -303,7 +304,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}${repriceNote}`);
       setGEdit(null);
     } catch (e) {
-      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      notify(saveFailMessage(e));
     } finally {
       setGBusy(false);
     }
@@ -347,7 +348,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       notify(`단체 ${g.name} 전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${payNote}`);
       setGExt(null);
     } catch (e) {
-      notify(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      notify(saveFailMessage(e));
     } finally {
       setGBusy(false);
     }

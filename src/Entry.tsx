@@ -60,6 +60,7 @@ import {
   validateGuestPhone,
   validatePayment,
 } from "../shared/payment";
+import { saveFailMessage } from "../shared/errors";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
@@ -543,7 +544,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setAs(null);
       notify(surchargeNotifyLine(saved.guestName, as.reason, amount, collected, planned.draft.lateOut));
     } catch (e) {
-      setAsErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setAsErr(saveFailMessage(e));
     } finally {
       setAsBusy(false);
     }
@@ -606,7 +607,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       onClose();
       notify(extendNotifyLine(saved.guestName, applyExtend(live, rate), collected));
     } catch (e) {
-      setExErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setExErr(saveFailMessage(e));
     } finally {
       setExBusy(false);
     }
@@ -631,7 +632,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       const saved = await data.saveBooking(next, false);
       notify(`${saved.guestName} 님 재고 창 +${WINDOW_EXTEND_DEFAULT}박 · ${plan.nights}박 · 원장 +${won(plan.totalRate)}원`);
     } catch (e) {
-      notify(e instanceof Error ? `창 연장을 저장하지 못했어요: ${e.message}` : "창 연장을 저장하지 못했어요");
+      notify(saveFailMessage(e, "창 연장을 저장하지 못했어요"));
     } finally {
       setWinBusy(false);
     }
@@ -653,7 +654,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         { action: { label: "되돌리기", run: () => void undoEarlyOut(saved.id) }, ms: 8000 },
       );
     } catch (e) {
-      setEoErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setEoErr(saveFailMessage(e));
     } finally {
       setEoBusy(false);
     }
@@ -1053,7 +1054,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         }
         onSaved(`${saved.guestName} 님 예약을 기록했어요${payTail}`);
       } catch (e) {
-        setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+        setPayErr(saveFailMessage(e));
       } finally {
         setPayBusy(false);
       }
@@ -1068,7 +1069,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setRecv((r) => ({ ...r, amount: left > 0 && kind === "balance" ? String(left) : "" }));
       notify(payNoteOf(kind, amount, recv.method, left));
     } catch (e) {
-      setPayErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setPayErr(saveFailMessage(e));
     } finally {
       setPayBusy(false);
     }
@@ -1187,7 +1188,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
     } catch (e) {
-      setErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+      setErr(saveFailMessage(e));
     } finally {
       setBusy(false);
     }

@@ -3,6 +3,7 @@
  * 다날짜 선택 → 일괄 요금·판매중지 · 「판매」뱃지 · 예약/재고 · 간단 예약 Path A.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { saveFailMessage } from "../shared/errors";
 import { Ban, CalendarPlus, Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   type Booking,
@@ -147,8 +148,8 @@ export default function SalesCalendar({
     try {
       await data.saveHotel({ settings: next });
       notify(ok);
-    } catch {
-      notify("저장하지 못했어요. 다시 해 주세요");
+    } catch (e) {
+      notify(saveFailMessage(e, "저장하지 못했어요"));
     } finally {
       setBusy(false);
     }
