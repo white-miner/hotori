@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, BookOpen, LayoutGrid, LogOut, Megaphone, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { Bell, BookOpen, ClipboardList, LayoutGrid, LogOut, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
-import { createHotel, loadMyHotelId, useHotelData, useRoomMemos } from "./data";
+import { createHotel, loadMyHotelId, useHotelData, useHotelNotices, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
 import { badgeCountLabel, openForHandoff } from "../shared/roomMemo";
+import { unresolvedNoticeCount } from "../shared/hotelNotice";
 import { Brand, isTypingTarget, lookups } from "./ui";
 import { HeaderCTA } from "./primitives/HeaderCTA";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
-import HandoverAlertsPanel, { type AlertStream } from "./HandoverAlertsPanel";
+import HandoverAlertsPanel from "./HandoverAlertsPanel";
+import NoticesHubPanel, { type NoticesHubTab } from "./NoticesHubPanel";
 import SimpleBooking from "./SimpleBooking";
 import { ExpensesPage } from "./Expenses";
 import Ledger from "./Ledger";
@@ -18,7 +20,14 @@ import Settings from "./Settings";
 import Shop from "./Shop";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "settings";
-const VIEWS: { id: View; label: string; icon: typeof Search }[] = [
+/** 데스크톱 텍스트 내비: 설정은 우측 톱니로 이동 (공지와 자리 교체) */
+const NAV_VIEWS: { id: View; label: string }[] = [
+  { id: "board", label: "보드" },
+  { id: "shop", label: "매점" },
+  { id: "expenses", label: "지출" },
+  { id: "ledger", label: "장부" },
+];
+const TAB_VIEWS: { id: View; label: string; icon: typeof Search }[] = [
   { id: "board", label: "보드", icon: LayoutGrid },
   { id: "shop", label: "매점", icon: ShoppingBag },
   { id: "expenses", label: "지출", icon: Wallet },
@@ -72,7 +81,7 @@ function HotelGate({ session }: { session: Session }) {
       </div>
     );
   if (!hotelId) return <div className="center-msg">호텔 정보를 불러오는 중…</div>;
-  return <Shell hotelId={hotelId} email={session.user.email ?? ""} />;
+  return <Shell hotelId={hotelId} email={session.user.email ?? ""} userId={session.user.id} />;
 }
 
 export interface EntryRequest {
@@ -97,9 +106,10 @@ export interface ToastOpt {
   ms?: number;
 }
 
-function Shell({ hotelId, email }: { hotelId: string; email: string }) {
+function Shell({ hotelId, email, userId }: { hotelId: string; email: string; userId: string }) {
   const data = useHotelData(hotelId);
   const memos = useRoomMemos(hotelId);
+  const notices = useHotelNotices(hotelId, userId);
   const [view, setView] = useState<View>(viewFromHash);
   const [entry, setEntry] = useState<EntryRequest | null>(null);
   const [today, setToday] = useState(businessDate());
@@ -108,11 +118,12 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
-  const [alertStream, setAlertStream] = useState<AlertStream | null>(null);
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  const [noticesTab, setNoticesTab] = useState<NoticesHubTab | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const handoffOpen = useMemo(() => openForHandoff(memos.list ?? []), [memos.list]);
   const issueBadge = badgeCountLabel(handoffOpen.issues.length);
-  const deliveryBadge = badgeCountLabel(handoffOpen.deliveries.length);
+  const noticeBadge = badgeCountLabel(unresolvedNoticeCount(notices.list ?? []));
 
   useEffect(() => {
     const on = () => setView(viewFromHash());
@@ -217,7 +228,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       <header className="top">
         <Brand sub={hotel.name} onHome={goHome} />
         <nav className="nav">
-          {VIEWS.map((v) => (
+          {NAV_VIEWS.map((v) => (
             <a
               key={v.id}
               href={`#/${v.id}`}
@@ -232,24 +243,42 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         <div className="right">
           {hotel.isDemo ? <span className="demo">예시 데이터</span> : null}
           {data.error ? <span className="demo warn">연결 확인 중</span> : null}
-          <div className="top-alerts" role="group" aria-label="특이사항·인수인계">
+          <div className="top-alerts" role="group" aria-label="특이사항·공지·설정">
             <button
               type="button"
               className={`top-alert-btn${issueBadge ? " has" : ""}`}
               aria-label={issueBadge ? `특이사항 미해결 ${handoffOpen.issues.length}건` : "특이사항"}
-              onClick={() => setAlertStream("issues")}
+              title="특이사항"
+              onClick={() => {
+                setNoticesTab(null);
+                setIssuesOpen(true);
+              }}
             >
               <Bell size={18} strokeWidth={2.2} aria-hidden />
               {issueBadge ? <span className="top-alert-badge danger">{issueBadge}</span> : null}
             </button>
             <button
               type="button"
-              className={`top-alert-btn${deliveryBadge ? " has" : ""}`}
-              aria-label={deliveryBadge ? `인수인계 미해결 ${handoffOpen.deliveries.length}건` : "인수인계"}
-              onClick={() => setAlertStream("deliveries")}
+              className={`top-alert-btn top-notice-btn${noticeBadge ? " has" : ""}`}
+              aria-label={noticeBadge ? `공지 미해결 ${unresolvedNoticeCount(notices.list ?? [])}건` : "공지"}
+              title="호텔 공지"
+              onClick={() => {
+                setIssuesOpen(false);
+                setNoticesTab("notices");
+              }}
             >
-              <Megaphone size={18} strokeWidth={2.2} aria-hidden />
-              {deliveryBadge ? <span className="top-alert-badge warn">{deliveryBadge}</span> : null}
+              <ClipboardList size={18} strokeWidth={2.2} aria-hidden />
+              <span className="top-notice-label">공지</span>
+              {noticeBadge ? <span className="top-alert-badge warn">{noticeBadge}</span> : null}
+            </button>
+            <button
+              type="button"
+              className={`top-alert-btn${view === "settings" ? " has" : ""}`}
+              aria-label="설정"
+              title="설정"
+              onClick={() => go("settings")}
+            >
+              <Gear size={18} strokeWidth={2.2} aria-hidden />
             </button>
           </div>
           <label className="search">
@@ -310,7 +339,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
       )}
       {/* 휴대폰: 아래 탭으로 한 번에 이동 */}
       <nav className="tabbar" aria-label="화면">
-        {VIEWS.map((v) => (
+        {TAB_VIEWS.map((v) => (
           <a key={v.id} href={`#/${v.id}`} className={view === v.id ? "on" : ""} onClick={() => setView(v.id)}>
             <v.icon size={20} strokeWidth={view === v.id ? 2.3 : 1.8} />
             {v.label}
@@ -356,14 +385,32 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
           }}
         />
       ) : null}
-      {alertStream && hotel.settings ? (
+      {issuesOpen && hotel.settings ? (
         <HandoverAlertsPanel
-          stream={alertStream}
+          stream="issues"
           list={memos.list ?? []}
           settings={hotel.settings}
-          onClose={() => setAlertStream(null)}
+          onClose={() => setIssuesOpen(false)}
           onSave={memos.save}
           onSetStatus={memos.setStatus}
+          notify={notify}
+        />
+      ) : null}
+      {noticesTab && hotel.settings ? (
+        <NoticesHubPanel
+          tab={noticesTab}
+          onTab={setNoticesTab}
+          notices={notices.list ?? []}
+          memos={memos.list ?? []}
+          settings={hotel.settings}
+          email={email}
+          onClose={() => setNoticesTab(null)}
+          onSaveNotice={notices.save}
+          onSetNoticeStatus={notices.setStatus}
+          onRemoveNotice={notices.remove}
+          onAckNotice={notices.ack}
+          onSaveMemo={memos.save}
+          onSetMemoStatus={memos.setStatus}
           notify={notify}
         />
       ) : null}

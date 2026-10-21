@@ -1,7 +1,7 @@
 // 객실 특이사항: 「현황」보드 화이트보드 말풍선 · 호텔 단위 저장 · 인수인계(handoff)용 스키마
 // kind: issue=특이사항 · delivery=인수인계(전달사항)
 // status: open=미해결 · resolved=해결
-// UI: Bell=특이사항 · Megaphone=인수인계. 테이블명 room_memos는 기술 식별자.
+// UI: Bell=특이사항 · 공지 패널「인수인계」탭=delivery. 테이블명 room_memos는 기술 식별자.
 // room_id: issue 필수 · delivery는 null 허용(호텔 공용)
 
 export type RoomMemoStatus = "open" | "resolved";
@@ -113,7 +113,7 @@ export function memosForRoom(list: RoomMemo[], roomId: string): RoomMemo[] {
 }
 
 /**
- * 탑바 Bell / Megaphone: 미해결 특이사항 · 미해결 인수인계(전달사항).
+ * 탑바 Bell · 공지 허브 인수인계 탭: 미해결 특이사항 · 미해결 전달사항.
  */
 export function openForHandoff(list: RoomMemo[]): { issues: RoomMemo[]; deliveries: RoomMemo[] } {
   const issues: RoomMemo[] = [];

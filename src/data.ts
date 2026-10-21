@@ -24,6 +24,13 @@ import {
   isRoomMemoStatus,
   validateRoomMemoDraft,
 } from "../shared/roomMemo";
+import {
+  type HotelNotice,
+  type HotelNoticeDraft,
+  type HotelNoticeStatus,
+  isHotelNoticeStatus,
+  validateHotelNoticeDraft,
+} from "../shared/hotelNotice";
 import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
@@ -1273,5 +1280,180 @@ export function useRoomMemos(hotelId: string) {
     setList((cur) => (cur ?? []).filter((x) => x.id !== id));
   }, []);
   return { list, error, save, setStatus, remove, refresh };
+}
+
+// ---------- 호텔 공지 (탑바 ClipboardList · hotel_notices) ----------
+interface HotelNoticeRow {
+  id: string;
+  body: string;
+  status: string;
+  resolved_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+interface NoticeReceiptRow {
+  notice_id: string;
+  staff_id: string;
+  read_at: string | null;
+  acked_at: string | null;
+}
+const NOTICE_COLS = "id,body,status,resolved_at,created_by,updated_by,created_at,updated_at";
+const fromNoticeRow = (r: HotelNoticeRow, ack?: { ackedAt: string | null; ackCount: number }): HotelNotice => ({
+  id: r.id,
+  body: r.body,
+  status: isHotelNoticeStatus(r.status) ? r.status : "open",
+  resolvedAt: r.resolved_at,
+  createdBy: r.created_by,
+  updatedBy: r.updated_by,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  ackedAt: ack?.ackedAt ?? null,
+  ackCount: ack?.ackCount ?? 0,
+});
+
+export async function queryHotelNotices(hotelId: string, staffId?: string | null): Promise<HotelNotice[]> {
+  const { data, error } = await supabase
+    .from("hotel_notices")
+    .select(NOTICE_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  const rows = (data as HotelNoticeRow[]) ?? [];
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  const { data: receipts, error: rErr } = await supabase
+    .from("hotel_notice_receipts")
+    .select("notice_id,staff_id,read_at,acked_at")
+    .in("notice_id", ids);
+  if (rErr) throw rErr;
+  const recs = (receipts as NoticeReceiptRow[]) ?? [];
+  const ackCount = new Map<string, number>();
+  const myAck = new Map<string, string | null>();
+  for (const x of recs) {
+    if (x.acked_at) ackCount.set(x.notice_id, (ackCount.get(x.notice_id) ?? 0) + 1);
+    if (staffId && x.staff_id === staffId) myAck.set(x.notice_id, x.acked_at);
+  }
+  return rows.map((r) =>
+    fromNoticeRow(r, { ackedAt: myAck.get(r.id) ?? null, ackCount: ackCount.get(r.id) ?? 0 }),
+  );
+}
+
+/** 호텔 공지: 실시간 + 20초마다 맞춤 · 채널명 인스턴스마다 고유 (#65) */
+export function useHotelNotices(hotelId: string, staffId?: string | null) {
+  const [list, setList] = useState<HotelNotice[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      const rows = await queryHotelNotices(hotelId, staffId);
+      setList(rows);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "공지를 불러오지 못했어요");
+    }
+  }, [hotelId, staffId]);
+  useEffect(() => {
+    void refresh();
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const soon = () => {
+      clearTimeout(t);
+      t = setTimeout(() => void refresh(), 250);
+    };
+    const ch = supabase
+      .channel(`hotel-notices-${hotelId}-${crypto.randomUUID()}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "hotel_notices", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .subscribe();
+    const poll = setInterval(() => document.visibilityState === "visible" && void refresh(), 20000);
+    return () => {
+      clearTimeout(t);
+      clearInterval(poll);
+      void supabase.removeChannel(ch);
+    };
+  }, [hotelId, refresh]);
+  const save = useCallback(
+    async (d: HotelNoticeDraft, id?: string): Promise<HotelNotice> => {
+      const v = validateHotelNoticeDraft(d);
+      if (v) throw new Error(v);
+      const body = d.body.trim().slice(0, 280);
+      if (id) {
+        const patch: { body: string; status?: HotelNoticeStatus; resolved_at?: string | null } = { body };
+        if (d.status != null) {
+          patch.status = d.status;
+          patch.resolved_at = d.status === "resolved" ? new Date().toISOString() : null;
+        }
+        const { data, error } = await supabase.from("hotel_notices").update(patch).eq("id", id).select(NOTICE_COLS).single();
+        if (error) throw error;
+        const saved = fromNoticeRow(data as HotelNoticeRow);
+        setList((cur) => {
+          const prev = (cur ?? []).find((x) => x.id === saved.id);
+          const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+          return [{ ...saved, ackedAt: prev?.ackedAt ?? null, ackCount: prev?.ackCount ?? 0 }, ...rest].sort((a, b) =>
+            b.createdAt.localeCompare(a.createdAt),
+          );
+        });
+        return saved;
+      }
+      const status: HotelNoticeStatus = d.status ?? "open";
+      const { data, error } = await supabase
+        .from("hotel_notices")
+        .insert({
+          hotel_id: hotelId,
+          body,
+          status,
+          resolved_at: status === "resolved" ? new Date().toISOString() : null,
+        })
+        .select(NOTICE_COLS)
+        .single();
+      if (error) throw error;
+      const saved = fromNoticeRow(data as HotelNoticeRow);
+      setList((cur) => [saved, ...(cur ?? []).filter((x) => x.id !== saved.id)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      return saved;
+    },
+    [hotelId],
+  );
+  const setStatus = useCallback(async (id: string, status: HotelNoticeStatus): Promise<HotelNotice> => {
+    const row = {
+      status,
+      resolved_at: status === "resolved" ? new Date().toISOString() : null,
+    };
+    const { data, error } = await supabase.from("hotel_notices").update(row).eq("id", id).select(NOTICE_COLS).single();
+    if (error) throw error;
+    const saved = fromNoticeRow(data as HotelNoticeRow);
+    setList((cur) => {
+      const prev = (cur ?? []).find((x) => x.id === saved.id);
+      const rest = (cur ?? []).filter((x) => x.id !== saved.id);
+      return [{ ...saved, ackedAt: prev?.ackedAt ?? null, ackCount: prev?.ackCount ?? 0 }, ...rest].sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt),
+      );
+    });
+    return saved;
+  }, []);
+  const remove = useCallback(async (id: string) => {
+    const { error } = await supabase.from("hotel_notices").delete().eq("id", id);
+    if (error) throw error;
+    setList((cur) => (cur ?? []).filter((x) => x.id !== id));
+  }, []);
+  const ack = useCallback(
+    async (id: string): Promise<void> => {
+      if (!staffId) throw new Error("로그인이 필요해요");
+      const now = new Date().toISOString();
+      const { error } = await supabase.from("hotel_notice_receipts").upsert(
+        { notice_id: id, staff_id: staffId, acked_at: now, read_at: now },
+        { onConflict: "notice_id,staff_id" },
+      );
+      if (error) throw error;
+      setList((cur) =>
+        (cur ?? []).map((x) =>
+          x.id === id
+            ? { ...x, ackedAt: now, ackCount: x.ackedAt ? x.ackCount ?? 0 : (x.ackCount ?? 0) + 1 }
+            : x,
+        ),
+      );
+    },
+    [staffId],
+  );
+  return { list, error, save, setStatus, remove, ack, refresh };
 }
 
