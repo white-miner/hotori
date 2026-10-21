@@ -1969,18 +1969,103 @@ button.nowstatus { cursor: pointer; }
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
-/* 미배정 행 — 우측 「운영」 간단 예약 모드에서만 사용 (본판 큰 패널 제거) */
-.now-ua-row {
+/* 미배정 행 — 우측 「운영」 간단 예약: dense stacked rows (no full-height 호실 drop zone) */
+.side-ua-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  border-radius: 12px;
-  background: var(--panel);
+  gap: 1px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  margin: 0 -2px;
+  padding: 0 2px;
 }
-.now-ua-row.open { background: #f7f8fa; border: 1px solid var(--line); }
-.now-ua-item { background: transparent; margin: 0; }
-.now-ua-pick { margin-top: 2px; padding: 4px 2px 2px; }
+.side-ua-row {
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  min-height: 0;
+}
+.side-ua-row.open {
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  margin: 2px 0;
+}
+.side-ua-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.side-ua-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.side-ua-info:hover:not(:disabled) { background: var(--panel); }
+.side-ua-info:disabled { cursor: default; }
+.side-ua-l1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.side-ua-l1 b {
+  font-size: 12.5px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.side-ua-amt {
+  flex: none;
+  font-family: var(--num);
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.side-ua-l2 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.side-ua-assign {
+  flex: none;
+  height: 24px;
+  padding: 0 8px;
+  margin: 0 4px 0 0;
+  border-radius: 6px;
+  border: 1px solid var(--ink);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.side-ua-assign:hover { background: #f4f4f4; }
+.side-ua-pick {
+  margin: 0 6px 6px;
+  padding: 2px 0 0;
+  max-height: 88px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.side-ua-pick .rchip { height: 26px; padding: 0 8px; font-size: 12px; }
 /* 예약 셸 — 간단·상세 공통 (Phase 2) · Entry chip/pill DNA */
 .modal.book-shell .mh { flex-wrap: wrap; gap: var(--space-3); }
 .modal.book-shell .book-mode { flex-shrink: 0; }
@@ -2215,7 +2300,17 @@ button.nowstatus { cursor: pointer; }
 .nklab.nk-departing { color: var(--badge-warn); }
 .nklab.nk-lateOut { color: var(--badge-danger); }
 .nkdot.nk-empty { border-style: dashed; border-color: var(--badge-empty); background: #fff; }
-.nowside { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 14px; position: sticky; top: 10px; min-width: 0; }
+.nowside {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px 12px 14px;
+  position: sticky;
+  top: 10px;
+  min-width: 0;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
 .nowside-h { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
 .nowside-modes {
   display: grid;
@@ -2275,9 +2370,7 @@ button.nowstatus { cursor: pointer; }
 .nsel-filters .chip { padding: 4px 8px; font-size: 11.5px; height: 28px; }
 .nsel-filters .chip small { margin-left: 3px; font-family: var(--num); font-weight: 800; }
 .nsel-filters .chip.on small { color: rgba(255, 255, 255, 0.75); }
-.nsel-note { margin: 0 0 8px; }
-.side-ua-list { display: flex; flex-direction: column; gap: 6px; }
-.side-ua-row { padding: 4px; }
+.nsel-note { margin: 0 0 6px; }
 .linkish {
   display: inline; padding: 0; border: 0; background: none; color: var(--ink);
   font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
