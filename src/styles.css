@@ -134,6 +134,20 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .nav a.on { color: var(--ink); background: var(--panel); font-weight: 700; }
 .nav a:hover { color: var(--ink); }
 .top .right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.top-alerts { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.top-alert-btn {
+  position: relative; width: 40px; height: 40px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink2); background: transparent;
+}
+.top-alert-btn:hover, .top-alert-btn.has { background: var(--panel); color: var(--ink); }
+.top-alert-badge {
+  position: absolute; top: 4px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center;
+  color: #fff; pointer-events: none;
+}
+.top-alert-badge.danger { background: var(--badge-danger); }
+.top-alert-badge.warn { background: var(--badge-warn-border); }
 .search { display: flex; align-items: center; gap: 8px; height: 40px; width: 260px; border-radius: 999px; background: var(--panel); padding: 0 16px; color: var(--ink4); font-size: 13.5px; }
 .search input { border: 0; background: transparent; flex: 1; min-width: 0; color: var(--ink); font-weight: 550; }
 .search input::placeholder { color: var(--ink4); }
@@ -2505,6 +2519,17 @@ button.nowstatus { cursor: pointer; }
   padding: 2px 4px;
 }
 .room-memo-modal { width: 440px; max-width: 100%; }
+.handover-alerts-panel { width: 440px; max-width: 100%; }
+.handover-alerts-panel .mh h2 { display: inline-flex; align-items: center; gap: 8px; }
+.halert-create { margin-bottom: 12px; }
+.halert-hint { font-size: 13px; margin: 0 0 12px; }
+.halert-room { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.halert-room .inp { width: auto; min-width: 140px; }
+.halert-room-tag {
+  font-size: 11.5px; font-weight: 750; letter-spacing: -0.02em;
+  padding: 2px 8px; border-radius: 999px; background: var(--panel); color: var(--ink2);
+}
+.halert-room-tag.hotel { background: var(--badge-warn-s); color: var(--badge-warn); }
 .rmemo-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
 .rmemo-row { display: flex; gap: 6px; align-items: center; }
 .rmemo-row .inp { flex: 1 1 auto; min-width: 0; }

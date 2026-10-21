@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { BookOpen, LayoutGrid, LogOut, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { Bell, BookOpen, LayoutGrid, LogOut, Megaphone, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
-import { createHotel, loadMyHotelId, useHotelData } from "./data";
+import { createHotel, loadMyHotelId, useHotelData, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
+import { badgeCountLabel, openForHandoff } from "../shared/roomMemo";
 import { Brand, isTypingTarget, lookups } from "./ui";
 import { HeaderCTA } from "./primitives/HeaderCTA";
 import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
+import HandoverAlertsPanel, { type AlertStream } from "./HandoverAlertsPanel";
 import SimpleBooking from "./SimpleBooking";
 import { ExpensesPage } from "./Expenses";
 import Ledger from "./Ledger";
@@ -97,6 +99,7 @@ export interface ToastOpt {
 
 function Shell({ hotelId, email }: { hotelId: string; email: string }) {
   const data = useHotelData(hotelId);
+  const memos = useRoomMemos(hotelId);
   const [view, setView] = useState<View>(viewFromHash);
   const [entry, setEntry] = useState<EntryRequest | null>(null);
   const [today, setToday] = useState(businessDate());
@@ -105,7 +108,11 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
   const [menu, setMenu] = useState(false);
   const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
+  const [alertStream, setAlertStream] = useState<AlertStream | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const handoffOpen = useMemo(() => openForHandoff(memos.list ?? []), [memos.list]);
+  const issueBadge = badgeCountLabel(handoffOpen.issues.length);
+  const deliveryBadge = badgeCountLabel(handoffOpen.deliveries.length);
 
   useEffect(() => {
     const on = () => setView(viewFromHash());
@@ -225,6 +232,26 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
         <div className="right">
           {hotel.isDemo ? <span className="demo">예시 데이터</span> : null}
           {data.error ? <span className="demo warn">연결 확인 중</span> : null}
+          <div className="top-alerts" role="group" aria-label="특이사항·인수인계">
+            <button
+              type="button"
+              className={`top-alert-btn${issueBadge ? " has" : ""}`}
+              aria-label={issueBadge ? `특이사항 미해결 ${handoffOpen.issues.length}건` : "특이사항"}
+              onClick={() => setAlertStream("issues")}
+            >
+              <Bell size={18} strokeWidth={2.2} aria-hidden />
+              {issueBadge ? <span className="top-alert-badge danger">{issueBadge}</span> : null}
+            </button>
+            <button
+              type="button"
+              className={`top-alert-btn${deliveryBadge ? " has" : ""}`}
+              aria-label={deliveryBadge ? `인수인계 미해결 ${handoffOpen.deliveries.length}건` : "인수인계"}
+              onClick={() => setAlertStream("deliveries")}
+            >
+              <Megaphone size={18} strokeWidth={2.2} aria-hidden />
+              {deliveryBadge ? <span className="top-alert-badge warn">{deliveryBadge}</span> : null}
+            </button>
+          </div>
           <label className="search">
             <Search size={16} />
             <input
@@ -327,6 +354,17 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
             notify(m);
             setEntry(again ? { preset: again, n: Date.now() } : null);
           }}
+        />
+      ) : null}
+      {alertStream && hotel.settings ? (
+        <HandoverAlertsPanel
+          stream={alertStream}
+          list={memos.list ?? []}
+          settings={hotel.settings}
+          onClose={() => setAlertStream(null)}
+          onSave={memos.save}
+          onSetStatus={memos.setStatus}
+          notify={notify}
         />
       ) : null}
       {toast ? (
