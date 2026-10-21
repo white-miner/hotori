@@ -983,7 +983,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   return (
                     <div key={b.id} className={`now-ua-row ${open ? "open" : ""}`}>
                       <button type="button" className="nowli now-ua-item" onClick={() => onOpen(b, today)} disabled={readOnly}>
-                        <span className="nowli-t">미배정</span>
+                        <span className="nowli-t ua">미배정</span>
                         <b>{b.guestName}</b>
                         <span className="muted sm">
                           {typeLabel(L.types.get(b.typeId))}
@@ -1097,6 +1097,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </span>
             <span>
               <i className="nkdot nk-tent" />임시
+            </span>
+            <span>
+              <i className="nkdot nk-ua" />미배정
             </span>
             <span>
               <i className="nkdot nk-ncx" />청소X

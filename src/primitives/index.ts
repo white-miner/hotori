@@ -1,4 +1,4 @@
-export { Chip, ChipGroup } from "./Chip";
+export { Chip, ChipGroup, type ChipTone } from "./Chip";
 export { Inp, PriceInp, GuestNamePhone } from "./Inp";
 export { Stepper } from "./Stepper";
 export { PriceRow } from "./PriceRow";
