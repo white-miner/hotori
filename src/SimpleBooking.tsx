@@ -491,8 +491,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           .map((id) => {
             const r = rmap.get(id);
             if (!r) return id;
-            const pre = multi ? `${L.buildings.get(r.buildingId)?.name ?? ""} `.trim() : "";
-            return `${pre}${r.no}호`.trim();
+            const bname = multi ? (L.buildings.get(r.buildingId)?.name ?? "") : "";
+            return bname ? `${bname} ${r.no}호` : `${r.no}호`;
           })
           .join(", ")
       : "";
