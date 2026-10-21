@@ -2605,19 +2605,30 @@ button.nowstatus { cursor: pointer; }
 .nklab.nk-departing { color: var(--badge-warn); }
 .nklab.nk-lateOut { color: var(--badge-danger); }
 .nkdot.nk-empty { border-style: dashed; border-color: var(--badge-empty); background: #fff; }
+/* Stick under .top (64px). top:10px put tabs under the header when the board scrolled. */
 .nowside {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 12px 12px 14px;
   position: sticky;
-  top: 10px;
+  top: 64px;
+  z-index: 5;
   min-width: 0;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* body scrolls; 운영 + mode tabs stay pinned */
+  box-sizing: border-box;
 }
-.nowside-h { font-size: 13px; font-weight: 800; margin-bottom: 8px; }
+.nowside-h {
+  flex: none;
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
 .nowside-modes {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
@@ -2655,7 +2666,12 @@ button.nowstatus { cursor: pointer; }
   color: var(--ink);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
-.nowside-body { min-width: 0; }
+.nowside-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
 .nsel-head { margin-bottom: 8px; }
 .nsel-no { font-family: var(--num); font-size: 20px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
 .nsel-sub { font-size: 12px; font-weight: 650; color: var(--ink2); margin-top: 2px; }
