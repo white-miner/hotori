@@ -147,10 +147,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lv-over { background: var(--red); color: #fff; }
 .lv-stop { background: var(--ink); color: #fff; display: inline-flex !important; align-items: center; justify-content: center; width: 22px; height: 16px; }
 
-/* ---------- 판매 캘린더 ---------- */
-.sales-hint { margin-top: 6px; max-width: 36em; }
-.sales-glance { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
-.sales-gchip { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 8px; border-radius: 999px; background: var(--panel); font-weight: 650; }
+/* ---------- 판매 캘린더 (날짜 우선 · 타입 카드) ---------- */
+.sales-hint { margin-top: var(--space-2); max-width: 36em; }
+.sales-glance { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0 0 var(--space-4); }
+.sales-gchip { display: inline-flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-4) 0 var(--space-3); border-radius: var(--radius-pill); background: var(--panel); font-weight: 650; }
 .sales-gchip:hover { background: var(--hover); }
 .sales-gchip b { font-family: var(--num); font-size: 16px; font-weight: 800; }
 .sales-gchip small { font-size: 11.5px; color: var(--ink3); font-weight: 500; }
@@ -158,18 +158,114 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-gchip.lv-full { background: var(--red-s); color: var(--red-d); }
 .sales-gchip.lv-over { background: var(--red); color: #fff; }
 .sales-gchip.lv-over small { color: rgba(255,255,255,0.75); }
-.sales-grid .srow { grid-template-columns: 150px repeat(var(--days, 7), minmax(52px, 1fr)); }
-.sales-tn { text-align: left; width: 100%; background: transparent; border: 0; cursor: pointer; }
-.sales-sc { height: 52px; flex-direction: column; gap: 1px; padding: 4px 2px; font-size: 15px; line-height: 1.1; }
-.sales-sc .sales-rem { font-size: 16px; font-weight: 800; }
-.sales-sc .sales-rate { font-family: "PV", var(--num); font-size: 10px; font-weight: 650; color: var(--ink3); letter-spacing: -0.02em; }
-.sales-sc.lv-stop { background: var(--ink); color: #fff; }
-.sales-sc.lv-stop .sales-stop { display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.sales-sc.lv-stop small { color: rgba(255,255,255,0.8); margin: 0; font-size: 9px; }
-.sales-sc.we:not(.lv-stop):not(.lv-over):not(.lv-full):not(.lv-low) { background: rgba(0, 0, 0, 0.028); }
+
+.sales-dates {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  background: var(--panel2);
+  -webkit-overflow-scrolling: touch;
+}
+.sales-dates.wide { max-height: calc(100vh - 220px); overflow: auto; }
+.sales-day {
+  flex: 0 0 148px;
+  min-width: 148px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sales-day-h {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-inp-sm);
+  text-align: center;
+  line-height: 1.2;
+}
+.sales-day-h b { font-family: var(--num); font-size: 16px; font-weight: 800; color: var(--ink); }
+.sales-day-h span { font-size: 12px; font-weight: 600; color: var(--ink3); }
+.sales-day.sel .sales-day-h { background: var(--ink); }
+.sales-day.sel .sales-day-h b,
+.sales-day.sel .sales-day-h span { color: #fff; }
+.sales-day.td:not(.sel) .sales-day-h { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.sales-day.we:not(.sel) .sales-day-h { background: rgba(0, 0, 0, 0.028); }
+.sales-day-types { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.sales-tcard {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-inp);
+  background: #fff;
+  text-align: left;
+  min-width: 0;
+}
+.sales-tcard:hover { box-shadow: inset 0 0 0 1.5px var(--dark); }
+.sales-tcard-type {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.sales-tcard-name {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ink2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.sales-tcard-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.sales-tcard-meta b { font-family: var(--num); font-size: 18px; font-weight: 800; line-height: 1; }
+.sales-tcard-rate {
+  font-family: "PV", var(--num);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--ink3);
+  letter-spacing: -0.02em;
+}
+.sales-tcard-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+.sales-tcard.lv-low { background: var(--dark); }
+.sales-tcard.lv-full { background: var(--red-s); color: var(--red-d); }
+.sales-tcard.lv-full .sales-tcard-rate { color: var(--red-d); }
+.sales-tcard.lv-over { background: var(--red); color: #fff; }
+.sales-tcard.lv-over .sales-tcard-name,
+.sales-tcard.lv-over .sales-tcard-rate { color: rgba(255,255,255,0.85); }
+.sales-tcard.lv-stop { background: var(--ink); color: #fff; }
+.sales-tcard.lv-stop .sales-tcard-name { color: rgba(255,255,255,0.8); }
+.sales-tcard.lv-full:hover { box-shadow: inset 0 0 0 1.5px var(--red); }
+
 .sales-sheet { max-width: 420px; }
-.sales-sheet .actrow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
-.sales-sheet .actrow .btn { gap: 6px; }
+.sales-sheet .actrow { display: flex; gap: var(--space-4); justify-content: flex-end; margin-top: var(--space-3); flex-wrap: wrap; }
+.sales-sheet .actrow .btn { gap: var(--space-chip); }
+
+@media (max-width: 720px) {
+  .sales-day { flex-basis: 132px; min-width: 132px; }
+  .sales-dates { padding: var(--space-3); gap: var(--space-2); }
+  .sales-tcard { padding: var(--space-2) var(--space-3); border-radius: var(--radius-inp-sm); }
+  .sales-tcard-meta b { font-size: 16px; }
+}
 
 .stock-wrap { overflow-x: auto; border-radius: 22px; background: var(--panel2); }
 .stock { padding: 12px 14px; min-width: 640px; }
