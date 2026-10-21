@@ -104,6 +104,40 @@ export function sellableRemaining(remaining: number, stopped: boolean): number {
   return stopped ? 0 : remaining;
 }
 
+/** stockTable 점유 수 = 타입 총실 − remaining (오버면 total보다 큼) */
+export function bookedCount(total: number, remaining: number): number {
+  return total - remaining;
+}
+
+/** 판매 가능: 남은 재고 있고 판매중지 아님 */
+export function isSellOpen(remaining: number, stopped: boolean): boolean {
+  return !stopped && remaining > 0;
+}
+
+export type BulkSalesPatch = {
+  /** undefined = 요금 유지 · null = 오버라이드 삭제 · number = 설정 */
+  rate?: number | null;
+  /** undefined = 판매상태 유지 */
+  stopSell?: boolean;
+};
+
+/** 선택한 타입×숙박일에 요금·판매중지 일괄 적용 */
+export function applyBulkTypeDates<T extends SalesSettings>(
+  s: T,
+  typeIds: string[],
+  dates: string[],
+  patch: BulkSalesPatch,
+): T {
+  let next = s;
+  for (const typeId of typeIds) {
+    for (const date of dates) {
+      if (patch.rate !== undefined) next = setTypeDateRate(next, typeId, date, patch.rate);
+      if (patch.stopSell !== undefined) next = setTypeStopSell(next, typeId, date, patch.stopSell);
+    }
+  }
+  return next;
+}
+
 /** 예약이 점유하는 숙박일 중 판매중지된 날짜 (타입 기준) */
 export function stopSellDatesForStay(
   s: Pick<SalesSettings, "typeStopSell">,

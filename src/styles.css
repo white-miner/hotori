@@ -8,6 +8,7 @@
   --bg: #fff; --panel: #f2f2f2; --panel2: #f7f7f8; --hover: #eaeaea; --line: #e6e6e6; --line2: #efefef;
   --ink: #1a1a1a; --ink2: #4a4a4a; --ink3: #6b6b6b; --ink4: #a3a3a3;
   --red: #e0242f; --stay: #ff1f1f; --dayuse: #0a5cff; --red-d: #c21a24; --red-s: #fdecec; --dark: #dcdcdc;
+  --sell: #12a150; --sell-s: #e9f8ef;
   --num: "MR", "PV", system-ui, sans-serif;
   /* spacing scale — new px only via token add */
   --space-1: 2px;
@@ -146,6 +147,12 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lv-full { background: var(--red-s); color: var(--red-d); box-shadow: inset 0 0 0 1.5px var(--red); }
 .lv-over { background: var(--red); color: #fff; }
 .lv-stop { background: var(--ink); color: #fff; display: inline-flex !important; align-items: center; justify-content: center; width: 22px; height: 16px; }
+.lv-sell {
+  background: var(--sell-s); color: var(--sell);
+  display: inline-flex !important; align-items: center; justify-content: center;
+  width: auto; min-width: 28px; height: 16px; padding: 0 5px;
+  font-size: 9px; font-weight: 800; letter-spacing: -0.02em;
+}
 
 /* ---------- 판매 캘린더 (날짜 우선 · 타입 카드) ---------- */
 .sales-hint { margin-top: var(--space-2); max-width: 36em; }
@@ -169,32 +176,58 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   background: var(--panel2);
   -webkit-overflow-scrolling: touch;
 }
+.sales-picking .sales-dates { margin-bottom: var(--space-6); }
 .sales-dates.wide { max-height: calc(100vh - 220px); overflow: auto; }
 .sales-day {
-  flex: 0 0 148px;
-  min-width: 148px;
+  flex: 0 0 156px;
+  min-width: 156px;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 .sales-day-h {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
+  width: 100%;
   padding: var(--space-3) var(--space-2);
   border-radius: var(--radius-inp-sm);
   text-align: center;
   line-height: 1.2;
 }
 .sales-day-h b { font-family: var(--num); font-size: 16px; font-weight: 800; color: var(--ink); }
-.sales-day-h span { font-size: 12px; font-weight: 600; color: var(--ink3); }
+.sales-day-h > span:not(.sales-day-check) { font-size: 12px; font-weight: 600; color: var(--ink3); }
 .sales-day.sel .sales-day-h { background: var(--ink); }
 .sales-day.sel .sales-day-h b,
-.sales-day.sel .sales-day-h span { color: #fff; }
-.sales-day.td:not(.sel) .sales-day-h { box-shadow: inset 0 0 0 1.5px var(--ink); }
-.sales-day.we:not(.sel) .sales-day-h { background: rgba(0, 0, 0, 0.028); }
+.sales-day.sel .sales-day-h > span:not(.sales-day-check) { color: #fff; }
+.sales-day.td:not(.sel):not(.pick) .sales-day-h { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.sales-day.we:not(.sel):not(.pick) .sales-day-h { background: rgba(0, 0, 0, 0.028); }
+.sales-day.pick .sales-day-h {
+  background: var(--sell-s);
+  box-shadow: inset 0 0 0 1.5px var(--sell);
+}
+.sales-day.pick .sales-day-h b { color: var(--sell); }
+.sales-day.pick .sales-day-h > span:not(.sales-day-check) { color: var(--sell); }
+.sales-day.pick.sel .sales-day-h { background: var(--sell); box-shadow: none; }
+.sales-day.pick.sel .sales-day-h b,
+.sales-day.pick.sel .sales-day-h > span:not(.sales-day-check) { color: #fff; }
+.sales-day-check {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-pill);
+  background: var(--sell);
+  color: #fff;
+}
+.sales-day.pick.sel .sales-day-check { background: #fff; color: var(--sell); }
 .sales-day-types { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .sales-tcard {
@@ -215,6 +248,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  flex-wrap: wrap;
 }
 .sales-tcard-name {
   font-size: 12.5px;
@@ -224,6 +258,43 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  flex: 1 1 auto;
+}
+.sales-badge-sell {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--sell-s);
+  color: var(--sell);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  flex: none;
+}
+.sales-badge-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 750;
+  flex: none;
+}
+.sales-tcard:not(.lv-stop) .sales-badge-stop {
+  background: var(--ink);
+  color: #fff;
+}
+.sales-tcard-stock {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink2);
+  letter-spacing: -0.02em;
 }
 .sales-tcard-meta {
   display: flex;
@@ -231,7 +302,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   justify-content: space-between;
   gap: var(--space-2);
 }
-.sales-tcard-meta b { font-family: var(--num); font-size: 18px; font-weight: 800; line-height: 1; }
 .sales-tcard-rate {
   font-family: "PV", var(--num);
   font-size: 11.5px;
@@ -239,32 +309,52 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   color: var(--ink3);
   letter-spacing: -0.02em;
 }
-.sales-tcard-stop {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 12px;
-  font-weight: 650;
-}
 .sales-tcard.lv-low { background: var(--dark); }
 .sales-tcard.lv-full { background: var(--red-s); color: var(--red-d); }
-.sales-tcard.lv-full .sales-tcard-rate { color: var(--red-d); }
+.sales-tcard.lv-full .sales-tcard-rate,
+.sales-tcard.lv-full .sales-tcard-stock { color: var(--red-d); }
 .sales-tcard.lv-over { background: var(--red); color: #fff; }
 .sales-tcard.lv-over .sales-tcard-name,
-.sales-tcard.lv-over .sales-tcard-rate { color: rgba(255,255,255,0.85); }
+.sales-tcard.lv-over .sales-tcard-rate,
+.sales-tcard.lv-over .sales-tcard-stock { color: rgba(255,255,255,0.85); }
 .sales-tcard.lv-stop { background: var(--ink); color: #fff; }
-.sales-tcard.lv-stop .sales-tcard-name { color: rgba(255,255,255,0.8); }
+.sales-tcard.lv-stop .sales-tcard-name,
+.sales-tcard.lv-stop .sales-tcard-stock,
+.sales-tcard.lv-stop .sales-tcard-rate { color: rgba(255,255,255,0.8); }
 .sales-tcard.lv-full:hover { box-shadow: inset 0 0 0 1.5px var(--red); }
+
+.sales-bulk {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  background: #fff;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.08), inset 0 0 0 1px var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.sales-bulk-h {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.sales-bulk-h strong { font-size: 14.5px; font-weight: 750; }
+.sales-bulk .fld { margin: 0; }
+.sales-bulk .actrow { display: flex; gap: var(--space-4); justify-content: flex-end; margin-top: var(--space-2); flex-wrap: wrap; }
 
 .sales-sheet { max-width: 420px; }
 .sales-sheet .actrow { display: flex; gap: var(--space-4); justify-content: flex-end; margin-top: var(--space-3); flex-wrap: wrap; }
 .sales-sheet .actrow .btn { gap: var(--space-chip); }
 
 @media (max-width: 720px) {
-  .sales-day { flex-basis: 132px; min-width: 132px; }
+  .sales-day { flex-basis: 140px; min-width: 140px; }
   .sales-dates { padding: var(--space-3); gap: var(--space-2); }
   .sales-tcard { padding: var(--space-2) var(--space-3); border-radius: var(--radius-inp-sm); }
-  .sales-tcard-meta b { font-size: 16px; }
+  .sales-bulk { margin: 0 var(--space-3) var(--space-3); }
 }
 
 .stock-wrap { overflow-x: auto; border-radius: 22px; background: var(--panel2); }

@@ -1,9 +1,9 @@
 /**
- * 판매 캘린더 — 숙박일 우선 (날짜 열 × 타입 카드: 남은 칸 + 기본 단가 + 판매중지).
- * 카드 → 시트: 요금 수정 · 판매중지 · 간단 예약 Path A 프리필.
+ * 판매 캘린더 — 숙박일 우선 (날짜 열 × 타입 카드).
+ * 다날짜 선택 → 일괄 요금·판매중지 · 「판매」뱃지 · 예약/재고 · 간단 예약 Path A.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Ban, CalendarPlus, X } from "lucide-react";
+import { Ban, CalendarPlus, Check, X } from "lucide-react";
 import {
   type Booking,
   type HotelSettings,
@@ -15,7 +15,10 @@ import {
   won,
 } from "../shared/ledger";
 import {
+  applyBulkTypeDates,
   baseRateFor,
+  bookedCount,
+  isSellOpen,
   isStopSell,
   isWeekendNight,
   sellableRemaining,
@@ -29,6 +32,7 @@ import { Chip, ChipGroup, PriceInp, PriceRow } from "./primitives";
 import { TypeBadge } from "./ui";
 
 type CellKey = { typeId: string; date: string };
+type StopMode = "keep" | "open" | "stop";
 
 interface Props {
   data: HotelData;
@@ -77,6 +81,7 @@ export default function SalesCalendar({
 }: Props) {
   const [cell, setCell] = useState<CellKey | null>(null);
   const [typeEdit, setTypeEdit] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const types = useMemo(
     () => s.types.filter((t) => (totals.get(t.id) ?? 0) > 0 || (!scopeId && typeLabel(t))),
@@ -101,6 +106,11 @@ export default function SalesCalendar({
     return m;
   }, [types, viewDates, viewTable, s, totals]);
 
+  function toggleDate(d: string) {
+    if (readOnly) return;
+    setPicked((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
+  }
+
   async function saveSettings(next: HotelSettings, ok: string) {
     if (readOnly) return;
     setBusy(true);
@@ -115,7 +125,7 @@ export default function SalesCalendar({
   }
 
   return (
-    <main className="page board-page one">
+    <main className={`page board-page one ${picked.length ? "sales-picking" : ""}`}>
       <div className="main">
         {tabs}
         {banner}
@@ -126,12 +136,15 @@ export default function SalesCalendar({
               {periodSeg}
             </div>
             <div className="when">
-              {scopeId ? `${bName(scopeId)} · ` : ""}숙박일별 타입 · 남은 칸 · 기본 단가 · 판매중지
+              {scopeId ? `${bName(scopeId)} · ` : ""}숙박일별 타입 · 예약/재고 · 기본 단가 · 판매중지
             </div>
             {over ? null : <div className="hl-ok">이 창 오버부킹 없음</div>}
             <p className="muted sm sales-hint">여기 숫자는 타입 기본가예요. 예약마다 방 요금은 따로 둘 수 있어요.</p>
           </div>
           <div className="lg">
+            <span>
+              <i className="lv-sell">판매</i>판매 가능
+            </span>
             <span>
               <i className="lv-ok bordered">5</i>여유
             </span>
@@ -153,7 +166,6 @@ export default function SalesCalendar({
           </div>
         </div>
 
-        {/* 타입별 재고 한눈 요약 */}
         <div className="sales-glance" aria-label="타입별 재고">
           {types.map((t) => {
             const g = glance.get(t.id)!;
@@ -189,46 +201,64 @@ export default function SalesCalendar({
           {viewDates.map((d) => {
             const we = isWeekendNight(d, s.specialDates);
             const dayWe = ["토", "일"].includes(weekday(d));
+            const on = picked.includes(d);
             return (
               <section
                 key={d}
-                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""}`}
+                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""} ${on ? "pick" : ""}`}
                 role="listitem"
               >
-                <header className="sales-day-h">
+                <button
+                  type="button"
+                  className="sales-day-h"
+                  onClick={() => toggleDate(d)}
+                  aria-pressed={on}
+                  title={readOnly ? dayLabel(d) : on ? "선택 해제" : "날짜 선택 (일괄 적용)"}
+                  disabled={readOnly}
+                >
                   <b>{md(d)}</b>
                   <span>{d === today ? "오늘" : weekday(d)}</span>
-                </header>
+                  {on ? (
+                    <span className="sales-day-check" aria-hidden>
+                      <Check size={12} strokeWidth={2.6} />
+                    </span>
+                  ) : null}
+                </button>
                 <div className="sales-day-types">
                   {types.map((t) => {
+                    const total = totals.get(t.id) ?? 0;
                     const rem = viewTable.get(t.id)?.get(d) ?? 0;
+                    const booked = bookedCount(total, rem);
                     const stopped = isStopSell(s, t.id, d);
                     const sell = sellableRemaining(rem, stopped);
+                    const open = isSellOpen(rem, stopped);
                     const rate = baseRateFor(s, t.id, d);
-                    const lv = stopped ? "stop" : stockLevel(rem, totals.get(t.id) ?? 0, s.lowThreshold);
+                    const lv = stopped ? "stop" : stockLevel(rem, total, s.lowThreshold);
                     return (
                       <button
                         key={t.id}
                         type="button"
                         className={`sales-tcard lv-${lv}`}
                         onClick={() => setCell({ typeId: t.id, date: d })}
-                        title={`${dayLabel(d)} · ${typeLabel(t)} · ${stopped ? "판매중지" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
+                        title={`${dayLabel(d)} · ${typeLabel(t)} · 예약 ${booked} / 재고 ${rem} · ${stopped ? "판매중지" : open ? "판매" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
                       >
                         <span className="sales-tcard-type">
                           <TypeBadge t={t} />
                           <span className="sales-tcard-name">{typeLabel(t)}</span>
+                          {open ? <span className="sales-badge-sell">판매</span> : null}
+                          {stopped ? (
+                            <span className="sales-badge-stop">
+                              <Ban size={11} strokeWidth={2.4} />
+                              중지
+                            </span>
+                          ) : null}
                         </span>
-                        {stopped ? (
-                          <span className="sales-tcard-stop">
-                            <Ban size={14} strokeWidth={2.4} />
-                            판매중지
-                          </span>
-                        ) : (
-                          <span className="sales-tcard-meta">
-                            <b className="num">{sell < 0 ? `−${-sell}` : sell}</b>
-                            <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
-                          </span>
-                        )}
+                        <span className="sales-tcard-stock num">
+                          예약 {booked < 0 ? `−${-booked}` : booked} / 재고 {rem < 0 ? `−${-rem}` : rem}
+                        </span>
+                        <span className="sales-tcard-meta">
+                          <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
+                        </span>
                       </button>
                     );
                   })}
@@ -237,8 +267,31 @@ export default function SalesCalendar({
             );
           })}
         </div>
-        <p className="stock-hint">타입을 누르면 요금·판매중지·간단 예약으로 이어져요</p>
+        <p className="stock-hint">
+          {readOnly
+            ? "타입을 누르면 요금·판매 상태를 볼 수 있어요"
+            : picked.length
+              ? `숙박일 ${picked.length}일 선택 · 아래에서 일괄 적용 · 타입 카드는 간단 예약`
+              : "날짜 헤더로 여러 날 선택 · 타입 카드는 요금·판매중지·간단 예약"}
+        </p>
       </div>
+
+      {picked.length && !readOnly ? (
+        <BulkApplyBar
+          types={types}
+          dates={picked}
+          busy={busy}
+          onClear={() => setPicked([])}
+          onApply={async (typeIds, patch) => {
+            const n = typeIds.length * picked.length;
+            await saveSettings(
+              applyBulkTypeDates(s, typeIds, picked, patch),
+              `${typeIds.length}타입 · ${picked.length}일 (${n}칸)에 적용했어요`,
+            );
+            setPicked([]);
+          }}
+        />
+      ) : null}
 
       {cell ? (
         <CellSheet
@@ -296,6 +349,113 @@ export default function SalesCalendar({
   );
 }
 
+function BulkApplyBar({
+  types,
+  dates,
+  busy,
+  onClear,
+  onApply,
+}: {
+  types: HotelSettings["types"];
+  dates: string[];
+  busy: boolean;
+  onClear: () => void;
+  onApply: (
+    typeIds: string[],
+    patch: { rate?: number | null; stopSell?: boolean },
+  ) => Promise<void>;
+}) {
+  const [typeIds, setTypeIds] = useState<string[]>(() => types.map((t) => t.id));
+  const [rateStr, setRateStr] = useState("");
+  const [stopMode, setStopMode] = useState<StopMode>("keep");
+
+  useEffect(() => {
+    setTypeIds((prev) => {
+      const ids = new Set(types.map((t) => t.id));
+      const keep = prev.filter((id) => ids.has(id));
+      return keep.length ? keep : types.map((t) => t.id);
+    });
+  }, [types]);
+
+  function toggleType(id: string) {
+    setTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  const canApply =
+    typeIds.length > 0 && (rateStr !== "" || stopMode !== "keep") && !busy;
+
+  return (
+    <div className="sales-bulk" role="region" aria-label="선택한 숙박일 일괄 적용">
+      <div className="sales-bulk-h">
+        <strong>판매 설정 · {dates.length}일</strong>
+        <span className="muted sm">{dates.map(md).join(", ")}</span>
+        <button type="button" className="chip sm" onClick={onClear} disabled={busy}>
+          선택 해제
+        </button>
+      </div>
+      <div className="fld">
+        <label>타입</label>
+        <ChipGroup scroll>
+          {types.map((t) => (
+            <Chip key={t.id} sm active={typeIds.includes(t.id)} disabled={busy} onClick={() => toggleType(t.id)}>
+              <TypeBadge t={t} />
+              {typeLabel(t)}
+            </Chip>
+          ))}
+        </ChipGroup>
+      </div>
+      <div className="fld">
+        <label>기본 1박 요금 (비우면 유지)</label>
+        <PriceInp sm>
+          <input
+            className="num"
+            inputMode="numeric"
+            aria-label="일괄 1박 요금"
+            value={rateStr !== "" ? won(Number(rateStr) || 0) : ""}
+            placeholder="변경 안 함"
+            disabled={busy}
+            onChange={(e) => setRateStr(e.target.value.replace(/\D/g, "").slice(0, 9))}
+          />
+        </PriceInp>
+      </div>
+      <div className="fld">
+        <label>판매</label>
+        <ChipGroup>
+          <Chip sm active={stopMode === "keep"} disabled={busy} onClick={() => setStopMode("keep")}>
+            유지
+          </Chip>
+          <Chip sm active={stopMode === "open"} disabled={busy} onClick={() => setStopMode("open")}>
+            판매 열기
+          </Chip>
+          <Chip sm active={stopMode === "stop"} disabled={busy} onClick={() => setStopMode("stop")}>
+            <Ban size={14} strokeWidth={2.2} />
+            판매중지
+          </Chip>
+        </ChipGroup>
+      </div>
+      <div className="actrow">
+        <button type="button" className="btn line" onClick={onClear} disabled={busy}>
+          취소
+        </button>
+        <button
+          type="button"
+          className="btn red"
+          disabled={!canApply}
+          onClick={() => {
+            const patch: { rate?: number | null; stopSell?: boolean } = {};
+            if (rateStr !== "") patch.rate = Number(rateStr) || null;
+            if (stopMode === "open") patch.stopSell = false;
+            if (stopMode === "stop") patch.stopSell = true;
+            void onApply(typeIds, patch);
+          }}
+        >
+          적용
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CellSheet({
   s,
   typeId,
@@ -325,6 +485,7 @@ function CellSheet({
   const stopped = isStopSell(s, typeId, date);
   const rate = baseRateFor(s, typeId, date);
   const override = s.typeRateOverrides?.[typeId]?.[date];
+  const booked = bookedCount(total, remaining);
   const [rateStr, setRateStr] = useState(rate > 0 ? String(rate) : "");
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -339,7 +500,9 @@ function CellSheet({
           <h2>
             {typeLabel(t)} · {dayLabel(date)}
           </h2>
-          <span className="muted sm">숙박일 · 남은 {remaining}/{total}실</span>
+          <span className="muted sm">
+            숙박일 · 예약 {booked} / 재고 {remaining} · 총 {total}실
+          </span>
           <button type="button" className="x" onClick={onClose} aria-label="닫기">
             <X size={18} />
           </button>
@@ -388,11 +551,7 @@ function CellSheet({
           <div className="fld">
             <label>판매</label>
             <ChipGroup>
-              <Chip
-                active={!stopped}
-                disabled={busy}
-                onClick={() => stopped && void onToggleStop(false)}
-              >
+              <Chip active={!stopped} disabled={busy} onClick={() => stopped && void onToggleStop(false)}>
                 판매 중
               </Chip>
               <Chip
