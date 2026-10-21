@@ -1,15 +1,16 @@
 /**
  * 간단 예약 — Entry 축약 폼
- * Path A: roomId=null · Path B: 지금 방 배정 · 확정 기본
- * 다타입: GroupEntry식 type×qty + Path B에서 타입 다른 호실(예: 601+603) → groupDrafts / saveGroup
+ * Path A: roomId=null · Path B: 미니 배치도에서 호실 토글 · 확정 기본
+ * 다타입: Path B에서 타입 다른 호실(예: 601+603) → groupDrafts / saveGroup (#70)
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { ChevronDown, Minus, Plus } from "lucide-react";
 import {
   type Booking,
   addDays,
   allRooms as placedRooms,
   freeRooms,
+  isMultiBuilding,
   legConflicts,
   md,
   stockTable,
@@ -19,7 +20,6 @@ import {
   won,
 } from "../shared/ledger";
 import {
-  autoPick,
   GROUP_ROOMS_MAX,
   expandTypeSlots,
   groupDrafts,
@@ -46,6 +46,7 @@ import type { EntryRequest, ToastOpt } from "./App";
 import { TypeBadge, lookups } from "./ui";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import NightPickCalendar from "./NightPickCalendar";
+import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 
 type PayMode = "prepaid" | "postpaid" | "deposit";
 
@@ -87,12 +88,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     "";
 
   const [platformId, setPlatformId] = useState(() => defaultBookingPlatformId(s.platforms, p.platformId));
+  /** Path A(미배정)만 typeId prefill · 호실 prefill(#71)은 countsFromRooms */
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>(() => {
     if (presetRoomIds.length) {
       const c = countsFromRooms(presetRoomIds);
       if (Object.values(c).some((n) => n > 0)) return c;
     }
-    return defaultTypeId ? { [defaultTypeId]: 1 } : {};
+    // 판매캘린더 등 typeId만 → Path A 1실. 그 외 빈 값(배치도에서 고르거나 Path A 펼침)
+    if (p.typeId && defaultTypeId) return { [defaultTypeId]: 1 };
+    return {};
   });
   const [checkIn, setCheckIn] = useState(p.checkIn ?? today);
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
@@ -104,7 +108,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     const fromPreset = p.nightRates?.flat ?? p.nightRates?.weekday ?? null;
     const seedIds = presetRoomIds.length
       ? [...new Set(presetRoomIds.map((id) => allPlacedInit.find((r) => r.id === id)?.typeId).filter(Boolean) as string[])]
-      : defaultTypeId
+      : p.typeId && defaultTypeId
         ? [defaultTypeId]
         : [];
     const out: Record<string, string> = {};
@@ -118,12 +122,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     return out;
   });
   const [priceUnset, setPriceUnset] = useState(!!p.priceUnset);
-  const [assignNow, setAssignNow] = useState(presetRoomIds.length > 0); // Path B · 현황 선택 시 ON
+  /** Path B · #71 roomIds / 단실 roomId prefill → 배치도에 선택 상태 */
   const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
-  const [otherRooms, setOtherRooms] = useState(
-    presetRoomIds.length > 1 &&
-      new Set(presetRoomIds.map((id) => allPlacedInit.find((r) => r.id === id)?.typeId)).size > 1,
-  );
+  const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
+  const [pathAOpen, setPathAOpen] = useState(() => !presetRoomIds.length && !!p.typeId);
   const [payMode, setPayMode] = useState<PayMode>("postpaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
@@ -139,13 +141,14 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   const plat = s.platforms.find((x) => x.id === platformId);
   const onsite = isOnsite(plat);
-  const pathB = assignNow || walkInImmediate;
+  /** Path B = 배치도에서 호실 선택(또는 바로 입실) · Path A = 호실 없이 타입만 */
+  const pathB = walkInImmediate || roomIds.length > 0;
   const allPlaced = placedRooms(s);
   const rmap = useMemo(() => new Map(allPlaced.map((r) => [r.id, r])), [allPlaced]);
+  const multi = isMultiBuilding(s);
 
   const typeSlots = types.map((t) => ({ typeId: t.id, count: typeCounts[t.id] ?? 0 })).filter((x) => x.count > 0);
   const typeIdsFromCounts = expandTypeSlots(typeSlots);
-  const roomCount = pathB && roomIds.length > 0 ? roomIds.length : typeIdsFromCounts.length;
   const primaryTypeId = typeSlots[0]?.typeId ?? defaultTypeId;
 
   // Path B: 고른 호실의 타입이 진실 · Path A: typeCounts
@@ -206,8 +209,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     return out;
   }, [s, data.bookings, checkIn, nights, types]);
 
-  const freeOf = (tid: string) => allPlaced.filter((r) => r.typeId === tid && free.has(r.id)).length;
-
   const impact = pathB && roomIds.length
     ? groupStockImpact(s, data.bookings, checkIn, nights, roomIds)
     : groupStockImpactByTypes(
@@ -230,34 +231,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       )
     : [];
 
-  const roomsForPick = useMemo(() => {
-    const wanted = new Set(typeSlots.map((x) => x.typeId));
-    // Path B: show selected-type rooms first; 「다른 타입」으로 믹스(601+603) 가능
-    // 바로 입실·다타입이면 다른 타입도 기본 노출(칩에 타입명)
-    const same = allPlaced.filter(
-      (r) => free.has(r.id) && (wanted.size === 0 || wanted.has(r.typeId ?? "")),
-    );
-    const other = allPlaced.filter(
-      (r) => free.has(r.id) && wanted.size > 0 && !wanted.has(r.typeId ?? ""),
-    );
-    return { same, other, showOther: walkInImmediate || typeSlots.length !== 1 || otherRooms };
-  }, [allPlaced, free, typeSlots, walkInImmediate, otherRooms]);
-
+  /** Path A 타입·실수 — 호실 선택과 배타(배치도가 Path B) */
   function setCount(tid: string, next: number) {
     const c = Math.max(0, Math.min(GROUP_ROOMS_MAX, next));
     const totalOthers = Object.entries(typeCounts)
       .filter(([id]) => id !== tid)
       .reduce((a, [, n]) => a + (n || 0), 0);
     const capped = Math.min(c, GROUP_ROOMS_MAX - totalOthers);
+    setRoomIds([]);
     setTypeCounts((m) => ({ ...m, [tid]: capped }));
-    if (pathB) {
-      const others = roomIds.filter((id) => rmap.get(id)?.typeId !== tid);
-      const add = autoPick(s, free, tid, capped, new Set(others));
-      setRoomIds([...others, ...add]);
-    } else {
-      setRoomIds([]);
-    }
-    // seed rate from calendar if empty
     if (capped > 0 && !rates[tid]) {
       const br = baseRateFor(s, tid, checkIn);
       if (br > 0) setRates((m) => ({ ...m, [tid]: String(br) }));
@@ -284,7 +266,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   }
 
   function pickRoom(id: string) {
-    // Path B: toggle freely across types (601 Family + 603 Ondol); counts sync from rooms
+    if (!free.has(id)) return;
+    setPathAOpen(false);
     setRoomIds((prev) => {
       const next = prev.includes(id)
         ? prev.filter((x) => x !== id)
@@ -296,32 +279,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     });
   }
 
-  function fillRooms() {
-    const taken = new Set<string>();
-    const picked: string[] = [];
-    for (const slot of typeSlots) {
-      const add = autoPick(s, free, slot.typeId, slot.count, taken);
-      for (const id of add) taken.add(id);
-      picked.push(...add);
-      if (add.length < slot.count) {
-        notify(
-          `${typeLabel(L.types.get(slot.typeId))} 빈 방이 ${add.length}실뿐이에요 · ${slot.count}실이 필요해요`,
-        );
-      }
-    }
-    setRoomIds(picked);
-  }
-
   useEffect(() => setErr(null), [typeCounts, roomIds, nights, checkIn, rates, payMode, priceUnset, walkInImmediate]);
 
-  // 「바로 입실」ON → Path B · 타입 실 수가 있으면 빈 방 자동 채움 (이후 601+603처럼 수동 교체 OK)
+  // 날짜 바뀌어 불가해진 선택 호실 정리
   useEffect(() => {
-    if (!walkInImmediate) return;
-    if (!typeIdsFromCounts.length) return;
-    if (roomIds.length === typeIdsFromCounts.length) return;
-    fillRooms();
+    if (!roomIds.length) return;
+    const kept = roomIds.filter((id) => free.has(id));
+    if (kept.length !== roomIds.length) {
+      setRoomIds(kept);
+      syncCountsFromRooms(kept);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walkInImmediate]);
+  }, [free]);
 
   async function save() {
     const name = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
@@ -331,7 +300,12 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
     const slots = types.map((t) => ({ typeId: t.id, count: countOf(t.id) })).filter((x) => x.count > 0);
     const n = pathB ? roomIds.length : expandTypeSlots(slots).length;
-    if (n < 1) return setErr("객실타입·실 수를 골라 주세요.");
+    if (n < 1)
+      return setErr(
+        walkInImmediate
+          ? "바로 입실은 배치도에서 호실을 골라 주세요."
+          : "배치도에서 호실을 고르거나 「호실 미정 · 타입만」을 펼쳐 주세요.",
+      );
     if (n > GROUP_ROOMS_MAX) return setErr(`한 번에 ${GROUP_ROOMS_MAX}실까지예요.`);
 
     if (!priceUnset) {
@@ -339,23 +313,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       if (missing.length) return setErr("타입마다 1박 요금을 적거나 금액미정을 켜 주세요.");
     }
 
-    if (pathB && roomIds.length !== n)
-      return setErr(
-        walkInImmediate
-          ? n === 1
-            ? "바로 입실은 호실을 골라 주세요."
-            : `바로 입실은 호실 ${n}실을 골라 주세요.`
-          : n === 1
-            ? "지금 배정하려면 호실을 골라 주세요."
-            : `지금 배정하려면 호실 ${n}실을 골라 주세요 (지금 ${roomIds.length}실).`,
-      );
-
-    // Path B: room count must match type slots when slots were set first
-    if (pathB && typeIdsFromCounts.length > 0 && roomIds.length !== typeIdsFromCounts.length) {
-      // if user picked rooms that redefine counts, n already from roomIds — OK when slots synced
-      if (expandTypeSlots(slots).length !== roomIds.length)
-        return setErr(`호실 ${roomIds.length}실 · 타입 합 ${expandTypeSlots(slots).length}실이 맞아야 해요.`);
-    }
+    if (walkInImmediate && roomIds.length < 1)
+      return setErr("바로 입실은 배치도에서 호실을 골라 주세요.");
 
     const saveTypeIds = pathB ? roomIds.map((id) => rmap.get(id)?.typeId ?? "") : expandTypeSlots(slots);
     const prices = priceUnset ? saveTypeIds.map(() => 0) : ratePrices(saveTypeIds, rateNum, nights);
@@ -525,8 +484,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     }
   }
 
-  const bpre = (bid: string) => (L.multi ? <em className="bpre">{L.buildings.get(bid)?.name}</em> : null);
-  const totalRooms = pathB && roomIds.length ? roomIds.length : typeIdsFromCounts.length || 0;
+  const totalRooms = roomIds.length > 0 ? roomIds.length : walkInImmediate ? 0 : typeIdsFromCounts.length;
+  const roomSummary =
+    roomIds.length > 0
+      ? roomIds
+          .map((id) => {
+            const r = rmap.get(id);
+            if (!r) return id;
+            const pre = multi ? `${L.buildings.get(r.buildingId)?.name ?? ""} `.trim() : "";
+            return `${pre}${r.no}호`.trim();
+          })
+          .join(", ")
+      : "";
 
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -601,7 +570,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               onClick={() => {
                 setWalkInImmediate((v) => {
                   const next = !v;
-                  if (next) setAssignNow(true);
+                  if (next) setPathAOpen(false);
                   return next;
                 });
               }}
@@ -628,52 +597,95 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         </div>
 
         <div className="fld">
-          <label>객실타입 · 실 수</label>
-          <div className="gcounts">
-            {types.map((t) => {
-              const c = countOf(t.id);
-              const left = stockByType[t.id] ?? 0;
-              const f = freeOf(t.id);
-              const max = pathB ? Math.max(f, c) : Math.max(left, c, GROUP_ROOMS_MAX);
-              return (
-                <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
-                  <TypeBadge t={t} />
-                  <span className="muted sm">{pathB ? `빈 방 ${f}` : `남은 ${left}`}</span>
-                  <span className="step sm">
-                    <button
-                      type="button"
-                      className="sb"
-                      aria-label={`${typeLabel(t)} 1실 빼기`}
-                      disabled={!c}
-                      onClick={() => setCount(t.id, c - 1)}
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <input
-                      className="gin num"
-                      inputMode="numeric"
-                      aria-label={`${typeLabel(t)} 방 수`}
-                      value={c}
-                      onChange={(e) => setCount(t.id, Number(e.target.value.replace(/\D/g, "") || 0))}
-                    />
-                    <button
-                      type="button"
-                      className="sb"
-                      aria-label={`${typeLabel(t)} 1실 더하기`}
-                      disabled={pathB ? c >= f && f >= 0 : c >= max && totalRooms >= GROUP_ROOMS_MAX}
-                      onClick={() => setCount(t.id, c + 1)}
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </span>
-                </div>
-              );
-            })}
-            <div className={`muted sm gnote${typeOver ? " tred" : ""}`}>
-              합계 {totalRooms}실
-              {pickedTypes.length > 1 ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}` : null}
+          <label>호실</label>
+          <div className="mfp-wrap">
+            <MiniFloorPlan
+              s={s}
+              L={L}
+              free={free}
+              selectedIds={roomIds}
+              buildingFilter={buildingFilter}
+              onBuildingFilter={setBuildingFilter}
+              onToggle={pickRoom}
+            />
+            <div className={`muted sm mfp-sum${typeOver ? " tred" : ""}`}>
+              {roomIds.length
+                ? `${roomSummary} · ${roomIds.length}실`
+                : walkInImmediate
+                  ? "배치도에서 호실을 골라 주세요"
+                  : "호실을 고르거나 아래에서 타입만"}
+              {pickedTypes.length > 1 && roomIds.length
+                ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}`
+                : null}
               {typeOver ? " · 재고 부족(오버부킹 경고)" : null}
             </div>
+            {!walkInImmediate ? (
+              <div className={`mfp-patha${pathAOpen ? " open" : ""}`}>
+                <button
+                  type="button"
+                  className="mfp-patha-tog"
+                  aria-expanded={pathAOpen}
+                  onClick={() => {
+                    setPathAOpen((o) => {
+                      const next = !o;
+                      if (next) setRoomIds([]);
+                      return next;
+                    });
+                  }}
+                >
+                  <ChevronDown size={16} className="mfp-patha-ico" aria-hidden />
+                  호실 미정 · 타입만
+                </button>
+                {pathAOpen ? (
+                  <div className="gcounts">
+                    {types.map((t) => {
+                      const c = typeCounts[t.id] ?? 0;
+                      const left = stockByType[t.id] ?? 0;
+                      const max = Math.max(left, c, GROUP_ROOMS_MAX);
+                      return (
+                        <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
+                          <TypeBadge t={t} />
+                          <span className="muted sm">남은 {left}</span>
+                          <span className="step sm">
+                            <button
+                              type="button"
+                              className="sb"
+                              aria-label={`${typeLabel(t)} 1실 빼기`}
+                              disabled={!c}
+                              onClick={() => setCount(t.id, c - 1)}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <input
+                              className="gin num"
+                              inputMode="numeric"
+                              aria-label={`${typeLabel(t)} 방 수`}
+                              value={c}
+                              onChange={(e) => setCount(t.id, Number(e.target.value.replace(/\D/g, "") || 0))}
+                            />
+                            <button
+                              type="button"
+                              className="sb"
+                              aria-label={`${typeLabel(t)} 1실 더하기`}
+                              disabled={c >= max && typeIdsFromCounts.length >= GROUP_ROOMS_MAX}
+                              onClick={() => setCount(t.id, c + 1)}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </span>
+                        </div>
+                      );
+                    })}
+                    <div className={`muted sm gnote${typeOver && !roomIds.length ? " tred" : ""}`}>
+                      합계 {typeIdsFromCounts.length}실(미배정)
+                      {pickedTypes.length && !roomIds.length
+                        ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}`
+                        : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -722,7 +734,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                     </PriceRow>
                   ))
                 ) : (
-                  <span className="muted sm">타입·실 수를 먼저 골라 주세요</span>
+                  <span className="muted sm">호실 또는 타입을 먼저 골라 주세요</span>
                 )}
                 {sumPrice > 0 ? (
                   <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
@@ -796,80 +808,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             </div>
           </div>
         ) : null}
-
-        <div className="fld">
-          <label>호실</label>
-          <div>
-            <label className="ck">
-              <input
-                type="checkbox"
-                checked={assignNow || walkInImmediate}
-                disabled={walkInImmediate}
-                onChange={(e) => {
-                  setAssignNow(e.target.checked);
-                  if (!e.target.checked) setRoomIds([]);
-                  else if (typeIdsFromCounts.length > 1 || typeSlots.length > 0) fillRooms();
-                }}
-              />
-              {walkInImmediate ? "바로 입실 · 호실 필수" : "지금 방 배정"}
-              {(assignNow || walkInImmediate) && totalRooms > 1 ? (
-                <span className="muted sm">
-                  {" "}
-                  · {roomIds.length}/{totalRooms || "?"}실
-                </span>
-              ) : null}
-            </label>
-            {assignNow || walkInImmediate ? (
-              <ChipGroup style={{ marginTop: "var(--space-3)" }}>
-                {totalRooms > 1 || typeSlots.length > 0 ? (
-                  <Chip sm onClick={fillRooms}>
-                    빈 방 자동
-                  </Chip>
-                ) : null}
-                {roomsForPick.same.map((r) => (
-                  <button
-                    type="button"
-                    key={r.id}
-                    className={`rchip ${roomIds.includes(r.id) ? "on" : ""}`}
-                    onClick={() => pickRoom(r.id)}
-                    title={typeLabel(L.types.get(r.typeId ?? ""))}
-                  >
-                    {bpre(r.buildingId)}
-                    {r.no}
-                    {walkInImmediate || typeSlots.length !== 1 ? (
-                      <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
-                    ) : null}
-                  </button>
-                ))}
-                {roomsForPick.showOther ||
-                roomIds.some((id) => {
-                  const tid = rmap.get(id)?.typeId;
-                  return tid && typeSlots.length > 0 && !typeSlots.some((x) => x.typeId === tid);
-                })
-                  ? roomsForPick.other.map((r) => (
-                      <button
-                        type="button"
-                        key={r.id}
-                        className={`rchip other ${roomIds.includes(r.id) ? "on" : ""}`}
-                        onClick={() => pickRoom(r.id)}
-                      >
-                        {bpre(r.buildingId)}
-                        {r.no}
-                        <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
-                      </button>
-                    ))
-                  : roomsForPick.other.length ? (
-                      <button type="button" className="rchip lt" onClick={() => setOtherRooms(true)}>
-                        다른 타입 방 +{roomsForPick.other.length}
-                      </button>
-                    ) : null}
-                {!roomsForPick.same.length && !otherRooms ? (
-                  <span className="muted sm">그 기간에 빈 방이 없어요 · 타입 실 수를 먼저 올려 보세요</span>
-                ) : null}
-              </ChipGroup>
-            ) : null}
-          </div>
-        </div>
 
         {err ? <div className="err">{err}</div> : null}
 

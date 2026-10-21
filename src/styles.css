@@ -2339,6 +2339,107 @@ button.nowstatus { cursor: pointer; }
 .modal.simple-book .fld.simple-nights { align-items: start; }
 .modal.simple-book .fld.simple-nights > label { padding-top: var(--space-3); }
 .simple-price { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* 간단 예약 미니 배치도 — 보드 그리드 CSS 손대지 않음 */
+.mfp-wrap { display: flex; flex-direction: column; gap: var(--space-chip); min-width: 0; width: 100%; }
+.mfp { display: flex; flex-direction: column; gap: var(--space-chip); min-width: 0; }
+.mfp-buildings { margin-bottom: 2px; }
+.mfp-floors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-chip);
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--space-chip);
+  background: var(--panel2);
+  border-radius: var(--radius-inp-sm);
+}
+.mfp-floor { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: var(--space-chip); align-items: start; }
+.mfp-flab {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink3);
+  padding-top: 6px;
+  line-height: 1.2;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.mfp-flab .bpre { font-family: "PV"; font-style: normal; font-size: 10px; font-weight: 650; color: var(--ink4); }
+.mfp-rooms { display: flex; flex-wrap: wrap; gap: 4px; }
+.mfp-block {
+  position: relative;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-family: var(--num);
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--ink2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mfp-block:hover:not(:disabled) { background: var(--hover); }
+.mfp-block.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px rgba(26, 26, 26, 0.18);
+}
+.mfp-block.busy,
+.mfp-block:disabled {
+  background: #5a5a5a;
+  color: #c8c8c8;
+  border-color: #5a5a5a;
+  cursor: not-allowed;
+  opacity: 1;
+}
+.mfp-block[data-tip]:hover:not(:disabled)::after,
+.mfp-block[data-tip]:focus-visible:not(:disabled)::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-family: "PV", "Pretendard", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+.mfp-sum { margin-top: 2px; }
+.mfp-patha {
+  border-top: 1px solid var(--line2);
+  padding-top: var(--space-chip);
+  margin-top: 2px;
+}
+.mfp-patha-tog {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-chip);
+  height: 32px;
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink3);
+  background: transparent;
+  border-radius: var(--radius-pill);
+}
+.mfp-patha-tog:hover { color: var(--ink); background: var(--panel); }
+.mfp-patha-ico { transition: transform 0.15s ease; flex: none; }
+.mfp-patha.open .mfp-patha-ico { transform: rotate(180deg); }
+.mfp-patha .gcounts { margin-top: var(--space-chip); }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「현황」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }
