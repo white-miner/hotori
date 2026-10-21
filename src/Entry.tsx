@@ -1007,6 +1007,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // 신규: 저장과 같은 턴에 결제 줄 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
+      if (isOnsite(curPlat) && !guestPhone.trim()) return setPayErr("연락처를 적어 주세요.");
       if (draft.kind === "stay" && draft.stayMode === "long_stay") {
         const rv = validateLongStayRate(draft.longStayRate);
         if (rv) return setPayErr(rv);
@@ -1107,6 +1108,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
   async function save(again = false, override?: Status) {
     const draft = override ? { ...draftBase, status: override } : draftBase;
+    // 현장·전화만 연락처 필수 · OTA 등은 선택 (간단 예약과 동일)
+    if (isOnsite(curPlat) && !guestPhone.trim()) return setErr("연락처를 적어 주세요.");
     if (draft.kind === "stay" && draft.stayMode === "long_stay") {
       const rv = validateLongStayRate(draft.longStayRate);
       if (rv) return setErr(rv);
@@ -2118,7 +2121,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="fld">
           <label>
-            이름 · 연락처<em>*</em>
+            이름<em>*</em> · 연락처{isOnsite(curPlat) ? <em>*</em> : null}
           </label>
           <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
         </div>
