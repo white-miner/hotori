@@ -17,7 +17,7 @@ import {
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, TriangleAlert, UserRound } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
@@ -107,6 +107,8 @@ const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
 const R_KEY = "hotori.stockRange";
+/** 「배치」우측 패널 접기 — 기기별 기억 */
+const SIDE_COLLAPSE_KEY = "hotori.boardSideCollapsed";
 const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "d14", label: "14일" },
   { id: "week", label: "주" },
@@ -341,6 +343,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   }, [s, bookings]);
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
+  const [sideCollapsed, setSideCollapsed] = useState(() => lsGet(SIDE_COLLAPSE_KEY) === "1");
+  const rememberSideCollapsed = (v: boolean) => {
+    setSideCollapsed(v);
+    lsSet(SIDE_COLLAPSE_KEY, v ? "1" : "0");
+  };
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignBusy, setAssignBusy] = useState(false);
   const [typeConfirm, setTypeConfirm] = useState<{ booking: Booking; roomId: string } | null>(null);
@@ -1336,9 +1343,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </main>
     );
 
+  const uaActiveN = board.unassigned.filter(isActive).length;
+
   return (
     <>
-    <main className="page board-page">
+    <main className={`page board-page${sideCollapsed ? " side-collapsed" : ""}`}>
       <div className="main">
         {tabs}
         {banner}
@@ -1455,104 +1464,142 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           : null}
       </div>
 
-      <aside className={`side ${floorTab === "dayuse" ? "show-m" : ""}`}>
-        <h3>
-          {dayLabel(selDate)} 대실 <small>{activeDayuse}건 · 남은 객실에 포함되지 않아요</small>
-        </h3>
-        <div className="lst">
-          {board.dayuse.length ? (
-            board.dayuse.map((d) => (
-              <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"} ${mvB?.id === d.id ? "mvon" : ""}`} onClick={() => !mvB && onOpen(d, selDate)}>
-                <span className="tm">
-                  {d.startTime}~{d.endTime}
-                </span>
-                <div className="md">
-                  <b>
-                    <PlatBadge p={L.plats.get(d.platformId)} />
-                    <span className="gn">{d.guestName}</span>
-                    {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
-                  </b>
-                  <span>
-                    {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"}
-                    {readOnly ? null : ` · ${won(d.price)}원`}
-                  </span>
-                </div>
-                {isActive(d) && d.arrived ? <span className="intag">입실 완료</span> : null}
-              </div>
-            ))
-          ) : (
-            <div className="it muted">이날 대실 기록이 없어요</div>
-          )}
-          {readOnly ? null : (
-            <button className="add" onClick={() => onNew({ kind: "dayuse", checkIn: selDate })}>
-              + 대실 기록
+      <aside className={`side ${sideCollapsed ? "collapsed" : ""} ${floorTab === "dayuse" ? "show-m" : ""}`}>
+        {sideCollapsed ? (
+          <div className="side-rail" role="toolbar" aria-label="배치 패널">
+            <button
+              type="button"
+              className="side-rail-btn"
+              onClick={() => rememberSideCollapsed(false)}
+              aria-label="패널 펼치기"
+              title="패널 펼치기"
+            >
+              <PanelLeftOpen size={18} strokeWidth={2.4} />
             </button>
-          )}
-        </div>
-
-        <h3>
-          방 미배정 숙박 <small>{board.unassigned.filter(isActive).length}건</small>
-        </h3>
-        <div className="lst">
-          {board.unassigned.length ? (
-            board.unassigned.map((b) => {
-              const open = assigning === b.id;
-              const free = open ? freeRooms(s, bookings, b) : null;
-              const t = L.types.get(b.typeId);
-              return (
-                <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
-                  <div className="itr">
-                    <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
+            <button
+              type="button"
+              className={`side-rail-btn ${assignBk ? "on" : ""}`}
+              onClick={() => rememberSideCollapsed(false)}
+              aria-label={`방 미배정 ${uaActiveN}건 · 펼쳐서 방배정`}
+              title={`방 미배정 ${uaActiveN}건 · 펼쳐서 방배정`}
+            >
+              <UserRound size={18} strokeWidth={2.4} />
+              {uaActiveN > 0 ? <span className="side-rail-badge">{uaActiveN > 99 ? "99+" : uaActiveN}</span> : null}
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="side-top">
+              <button
+                type="button"
+                className="side-collapse-btn"
+                onClick={() => rememberSideCollapsed(true)}
+                aria-label="패널 접기"
+                title="패널 접기"
+              >
+                <PanelRightClose size={16} strokeWidth={2.4} />
+                <span>접기</span>
+              </button>
+            </div>
+            <h3>
+              {dayLabel(selDate)} 대실 <small>{activeDayuse}건 · 남은 객실에 포함되지 않아요</small>
+            </h3>
+            <div className="lst">
+              {board.dayuse.length ? (
+                board.dayuse.map((d) => (
+                  <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"} ${mvB?.id === d.id ? "mvon" : ""}`} onClick={() => !mvB && onOpen(d, selDate)}>
+                    <span className="tm">
+                      {d.startTime}~{d.endTime}
+                    </span>
+                    <div className="md">
                       <b>
-                        <TypeBadge t={t} />
-                        <PlatBadge p={L.plats.get(b.platformId)} />
-                        <span className="gn">{b.guestName}</span>
-                        {isActive(b) ? null : <span className="cxt">{STATUS[b.status]}</span>}
+                        <PlatBadge p={L.plats.get(d.platformId)} />
+                        <span className="gn">{d.guestName}</span>
+                        {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
                       </b>
                       <span>
-                        {b.nights}박{readOnly ? "" : ` · ${won(b.price)}원`}{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
+                        {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"}
+                        {readOnly ? null : ` · ${won(d.price)}원`}
                       </span>
                     </div>
-                    {isActive(b) && !readOnly ? (
-                      <button className="btn line sm" onClick={() => setAssigningMode(open ? null : b.id)}>
-                        {open ? "닫기" : "방배정"}
-                      </button>
-                    ) : null}
+                    {isActive(d) && d.arrived ? <span className="intag">입실 완료</span> : null}
                   </div>
-                  {open && free ? (
-                    <div className="rpick">
-                      <AssignRoomPick
-                        s={s}
-                        L={L}
-                        free={free}
-                        typeId={b.typeId}
-                        multi={multi}
-                        onPick={(roomId) => requestAssign(b, roomId)}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
-          ) : (
-            <div className="it muted">모든 숙박에 방이 배정됐어요</div>
-          )}
-        </div>
-
-        <div className="sum">
-          <div>
-            <span>{dayLabel(selDate)} 밤 숙박</span>
-            <b>
-              {board.nightCount}실 / {roomCount}실
-            </b>
-          </div>
-          {readOnly ? null : (
-            <div>
-              <span>이날 입실 예약 금액</span>
-              <b>{won(dayTotal)}원</b>
+                ))
+              ) : (
+                <div className="it muted">이날 대실 기록이 없어요</div>
+              )}
+              {readOnly ? null : (
+                <button className="add" onClick={() => onNew({ kind: "dayuse", checkIn: selDate })}>
+                  + 대실 기록
+                </button>
+              )}
             </div>
-          )}
-        </div>
+
+            <h3>
+              방 미배정 숙박 <small>{uaActiveN}건</small>
+            </h3>
+            <div className="lst">
+              {board.unassigned.length ? (
+                board.unassigned.map((b) => {
+                  const open = assigning === b.id;
+                  const free = open ? freeRooms(s, bookings, b) : null;
+                  const t = L.types.get(b.typeId);
+                  return (
+                    <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
+                      <div className="itr">
+                        <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
+                          <b>
+                            <TypeBadge t={t} />
+                            <PlatBadge p={L.plats.get(b.platformId)} />
+                            <span className="gn">{b.guestName}</span>
+                            {isActive(b) ? null : <span className="cxt">{STATUS[b.status]}</span>}
+                          </b>
+                          <span>
+                            {b.nights}박{readOnly ? "" : ` · ${won(b.price)}원`}{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
+                          </span>
+                        </div>
+                        {isActive(b) && !readOnly ? (
+                          <button className="btn line sm" onClick={() => setAssigningMode(open ? null : b.id)}>
+                            {open ? "닫기" : "방배정"}
+                          </button>
+                        ) : null}
+                      </div>
+                      {open && free ? (
+                        <div className="rpick">
+                          <AssignRoomPick
+                            s={s}
+                            L={L}
+                            free={free}
+                            typeId={b.typeId}
+                            multi={multi}
+                            onPick={(roomId) => requestAssign(b, roomId)}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="it muted">모든 숙박에 방이 배정됐어요</div>
+              )}
+            </div>
+
+            <div className="sum">
+              <div>
+                <span>{dayLabel(selDate)} 밤 숙박</span>
+                <b>
+                  {board.nightCount}실 / {roomCount}실
+                </b>
+              </div>
+              {readOnly ? null : (
+                <div>
+                  <span>이날 입실 예약 금액</span>
+                  <b>{won(dayTotal)}원</b>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </aside>
     </main>
     {renderAssignModals()}
