@@ -1802,6 +1802,13 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 }
 .obdot.tentdot { background: var(--badge-warn-border); }
 .cell.bk.tent { border-style: dashed !important; }
+.wiittag {
+  flex: none; font-size: 10.5px; font-weight: 800;
+  color: var(--badge-info); background: var(--badge-info-s);
+  border: 1px solid var(--badge-info-border); border-radius: 5px;
+  padding: 0 5px; line-height: 16px;
+}
+.nm .wiittag { margin-left: 2px; }
 .tenttag {
   flex: none; font-size: 10.5px; font-weight: 800;
   color: var(--badge-tent); background: var(--badge-tent-s);

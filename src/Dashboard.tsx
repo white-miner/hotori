@@ -77,7 +77,7 @@ import {
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
-import { isOnsite, payState } from "../shared/payment";
+import { isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -859,6 +859,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span>{b.guestName}</span>
+          {!cancelled && isWalkInPlaceholderName(b.guestName) ? (
+            <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
+              바로입실
+            </span>
+          ) : null}
           {!cancelled && b.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
           {!cancelled && b.tentative ? <span className="tenttag" title="임시 배치 · 재고는 막혀 있어요">임시</span> : null}
           {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
@@ -1217,6 +1222,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span>{b.guestName}</span>
+            {isWalkInPlaceholderName(b.guestName) ? (
+              <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
+                바로입실
+              </span>
+            ) : null}
             {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
             {f.tentative ? <span className="tenttag">임시</span> : null}
             {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
