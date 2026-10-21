@@ -1680,7 +1680,8 @@ button.nowstatus { cursor: pointer; }
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }
 .now-page .rooms {
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  /* max 50%: 층에 방 1개여도 줄 전체로 늘어나지 않음 (2칸 이상은 균등 분배) */
+  grid-template-columns: repeat(auto-fit, minmax(168px, 50%));
   gap: 12px;
   align-items: stretch;
   /* indefinite 그리드에서 1fr은 사실상 auto — minmax로 행 최소·stretch 보장 */
@@ -1730,7 +1731,7 @@ button.nowstatus { cursor: pointer; }
 @media (max-width: 760px) {
   .now-page .floor { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 10px; }
   .now-page .rooms {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 50%));
     gap: 8px;
     grid-auto-rows: minmax(150px, auto);
   }
