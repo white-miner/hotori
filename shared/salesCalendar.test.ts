@@ -10,10 +10,12 @@ import {
   normalizeTypeRates,
   normalizeTypeStopSell,
   sellableRemaining,
+  sellStatus,
   setTypeDateRate,
   setTypeRateDefaults,
   setTypeStopSell,
   setTypeStopSellRange,
+  shortStayHint,
   stopSellDatesForStay,
 } from "./salesCalendar.ts";
 
@@ -54,6 +56,19 @@ test("bookedCount + isSellOpen match stock math", () => {
   assert.equal(isSellOpen(3, false), true);
   assert.equal(isSellOpen(0, false), false);
   assert.equal(isSellOpen(3, true), false);
+});
+
+test("sellStatus triad: 판매 / 매진 / 마감", () => {
+  assert.equal(sellStatus(3, false), "sell");
+  assert.equal(sellStatus(0, false), "soldout");
+  assert.equal(sellStatus(-1, false), "soldout");
+  assert.equal(sellStatus(5, true), "closed");
+  assert.equal(sellStatus(0, true), "closed");
+});
+
+test("shortStayHint strips :00", () => {
+  assert.equal(shortStayHint("16:00", "12:00"), "16–12");
+  assert.equal(shortStayHint("15:30", "11:00"), "15:30–11");
 });
 
 test("applyBulkTypeDates: rate and stop across dates", () => {

@@ -114,6 +114,25 @@ export function isSellOpen(remaining: number, stopped: boolean): boolean {
   return !stopped && remaining > 0;
 }
 
+/** 카드 상태 삼위: 판매 / 매진(재고0·중지아님) / 마감(판매중지) */
+export type SellStatus = "sell" | "soldout" | "closed";
+
+export function sellStatus(remaining: number, stopped: boolean): SellStatus {
+  if (stopped) return "closed";
+  if (remaining <= 0) return "soldout";
+  return "sell";
+}
+
+/** 입실·퇴실 시각 짧은 힌트 (16:00→16, 12:30→12:30) */
+export function shortStayHint(checkIn: string, checkOut: string): string {
+  const short = (t: string) => {
+    const [h, m] = t.split(":");
+    if (!h) return t;
+    return m === "00" ? String(Number(h)) : `${Number(h)}:${m}`;
+  };
+  return `${short(checkIn)}–${short(checkOut)}`;
+}
+
 export type BulkSalesPatch = {
   /** undefined = 요금 유지 · null = 오버라이드 삭제 · number = 설정 */
   rate?: number | null;

@@ -188,6 +188,18 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   width: auto; min-width: 28px; height: 16px; padding: 0 5px;
   font-size: 9px; font-weight: 800; letter-spacing: -0.02em;
 }
+.lv-sold {
+  background: var(--badge-danger); color: #fff;
+  display: inline-flex !important; align-items: center; justify-content: center;
+  width: auto; min-width: 28px; height: 16px; padding: 0 5px;
+  font-size: 9px; font-weight: 800; letter-spacing: -0.02em;
+}
+.lv-closed {
+  background: var(--ink2); color: #fff;
+  display: inline-flex !important; align-items: center; justify-content: center;
+  width: auto; min-width: 28px; height: 16px; padding: 0 5px;
+  font-size: 9px; font-weight: 800; letter-spacing: -0.02em;
+}
 
 /* ---------- 판매 캘린더 (날짜 우선 · 타입 카드) ---------- */
 .sales-hint { margin-top: var(--space-2); max-width: 36em; }
@@ -214,7 +226,17 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   border-radius: var(--radius-panel);
   background: var(--panel2);
 }
-.sales-picking .sales-dates { margin-bottom: var(--space-6); }
+.sales-picking .sales-dates { margin-bottom: calc(var(--space-6) + 56px); }
+.sales-week-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  align-items: center;
+}
+.sales-week {
+  scroll-margin-top: var(--space-5);
+}
 .sales-past-toggle {
   display: inline-flex;
   align-items: center;
@@ -348,6 +370,32 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   font-weight: 750;
   flex: none;
 }
+.sales-badge-sold {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--badge-danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  flex: none;
+}
+.sales-badge-closed {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 18px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--ink2);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 750;
+  flex: none;
+}
 .sales-tcard-stock {
   font-size: 12px;
   font-weight: 750;
@@ -373,22 +421,57 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-tcard.lv-low .sales-tcard-rate { color: var(--badge-warn); }
 .sales-tcard.lv-full { background: var(--red-s); }
 .sales-tcard.lv-full .sales-tcard-rate { color: var(--red-d); }
+.sales-tcard.lv-sold { background: var(--badge-danger-s); }
+.sales-tcard.lv-sold .sales-tcard-rate { color: var(--badge-danger); }
 .sales-tcard.lv-over { background: var(--red); color: #fff; }
 .sales-tcard.lv-over .sales-booked,
 .sales-tcard.lv-over .sales-stock-sep,
 .sales-tcard.lv-over .sales-remain,
 .sales-tcard.lv-over .sales-tcard-rate { color: rgba(255,255,255,0.85); }
-.sales-tcard.lv-stop { background: var(--badge-stop-s); }
-.sales-tcard.lv-stop .sales-tcard-rate { color: var(--badge-stop); }
-.sales-tcard.lv-full:hover { box-shadow: inset 0 0 0 1.5px var(--red); }
-.sales-tcard.lv-stop:hover { box-shadow: inset 0 0 0 1.5px var(--badge-stop); }
+.sales-tcard.lv-stop,
+.sales-tcard.lv-closed { background: var(--panel); }
+.sales-tcard.lv-stop .sales-tcard-rate,
+.sales-tcard.lv-closed .sales-tcard-rate { color: var(--ink3); }
+.sales-tcard.lv-full:hover,
+.sales-tcard.lv-sold:hover { box-shadow: inset 0 0 0 1.5px var(--badge-danger); }
+.sales-tcard.lv-stop:hover,
+.sales-tcard.lv-closed:hover { box-shadow: inset 0 0 0 1.5px var(--ink3); }
 .sales-tcard.lv-low:hover { box-shadow: inset 0 0 0 1.5px var(--badge-warn-border); }
+
+.sales-actionbar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 var(--space-4) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-inp);
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  flex-wrap: wrap;
+}
+.sales-actionbar b { font-weight: 800; white-space: nowrap; margin-right: var(--space-1); }
+.sales-actionbar .btn.line {
+  background: transparent;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.sales-actionbar .btn.sm:not(.line):not(.red) {
+  background: #fff;
+  color: var(--ink);
+}
+.sales-actionbar .btn.red.on {
+  box-shadow: inset 0 0 0 1.5px #fff;
+}
 
 .sales-bulk {
   position: sticky;
-  bottom: 0;
-  z-index: 20;
-  margin: 0 var(--space-4) var(--space-4);
+  bottom: calc(56px + var(--space-4));
+  z-index: 21;
+  margin: 0 var(--space-4) var(--space-3);
   padding: var(--space-4);
   border-radius: var(--radius-panel);
   background: #fff;
@@ -418,7 +501,14 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
     gap: var(--space-2);
   }
   .sales-tcard { padding: var(--space-2) var(--space-3); border-radius: var(--radius-inp-sm); }
-  .sales-bulk { margin: 0 var(--space-3) var(--space-3); }
+  .sales-bulk { margin: 0 var(--space-3) var(--space-3); bottom: calc(64px + var(--space-4)); }
+  .sales-actionbar {
+    position: fixed;
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    margin: 0;
+  }
 }
 
 .stock-wrap { overflow-x: auto; border-radius: 22px; background: var(--panel2); }
