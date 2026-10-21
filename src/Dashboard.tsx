@@ -90,8 +90,9 @@ interface Props {
   /** 간단 예약 축약 폼 (기본 Path A · 미배정 · roomIds=현황 복수선택 Path B) */
   onSimple?: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
   notify: (m: string, opt?: ToastOpt) => void;
-  /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
+  /** 객실 배치·현황에서 빈/점유 방을 눌러 옮기는 중 */
   move?: BoardMove | null;
+  onMoveStart?: (m: BoardMove) => void;
   onMoveEnd?: () => void;
   /** 현황 공유 링크: 보기만 해요 (고치기·입실 완료·방 배정·가격 없음) */
   readOnly?: boolean;
@@ -186,7 +187,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
   return [tab, setTab];
 }
 
-export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveEnd = () => {} }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveStart = () => {}, onMoveEnd = () => {} }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
@@ -439,13 +440,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!bookings.some((x) => x.id === move.id && isActive(x))) return onMoveEnd();
     const b = bookings.find((x) => x.id === move.id)!;
     setSelDate(b.kind === "dayuse" ? b.checkIn : move.night);
-    setTab("rooms");
+    setTab(move.tab === "now" ? "now" : "rooms");
     setFloorTab((f) => (f === "dayuse" ? "all" : f));
     setPick(null);
     setSwapChoice(null);
     setSwapTypeGate(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [move?.id, move?.night]);
+  }, [move?.id, move?.night, move?.tab]);
   useEffect(() => {
     if (!mvB) return;
     const onKey = (e: KeyboardEvent) => {
@@ -551,6 +552,81 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setMoving(false);
     }
   };
+  /** 현황 운영패널 · 단실 점유만 — 공실/복수 공실은 숨김 */
+  const startOpsRoomMove = () => {
+    if (readOnly || selectedRoomIds.length !== 1) return;
+    const rid = selectedRoomIds[0];
+    const b = nowBoardMap.get(rid);
+    if (!b || !isActive(b) || b.kind !== "stay") return;
+    setAssigningMode(null);
+    setSideMode("room");
+    onMoveStart({ id: b.id, night: today, tab: "now" });
+  };
+  const mvCellBits = (r: { id: string; typeId?: string | null; no: string }) => {
+    const mvSwap = !!mvB && swapTargets.has(r.id);
+    const mvOk = !!mvB && (targets.has(r.id) || mvSwap);
+    const mvSame = mvOk && r.typeId === mvB!.typeId;
+    const mvCls = mvB
+      ? mvOk
+        ? `mvt ${mvSwap ? "swap" : ""} ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}`
+        : r.id === mvFrom
+          ? "mvsrc"
+          : "mvoff"
+      : "";
+    const mvClick = mvB
+      ? () => {
+          if (!mvOk) return;
+          const plan = swapTargets.get(r.id);
+          if (plan) requestSwap(plan);
+          else setPick(r.id);
+        }
+      : null;
+    const mvAttr = mvB ? (mvOk ? { role: "button" as const, tabIndex: 0, "aria-label": `${r.no}호로 옮기기` } : { "aria-disabled": true }) : act;
+    return { mvSwap, mvOk, mvSame, mvCls, mvClick, mvAttr };
+  };
+  const mvBar =
+    mvB && mvNight ? (
+      <div className={`mvbar ${pick ? "ask" : ""}`} role="status">
+        {pick ? (
+          <>
+            <span className="mvbq">
+              <span>
+                <b>{roomName(pick)}</b>로 이동할까요?
+              </span>
+            </span>
+            <button className="btn green" disabled={moving} onClick={() => void doMove()} autoFocus>
+              {moving ? "옮기는 중…" : "이동"}
+            </button>
+            <button className="btn line" disabled={moving} onClick={() => setPick(null)}>
+              다른 방
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="mvbq">
+              <span>
+                <b>{mvB.guestName || "손님"}</b>님을 옮길 방·맞교환 방을 누르세요
+              </span>
+              <small>
+                {mvB.kind === "dayuse"
+                  ? `대실 ${mvB.startTime}~${mvB.endTime} · ${roomName(mvFrom)}`
+                  : (() => {
+                      const w = boardMoveWindow(mvB, mvNight);
+                      return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 ${dayLabel(w.checkIn)}부터 ${w.nights}박`}`;
+                    })()}
+                {" · "}
+                {targets.size || swapTargets.size
+                  ? `빈 방 ${targets.size}곳${swapTargets.size ? ` · 맞교환 ${swapTargets.size}곳` : ""}`
+                  : "옮길 수 있는 방이 없어요"}
+              </small>
+            </span>
+            <button className="btn line" onClick={onMoveEnd}>
+              취소 <kbd className="kbdh">Esc</kbd>
+            </button>
+          </>
+        )}
+      </div>
+    ) : null;
 
   const dayuseByRoom = useMemo(() => {
     const m = new Map<string, Booking[]>();
@@ -778,24 +854,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </span>
     ));
     // 옮기는 중: 빈 방(초록) · 맞교환 가능 점유(파란빛) · 같은 타입 더 진하게 · 나머지 흐리게
-    const mvSwap = !!mvB && swapTargets.has(r.id);
-    const mvOk = !!mvB && (targets.has(r.id) || mvSwap);
-    const mvSame = mvOk && r.typeId === mvB!.typeId;
-    const mvCls = mvB
-      ? mvOk
-        ? `mvt ${mvSwap ? "swap" : ""} ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}`
-        : r.id === mvFrom
-          ? "mvsrc"
-          : "mvoff"
-      : "";
-    const mvClick = mvB
-      ? () => {
-          if (!mvOk) return;
-          const plan = swapTargets.get(r.id);
-          if (plan) requestSwap(plan);
-          else setPick(r.id);
-        }
-      : null;
+    const { mvSame, mvCls, mvClick, mvAttr } = mvCellBits(r);
     // 「방배정」: 빈 칸 체크 (옮기기 중이면 옮기기 우선)
     const canAssign = !mvB && !!assignBk && assignEligible.has(r.id);
     const sameType = canAssign && r.typeId === assignBk!.typeId;
@@ -807,7 +866,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           : "assign-other"
         : "assign-off"
       : "";
-    const mvAttr = mvB ? (mvOk ? { role: "button" as const, tabIndex: 0, "aria-label": `${r.no}호로 옮기기` } : { "aria-disabled": true }) : act;
     if (!b)
       return (
         <div
@@ -1163,21 +1221,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {memoBubble}
       </div>
     );
+    const { mvSame, mvCls, mvClick, mvAttr } = mvCellBits(r);
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
-      const emptySel = selectedRoomIds.includes(r.id);
+      const emptySel = !mvB && selectedRoomIds.includes(r.id);
       return (
         <div
           key={r.id}
-          {...act}
-          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""}`}
-          onClick={() => selectRoom(r.id)}
+          {...(mvB ? mvAttr : act)}
+          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+          onClick={mvClick ?? (() => selectRoom(r.id))}
+          onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
           <div className="cell-body nowstack sparse">
             {head}
             <TypeLine t={t} />
             <div className="nowstatus-slot">
-              <span className="nowstatus nk-empty">공실</span>
+              <span className="nowstatus nk-empty">{mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : "공실"}</span>
             </div>
           </div>
         </div>
@@ -1206,20 +1266,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     };
     const onStatusTap = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (readOnly) return;
+      if (readOnly || mvB) return;
       if (isDepartingStatus(f.kind) && canCheckOut(b, today)) {
         void doCheckOut(b, true);
         return;
       }
       selectRoom(r.id);
     };
-    const occupiedSel = selectedRoomIds.includes(r.id);
+    const occupiedSel = !mvB && selectedRoomIds.includes(r.id);
     return (
       <div
         key={r.id}
-        {...act}
-        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
-        onClick={() => selectRoom(r.id)}
+        {...(mvB ? mvAttr : act)}
+        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        onClick={mvClick ?? (() => selectRoom(r.id))}
+        onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
         <div className="cell-body nowstack dense">
           {head}
@@ -1314,22 +1375,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="dnav nowfilters">
-              <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} onClick={() => setNowFilter("all")}>
+              <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("all")}>
                 전체
               </button>
-              <button type="button" className={`chip ${nowFilter === "tentative" ? "on" : ""}`} onClick={() => setNowFilter("tentative")}>
+              <button type="button" className={`chip ${nowFilter === "tentative" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("tentative")}>
                 임시만{nowSide.tentative.length ? ` ${nowSide.tentative.length}` : ""}
               </button>
               {!readOnly && nowSide.tentative.length ? (
-                <button type="button" className="btn sm dark" disabled={tentBusy} onClick={() => void confirmAllTentative()}>
+                <button type="button" className="btn sm dark" disabled={tentBusy || !!mvB} onClick={() => void confirmAllTentative()}>
                   {tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}
                 </button>
               ) : null}
-              <button type="button" className="btn sm line" onClick={() => setTab("rooms")}>
+              <button type="button" className="btn sm line" disabled={!!mvB} onClick={() => setTab("rooms")}>
                 판매·배치로
               </button>
             </div>
           </div>
+          {mvBar}
           {buildingTabs}
           <div className="nowlayout">
             <div className="nowgrid">
@@ -1376,10 +1438,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               bookCtaLabel={vacantBookCta}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
               onMemo={setMemoRoomId}
+              onRoomMove={startOpsRoomMove}
+              moving={!!mvB}
               nowOpts={nowOpts}
             />
           </div>
-          {!readOnly && vacantBookCta ? (
+          {!readOnly && !mvB && vacantBookCta ? (
             <div className="nowbookbar" role="region" aria-label="선택한 공실 예약">
               <span className="nowbookbar-labs">{vacantBookLabels.map((n) => `${n}호`).join(", ")}</span>
               <button type="button" className="btn sm dark" onClick={openVacantBook}>
@@ -1554,48 +1618,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </button>
           </div>
         </div>
-        {mvB && mvNight ? (
-          <div className={`mvbar ${pick ? "ask" : ""}`} role="status">
-            {pick ? (
-              <>
-                <span className="mvbq">
-                  <span>
-                    <b>{roomName(pick)}</b>로 이동할까요?
-                  </span>
-                </span>
-                <button className="btn green" disabled={moving} onClick={() => void doMove()} autoFocus>
-                  {moving ? "옮기는 중…" : "이동"}
-                </button>
-                <button className="btn line" disabled={moving} onClick={() => setPick(null)}>
-                  다른 방
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="mvbq">
-                  <span>
-                    <b>{mvB.guestName || "손님"}</b>님을 옮길 방·맞교환 방을 누르세요
-                  </span>
-                  <small>
-                    {mvB.kind === "dayuse"
-                      ? `대실 ${mvB.startTime}~${mvB.endTime} · ${roomName(mvFrom)}`
-                      : (() => {
-                          const w = boardMoveWindow(mvB, mvNight);
-                          return `${roomName(mvFrom)} · ${w.whole ? `${mvB.nights}박 전체` : `${w.from}박째 ${dayLabel(w.checkIn)}부터 ${w.nights}박`}`;
-                        })()}
-                    {" · "}
-                    {targets.size || swapTargets.size
-                      ? `빈 방 ${targets.size}곳${swapTargets.size ? ` · 맞교환 ${swapTargets.size}곳` : ""}`
-                      : "옮길 수 있는 방이 없어요"}
-                  </small>
-                </span>
-                <button className="btn line" onClick={onMoveEnd}>
-                  취소 <kbd className="kbdh">Esc</kbd>
-                </button>
-              </>
-            )}
-          </div>
-        ) : null}
+        {mvBar}
         {!mvB && assignBk ? (
           <div className="now-assign-banner" role="status">
             <span>
