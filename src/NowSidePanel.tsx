@@ -121,10 +121,21 @@ export default function NowSidePanel({
   const todayUaForType =
     typeId && !b ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length : 0;
 
+  const nowliTone = (label: string, tentative?: boolean) => {
+    if (tentative) return "tent";
+    if (label === "미배정" || label === "간단 예약") return "ua";
+    if (label === "숙박예약") return "info";
+    if (label === "숙박") return "stay";
+    if (label === "퇴실예정") return "warn";
+    if (label === "늦은 퇴실") return "danger";
+    if (label === "공실") return "empty";
+    return "";
+  };
+
   const sideRow = (x: Booking, label: string, departingRow = false) => (
     <div key={x.id} className={`nowli-wrap ${x.tentative ? "tent" : ""} ${x.noClean ? "ncx" : ""} ${isLongStay(x) ? "long" : ""}`}>
       <button type="button" className={`nowli ${x.tentative ? "tent" : ""} ${x.noClean ? "ncx" : ""}`} onClick={() => onOpen(x, today)} disabled={readOnly}>
-        <span className="nowli-t">{label}</span>
+        <span className={`nowli-t ${nowliTone(label, x.tentative)}`}>{label}</span>
         <b>{x.guestName}</b>
         <span className="muted sm">
           {x.roomId ? `${L.roomLabel(x.roomId)}호` : typeLabel(L.types.get(x.typeId))}
@@ -166,7 +177,7 @@ export default function NowSidePanel({
     return (
       <div key={x.id} className={`now-ua-row side-ua-row ${open ? "open" : ""}`}>
         <button type="button" className="nowli now-ua-item" onClick={() => onOpen(x, today)} disabled={readOnly}>
-          <span className="nowli-t">간단 예약</span>
+          <span className="nowli-t ua">간단 예약</span>
           <b>{x.guestName}</b>
           <span className="muted sm">
             {typeLabel(L.types.get(x.typeId))}

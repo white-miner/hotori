@@ -205,7 +205,7 @@ export default function SalesCalendar({
             return (
               <section
                 key={d}
-                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""} ${on ? "pick" : ""}`}
+                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""} ${weekday(d) === "토" ? "sa" : ""} ${weekday(d) === "일" ? "su" : ""} ${on ? "pick" : ""}`}
                 role="listitem"
               >
                 <button
@@ -424,10 +424,10 @@ function BulkApplyBar({
           <Chip sm active={stopMode === "keep"} disabled={busy} onClick={() => setStopMode("keep")}>
             유지
           </Chip>
-          <Chip sm active={stopMode === "open"} disabled={busy} onClick={() => setStopMode("open")}>
+          <Chip sm tone="sell" active={stopMode === "open"} disabled={busy} onClick={() => setStopMode("open")}>
             판매 열기
           </Chip>
-          <Chip sm active={stopMode === "stop"} disabled={busy} onClick={() => setStopMode("stop")}>
+          <Chip sm tone="stop" active={stopMode === "stop"} disabled={busy} onClick={() => setStopMode("stop")}>
             <Ban size={14} strokeWidth={2.2} />
             판매중지
           </Chip>
@@ -551,10 +551,11 @@ function CellSheet({
           <div className="fld">
             <label>판매</label>
             <ChipGroup>
-              <Chip active={!stopped} disabled={busy} onClick={() => stopped && void onToggleStop(false)}>
+              <Chip tone="sell" active={!stopped} disabled={busy} onClick={() => stopped && void onToggleStop(false)}>
                 판매 중
               </Chip>
               <Chip
+                tone="stop"
                 active={stopped}
                 disabled={busy}
                 onClick={() => !stopped && void onToggleStop(true)}
