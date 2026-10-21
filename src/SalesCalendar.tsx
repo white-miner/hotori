@@ -192,12 +192,7 @@ export default function SalesCalendar({
           <div className="b-note">미배정 {unassigned}건은 호텔 전체 재고에서만 차감돼요 · 건물 탭에서는 '전체'에만 보여요.</div>
         ) : null}
 
-        <div
-          ref={wideRef}
-          className={`sales-dates ${viewDates.length > 14 ? "wide" : ""}`}
-          role="list"
-          aria-label="숙박일별 타입 재고"
-        >
+        <div ref={wideRef} className="sales-dates" role="list" aria-label="숙박일별 타입 재고">
           {viewDates.map((d) => {
             const we = isWeekendNight(d, s.specialDates);
             const dayWe = ["토", "일"].includes(weekday(d));
@@ -244,7 +239,6 @@ export default function SalesCalendar({
                       >
                         <span className="sales-tcard-type">
                           <TypeBadge t={t} />
-                          <span className="sales-tcard-name">{typeLabel(t)}</span>
                           {open ? <span className="sales-badge-sell">판매</span> : null}
                           {stopped ? (
                             <span className="sales-badge-stop">
@@ -254,7 +248,9 @@ export default function SalesCalendar({
                           ) : null}
                         </span>
                         <span className="sales-tcard-stock num">
-                          예약 {booked < 0 ? `−${-booked}` : booked} / 재고 {rem < 0 ? `−${-rem}` : rem}
+                          <span className="sales-booked">예약 {booked < 0 ? `−${-booked}` : booked}</span>
+                          <span className="sales-stock-sep"> / </span>
+                          <span className="sales-remain">재고 {rem < 0 ? `−${-rem}` : rem}</span>
                         </span>
                         <span className="sales-tcard-meta">
                           <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>

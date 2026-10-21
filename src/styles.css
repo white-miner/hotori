@@ -206,20 +206,17 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-gchip.lv-stop small { color: var(--badge-stop); }
 
 .sales-dates {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: var(--space-3);
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
+  overflow: visible;
   padding: var(--space-4);
   border-radius: var(--radius-panel);
   background: var(--panel2);
-  -webkit-overflow-scrolling: touch;
 }
 .sales-picking .sales-dates { margin-bottom: var(--space-6); }
-.sales-dates.wide { max-height: calc(100vh - 220px); overflow: auto; }
 .sales-day {
-  flex: 0 0 156px;
-  min-width: 156px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -294,16 +291,6 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   min-width: 0;
   flex-wrap: wrap;
 }
-.sales-tcard-name {
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--ink2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1 1 auto;
-}
 .sales-badge-sell {
   display: inline-flex;
   align-items: center;
@@ -333,9 +320,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-tcard-stock {
   font-size: 12px;
   font-weight: 750;
-  color: var(--ink);
   letter-spacing: -0.02em;
 }
+.sales-booked { color: var(--badge-info); }
+.sales-stock-sep { color: var(--ink3); font-weight: 600; }
+.sales-remain { color: var(--ink); }
 .sales-tcard-meta {
   display: flex;
   align-items: baseline;
@@ -349,21 +338,16 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   color: var(--ink3);
   letter-spacing: -0.02em;
 }
-.sales-tcard.lv-ok .sales-tcard-stock { color: var(--badge-sell); }
-.sales-tcard.lv-low { background: var(--badge-warn-s); color: var(--badge-warn); }
-.sales-tcard.lv-low .sales-tcard-name,
-.sales-tcard.lv-low .sales-tcard-rate,
-.sales-tcard.lv-low .sales-tcard-stock { color: var(--badge-warn); }
-.sales-tcard.lv-full { background: var(--red-s); color: var(--red-d); }
-.sales-tcard.lv-full .sales-tcard-rate,
-.sales-tcard.lv-full .sales-tcard-stock { color: var(--red-d); }
+.sales-tcard.lv-low { background: var(--badge-warn-s); }
+.sales-tcard.lv-low .sales-tcard-rate { color: var(--badge-warn); }
+.sales-tcard.lv-full { background: var(--red-s); }
+.sales-tcard.lv-full .sales-tcard-rate { color: var(--red-d); }
 .sales-tcard.lv-over { background: var(--red); color: #fff; }
-.sales-tcard.lv-over .sales-tcard-name,
-.sales-tcard.lv-over .sales-tcard-rate,
-.sales-tcard.lv-over .sales-tcard-stock { color: rgba(255,255,255,0.85); }
-.sales-tcard.lv-stop { background: var(--badge-stop-s); color: var(--badge-stop); }
-.sales-tcard.lv-stop .sales-tcard-name,
-.sales-tcard.lv-stop .sales-tcard-stock,
+.sales-tcard.lv-over .sales-booked,
+.sales-tcard.lv-over .sales-stock-sep,
+.sales-tcard.lv-over .sales-remain,
+.sales-tcard.lv-over .sales-tcard-rate { color: rgba(255,255,255,0.85); }
+.sales-tcard.lv-stop { background: var(--badge-stop-s); }
 .sales-tcard.lv-stop .sales-tcard-rate { color: var(--badge-stop); }
 .sales-tcard.lv-full:hover { box-shadow: inset 0 0 0 1.5px var(--red); }
 .sales-tcard.lv-stop:hover { box-shadow: inset 0 0 0 1.5px var(--badge-stop); }
@@ -397,8 +381,11 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .sales-sheet .actrow .btn { gap: var(--space-chip); }
 
 @media (max-width: 720px) {
-  .sales-day { flex-basis: 140px; min-width: 140px; }
-  .sales-dates { padding: var(--space-3); gap: var(--space-2); }
+  .sales-dates {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    padding: var(--space-3);
+    gap: var(--space-2);
+  }
   .sales-tcard { padding: var(--space-2) var(--space-3); border-radius: var(--radius-inp-sm); }
   .sales-bulk { margin: 0 var(--space-3) var(--space-3); }
 }
