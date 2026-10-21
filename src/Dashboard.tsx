@@ -13,7 +13,6 @@ import {
   nowNightRange,
   nowStaySummary,
   shouldAutoArrive,
-  simplePayGlance,
 } from "../shared/nowboard";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
@@ -950,90 +949,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {buildingTabs}
-          <section className="now-ua" aria-label="미배정 예약">
-            <div className="now-ua-h">
-              <h2 title="타입 재고만 · 임시 배치 아님">
-                미배정 <small>{nowSide.unassigned.length}</small>
-              </h2>
-              <span className="muted sm">호실 미정 · 타입 재고만 막혀 있어요</span>
-              {!readOnly ? (
-                <button
-                  type="button"
-                  className="btn sm line now-ua-new"
-                  title="간단 예약 · 미배정으로 받기"
-                  onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}
-                >
-                  + 간단 예약
-                </button>
-              ) : null}
-            </div>
-            {nowSide.unassigned.length ? (
-              <div className="now-ua-list">
-                {nowSide.unassigned.map((b) => {
-                  const open = assigning === b.id;
-                  const free = open ? freeRooms(s, bookings, b) : null;
-                  const options = free
-                    ? allRooms(s)
-                        .filter((r) => free.has(r.id))
-                        .sort((a, c) => Number(a.typeId !== b.typeId) - Number(c.typeId !== b.typeId))
-                    : [];
-                  const plat = L.plats.get(b.platformId);
-                  const glance = nowAmountGlance(b, plat);
-                  const payG = simplePayGlance(b, isOnsite(plat));
-                  return (
-                    <div key={b.id} className={`now-ua-row ${open ? "open" : ""}`}>
-                      <button type="button" className="nowli now-ua-item" onClick={() => onOpen(b, today)} disabled={readOnly}>
-                        <span className="nowli-t ua">미배정</span>
-                        <b>{b.guestName}</b>
-                        <span className="muted sm">
-                          {typeLabel(L.types.get(b.typeId))}
-                          {b.nights ? ` · ${b.nights}박` : ""}
-                          {b.groupName ? ` · ${b.groupName}` : ""}
-                          {b.checkIn !== today ? ` · ${md(b.checkIn)} 입실` : ""}
-                          {glance ? ` · ${glance}` : ""}
-                          {payG ? ` · ${payG}` : ""}
-                        </span>
-                      </button>
-                      {isActive(b) && !readOnly ? (
-                        <button
-                          type="button"
-                          className="nowext side"
-                          onClick={() => setAssigning(open ? null : b.id)}
-                        >
-                          {open ? "닫기" : "호실 정하기"}
-                        </button>
-                      ) : null}
-                      {open ? (
-                        <div className="rpick now-ua-pick">
-                          {options.length ? (
-                            options.slice(0, 24).map((r) => (
-                              <button
-                                key={r.id}
-                                type="button"
-                                className={`rchip ${r.typeId !== b.typeId ? "other" : ""}`}
-                                title={L.roomLabel(r.id) ?? r.no}
-                                onClick={() => void assign(b, r.id)}
-                              >
-                                {multi ? <em className="bpre">{L.buildings.get(r.buildingId)?.name}</em> : null}
-                                {r.no}
-                                {r.typeId !== b.typeId ? <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i> : null}
-                              </button>
-                            ))
-                          ) : (
-                            <span className="muted">그 기간에 빈 방이 없어요</span>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="muted sm now-ua-empty">
-                미배정 예약이 없어요 · 「간단 예약」으로 타입만 먼저 받을 수 있어요
-              </div>
-            )}
-          </section>
           <div className="nowlayout">
             <div className="nowgrid">
               {multi && bScope === "all" ? null : null}
