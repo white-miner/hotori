@@ -1,5 +1,6 @@
 // 기존 단체에 객실(또는 타입만) 추가 · group_id는 그대로, booking_groups는 새로 만들지 않아요
 import { useEffect, useMemo, useState } from "react";
+import { saveFailMessage } from "../shared/errors";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
 import {
   type Booking,
@@ -237,7 +238,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(`단체 ${groupName}에 ${how} 추가했어요 · 합계 ${won(sum)}원${tentTag}${noClean ? " · 청소X" : ""}`);
     } catch (e) {
-      setErr(e instanceof Error ? `추가하지 못했어요: ${e.message}` : "추가하지 못했어요. 다시 시도해 주세요");
+      setErr(saveFailMessage(e, "추가하지 못했어요"));
     } finally {
       setBusy(false);
     }
