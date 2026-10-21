@@ -95,6 +95,8 @@ export interface EntryRequest {
   openSurcharge?: boolean;
   /** 간단 예약 축약 폼 (미배정/즉시 배정) */
   simple?: boolean;
+  /** 「현황」공실 복수선택 → Path B 호실 prefill (다타입 OK · #70) */
+  roomIds?: string[];
 }
 /** 객실 배치에서 빈 방을 눌러 옮기는 중: 예약 id와 보던 밤 */
 export interface BoardMove {
@@ -167,7 +169,11 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
     setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
   const openNew = useCallback((preset?: Partial<Booking>) => setEntry({ preset, n: Date.now() }), []);
-  const openSimple = useCallback((preset?: Partial<Booking>) => setEntry({ preset, simple: true, n: Date.now() }), []);
+  const openSimple = useCallback(
+    (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) =>
+      setEntry({ preset, roomIds: opts?.roomIds, simple: true, n: Date.now() }),
+    [],
+  );
   // 중도 퇴실 되돌리기 (예약 창 단추·알림의 되돌리기): 비운 밤이 다시 팔렸으면 막아요
   const bkRef = useRef(data.bookings);
   bkRef.current = data.bookings;

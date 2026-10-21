@@ -87,8 +87,8 @@ interface Props {
   setSelDate: (d: string) => void;
   onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
-  /** 간단 예약 축약 폼 (기본 Path A · 미배정) */
-  onSimple?: (preset?: Partial<Booking>) => void;
+  /** 간단 예약 축약 폼 (기본 Path A · 미배정 · roomIds=현황 복수선택 Path B) */
+  onSimple?: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
   notify: (m: string, opt?: ToastOpt) => void;
   /** 객실 배치에서 빈 방을 눌러 옮기는 중 */
   move?: BoardMove | null;
@@ -190,7 +190,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
-  const onSimple = readOnly ? () => {} : (simpleRaw ?? ((preset?: Partial<Booking>) => onNew({ kind: "stay", roomId: null, ...preset })));
+  const onSimple = readOnly
+    ? () => {}
+    : (simpleRaw ??
+        ((preset?: Partial<Booking>, opts?: { roomIds?: string[] }) =>
+          onNew({ kind: "stay", roomId: opts?.roomIds?.[0] ?? null, ...preset })));
   const act = readOnly ? {} : { role: "button" as const, tabIndex: 0 };
   const [tab, setTab] = useBoardTab();
   const s = data.hotel!.settings;
@@ -317,14 +321,46 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [nightPopId, setNightPopId] = useState<string | null>(null);
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  /** 「현황」선택: 공실=복수 토글 · 점유=단실 운영 */
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
   const memos = useRoomMemos(data.hotel!.id);
   const glanceByRoom = useMemo(() => openMemoGlances(memos.list ?? []), [memos.list]);
+  const roomIsVacant = (roomId: string) => {
+    const bk = nowBoardMap.get(roomId);
+    return !bk || !isActive(bk);
+  };
   const selectRoom = (roomId: string) => {
-    setSelectedRoomId(roomId);
-    setSideMode("room");
     setNightPopId(null);
+    setSideMode("room");
+    if (!roomIsVacant(roomId)) {
+      setSelectedRoomIds([roomId]);
+      return;
+    }
+    setSelectedRoomIds((prev) => {
+      const prevAllVacant = prev.length > 0 && prev.every((id) => roomIsVacant(id));
+      if (!prevAllVacant) return [roomId];
+      if (prev.includes(roomId)) return prev.filter((id) => id !== roomId);
+      return [...prev, roomId];
+    });
+  };
+  const selectedVacantIds = selectedRoomIds.filter(roomIsVacant);
+  const selectedRoomId =
+    selectedRoomIds.length === 1
+      ? selectedRoomIds[0]
+      : selectedVacantIds.length
+        ? selectedVacantIds[selectedVacantIds.length - 1]
+        : selectedRoomIds[0] ?? null;
+  const vacantBookLabels = selectedVacantIds.map((id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id);
+  const vacantBookCta =
+    vacantBookLabels.length > 0 ? `${vacantBookLabels.map((n) => `${n}호`).join(", ")} 예약하기` : null;
+  const openVacantBook = () => {
+    if (!selectedVacantIds.length) return;
+    const first = L.rooms.get(selectedVacantIds[0]) ?? allRooms(s).find((r) => r.id === selectedVacantIds[0]);
+    onSimple(
+      { kind: "stay", checkIn: today, roomId: selectedVacantIds[0], typeId: first?.typeId ?? undefined },
+      { roomIds: selectedVacantIds },
+    );
   };
   const autoArriveBusy = useRef(new Set<string>());
   // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
@@ -1129,7 +1165,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
-      const emptySel = selectedRoomId === r.id;
+      const emptySel = selectedRoomIds.includes(r.id);
       return (
         <div
           key={r.id}
@@ -1177,7 +1213,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       }
       selectRoom(r.id);
     };
-    const occupiedSel = selectedRoomId === r.id;
+    const occupiedSel = selectedRoomIds.includes(r.id);
     return (
       <div
         key={r.id}
@@ -1321,8 +1357,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               unassigned={nowSide.unassigned}
               lateOut={nowSide.lateOut}
               departing={nowSide.departing}
-              selectedRoomId={selectedRoomId}
-              selectedBooking={selectedRoomId ? (nowBoardMap.get(selectedRoomId) ?? null) : null}
+              selectedRoomIds={selectedRoomIds}
+              selectedBooking={
+                selectedRoomIds.length === 1 && selectedRoomId
+                  ? (nowBoardMap.get(selectedRoomId) ?? null)
+                  : null
+              }
               mode={sideMode}
               onMode={setSideMode}
               glanceByRoom={glanceByRoom}
@@ -1332,11 +1372,29 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               coBusy={coBusy}
               onOpen={onOpen}
               onSimple={onSimple}
+              onBookVacant={openVacantBook}
+              bookCtaLabel={vacantBookCta}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
               onMemo={setMemoRoomId}
               nowOpts={nowOpts}
             />
           </div>
+          {!readOnly && vacantBookCta ? (
+            <div className="nowbookbar" role="region" aria-label="선택한 공실 예약">
+              <span className="nowbookbar-labs">{vacantBookLabels.map((n) => `${n}호`).join(", ")}</span>
+              <button type="button" className="btn sm dark" onClick={openVacantBook}>
+                {vacantBookCta}
+              </button>
+              <button
+                type="button"
+                className="btn sm line nowbookbar-x"
+                aria-label="선택 해제"
+                onClick={() => setSelectedRoomIds([])}
+              >
+                해제
+              </button>
+            </div>
+          ) : null}
           <div className="lg nowlg">
             <span>
               <i className="nkdot nk-empty" />공실
