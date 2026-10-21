@@ -341,13 +341,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [assigning, setAssigning] = useState<string | null>(null);
   const [assignBusy, setAssignBusy] = useState(false);
   const [typeConfirm, setTypeConfirm] = useState<{ booking: Booking; roomId: string } | null>(null);
-  /** 「방배정」모드: 본관·별관 한 풀로 보이게 건물 탭=전체 */
+  /** 「방배정」모드: 「배치」칸 체크 · 본관·별관 한 풀 · 입실일로 보드 맞춤 */
   const setAssigningMode = (id: string | null) => {
     setAssigning(id);
     setTypeConfirm(null);
     if (id) {
+      const bk = bookings.find((x) => x.id === id && isActive(x) && !x.roomId);
       setSideMode("simple");
       if (multi) setBTab("all");
+      setFloorTab("all");
+      if (bk) setSelDate(bk.checkIn);
+      setTab("rooms");
     }
   };
   // ---------- 객실 배치에서 옮기기 ----------
@@ -535,19 +539,50 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const mvSame = mvOk && r.typeId === mvB!.typeId;
     const mvCls = mvB ? (mvOk ? `mvt ${mvSame ? "same" : ""} ${pick === r.id ? "pick" : ""}` : r.id === mvFrom ? "mvsrc" : "mvoff") : "";
     const mvClick = mvB ? () => mvOk && setPick(r.id) : null;
+    // 「방배정」: 빈 칸 체크 (옮기기 중이면 옮기기 우선)
+    const canAssign = !mvB && !!assignBk && assignEligible.has(r.id);
+    const sameType = canAssign && r.typeId === assignBk!.typeId;
+    const assignMode = !mvB && !!assignBk;
+    const assignCls = assignMode
+      ? canAssign
+        ? sameType
+          ? "assign-ok"
+          : "assign-other"
+        : "assign-off"
+      : "";
     const mvAttr = mvB ? (mvOk ? { role: "button" as const, tabIndex: 0, "aria-label": `${r.no}호로 옮기기` } : { "aria-disabled": true }) : act;
     if (!b)
       return (
         <div
           key={r.id}
           {...mvAttr}
-          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
-          onClick={mvClick ?? (() => onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined }))}
+          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          onClick={
+            mvClick ??
+            (() => {
+              if (assignMode) {
+                if (canAssign) requestAssign(assignBk!, r.id);
+                return;
+              }
+              onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined });
+            })
+          }
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
+          {canAssign ? (
+            <label className="board-assign-check" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={false}
+                disabled={assignBusy}
+                aria-label={`${r.no}호에 배정${sameType ? "" : " (타입 다름)"}`}
+                onChange={() => requestAssign(assignBk!, r.id)}
+              />
+            </label>
+          ) : null}
           {head}
           {tline}
-          <div className="emt">{mvSame ? "같은 타입" : "빈 방"}</div>
+          <div className="emt">{mvSame ? "같은 타입" : sameType ? "같은 타입" : "빈 방"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
       );
@@ -570,12 +605,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
       ) : null;
     const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${no(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${no(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
+    // 배정 모드: 점유 칸은 체크 없음 · 흐리게만
+    const occAssignCls = assignMode ? "assign-off" : "";
     return (
       <div
         key={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
-        onClick={mvClick ?? (() => onOpen(b, selDate))}
+        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        onClick={
+          mvClick ??
+          (() => {
+            if (assignMode) return;
+            onOpen(b, selDate);
+          })
+        }
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
         {!cancelled && du.length ? (
@@ -861,35 +904,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
       const emptySel = selectedRoomId === r.id;
-      const canAssign = !!assignBk && assignEligible.has(r.id);
-      const sameType = canAssign && r.typeId === assignBk!.typeId;
-      const assignMode = !!assignBk;
       return (
         <div
           key={r.id}
           {...act}
-          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""} ${
-            assignMode ? (canAssign ? (sameType ? "assign-ok" : "assign-other") : "assign-off") : ""
-          }`}
-          onClick={() => {
-            if (assignMode) {
-              if (canAssign) requestAssign(assignBk!, r.id);
-              return;
-            }
-            selectRoom(r.id);
-          }}
+          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""}`}
+          onClick={() => selectRoom(r.id)}
         >
-          {canAssign ? (
-            <label className="now-assign-check" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="checkbox"
-                checked={false}
-                disabled={assignBusy}
-                aria-label={`${r.no}호에 배정${sameType ? "" : " (타입 다름)"}`}
-                onChange={() => requestAssign(assignBk!, r.id)}
-              />
-            </label>
-          ) : null}
           <div className="cell-body nowstack sparse">
             {head}
             <TypeLine t={t} />
@@ -931,35 +952,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       selectRoom(r.id);
     };
     const occupiedSel = selectedRoomId === r.id;
-    const canAssignOcc = !!assignBk && assignEligible.has(r.id);
-    const sameTypeOcc = canAssignOcc && r.typeId === assignBk!.typeId;
-    const assignModeOcc = !!assignBk;
     return (
       <div
         key={r.id}
         {...act}
-        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${
-          assignModeOcc ? (canAssignOcc ? (sameTypeOcc ? "assign-ok" : "assign-other") : "assign-off") : ""
-        }`}
-        onClick={() => {
-          if (assignModeOcc) {
-            if (canAssignOcc) requestAssign(assignBk!, r.id);
-            return;
-          }
-          selectRoom(r.id);
-        }}
+        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
+        onClick={() => selectRoom(r.id)}
       >
-        {canAssignOcc ? (
-          <label className="now-assign-check" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="checkbox"
-              checked={false}
-              disabled={assignBusy}
-              aria-label={`${r.no}호에 배정${sameTypeOcc ? "" : " (타입 다름)"}`}
-              onChange={() => requestAssign(assignBk!, r.id)}
-            />
-          </label>
-        ) : null}
         <div className="cell-body nowstack dense">
           {head}
           <TypeLine t={t} />
@@ -1065,18 +1064,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {buildingTabs}
-          {assignBk ? (
-            <div className="now-assign-banner" role="status">
-              <span>
-                <b>{assignBk.guestName}</b>
-                {` · ${typeLabel(L.types.get(assignBk.typeId))} · 현황 칸 체크 → 배정`}
-                {assignBk.nights ? ` · ${assignBk.nights}박` : ""}
-              </span>
-              <button type="button" className="btn sm line" onClick={() => setAssigningMode(null)}>
-                취소
-              </button>
-            </div>
-          ) : null}
           <div className="nowlayout">
             <div className="nowgrid">
               {multi && bScope === "all" ? null : null}
@@ -1326,6 +1313,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             )}
           </div>
         ) : null}
+        {!mvB && assignBk ? (
+          <div className="now-assign-banner" role="status">
+            <span>
+              <b>{assignBk.guestName}</b>
+              {` · ${typeLabel(L.types.get(assignBk.typeId))} · 배치 칸 체크 → 배정`}
+              {assignBk.nights ? ` · ${assignBk.nights}박` : ""}
+            </span>
+            <button type="button" className="btn sm line" onClick={() => setAssigningMode(null)}>
+              취소
+            </button>
+          </div>
+        ) : null}
         {buildingTabs}
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
@@ -1425,8 +1424,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       </span>
                     </div>
                     {isActive(b) && !readOnly ? (
-                      <button className="btn line sm" onClick={() => setAssigning(open ? null : b.id)}>
-                        {open ? "닫기" : "방 배정"}
+                      <button className="btn line sm" onClick={() => setAssigningMode(open ? null : b.id)}>
+                        {open ? "닫기" : "방배정"}
                       </button>
                     ) : null}
                   </div>

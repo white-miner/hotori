@@ -2079,7 +2079,7 @@ button.nowstatus { cursor: pointer; }
   min-height: 0;
 }
 .side-ua-pick .rchip { height: 26px; padding: 0 8px; font-size: 12px; }
-/* 「방배정」모드 — 칸 체크 · 그리드(.rooms) 규칙 건드리지 않음 */
+/* 「방배정」모드 — 「배치」칸 체크 · 그리드(.rooms) 규칙 건드리지 않음 · 현황엔 오버레이 없음 */
 .now-assign-banner {
   display: flex;
   align-items: center;
@@ -2093,33 +2093,33 @@ button.nowstatus { cursor: pointer; }
   font-size: 13px;
 }
 .now-assign-banner b { font-weight: 750; }
-.now-page .cell.assign-ok {
+.board-page:not(.now-page) .cell.assign-ok {
   outline: 2px solid var(--badge-info-border, #3b82f6);
   outline-offset: -2px;
 }
-.now-page .cell.assign-other {
+.board-page:not(.now-page) .cell.assign-other {
   outline: 2px dashed var(--badge-warn-border, #e8a317);
   outline-offset: -2px;
 }
-.now-page .cell.assign-off { opacity: 0.48; }
-.now-assign-check {
+.board-page:not(.now-page) .cell.assign-off { opacity: 0.48; }
+.board-assign-check {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 4;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   cursor: pointer;
 }
-.now-assign-check input {
-  width: 16px;
-  height: 16px;
+.board-assign-check input {
+  width: 14px;
+  height: 14px;
   margin: 0;
   cursor: pointer;
   accent-color: var(--badge-info, #2563eb);

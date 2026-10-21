@@ -161,9 +161,9 @@ export default function NowSidePanel({
     const p = L.plats.get(x.platformId);
     const glanceAmt = nowAmountGlance(x, p);
     const payG = simplePayGlance(x, isOnsite(p));
-    // Dense row + 「방배정」 → 「현황」 칸 체크박스 (칩 펼침/빈 존 금지)
+    // Dense row · 「방배정」→「배치」칸 체크 (칩 펼침/빈 존 금지 · 현황 좌표 유지)
     return (
-      <div key={x.id} className={`side-ua-row ${open ? "open assigning" : ""}`}>
+      <div key={x.id} className={`side-ua-row ${open ? "open" : ""}`}>
         <div className="side-ua-main">
           <button type="button" className="side-ua-info" onClick={() => onOpen(x, today)} disabled={readOnly}>
             <span className="side-ua-l1">
@@ -183,14 +183,13 @@ export default function NowSidePanel({
               type="button"
               className={`side-ua-assign ${open ? "on" : ""}`}
               aria-pressed={open}
-              aria-label={open ? "방배정 취소" : "방배정"}
+              aria-label={open ? "방배정 취소" : "방배정 · 배치로"}
               onClick={() => setAssigning(open ? null : x.id)}
             >
               {open ? "취소" : "방배정"}
             </button>
           ) : null}
         </div>
-        {open ? <p className="muted sm side-ua-hint">현황 칸 체크 → 바로 배정</p> : null}
       </div>
     );
   };
