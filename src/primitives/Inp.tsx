@@ -36,10 +36,12 @@ type GuestNamePhoneProps = {
   phone: string;
   onName: (v: string) => void;
   onPhone: (v: string) => void;
+  /** 현장·전화만 true — HTML required와 클라이언트 validateGuestPhone을 같이 맞춤 */
+  phoneRequired?: boolean;
 };
 
 /** Entry `.two` 이름 · 연락처 pair */
-export function GuestNamePhone({ nameRef, name, phone, onName, onPhone }: GuestNamePhoneProps) {
+export function GuestNamePhone({ nameRef, name, phone, onName, onPhone, phoneRequired = false }: GuestNamePhoneProps) {
   return (
     <div className="two">
       <Inp
@@ -59,6 +61,8 @@ export function GuestNamePhone({ nameRef, name, phone, onName, onPhone }: GuestN
         autoComplete="tel"
         maxLength={30}
         aria-label="연락처"
+        required={phoneRequired}
+        aria-required={phoneRequired}
       />
     </div>
   );

@@ -48,7 +48,18 @@ import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type PayKind, isOnsite, payLineMain, paySplit, splitLine, validatePayment } from "../shared/payment";
+import {
+  BOOK_PAY_LABEL,
+  BOOK_PAY_METHODS,
+  type BookPayMethod,
+  type PayKind,
+  isOnsite,
+  payLineMain,
+  paySplit,
+  splitLine,
+  validateGuestPhone,
+  validatePayment,
+} from "../shared/payment";
 import { ARRIVAL_LABEL, type Arrival, CARS_MAX, PLATE_MAX, autoCarFee, autoWalkOff, carFeeLine } from "../shared/parking";
 import { COUPON_AMOUNT_MAX, COUPON_MAX, cleanCoupons, payoutLine, payoutOf } from "../shared/fee";
 import { EXTRA_HOURS_MAX, autoTimeFee, clampHours, hasExtraTime, inTimeOf, outTimeOf, timeLine, turnoverWarnings } from "../shared/extratime";
@@ -1007,7 +1018,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // 신규: 저장과 같은 턴에 결제 줄 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
-      if (isOnsite(curPlat) && !guestPhone.trim()) return setPayErr("연락처를 적어 주세요.");
+      {
+        const phoneErr = validateGuestPhone(curPlat, guestPhone);
+        if (phoneErr) return setPayErr(phoneErr);
+      }
       if (draft.kind === "stay" && draft.stayMode === "long_stay") {
         const rv = validateLongStayRate(draft.longStayRate);
         if (rv) return setPayErr(rv);
@@ -1108,8 +1122,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
   async function save(again = false, override?: Status) {
     const draft = override ? { ...draftBase, status: override } : draftBase;
-    // 현장·전화만 연락처 필수 · OTA 등은 선택 (간단 예약과 동일)
-    if (isOnsite(curPlat) && !guestPhone.trim()) return setErr("연락처를 적어 주세요.");
+    // 현장·전화만 연락처 필수 · OTA 등은 선택 (간단 예약과 동일 · validateGuestPhone SoT)
+    {
+      const phoneErr = validateGuestPhone(curPlat, guestPhone);
+      if (phoneErr) return setErr(phoneErr);
+    }
     if (draft.kind === "stay" && draft.stayMode === "long_stay") {
       const rv = validateLongStayRate(draft.longStayRate);
       if (rv) return setErr(rv);
@@ -2123,7 +2140,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>
             이름<em>*</em> · 연락처{isOnsite(curPlat) ? <em>*</em> : null}
           </label>
-          <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
+          <GuestNamePhone
+            nameRef={nameRef}
+            name={guestName}
+            phone={guestPhone}
+            onName={setName}
+            onPhone={setPhone}
+            phoneRequired={isOnsite(curPlat)}
+          />
         </div>
 
         <div className="fld gfld">
