@@ -174,27 +174,38 @@ export default function NowSidePanel({
     const p = L.plats.get(x.platformId);
     const glanceAmt = nowAmountGlance(x, p);
     const payG = simplePayGlance(x, isOnsite(p));
+    // Dense row: facts + compact 「호실」 action. Path A assign stays reachable —
+    // never a full-height empty drop zone under each booking.
     return (
-      <div key={x.id} className={`now-ua-row side-ua-row ${open ? "open" : ""}`}>
-        <button type="button" className="nowli now-ua-item" onClick={() => onOpen(x, today)} disabled={readOnly}>
-          <span className="nowli-t ua">간단 예약</span>
-          <b>{x.guestName}</b>
-          <span className="muted sm">
-            {typeLabel(L.types.get(x.typeId))}
-            {x.nights ? ` · ${x.nights}박` : ""}
-            {x.groupName ? ` · ${x.groupName}` : ""}
-            {` · ${md(x.checkIn)} 입실`}
-            {glanceAmt ? ` · ${glanceAmt}` : ""}
-            {payG ? ` · ${payG}` : ""}
-          </span>
-        </button>
-        {isActive(x) && !readOnly ? (
-          <button type="button" className="nowext side" onClick={() => setAssigning(open ? null : x.id)}>
-            {open ? "닫기" : "호실 정하기"}
+      <div key={x.id} className={`side-ua-row ${open ? "open" : ""}`}>
+        <div className="side-ua-main">
+          <button type="button" className="side-ua-info" onClick={() => onOpen(x, today)} disabled={readOnly}>
+            <span className="side-ua-l1">
+              <b>{x.guestName}</b>
+              {glanceAmt ? <span className="side-ua-amt">{glanceAmt}</span> : null}
+            </span>
+            <span className="side-ua-l2 muted sm">
+              {typeLabel(L.types.get(x.typeId))}
+              {x.nights ? ` · ${x.nights}박` : ""}
+              {x.groupName ? ` · ${x.groupName}` : ""}
+              {` · ${md(x.checkIn)}`}
+              {payG ? ` · ${payG}` : ""}
+            </span>
           </button>
-        ) : null}
+          {isActive(x) && !readOnly ? (
+            <button
+              type="button"
+              className="side-ua-assign"
+              aria-expanded={open}
+              aria-label={open ? "호실 선택 닫기" : "호실 정하기"}
+              onClick={() => setAssigning(open ? null : x.id)}
+            >
+              {open ? "닫기" : "호실"}
+            </button>
+          ) : null}
+        </div>
         {open ? (
-          <div className="rpick now-ua-pick">
+          <div className="side-ua-pick rpick">
             {options.length ? (
               options.slice(0, 24).map((r) => (
                 <button
@@ -210,7 +221,7 @@ export default function NowSidePanel({
                 </button>
               ))
             ) : (
-              <span className="muted">그 기간에 빈 방이 없어요</span>
+              <span className="muted sm">그 기간에 빈 방이 없어요</span>
             )}
           </div>
         ) : null}
