@@ -2142,6 +2142,24 @@ button.nowstatus { cursor: pointer; }
 .modal.assign-type-modal .mb p { margin: 0 0 8px; }
 .assign-type-acts { justify-content: flex-end; gap: 10px; }
 .assign-type-acts .btn { min-width: 88px; }
+.modal.assign-co-modal { width: min(480px, 100%); }
+.assign-co-acts {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.assign-co-acts .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cta-gap);
+  min-width: 0;
+}
+.assign-co-relocate {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-chip);
+  margin-top: var(--space-3);
+}
 /* 예약 셸 — 간단·상세 공통 (Phase 2) · Entry chip/pill DNA */
 .modal.book-shell .mh { flex-wrap: wrap; gap: var(--space-3); }
 .modal.book-shell .book-mode { flex-shrink: 0; }
