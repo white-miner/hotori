@@ -1160,7 +1160,7 @@ export function useExpenses(hotelId: string, from: string, to: string) {
 // ---------- 객실 특이사항 (「현황」말풍선 · 인수인계용 room_memos) ----------
 interface RoomMemoRow {
   id: string;
-  room_id: string;
+  room_id: string | null;
   body: string;
   status: string;
   kind: string;
@@ -1171,7 +1171,7 @@ interface RoomMemoRow {
 const MEMO_COLS = "id,room_id,body,status,kind,resolved_at,created_at,updated_at";
 const fromMemoRow = (r: RoomMemoRow): RoomMemo => ({
   id: r.id,
-  roomId: r.room_id,
+  roomId: r.room_id?.trim() ? r.room_id.trim() : null,
   body: r.body,
   status: isRoomMemoStatus(r.status) ? r.status : "open",
   kind: isRoomMemoKind(r.kind) ? r.kind : "issue",
@@ -1229,8 +1229,9 @@ export function useRoomMemos(hotelId: string) {
       if (v) throw new Error(v);
       const status: RoomMemoStatus = d.status ?? "open";
       const kind: RoomMemoKind = d.kind ?? "issue";
+      const roomTrim = d.roomId?.trim() ?? "";
       const row = {
-        room_id: d.roomId.trim().slice(0, 40),
+        room_id: roomTrim ? roomTrim.slice(0, 40) : null,
         body: d.body.trim().slice(0, 120),
         kind,
         status,
