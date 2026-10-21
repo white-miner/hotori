@@ -65,29 +65,65 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const L = useMemo(() => lookups(s), [s]);
   const p = req.preset ?? {};
   const types = usableTypes(s.types).filter((t) => typeLabel(t));
-  const defaultTypeId = p.typeId ?? types[0]?.id ?? "";
+  const allPlacedInit = placedRooms(s);
+  /** 「현황」복수선택 / 단실 preset → Path B 호실 */
+  const presetRoomIds = (() => {
+    if (req.roomIds?.length) return [...req.roomIds];
+    if (p.roomId) return [p.roomId];
+    return [] as string[];
+  })();
+  const countsFromRooms = (ids: string[]) => {
+    const counts: Record<string, number> = {};
+    for (const rid of ids) {
+      const tid = allPlacedInit.find((r) => r.id === rid)?.typeId;
+      if (tid) counts[tid] = (counts[tid] ?? 0) + 1;
+    }
+    return counts;
+  };
+  const defaultTypeId =
+    p.typeId ??
+    (presetRoomIds[0] ? allPlacedInit.find((r) => r.id === presetRoomIds[0])?.typeId : undefined) ??
+    types[0]?.id ??
+    "";
 
   const [platformId, setPlatformId] = useState(() => defaultBookingPlatformId(s.platforms, p.platformId));
-  const [typeCounts, setTypeCounts] = useState<Record<string, number>>(() =>
-    defaultTypeId ? { [defaultTypeId]: 1 } : {},
-  );
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>(() => {
+    if (presetRoomIds.length) {
+      const c = countsFromRooms(presetRoomIds);
+      if (Object.values(c).some((n) => n > 0)) return c;
+    }
+    return defaultTypeId ? { [defaultTypeId]: 1 } : {};
+  });
   const [checkIn, setCheckIn] = useState(p.checkIn ?? today);
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
   const [guestName, setName] = useState("");
   const [guestPhone, setPhone] = useState("");
   const [guests, setGuests] = useState(1);
   const [rates, setRates] = useState<Record<string, string>>(() => {
-    const tid = defaultTypeId;
     const ci = p.checkIn ?? today;
     const fromPreset = p.nightRates?.flat ?? p.nightRates?.weekday ?? null;
-    if (fromPreset != null && fromPreset > 0 && tid) return { [tid]: String(fromPreset) };
-    const br = tid ? baseRateFor(s, tid, ci) : 0;
-    return tid && br > 0 ? { [tid]: String(br) } : {};
+    const seedIds = presetRoomIds.length
+      ? [...new Set(presetRoomIds.map((id) => allPlacedInit.find((r) => r.id === id)?.typeId).filter(Boolean) as string[])]
+      : defaultTypeId
+        ? [defaultTypeId]
+        : [];
+    const out: Record<string, string> = {};
+    for (const tid of seedIds) {
+      if (fromPreset != null && fromPreset > 0 && tid === (p.typeId ?? seedIds[0])) out[tid] = String(fromPreset);
+      else {
+        const br = baseRateFor(s, tid, ci);
+        if (br > 0) out[tid] = String(br);
+      }
+    }
+    return out;
   });
   const [priceUnset, setPriceUnset] = useState(!!p.priceUnset);
-  const [assignNow, setAssignNow] = useState(false); // Path B
-  const [roomIds, setRoomIds] = useState<string[]>([]);
-  const [otherRooms, setOtherRooms] = useState(false);
+  const [assignNow, setAssignNow] = useState(presetRoomIds.length > 0); // Path B · 현황 선택 시 ON
+  const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
+  const [otherRooms, setOtherRooms] = useState(
+    presetRoomIds.length > 1 &&
+      new Set(presetRoomIds.map((id) => allPlacedInit.find((r) => r.id === id)?.typeId)).size > 1,
+  );
   const [payMode, setPayMode] = useState<PayMode>("postpaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");

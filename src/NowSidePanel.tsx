@@ -49,7 +49,8 @@ interface Props {
   unassigned: Booking[];
   lateOut: Booking[];
   departing: Booking[];
-  selectedRoomId: string | null;
+  /** 「현황」선택 호실 (공실 복수 · 점유 단실) */
+  selectedRoomIds: string[];
   selectedBooking: Booking | null;
   mode: SideMode;
   onMode: (m: SideMode) => void;
@@ -59,7 +60,10 @@ interface Props {
   setAssigning: (id: string | null) => void;
   coBusy: string | null;
   onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
-  onSimple: (preset?: Partial<Booking>) => void;
+  onSimple: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
+  /** 공실 복수선택 → 간단 예약 Path B */
+  onBookVacant?: () => void;
+  bookCtaLabel?: string | null;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
   onMemo: (roomId: string) => void;
   nowOpts?: Parameters<typeof nowFlags>[2];
@@ -72,7 +76,7 @@ export default function NowSidePanel({
   unassigned,
   lateOut,
   departing,
-  selectedRoomId,
+  selectedRoomIds,
   selectedBooking,
   mode,
   onMode,
@@ -83,6 +87,8 @@ export default function NowSidePanel({
   coBusy,
   onOpen,
   onSimple,
+  onBookVacant,
+  bookCtaLabel,
   onCheckOut,
   onMemo,
   nowOpts,
@@ -99,20 +105,25 @@ export default function NowSidePanel({
   // E: 퇴실예정이 없으면 퇴실처리 존을 접음 (수동 펼침 가능)
   const showOutZone = outCount > 0 || outZoneOpen;
 
+  const selectedRoomId = selectedRoomIds.length === 1 ? selectedRoomIds[0] : selectedRoomIds[selectedRoomIds.length - 1] ?? null;
+  const multiVacant = selectedRoomIds.length > 1 && !selectedBooking;
   const selectedRoom: (Room & { typeId?: string | null }) | null = selectedRoomId
     ? (L.rooms.get(selectedRoomId) ?? allRooms(s).find((r) => r.id === selectedRoomId) ?? null)
     : null;
   const b = selectedBooking;
-  const roomLabel = selectedRoomId ? L.roomLabel(selectedRoomId) ?? selectedRoom?.no ?? selectedRoomId : null;
+  const roomLabels = selectedRoomIds.map(
+    (id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id,
+  );
+  const roomLabel = roomLabels.length ? roomLabels.map((n) => `${n}호`).join(", ") : null;
   const typeId = b?.typeId ?? selectedRoom?.typeId ?? null;
   const t = typeId ? L.types.get(typeId) : null;
   const f = b ? nowFlags(b, today, nowOpts) : null;
   const plat = b ? L.plats.get(b.platformId) : null;
   const amount = b ? nowAmountGlance(b, plat) : null;
   const ps = b && !b.priceUnset ? payState(b, plat) : null;
-  const glance = selectedRoomId ? glanceByRoom.get(selectedRoomId) : undefined;
+  const glance = selectedRoomId && !multiVacant ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
-    typeId && !b ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length : 0;
+    typeId && !b && !multiVacant ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length : 0;
 
   const nowliTone = (label: string, tentative?: boolean) => {
     if (tentative) return "tent";
@@ -226,17 +237,16 @@ export default function NowSidePanel({
 
       {mode === "room" ? (
         <div className="nowside-body nowside-room">
-          {!selectedRoomId ? (
-            <div className="muted sm nowempty-side">보드에서 객실을 고르면 상세가 여기에 보여요</div>
+          {!selectedRoomIds.length ? (
+            <div className="muted sm nowempty-side">공실을 여러 칸 고르면 예약하기 · 점유실은 단실 상세</div>
           ) : (
             <>
               <div className="nsel-head">
-                <div className="nsel-no">{roomLabel}호</div>
+                <div className="nsel-no">{roomLabel}</div>
                 <div className="nsel-sub">
-                  {typeLabel(t) || "타입 미정"}
-                  {f ? ` · ${kindLabel(f.kind)}` : " · 공실"}
-                  {f?.tentative ? " · 임시" : ""}
-                  {f?.longStay ? " · 장기" : ""}
+                  {multiVacant
+                    ? `공실 ${selectedRoomIds.length}실`
+                    : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
                 </div>
               </div>
               {b ? (
@@ -302,8 +312,8 @@ export default function NowSidePanel({
                 </div>
               ) : (
                 <div className="nsel-body">
-                  <div className="muted sm">비어 있음</div>
-                  {todayUaForType > 0 ? (
+                  <div className="muted sm">{multiVacant ? "선택한 공실" : "비어 있음"}</div>
+                  {!multiVacant && todayUaForType > 0 ? (
                     <p className="nsel-hint">
                       이 타입 오늘 입실 미배정 {todayUaForType}건 ·{" "}
                       <button type="button" className="linkish" onClick={() => onMode("simple")}>
@@ -312,16 +322,10 @@ export default function NowSidePanel({
                       에서 방배정
                     </p>
                   ) : null}
-                  {!readOnly ? (
+                  {!readOnly && bookCtaLabel && onBookVacant ? (
                     <div className="nsel-acts">
-                      <button
-                        type="button"
-                        className="btn sm dark"
-                        onClick={() =>
-                          onSimple({ kind: "stay", checkIn: today, roomId: selectedRoomId, typeId: typeId ?? undefined })
-                        }
-                      >
-                        이 방에 간단 예약
+                      <button type="button" className="btn sm dark" onClick={onBookVacant}>
+                        {bookCtaLabel}
                       </button>
                     </div>
                   ) : null}
