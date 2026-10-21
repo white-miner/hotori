@@ -16,6 +16,9 @@ import {
   daysBetween,
   fitSegments,
   legConflicts,
+  placementOf,
+  proposeRoomSwap,
+  type RoomSwapPlan,
   fullLegsOf,
   canEarlyOutToday,
   checkOut,
@@ -119,6 +122,7 @@ import {
   withPlannedCharges,
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
+import AssignSwapConfirm from "./AssignSwapConfirm";
 import { stopSellDatesForStay } from "../shared/salesCalendar";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, Inp, PriceInp, PriceRow, Stepper } from "./primitives";
 
@@ -759,13 +763,58 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setTentBusy(false);
     }
   };
-  /** 방 고르기 · 간단 예약(미배정). 방 지우면 임시도 끔 */
+  const [swapChoice, setSwapChoice] = useState<RoomSwapPlan | null>(null);
+  const [swapBusy, setSwapBusy] = useState(false);
+  /** 방 고르기 · 간단 예약(미배정). 방 지우면 임시도 끔 · 점유 방이면 맞교환 모달 */
   const pickRoom = (id: string | null) => {
+    if (id && roomId && id !== roomId && kind === "stay" && base && isActive(base) && !base.checkedOutAt) {
+      const live: Booking = {
+        ...base,
+        roomId,
+        segments: fitSegments(segs, roomId, nights),
+        checkIn,
+        nights,
+        typeId,
+        guestName,
+      };
+      const plan = proposeRoomSwap(data.bookings, live, id);
+      if (plan) {
+        setSwapChoice(plan);
+        return;
+      }
+    }
     setRoomId(id);
     if (!id) {
       setTentative(false);
       setSegs(null);
       setMv(null);
+    }
+  };
+  const doEntrySwap = async (plan: RoomSwapPlan) => {
+    if (swapBusy) return;
+    const aBefore = placementOf(plan.a);
+    const bBefore = placementOf(plan.b);
+    setSwapBusy(true);
+    try {
+      await data.setPlacement(plan.a.id, { roomId: null, segments: null });
+      try {
+        await data.setPlacement(plan.b.id, plan.bPlace);
+        await data.setPlacement(plan.a.id, plan.aPlace);
+      } catch (e) {
+        await data.setPlacement(plan.a.id, aBefore).catch(() => {});
+        await data.setPlacement(plan.b.id, bBefore).catch(() => {});
+        throw e;
+      }
+      setRoomId(plan.aPlace.roomId);
+      setSegs(plan.aPlace.segments);
+      setMv(null);
+      setSwapChoice(null);
+      notify(`${plan.a.guestName || "손님"} ↔ ${plan.b.guestName || "손님"} 맞교환했어요`);
+    } catch {
+      setInErr("맞교환하지 못했어요. 다시 해 주세요.");
+      setSwapChoice(null);
+    } finally {
+      setSwapBusy(false);
     }
   };
   const toggleNoClean = async () => {
@@ -1280,6 +1329,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     );
   }
   return (
+    <>
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
         className="modal book-shell"
@@ -2953,6 +3003,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
       </form>
     </div>
+    {swapChoice ? (
+      <AssignSwapConfirm
+        L={L}
+        plan={swapChoice}
+        busy={swapBusy}
+        onCancel={() => setSwapChoice(null)}
+        onConfirm={() => void doEntrySwap(swapChoice)}
+      />
+    ) : null}
+    </>
   );
 }
 

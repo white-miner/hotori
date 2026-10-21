@@ -786,6 +786,78 @@ export function checkedOutRoomOverlaps(bookings: Booking[], draft: Booking): Boo
     return mine.some((m) => other.some((o) => legsClash(m, o)));
   });
 }
+
+/** 활성 투숙끼리 방 맞교환 계획 (A→Y · B→X). 중간 밤 부분 이동은 MVP 제외. */
+export interface RoomSwapPlan {
+  a: Booking;
+  b: Booking;
+  fromRoomId: string;
+  toRoomId: string;
+  aPlace: Placement;
+  bPlace: Placement;
+}
+
+/**
+ * A를 toRoomId로 옮길 때 그 방을 쓰는 활성 숙박 B가 정확히 1건이고,
+ * A↔B 맞교환 후 제3자와 안 겹치면 계획을 돌려요. 아니면 null.
+ * · 퇴실완료만 겹침 → null (덮어쓰기 모달 경로)
+ * · 중간 밤부터 이동(whole=false) → null
+ * · 만실에서 602↔508 같은 통째 맞교환용
+ */
+export function proposeRoomSwap(
+  bookings: Booking[],
+  a: Booking,
+  toRoomId: string,
+  night?: string,
+): RoomSwapPlan | null {
+  if (a.kind !== "stay" || !occupiesRoom(a) || !toRoomId) return null;
+  const night0 = night ?? a.checkIn;
+  const w = boardMoveWindow(a, night0);
+  if (!w.whole || w.nights <= 0) return null;
+  const fromRoomId = roomOnNight(a, night0) ?? a.roomId;
+  if (!fromRoomId || fromRoomId === toRoomId) return null;
+
+  const peers = bookings.filter((b) => {
+    if (b.id === a.id || !occupiesRoom(b) || b.kind !== "stay") return false;
+    return legsOf(b).some((l) => l.roomId === toRoomId && nightsOverlap(l, w));
+  });
+  if (peers.length !== 1) return null;
+  const b = peers[0];
+
+  const aPlace = boardMove(a, night0, toRoomId);
+  const bPlace = boardMove(b, b.checkIn, fromRoomId);
+  const next = bookings.map((x) => {
+    if (x.id === a.id) return { ...x, roomId: aPlace.roomId, segments: aPlace.segments };
+    if (x.id === b.id) return { ...x, roomId: bPlace.roomId, segments: bPlace.segments };
+    return x;
+  });
+  const a2 = next.find((x) => x.id === a.id)!;
+  const b2 = next.find((x) => x.id === b.id)!;
+  if (legConflicts(next, a2).length || legConflicts(next, b2).length) return null;
+
+  return { a, b, fromRoomId, toRoomId, aPlace, bPlace };
+}
+
+/**
+ * 객실 이동 중 맞교환 가능 방 → plan.
+ * boardMoveTargets(빈 방)와 겹치지 않음 · 점유 칸만.
+ */
+export function boardSwapTargets(
+  s: HotelSettings,
+  bookings: Booking[],
+  a: Booking,
+  night: string,
+): Map<string, RoomSwapPlan> {
+  const out = new Map<string, RoomSwapPlan>();
+  if (a.kind !== "stay") return out;
+  const free = boardMoveTargets(s, bookings, a, night);
+  for (const r of allRooms(s)) {
+    if (free.has(r.id)) continue;
+    const plan = proposeRoomSwap(bookings, a, r.id, night);
+    if (plan) out.set(r.id, plan);
+  }
+  return out;
+}
 /** 구간 둘이 같은 방에서 밤이 겹치는지 */
 export function legsClash(a: Leg, b: Leg): boolean {
   return !!a.roomId && a.roomId === b.roomId && a.checkIn < addDays(b.checkIn, b.nights) && b.checkIn < addDays(a.checkIn, a.nights);
