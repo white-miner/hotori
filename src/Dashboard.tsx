@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, TriangleAlert } from "lucide-react";
 import NowNightPopover from "./NowNightPopover";
 import AssignRoomPick from "./AssignRoomPick";
+import AssignTypeConfirm from "./AssignTypeConfirm";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
 import {
@@ -27,6 +28,7 @@ import {
   type Booking,
   addDays,
   allOverbookings,
+  allRooms,
   boardTabFromHash,
   type StockPeriod,
   clampRange,
@@ -55,6 +57,7 @@ import {
   won,
   legsOf,
 } from "../shared/ledger";
+import { saveFailMessage } from "../shared/errors";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
@@ -336,6 +339,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
   const [assigning, setAssigning] = useState<string | null>(null);
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [typeConfirm, setTypeConfirm] = useState<{ booking: Booking; roomId: string } | null>(null);
+  /** 「방배정」모드: 본관·별관 한 풀로 보이게 건물 탭=전체 */
+  const setAssigningMode = (id: string | null) => {
+    setAssigning(id);
+    setTypeConfirm(null);
+    if (id) {
+      setSideMode("simple");
+      if (multi) setBTab("all");
+    }
+  };
   // ---------- 객실 배치에서 옮기기 ----------
   const mvB = !readOnly && move ? (bookings.find((x) => x.id === move.id && isActive(x)) ?? null) : null;
   const mvNight = mvB ? (mvB.kind === "dayuse" ? mvB.checkIn : move!.night) : null;
@@ -430,14 +444,72 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setSelDate(d);
     setTab("rooms");
   };
-  const assign = (b: Booking, roomId: string) =>
-    data
-      .patchBooking(b.id, { roomId })
-      .then(() => {
-        setAssigning(null);
-        notify(`${b.guestName} 님 → ${L.roomLabel(roomId)}호`);
-      })
-      .catch(() => notify("방을 배정하지 못했어요"));
+
+  const assignBk = useMemo(() => {
+    if (!assigning) return null;
+    return bookings.find((x) => x.id === assigning && isActive(x) && !x.roomId) ?? null;
+  }, [assigning, bookings]);
+
+  const assignFree = useMemo(
+    () => (assignBk ? freeRooms(s, bookings, assignBk) : null),
+    [assignBk, s, bookings],
+  );
+
+  /** 기간 빈 방 전부(동·이타입). 점유 칸은 제외. */
+  const assignEligible = useMemo(() => {
+    if (!assignFree) return new Set<string>();
+    return new Set(allRooms(s).filter((r) => assignFree.has(r.id)).map((r) => r.id));
+  }, [assignFree, s]);
+
+  useEffect(() => {
+    if (assigning && !assignBk) setAssigning(null);
+  }, [assigning, assignBk]);
+
+  useEffect(() => {
+    if (!assigning) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (typeConfirm) setTypeConfirm(null);
+        else setAssigningMode(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [assigning, typeConfirm, multi]);
+
+  const commitAssign = async (b: Booking, roomId: string) => {
+    if (assignBusy) return;
+    setAssignBusy(true);
+    setTypeConfirm(null);
+    try {
+      await data.patchBooking(b.id, { roomId });
+      notify(`${b.guestName} 님 → ${L.roomLabel(roomId)}호`);
+      const siblings = b.groupId
+        ? bookings.filter((u) => u.id !== b.id && u.groupId === b.groupId && isActive(u) && !u.roomId)
+        : [];
+      if (siblings.length) setAssigningMode(siblings[0].id);
+      else setAssigningMode(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "방을 배정하지 못했어요"));
+    } finally {
+      setAssignBusy(false);
+    }
+  };
+
+  /** 동타입=즉시 · 이타입=승인 모달 (칩·체크 공통) */
+  const requestAssign = (b: Booking, roomId: string) => {
+    if (readOnly || assignBusy) return;
+    const room = L.rooms.get(roomId) ?? allRooms(s).find((r) => r.id === roomId);
+    if (!room) {
+      notify("방을 찾지 못했어요");
+      return;
+    }
+    if ((room.typeId ?? null) === (b.typeId ?? null)) {
+      void commitAssign(b, roomId);
+      return;
+    }
+    setTypeConfirm({ booking: b, roomId });
+  };
 
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
@@ -789,13 +861,35 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
       const emptySel = selectedRoomId === r.id;
+      const canAssign = !!assignBk && assignEligible.has(r.id);
+      const sameType = canAssign && r.typeId === assignBk!.typeId;
+      const assignMode = !!assignBk;
       return (
         <div
           key={r.id}
           {...act}
-          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""}`}
-          onClick={() => selectRoom(r.id)}
+          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""} ${
+            assignMode ? (canAssign ? (sameType ? "assign-ok" : "assign-other") : "assign-off") : ""
+          }`}
+          onClick={() => {
+            if (assignMode) {
+              if (canAssign) requestAssign(assignBk!, r.id);
+              return;
+            }
+            selectRoom(r.id);
+          }}
         >
+          {canAssign ? (
+            <label className="now-assign-check" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={false}
+                disabled={assignBusy}
+                aria-label={`${r.no}호에 배정${sameType ? "" : " (타입 다름)"}`}
+                onChange={() => requestAssign(assignBk!, r.id)}
+              />
+            </label>
+          ) : null}
           <div className="cell-body nowstack sparse">
             {head}
             <TypeLine t={t} />
@@ -837,13 +931,35 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       selectRoom(r.id);
     };
     const occupiedSel = selectedRoomId === r.id;
+    const canAssignOcc = !!assignBk && assignEligible.has(r.id);
+    const sameTypeOcc = canAssignOcc && r.typeId === assignBk!.typeId;
+    const assignModeOcc = !!assignBk;
     return (
       <div
         key={r.id}
         {...act}
-        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""}`}
-        onClick={() => selectRoom(r.id)}
+        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${
+          assignModeOcc ? (canAssignOcc ? (sameTypeOcc ? "assign-ok" : "assign-other") : "assign-off") : ""
+        }`}
+        onClick={() => {
+          if (assignModeOcc) {
+            if (canAssignOcc) requestAssign(assignBk!, r.id);
+            return;
+          }
+          selectRoom(r.id);
+        }}
       >
+        {canAssignOcc ? (
+          <label className="now-assign-check" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={false}
+              disabled={assignBusy}
+              aria-label={`${r.no}호에 배정${sameTypeOcc ? "" : " (타입 다름)"}`}
+              onChange={() => requestAssign(assignBk!, r.id)}
+            />
+          </label>
+        ) : null}
         <div className="cell-body nowstack dense">
           {head}
           <TypeLine t={t} />
@@ -949,6 +1065,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {buildingTabs}
+          {assignBk ? (
+            <div className="now-assign-banner" role="status">
+              <span>
+                <b>{assignBk.guestName}</b>
+                {` · ${typeLabel(L.types.get(assignBk.typeId))} · 현황 칸 체크 → 배정`}
+                {assignBk.nights ? ` · ${assignBk.nights}박` : ""}
+              </span>
+              <button type="button" className="btn sm line" onClick={() => setAssigningMode(null)}>
+                취소
+              </button>
+            </div>
+          ) : null}
           <div className="nowlayout">
             <div className="nowgrid">
               {multi && bScope === "all" ? null : null}
@@ -972,7 +1100,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               today={today}
               s={s}
               L={L}
-              bookings={bookings}
               unassigned={nowSide.unassigned}
               lateOut={nowSide.lateOut}
               departing={nowSide.departing}
@@ -982,11 +1109,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onMode={setSideMode}
               glanceByRoom={glanceByRoom}
               readOnly={readOnly}
-              multi={multi}
               assigning={assigning}
-              setAssigning={setAssigning}
+              setAssigning={setAssigningMode}
               coBusy={coBusy}
-              onAssign={(bk, roomId) => void assign(bk, roomId)}
               onOpen={onOpen}
               onSimple={onSimple}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
@@ -1038,8 +1163,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           notify={notify}
         />
       ) : null}
+      {typeConfirm ? (
+        <AssignTypeConfirm
+          L={L}
+          bookedTypeId={typeConfirm.booking.typeId}
+          roomTypeId={(L.rooms.get(typeConfirm.roomId) ?? allRooms(s).find((r) => r.id === typeConfirm.roomId))?.typeId}
+          roomLabel={L.roomLabel(typeConfirm.roomId) ?? typeConfirm.roomId}
+          guestName={typeConfirm.booking.guestName}
+          onCancel={() => setTypeConfirm(null)}
+          onApprove={() => void commitAssign(typeConfirm.booking, typeConfirm.roomId)}
+        />
+      ) : null}
     </>
-    );
+  );
   }
 
   if (tab === "stock")
@@ -1124,6 +1260,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
 
   return (
+    <>
     <main className="page board-page">
       <div className="main">
         {tabs}
@@ -1301,7 +1438,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                         free={free}
                         typeId={b.typeId}
                         multi={multi}
-                        onPick={(roomId) => void assign(b, roomId)}
+                        onPick={(roomId) => requestAssign(b, roomId)}
                       />
                     </div>
                   ) : null}
@@ -1329,5 +1466,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
       </aside>
     </main>
+    {typeConfirm ? (
+      <AssignTypeConfirm
+        L={L}
+        bookedTypeId={typeConfirm.booking.typeId}
+        roomTypeId={(L.rooms.get(typeConfirm.roomId) ?? allRooms(s).find((r) => r.id === typeConfirm.roomId))?.typeId}
+        roomLabel={L.roomLabel(typeConfirm.roomId) ?? typeConfirm.roomId}
+        guestName={typeConfirm.booking.guestName}
+        onCancel={() => setTypeConfirm(null)}
+        onApprove={() => void commitAssign(typeConfirm.booking, typeConfirm.roomId)}
+      />
+    ) : null}
+    </>
   );
 }

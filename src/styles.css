@@ -85,6 +85,8 @@ svg { display: block; flex: none; }
 .btn:hover { background: var(--hover); }
 .btn.red { background: var(--red); color: #fff; }
 .btn.red:hover { background: var(--red-d); }
+.btn.green { background: var(--badge-sell); color: #fff; }
+.btn.green:hover { filter: brightness(0.92); }
 .btn.line { background: #fff; border: 1px solid var(--line); }
 .btn.line:hover { background: var(--panel2); }
 .btn.sm { height: 30px; font-size: 12px; padding: 0 12px; }
@@ -2058,6 +2060,17 @@ button.nowstatus { cursor: pointer; }
   white-space: nowrap;
 }
 .side-ua-assign:hover { background: #f4f4f4; }
+.side-ua-assign.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.side-ua-assign.on:hover { background: #333; color: #fff; }
+.side-ua-hint {
+  margin: 0 8px 6px;
+  font-size: 11px;
+  line-height: 1.3;
+}
 .side-ua-pick {
   margin: 0 6px 6px;
   padding: 2px 0 0;
@@ -2066,6 +2079,64 @@ button.nowstatus { cursor: pointer; }
   min-height: 0;
 }
 .side-ua-pick .rchip { height: 26px; padding: 0 8px; font-size: 12px; }
+/* 「방배정」모드 — 칸 체크 · 그리드(.rooms) 규칙 건드리지 않음 */
+.now-assign-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--badge-info-s, #eef5ff);
+  border: 1px solid var(--badge-info-border, #8bb4e8);
+  font-size: 13px;
+}
+.now-assign-banner b { font-weight: 750; }
+.now-page .cell.assign-ok {
+  outline: 2px solid var(--badge-info-border, #3b82f6);
+  outline-offset: -2px;
+}
+.now-page .cell.assign-other {
+  outline: 2px dashed var(--badge-warn-border, #e8a317);
+  outline-offset: -2px;
+}
+.now-page .cell.assign-off { opacity: 0.48; }
+.now-assign-check {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+.now-assign-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--badge-info, #2563eb);
+}
+.dim.assign-type-dim {
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+.modal.assign-type-modal {
+  width: min(420px, 100%);
+  padding: 22px 24px 18px;
+}
+.modal.assign-type-modal .mb { margin-bottom: 16px; line-height: 1.45; font-size: 14px; }
+.modal.assign-type-modal .mb p { margin: 0 0 8px; }
+.assign-type-acts { justify-content: flex-end; gap: 10px; }
+.assign-type-acts .btn { min-width: 88px; }
 /* 예약 셸 — 간단·상세 공통 (Phase 2) · Entry chip/pill DNA */
 .modal.book-shell .mh { flex-wrap: wrap; gap: var(--space-3); }
 .modal.book-shell .book-mode { flex-shrink: 0; }
