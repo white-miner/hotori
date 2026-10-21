@@ -26,6 +26,7 @@ import {
 import { xlsx } from "../shared/xlsx";
 import type { ExpenseDraft, HotelData, VendorDraft } from "./data";
 import { useExpenseVendors, useExpenses } from "./data";
+import { Inp } from "./primitives/Inp";
 import { DateChip } from "./ui";
 
 const M_KEY = "hotori.expenseMethod";
@@ -87,9 +88,14 @@ export function ExpenseModal({
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const memoRef = useRef<HTMLInputElement>(null);
+  const newVenRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     memoRef.current?.focus();
   }, []);
+  useEffect(() => {
+    if (!showNewVen) return;
+    newVenRef.current?.focus();
+  }, [showNewVen]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -242,22 +248,23 @@ export function ExpenseModal({
           ) : null}
           {showNewVen ? (
             <div className="exven-new">
-              <input
-                className="inp"
-                placeholder="거래처 이름"
+              <Inp
+                ref={newVenRef}
+                placeholder="예: ○○마트"
                 maxLength={EXPENSE_VENDOR_NAME_MAX}
                 value={newVenName}
                 onChange={(e) => setNewVenName(e.target.value)}
                 aria-label="새 거래처 이름"
+                autoComplete="off"
               />
-              <div className="chips">
+              <div className="chips" role="group" aria-label="거래처 종류">
                 {VENDOR_TYPES.map((t) => (
                   <button type="button" key={t} className={`chip sm ${newVenType === t ? "on" : ""}`} onClick={() => setNewVenType(t)}>
                     {VENDOR_TYPE_LABEL[t]}
                   </button>
                 ))}
               </div>
-              <button type="button" className="btn sm red" disabled={busy} onClick={() => void createVendor()}>
+              <button type="button" className="btn sm red" disabled={busy || !newVenName.trim()} onClick={() => void createVendor()}>
                 거래처 저장
               </button>
             </div>
