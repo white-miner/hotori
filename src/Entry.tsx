@@ -2677,7 +2677,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </ChipGroup>
           {kind === "stay" && roomId === null ? (
             <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
-              미배정 · 「지금」에서 호실 정하기
+              미배정 · 「현황」에서 호실 정하기
             </div>
           ) : null}
         </div>

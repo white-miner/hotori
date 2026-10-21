@@ -78,9 +78,9 @@ export interface EntryRequest {
   preset?: Partial<Booking>; // 새로 적기
   n?: number;
   night?: string; // 객실 배치에서 열었으면 그 밤 (위에 '객실 이동' 단추)
-  /** 「지금」 빠른 액션: 예약 창을 열고 1박 연장 패널을 바로 펴요 */
+  /** 「현황」 빠른 액션: 예약 창을 열고 1박 연장 패널을 바로 펴요 */
   openExtend?: boolean;
-  /** 「지금」 사이드: +추가금 시트 바로 펴요 (1박 연장과 분리) */
+  /** 「현황」 사이드: +추가금 시트 바로 펴요 (1박 연장과 분리) */
   openSurcharge?: boolean;
   /** 간단 예약 축약 폼 (미배정/즉시 배정) */
   simple?: boolean;
@@ -121,7 +121,7 @@ function Shell({ hotelId, email }: { hotelId: string; email: string }) {
     setView(v);
     setMenu(false);
   };
-  // 로고 → 처음 화면: 현황판 › 「지금」(현장) · 오늘, 열린 창·검색·필터를 닫고 비워요 (새로 고침 없이)
+  // 로고 → 처음 화면: 현황판 › 「현황」(현장) · 오늘, 열린 창·검색·필터를 닫고 비워요 (새로 고침 없이)
   const [home, setHome] = useState(0);
   const goHome = () => {
     const d = businessDate();

@@ -1157,7 +1157,7 @@ export function useExpenses(hotelId: string, from: string, to: string) {
   return { list, error, save, remove, refresh };
 }
 
-// ---------- 객실 특이사항 (「지금」말풍선 · 인수인계용 room_memos) ----------
+// ---------- 객실 특이사항 (「현황」말풍선 · 인수인계용 room_memos) ----------
 interface RoomMemoRow {
   id: string;
   room_id: string;

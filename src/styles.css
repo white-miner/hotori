@@ -1421,7 +1421,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .beo.ncx.on, .chip.ncx.on { border-color: #c43c28; background: #ffe8e2; color: #7a180c; }
 .beo.cout.on { border-color: #1a5f3a; background: #e6f5ec; color: #0f3d26; }
 .nowext.nowco { border-color: #1a5f3a; color: #0f3d26; font-weight: 800; }
-/* 「지금」 칸: 정보 스택 + 하단 단일 상태 */
+/* 「현황」 칸: 정보 스택 + 하단 단일 상태 */
 .nowfacts { align-items: center; gap: 6px; flex-wrap: wrap; }
 .nowchips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
 .nowchip {
@@ -1441,7 +1441,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 }
 .nowchip.soft { font-weight: 700; color: var(--ink3); background: #f7f7f7; }
 .nowchip.nownights { align-self: flex-start; }
-/* 「지금」: 점유 밤 날짜 (탭 → 캘린더) */
+/* 「현황」: 점유 밤 날짜 (탭 → 캘린더) */
 .nowchip.nowdate {
   font-family: var(--num);
   color: var(--ink);
@@ -1595,12 +1595,12 @@ button.nowstatus { cursor: pointer; }
 .gline-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .gline-row .gl-lab { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .gline-row .gl-lab b { font-size: 13.5px; }
-/* ---------- 「지금」 현장 현황 ---------- */
-/* board-page의 오른쪽 .side 칸(372px)은 「지금」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
+/* ---------- 「현황」 현장 현황 ---------- */
+/* board-page의 오른쪽 .side 칸(372px)은 「현황」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
-/* 타입 홀드 입구·출구: 「지금」 미배정 패널 (한눈에보다 먼저·크게) */
+/* 타입 홀드 입구·출구: 「현황」 미배정 패널 (운영보다 먼저·크게) */
 .now-ua {
   margin: 0 0 14px;
   padding: 12px 14px 14px;
@@ -1651,7 +1651,7 @@ button.nowstatus { cursor: pointer; }
 .modal.simple-book .fld.simple-nights { align-items: start; }
 .modal.simple-book .fld.simple-nights > label { padding-top: var(--space-3); }
 .simple-price { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-/* 배치 보드(.rooms/.cell)와 공유 클래스 → 「지금」만 ~2× 발자국 (글자는 거의 그대로) */
+/* 배치 보드(.rooms/.cell)와 공유 클래스 → 「현황」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }
 .now-page .rooms {
@@ -1738,7 +1738,7 @@ button.nowstatus { cursor: pointer; }
   box-shadow: inset 3px 0 0 #c43c28, inset 0 0 0 1px var(--nk-ring);
 }
 .nowcell .nklab { font-size: 11px; font-weight: 750; }
-/* 「지금」특이사항 말풍선 — 미리보기 + 유리 사각 · 호수(.no)는 절대 안 먹음 */
+/* 「현황」특이사항 말풍선 — 미리보기 + 유리 사각 · 호수(.no)는 절대 안 먹음 */
 .now-page .cell .r1 {
   gap: 5px;
   min-width: 0;
