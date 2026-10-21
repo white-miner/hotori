@@ -3,7 +3,7 @@
  * 다날짜 선택 → 일괄 요금·판매중지 · 「판매」뱃지 · 예약/재고 · 간단 예약 Path A.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Ban, CalendarPlus, Check, X } from "lucide-react";
+import { Ban, CalendarPlus, Check, ChevronDown, ChevronUp, X } from "lucide-react";
 import {
   type Booking,
   type HotelSettings,
@@ -12,6 +12,7 @@ import {
   stockLevel,
   typeLabel,
   weekday,
+  weekStart,
   won,
 } from "../shared/ledger";
 import {
@@ -83,10 +84,39 @@ export default function SalesCalendar({
   const [typeEdit, setTypeEdit] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
   const types = useMemo(
     () => s.types.filter((t) => (totals.get(t.id) ?? 0) > 0 || (!scopeId && typeLabel(t))),
     [s.types, totals, scopeId],
   );
+
+  /** 월~일 주 밴드 — 이번 주가 첫 줄, 지난 주는 접힘 */
+  const weekBands = useMemo(() => {
+    const map = new Map<string, string[]>();
+    const order: string[] = [];
+    for (const d of viewDates) {
+      const ws = weekStart(d);
+      let list = map.get(ws);
+      if (!list) {
+        list = [];
+        map.set(ws, list);
+        order.push(ws);
+      }
+      list.push(d);
+    }
+    return order.map((start) => ({ start, dates: map.get(start)! }));
+  }, [viewDates]);
+
+  const todayWeek = weekStart(today);
+  const pastWeeks = useMemo(() => weekBands.filter((w) => w.start < todayWeek), [weekBands, todayWeek]);
+  const liveWeeks = useMemo(() => weekBands.filter((w) => w.start >= todayWeek), [weekBands, todayWeek]);
+  /** 오늘이 창에 있을 때만 지난 주 접기 — 과거만 보면 전부 펼침 */
+  const collapsePast = pastWeeks.length > 0 && liveWeeks.length > 0;
+  const visibleWeeks = collapsePast ? (pastOpen ? [...pastWeeks, ...liveWeeks] : liveWeeks) : weekBands;
+
+  useEffect(() => {
+    setPastOpen(false);
+  }, [viewDates[0], viewDates[viewDates.length - 1]]);
 
   /** 타입별 창 안 최소 판매가능 칸 — 한눈에 */
   const glance = useMemo(() => {
@@ -192,76 +222,96 @@ export default function SalesCalendar({
           <div className="b-note">미배정 {unassigned}건은 호텔 전체 재고에서만 차감돼요 · 건물 탭에서는 '전체'에만 보여요.</div>
         ) : null}
 
-        <div ref={wideRef} className="sales-dates" role="list" aria-label="숙박일별 타입 재고">
-          {viewDates.map((d) => {
-            const we = isWeekendNight(d, s.specialDates);
-            const dayWe = ["토", "일"].includes(weekday(d));
-            const on = picked.includes(d);
-            return (
-              <section
-                key={d}
-                className={`sales-day ${d === selDate ? "sel" : ""} ${d === today ? "td" : ""} ${dayWe || we ? "we" : ""} ${weekday(d) === "토" ? "sa" : ""} ${weekday(d) === "일" ? "su" : ""} ${on ? "pick" : ""}`}
-                role="listitem"
-              >
-                <button
-                  type="button"
-                  className="sales-day-h"
-                  onClick={() => toggleDate(d)}
-                  aria-pressed={on}
-                  title={readOnly ? dayLabel(d) : on ? "선택 해제" : "날짜 선택 (일괄 적용)"}
-                  disabled={readOnly}
-                >
-                  <b>{md(d)}</b>
-                  <span>{d === today ? "오늘" : weekday(d)}</span>
-                  {on ? (
-                    <span className="sales-day-check" aria-hidden>
-                      <Check size={12} strokeWidth={2.6} />
-                    </span>
-                  ) : null}
-                </button>
-                <div className="sales-day-types">
-                  {types.map((t) => {
-                    const total = totals.get(t.id) ?? 0;
-                    const rem = viewTable.get(t.id)?.get(d) ?? 0;
-                    const booked = bookedCount(total, rem);
-                    const stopped = isStopSell(s, t.id, d);
-                    const sell = sellableRemaining(rem, stopped);
-                    const open = isSellOpen(rem, stopped);
-                    const rate = baseRateFor(s, t.id, d);
-                    const lv = stopped ? "stop" : stockLevel(rem, total, s.lowThreshold);
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        className={`sales-tcard lv-${lv}`}
-                        onClick={() => setCell({ typeId: t.id, date: d })}
-                        title={`${dayLabel(d)} · ${typeLabel(t)} · 예약 ${booked} / 재고 ${rem} · ${stopped ? "판매중지" : open ? "판매" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
-                      >
-                        <span className="sales-tcard-type">
-                          <TypeBadge t={t} />
-                          {open ? <span className="sales-badge-sell">판매</span> : null}
-                          {stopped ? (
-                            <span className="sales-badge-stop">
-                              <Ban size={11} strokeWidth={2.4} />
-                              중지
+        <div ref={wideRef} className="sales-dates" aria-label="숙박일별 타입 재고">
+          {collapsePast ? (
+            <button
+              type="button"
+              className="sales-past-toggle"
+              aria-expanded={pastOpen}
+              onClick={() => setPastOpen((o) => !o)}
+            >
+              {pastOpen ? <ChevronUp size={14} strokeWidth={2.4} /> : <ChevronDown size={14} strokeWidth={2.4} />}
+              <span>지난 주 {pastWeeks.length}주</span>
+            </button>
+          ) : null}
+          {visibleWeeks.map((band) => (
+            <div
+              key={band.start}
+              className={`sales-week${band.start === todayWeek ? " cur" : ""}${band.start < todayWeek ? " past-w" : ""}`}
+              role="list"
+            >
+              {band.dates.map((d) => {
+                const we = isWeekendNight(d, s.specialDates);
+                const dayWe = ["토", "일"].includes(weekday(d));
+                const on = picked.includes(d);
+                const past = d < today;
+                return (
+                  <section
+                    key={d}
+                    className={`sales-day${past ? " past" : ""}${d === selDate ? " sel" : ""}${d === today ? " td" : ""}${dayWe || we ? " we" : ""}${weekday(d) === "토" ? " sa" : ""}${weekday(d) === "일" ? " su" : ""}${on ? " pick" : ""}`}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      className="sales-day-h"
+                      onClick={() => toggleDate(d)}
+                      aria-pressed={on}
+                      title={readOnly ? dayLabel(d) : on ? "선택 해제" : "날짜 선택 (일괄 적용)"}
+                      disabled={readOnly}
+                    >
+                      <b>{md(d)}</b>
+                      <span>{d === today ? "오늘" : weekday(d)}</span>
+                      {on ? (
+                        <span className="sales-day-check" aria-hidden>
+                          <Check size={12} strokeWidth={2.6} />
+                        </span>
+                      ) : null}
+                    </button>
+                    <div className="sales-day-types">
+                      {types.map((t) => {
+                        const total = totals.get(t.id) ?? 0;
+                        const rem = viewTable.get(t.id)?.get(d) ?? 0;
+                        const booked = bookedCount(total, rem);
+                        const stopped = isStopSell(s, t.id, d);
+                        const sell = sellableRemaining(rem, stopped);
+                        const open = isSellOpen(rem, stopped);
+                        const rate = baseRateFor(s, t.id, d);
+                        const lv = stopped ? "stop" : stockLevel(rem, total, s.lowThreshold);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className={`sales-tcard lv-${lv}`}
+                            onClick={() => setCell({ typeId: t.id, date: d })}
+                            title={`${dayLabel(d)} · ${typeLabel(t)} · 예약 ${booked} / 재고 ${rem} · ${stopped ? "판매중지" : open ? "판매" : `${sell}칸`} · ${rate ? won(rate) + "원" : "요금 미정"}`}
+                          >
+                            <span className="sales-tcard-type">
+                              <TypeBadge t={t} />
+                              {open ? <span className="sales-badge-sell">판매</span> : null}
+                              {stopped ? (
+                                <span className="sales-badge-stop">
+                                  <Ban size={11} strokeWidth={2.4} />
+                                  중지
+                                </span>
+                              ) : null}
                             </span>
-                          ) : null}
-                        </span>
-                        <span className="sales-tcard-stock num">
-                          <span className="sales-booked">예약 {booked < 0 ? `−${-booked}` : booked}</span>
-                          <span className="sales-stock-sep"> / </span>
-                          <span className="sales-remain">재고 {rem < 0 ? `−${-rem}` : rem}</span>
-                        </span>
-                        <span className="sales-tcard-meta">
-                          <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+                            <span className="sales-tcard-stock num">
+                              <span className="sales-booked">예약 {booked < 0 ? `−${-booked}` : booked}</span>
+                              <span className="sales-stock-sep"> / </span>
+                              <span className="sales-remain">재고 {rem < 0 ? `−${-rem}` : rem}</span>
+                            </span>
+                            <span className="sales-tcard-meta">
+                              <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ))}
         </div>
         <p className="stock-hint">
           {readOnly
