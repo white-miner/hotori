@@ -1212,8 +1212,10 @@ export function useRoomMemos(hotelId: string) {
       clearTimeout(t);
       t = setTimeout(() => void refresh(), 250);
     };
+    // 채널명은 인스턴스마다 고유해야 함 — 같은 이름이면 subscribe() 뒤 .on()이 throw → 빈 화면
+    // (#64 App Shell + Dashboard 이중 useRoomMemos가 원인)
     const ch = supabase
-      .channel(`room-memos-${hotelId}`)
+      .channel(`room-memos-${hotelId}-${crypto.randomUUID()}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "room_memos", filter: `hotel_id=eq.${hotelId}` }, soon)
       .subscribe();
     const poll = setInterval(() => document.visibilityState === "visible" && void refresh(), 20000);
