@@ -167,7 +167,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   async function save() {
     if (!guestName.trim()) return setErr("이름을 적어 주세요.");
-    if (!guestPhone.trim()) return setErr("연락처를 적어 주세요.");
+    // 현장·전화만 연락처 필수 · OTA 등은 선택
+    if (onsite && !guestPhone.trim()) return setErr("연락처를 적어 주세요.");
     if (!priceUnset && (!Number.isFinite(price) || price < 0 || (price === 0 && !rateStr && !priceStr)))
       return setErr("1박 요금·판매금을 적거나 금액미정을 켜 주세요.");
     if (assignNow && roomIds.length !== roomCount)
@@ -377,7 +378,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
         <div className="fld">
           <label>
-            이름 · 연락처<em>*</em>
+            이름<em>*</em> · 연락처{onsite ? <em>*</em> : null}
           </label>
           <GuestNamePhone nameRef={nameRef} name={guestName} phone={guestPhone} onName={setName} onPhone={setPhone} />
         </div>
