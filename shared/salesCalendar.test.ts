@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  applyBulkTypeDates,
   baseRateFor,
+  bookedCount,
+  isSellOpen,
   isStopSell,
   normalizeTypeRateOverrides,
   normalizeTypeRates,
@@ -43,4 +46,26 @@ test("normalize maps", () => {
   assert.deepEqual(normalizeTypeRates({ s: { weekday: 1, weekend: -1, flat: "x" } }), { s: { weekday: 1, weekend: null, flat: null } });
   assert.deepEqual(normalizeTypeRateOverrides({ s: { "2026-10-19": 90000, bad: 1 } }), { s: { "2026-10-19": 90000 } });
   assert.deepEqual(normalizeTypeStopSell({ s: { "2026-10-19": true, "2026-10-20": false } }), { s: { "2026-10-19": true } });
+});
+
+test("bookedCount + isSellOpen match stock math", () => {
+  assert.equal(bookedCount(5, 3), 2);
+  assert.equal(bookedCount(5, -1), 6);
+  assert.equal(isSellOpen(3, false), true);
+  assert.equal(isSellOpen(0, false), false);
+  assert.equal(isSellOpen(3, true), false);
+});
+
+test("applyBulkTypeDates: rate and stop across dates", () => {
+  let s = setTypeRateDefaults(empty, "s", { weekday: 50_000, weekend: 70_000 });
+  s = applyBulkTypeDates(s, ["s"], ["2026-10-20", "2026-10-21"], { rate: 80_000, stopSell: true });
+  assert.equal(baseRateFor(s, "s", "2026-10-20"), 80_000);
+  assert.equal(baseRateFor(s, "s", "2026-10-21"), 80_000);
+  assert.equal(isStopSell(s, "s", "2026-10-20"), true);
+  assert.equal(isStopSell(s, "s", "2026-10-21"), true);
+  s = applyBulkTypeDates(s, ["s"], ["2026-10-20"], { stopSell: false });
+  assert.equal(isStopSell(s, "s", "2026-10-20"), false);
+  assert.equal(isStopSell(s, "s", "2026-10-21"), true);
+  s = applyBulkTypeDates(s, ["s"], ["2026-10-21"], { rate: null });
+  assert.equal(baseRateFor(s, "s", "2026-10-21"), 50_000); // 화 = 평일
 });
