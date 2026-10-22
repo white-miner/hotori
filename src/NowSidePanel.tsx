@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, BedDouble } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, BedDouble, Clock } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -27,6 +27,7 @@ import { isOnsite, payState } from "../shared/payment";
 import { CLEAN_REQUEST_COPY } from "../shared/cleanRequest";
 import { DAYUSE_SALE_CTA } from "../shared/dayuseSale";
 import { PAYMENT_DESK_CTA, canOpenPaymentDesk } from "../shared/paymentDesk";
+import { ADD_TIME_CTA, canAddTime } from "../shared/addTime";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import { PlatBadge, lookups } from "./ui";
@@ -87,6 +88,8 @@ interface Props {
   ncxBusy?: string | null;
   /** 결제/납입 데스크 (단실 · 동일 groupId 복수). b 주면 그 예약 기준 */
   onPaymentDesk?: (b?: Booking) => void;
+  /** 시간 추가 (숙박 늦은퇴실 · 대실 종료 연장) · Entry 금지 */
+  onAddTime?: (b: Booking) => void;
   /** 동일 groupId 점유 복수 선택 시 멤버 (패널 글랜스) */
   selectedGroupBookings?: Booking[];
   nowOpts?: Parameters<typeof nowFlags>[2];
@@ -122,6 +125,7 @@ export default function NowSidePanel({
   onSetNoClean,
   ncxBusy = null,
   onPaymentDesk,
+  onAddTime,
   selectedGroupBookings = [],
   nowOpts,
 }: Props) {
@@ -272,20 +276,40 @@ export default function NowSidePanel({
             <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
             {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
           </button>
-          {!readOnly && onEndDayuse && canEndDayuse(d) ? (
-            <button
-              type="button"
-              className="nowext side nowco"
-              disabled={moving || coBusy === d.id}
-              onClick={() => void onEndDayuse(d)}
-            >
-              {coBusy === d.id ? "처리 중…" : "이용 종료"}
-            </button>
-          ) : null}
+          <div className="nsel-du-acts">
+            {!readOnly && onAddTime && canAddTime(d) ? (
+              <button
+                type="button"
+                className="nowext side"
+                disabled={moving}
+                onClick={() => onAddTime(d)}
+              >
+                {ADD_TIME_CTA}
+              </button>
+            ) : null}
+            {!readOnly && onEndDayuse && canEndDayuse(d) ? (
+              <button
+                type="button"
+                className="nowext side nowco"
+                disabled={moving || coBusy === d.id}
+                onClick={() => void onEndDayuse(d)}
+              >
+                {coBusy === d.id ? "처리 중…" : "이용 종료"}
+              </button>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
   ) : null;
+
+  /** 퇴실예정·늦은퇴실만 다음 손님 숙박 판매 (일반 숙박/예약 점유에는 숨김) */
+  const showStaySellOnOccupied =
+    !!bookCtaLabel &&
+    !!onBookVacant &&
+    !!f &&
+    (f.kind === "departing" || f.kind === "lateOut");
+  const showStaySellOnVacant = !!bookCtaLabel && !!onBookVacant && !b && !multiGroup;
 
   return (
     <aside className="nowside" aria-label="운영">
@@ -368,81 +392,103 @@ export default function NowSidePanel({
                   </div>
                   {dayuseList}
                   <div className="nsel-acts">
-                    {/* 선택 → 바로 액션 · Entry는 「예약 기록 열기」만 */}
-                    {!readOnly && dayuseCtaLabel && onNewDayuse ? (
-                      <button type="button" className="btn sm info" disabled={moving} onClick={onNewDayuse}>
-                        {dayuseCtaLabel}
-                      </button>
-                    ) : null}
-                    {!readOnly && !multiGroup && canExtend(b) ? (
-                      <button
-                        type="button"
-                        className="btn sm line"
-                        disabled={moving}
-                        onClick={() => onOpen(b, today, { openExtend: true })}
-                        aria-label={isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
-                      >
-                        <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
-                        {isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
-                      </button>
-                    ) : null}
-                    {!readOnly && !multiGroup && b.kind === "stay" && onSetNoClean ? (
-                      <button
-                        type="button"
-                        className={`btn sm line ncx ${b.noClean ? "on" : ""}`}
-                        aria-pressed={b.noClean}
-                        disabled={moving || ncxBusy === b.id}
-                        onClick={() => setCleanAsk(b)}
-                        title="청소 함 / 안 함 선택"
-                      >
-                        <Ban size={14} strokeWidth={2.2} aria-hidden />
-                        {ncxBusy === b.id ? "저장 중…" : CLEAN_REQUEST_COPY}
-                      </button>
-                    ) : null}
-                    {showPaymentDesk ? (
-                      <button
-                        type="button"
-                        className="btn sm line"
-                        disabled={moving}
-                        onClick={() => onPaymentDesk?.()}
-                        aria-label={PAYMENT_DESK_CTA}
-                      >
-                        <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
-                        {PAYMENT_DESK_CTA}
-                      </button>
-                    ) : null}
-                    {!readOnly && !multiGroup && onRoomMove ? (
-                      <button
-                        type="button"
-                        className="btn sm dark"
-                        disabled={moving}
-                        onClick={onRoomMove}
-                        aria-label="객실 이동"
-                      >
-                        <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
-                        {moving ? "이동 중…" : "객실 이동"}
-                      </button>
+                    {/* 판매 · 숙박운영 · 이동/기록 — chrome cleanup */}
+                    {!readOnly && (dayuseCtaLabel || showStaySellOnOccupied) ? (
+                      <div className="nsel-act-sec" role="group" aria-label="판매">
+                        {dayuseCtaLabel && onNewDayuse ? (
+                          <button type="button" className="btn sm info" disabled={moving} onClick={onNewDayuse}>
+                            {dayuseCtaLabel}
+                          </button>
+                        ) : null}
+                        {showStaySellOnOccupied ? (
+                          <button type="button" className="btn sm dark" disabled={moving} onClick={onBookVacant}>
+                            <BedDouble size={14} strokeWidth={2.2} aria-hidden />
+                            {bookCtaLabel}
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
                     {!readOnly && !multiGroup ? (
-                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
-                        예약 기록 열기
-                      </button>
+                      <div className="nsel-act-sec nsel-act-row" role="group" aria-label="숙박 운영">
+                        {canExtend(b) ? (
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving}
+                            onClick={() => onOpen(b, today, { openExtend: true })}
+                            aria-label={isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
+                          >
+                            <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
+                            {isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
+                          </button>
+                        ) : null}
+                        {onAddTime && canAddTime(b) ? (
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving}
+                            onClick={() => onAddTime(b)}
+                            aria-label={ADD_TIME_CTA}
+                          >
+                            <Clock size={14} strokeWidth={2.2} aria-hidden />
+                            {ADD_TIME_CTA}
+                          </button>
+                        ) : null}
+                        {b.kind === "stay" && onSetNoClean ? (
+                          <button
+                            type="button"
+                            className={`btn sm line ncx ${b.noClean ? "on" : ""}`}
+                            aria-pressed={b.noClean}
+                            disabled={moving || ncxBusy === b.id}
+                            onClick={() => setCleanAsk(b)}
+                            title="청소 함 / 안 함 선택"
+                          >
+                            <Ban size={14} strokeWidth={2.2} aria-hidden />
+                            {ncxBusy === b.id ? "저장 중…" : CLEAN_REQUEST_COPY}
+                          </button>
+                        ) : null}
+                        {showPaymentDesk ? (
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving}
+                            onClick={() => onPaymentDesk?.()}
+                            aria-label={PAYMENT_DESK_CTA}
+                          >
+                            <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
+                            {PAYMENT_DESK_CTA}
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
-                    {!readOnly && !multiGroup && f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
-                      <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
-                        {coBusy === b.id ? "처리 중…" : "퇴실처리"}
-                      </button>
-                    ) : null}
-                    {!readOnly && bookCtaLabel && onBookVacant && f && (f.kind === "departing" || f.kind === "lateOut") ? (
-                      <button type="button" className="btn sm dark" disabled={moving} onClick={onBookVacant}>
-                        <BedDouble size={14} strokeWidth={2.2} aria-hidden />
-                        {bookCtaLabel}
-                      </button>
-                    ) : null}
-                    {!readOnly && selectedRoomId ? (
-                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId)}>
-                        호실 특이사항
-                      </button>
+                    {!readOnly && !multiGroup ? (
+                      <div className="nsel-act-sec" role="group" aria-label="이동 · 기록">
+                        {onRoomMove ? (
+                          <button
+                            type="button"
+                            className="btn sm dark"
+                            disabled={moving}
+                            onClick={onRoomMove}
+                            aria-label="객실 이동"
+                          >
+                            <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
+                            {moving ? "이동 중…" : "객실 이동"}
+                          </button>
+                        ) : null}
+                        <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
+                          예약 기록 열기
+                        </button>
+                        {f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
+                          <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
+                            {coBusy === b.id ? "처리 중…" : "퇴실처리"}
+                          </button>
+                        ) : null}
+                        {selectedRoomId ? (
+                          <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId)}>
+                            호실 특이사항
+                          </button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -473,19 +519,21 @@ export default function NowSidePanel({
                     </p>
                   ) : null}
                   {dayuseList}
-                  {!readOnly && (bookCtaLabel || dayuseCtaLabel) ? (
+                  {!readOnly && (showStaySellOnVacant || dayuseCtaLabel) ? (
                     <div className="nsel-acts">
-                      {bookCtaLabel && onBookVacant ? (
-                        <button type="button" className="btn sm dark" onClick={onBookVacant}>
-                          <BedDouble size={14} strokeWidth={2.2} aria-hidden />
-                          {bookCtaLabel}
-                        </button>
-                      ) : null}
-                      {dayuseCtaLabel && onNewDayuse ? (
-                        <button type="button" className="btn sm info" onClick={onNewDayuse}>
-                          {dayuseCtaLabel}
-                        </button>
-                      ) : null}
+                      <div className="nsel-act-sec" role="group" aria-label="판매">
+                        {showStaySellOnVacant ? (
+                          <button type="button" className="btn sm dark" onClick={onBookVacant}>
+                            <BedDouble size={14} strokeWidth={2.2} aria-hidden />
+                            {bookCtaLabel}
+                          </button>
+                        ) : null}
+                        {dayuseCtaLabel && onNewDayuse ? (
+                          <button type="button" className="btn sm info" onClick={onNewDayuse}>
+                            {dayuseCtaLabel}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
                 </div>
