@@ -596,9 +596,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               }}
               onBlocked={() => notify("그 숙박일은 이미 다른 예약이 있어요")}
             />
-            <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
-              {md(checkIn)} 입실 · {nights}박 · {md(addDays(checkIn, nights))} 퇴실
-            </div>
           </div>
         </div>
 

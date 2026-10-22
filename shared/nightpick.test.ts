@@ -131,8 +131,9 @@ test("stay ↔ paint 왕복", () => {
 });
 
 test("요약 카피", () => {
-  assert.equal(nightPickSummary("2026-10-11", "2026-10-21"), "10/11~10/21밤 · 11박 · 입 10/11 · 퇴 10/22아침");
-  assert.equal(nightPickSummary("2026-10-11", "2026-10-11"), "10/11밤 · 1박 · 입 10/11 · 퇴 10/12아침");
+  assert.equal(nightPickSummary("2026-10-20", "2026-10-24"), "10/20 ~ 10/24 · 5박 6일");
+  assert.equal(nightPickSummary("2026-10-11", "2026-10-21"), "10/11 ~ 10/21 · 11박 12일");
+  assert.equal(nightPickSummary("2026-10-11", "2026-10-11"), "10/11 ~ 10/11 · 1박 2일");
   assert.equal(nightPickGlance("2026-10-11", "2026-10-21"), "11박 · 10/22 아침 퇴실");
 });
 

@@ -46,12 +46,12 @@ export function paintedNightsFromStay(checkIn: string, nights: number): PaintedN
   return { firstNight: checkIn, lastNight: addDays(checkIn, n - 1) };
 }
 
-/** 요약: `11~21밤 · 11박 · 입 11 · 퇴 22아침` / 1박은 `11밤 · 1박 · …` */
+/** 요약: `10/20 ~ 10/24 · 5박 6일` (점유 밤 구간 · 박수 · 달력 일수=박+1) */
 export function nightPickSummary(firstNight: string, lastNight: string): string {
-  const { checkIn, nights, stayEnd } = stayFromPaintedNights(firstNight, lastNight);
+  const { checkIn, nights } = stayFromPaintedNights(firstNight, lastNight);
   const last = addDays(checkIn, nights - 1);
-  const range = nights === 1 ? `${md(checkIn)}밤` : `${md(checkIn)}~${md(last)}밤`;
-  return `${range} · ${nights}박 · 입 ${md(checkIn)} · 퇴 ${md(stayEnd)}아침`;
+  const days = nights + 1;
+  return `${md(checkIn)} ~ ${md(last)} · ${nights}박 ${days}일`;
 }
 
 /** 짧은 요약 바: `N박 · M/D 아침 퇴실` */

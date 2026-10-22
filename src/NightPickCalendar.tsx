@@ -143,10 +143,6 @@ export default function NightPickCalendar({
 
   return (
     <div className="npick">
-      <p className="npick-hint">
-        묵는 밤을 클릭하세요 · Shift-클릭으로 구간 · 선택 밤을 다시 누르면 그날 요금
-        {nightAmounts ? " · 셀에 금액" : ""}
-      </p>
       <div className="npick-nav">
         <button type="button" className="sb" aria-label="이전 달" onClick={() => setMonth(addMonths(month, -1))}>
           <ChevronLeft size={18} />
@@ -253,7 +249,7 @@ export default function NightPickCalendar({
       ) : null}
       <div className="npick-sum" role="status" aria-live="polite">
         <b>{nightPickSummary(painted.firstNight, painted.lastNight)}</b>
-        <span className="muted sm">{blocked.size > 0 ? "빗금 = 이 방 이미 예약된 밤" : "방을 고르면 막힌 밤이 보여요"}</span>
+        {blocked.size > 0 ? <span className="muted sm">빗금 = 이 방 이미 예약된 밤</span> : null}
       </div>
     </div>
   );
