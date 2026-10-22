@@ -2408,34 +2408,37 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>
             이름{walkInImmediate ? null : <em>*</em>} · 연락처{isOnsite(curPlat) && !walkInImmediate ? <em>*</em> : null}
           </label>
-          <ChipGroup style={{ marginBottom: "var(--space-chip)" }}>
-            <Chip
-              sm
-              active={walkInImmediate}
-              tone="info"
-              onClick={() => {
-                setWalkInImmediate((v) => {
-                  const next = !v;
-                  if (next) setArrived(true);
-                  return next;
-                });
-              }}
-              title="이름·연락처 없이 즉시 숙박"
-            >
-              바로 입실
-            </Chip>
-          </ChipGroup>
-          <GuestNamePhone
-            nameRef={nameRef}
-            name={guestName}
-            phone={guestPhone}
-            onName={setName}
-            onPhone={setPhone}
-            phoneRequired={isOnsite(curPlat) && !walkInImmediate}
-          />
-          {walkInImmediate ? (
-            <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 호실 필수 · 숙박으로 입실</div>
-          ) : null}
+          {/* value col only — ChipGroup+GuestNamePhone as .fld siblings put .two under the 86px label */}
+          <div className="payb">
+            <ChipGroup>
+              <Chip
+                sm
+                active={walkInImmediate}
+                tone="info"
+                onClick={() => {
+                  setWalkInImmediate((v) => {
+                    const next = !v;
+                    if (next) setArrived(true);
+                    return next;
+                  });
+                }}
+                title="이름·연락처 없이 즉시 숙박"
+              >
+                바로 입실
+              </Chip>
+            </ChipGroup>
+            <GuestNamePhone
+              nameRef={nameRef}
+              name={guestName}
+              phone={guestPhone}
+              onName={setName}
+              onPhone={setPhone}
+              phoneRequired={isOnsite(curPlat) && !walkInImmediate}
+            />
+            {walkInImmediate ? (
+              <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 호실 필수 · 숙박으로 입실</div>
+            ) : null}
+          </div>
         </div>
 
         <div className="fld gfld">

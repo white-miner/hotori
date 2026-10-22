@@ -666,15 +666,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <label>
             이름{walkInImmediate ? null : <em>*</em>} · 연락처{onsite && !walkInImmediate ? <em>*</em> : null}
           </label>
-          <GuestNamePhone
-            nameRef={nameRef}
-            name={guestName}
-            phone={guestPhone}
-            onName={setName}
-            onPhone={setPhone}
-            phoneRequired={onsite && !walkInImmediate}
-          />
-          {walkInImmediate ? <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 나중에 Entry에서 수정</div> : null}
+          {/* value col only — muted helper as 3rd .fld child sat under the 86px label */}
+          <div className="payb">
+            <GuestNamePhone
+              nameRef={nameRef}
+              name={guestName}
+              phone={guestPhone}
+              onName={setName}
+              onPhone={setPhone}
+              phoneRequired={onsite && !walkInImmediate}
+            />
+            {walkInImmediate ? <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 나중에 Entry에서 수정</div> : null}
+          </div>
         </div>
 
         <div className="fld">
