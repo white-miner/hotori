@@ -18,7 +18,8 @@ import {
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, TriangleAlert, UserRound } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X } from "lucide-react";
+import { boardGuestSearch, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
@@ -334,6 +335,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
   const [glanceExpand, setGlanceExpand] = useState(false);
+  /** 고객 이름·연락처 검색 (현황·배치 공통 · 칸 비율 무변경) */
+  const [guestQuery, setGuestQuery] = useState("");
+  const [guestQueryLive, setGuestQueryLive] = useState("");
+  const [guestComposing, setGuestComposing] = useState(false);
+  const [gsFocusRoomId, setGsFocusRoomId] = useState<string | null>(null);
+  const gsScrollKey = useRef("");
+  const guestSearchRef = useRef<HTMLInputElement | null>(null);
   const memos = useRoomMemos(data.hotel!.id);
   const glanceByRoom = useMemo(() => openMemoGlances(memos.list ?? []), [memos.list]);
   const roomIsVacant = (roomId: string) => {
@@ -355,6 +363,69 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     },
     [],
   );
+  // 검색 디바운스 ~150ms · IME 조합 중에는 이전 확정값 유지
+  useEffect(() => {
+    if (guestComposing) return;
+    const t = window.setTimeout(() => setGuestQuery(guestQueryLive), 150);
+    return () => window.clearTimeout(t);
+  }, [guestQueryLive, guestComposing]);
+  const clearGuestSearch = () => {
+    setGuestQueryLive("");
+    setGuestQuery("");
+    setGsFocusRoomId(null);
+    gsScrollKey.current = "";
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (!guestQueryLive && !guestQuery) return;
+      e.preventDefault();
+      clearGuestSearch();
+      guestSearchRef.current?.blur();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [guestQueryLive, guestQuery]);
+  const gsRoomLabel = (roomId: string) => L.roomLabel(roomId) ?? allRooms(s).find((r) => r.id === roomId)?.no ?? roomId;
+  const nowGuestSearch = useMemo(() => {
+    const slots = allRooms(s).map((r) => ({ roomId: r.id, booking: nowBoardMap.get(r.id) ?? null }));
+    return boardGuestSearch({
+      slots,
+      unassigned: nowSide.unassigned,
+      groups: data.groups,
+      queryRaw: guestQuery,
+      roomLabel: gsRoomLabel,
+    });
+  }, [s, nowBoardMap, nowSide.unassigned, data.groups, guestQuery, L]);
+  const roomsGuestSearch = useMemo(() => {
+    const slots = [...board.byRoom.entries()].map(([roomId, booking]) => ({ roomId, booking }));
+    return boardGuestSearch({
+      slots,
+      unassigned: board.unassigned,
+      groups: data.groups,
+      queryRaw: guestQuery,
+      roomLabel: gsRoomLabel,
+    });
+  }, [board, data.groups, guestQuery, L]);
+  const activeGuestSearch = tab === "now" ? nowGuestSearch : tab === "rooms" ? roomsGuestSearch : null;
+  const gsActive = !!(activeGuestSearch?.active);
+  const gsHitRooms = activeGuestSearch?.roomIds;
+  const gsChips = activeGuestSearch?.chips ?? [];
+  // 쿼리 변경 시 첫 매칭 칸으로 스크롤 (칩 탭은 별도)
+  useEffect(() => {
+    if (!gsActive || (tab !== "now" && tab !== "rooms")) return;
+    const first = gsChips.find((c) => c.roomId)?.roomId ?? null;
+    const key = `${tab}:${guestQuery}:${first ?? ""}`;
+    if (!first || gsScrollKey.current === key) return;
+    gsScrollKey.current = key;
+    const id = tab === "now" ? `now-room-${first}` : `rooms-room-${first}`;
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" }));
+  }, [gsActive, gsChips, guestQuery, tab]);
+  const gsCellClass = (roomId: string) => {
+    if (!gsActive || !gsHitRooms) return "";
+    if (gsHitRooms.has(roomId)) return gsFocusRoomId === roomId ? "gs-hit gs-focus" : "gs-hit";
+    return "gs-dim";
+  };
   /** 퇴실예정(미퇴실)이어도 오늘 입실 밤이 안 겹치면 당일 예약·배정 타깃 */
   const roomIsTurnoverBookable = (roomId: string) => {
     const bk = nowBoardMap.get(roomId);
@@ -385,6 +456,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (prev.includes(roomId)) return prev.filter((id) => id !== roomId);
       return [...prev, roomId];
     });
+  };
+  const focusGuestChip = (chip: GuestSearchChip) => {
+    if (!chip.roomId) return;
+    setGsFocusRoomId(chip.roomId);
+    const id = tab === "now" ? `now-room-${chip.roomId}` : `rooms-room-${chip.roomId}`;
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    if (tab === "now" && !readOnly) selectRoom(chip.roomId);
   };
   const selectedVacantIds = selectedRoomIds.filter(roomIsBookTarget);
   const selectedRoomId =
@@ -956,12 +1034,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           : "assign-other"
         : "assign-off"
       : "";
+    const gs = gsCellClass(r.id);
     if (!b)
       return (
         <div
           key={r.id}
+          id={`rooms-room-${r.id}`}
+          data-room-id={r.id}
           {...mvAttr}
-          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
           onClick={
             mvClick ??
             (() => {
@@ -1023,8 +1104,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return (
       <div
         key={r.id}
+        id={`rooms-room-${r.id}`}
+        data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -1222,6 +1305,58 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   ) : null;
+  /** 현황·배치 공통 고객 검색 (건물 칩 근처 · sticky · Lucide Search) */
+  const guestSearchBar =
+    tab === "now" || tab === "rooms" ? (
+      <div className="guest-search-bar" role="search">
+        <label className="search ls guest-search">
+          <Search size={16} strokeWidth={2.2} aria-hidden />
+          <input
+            ref={guestSearchRef}
+            value={guestQueryLive}
+            placeholder="손님 이름·연락처"
+            aria-label="손님 이름·연락처 검색"
+            enterKeyHint="search"
+            onChange={(e) => setGuestQueryLive(e.target.value)}
+            onCompositionStart={() => setGuestComposing(true)}
+            onCompositionEnd={(e) => {
+              setGuestComposing(false);
+              setGuestQueryLive(e.currentTarget.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                clearGuestSearch();
+              }
+            }}
+          />
+          {guestQueryLive ? (
+            <button type="button" className="guest-search-x" aria-label="검색 지우기" onClick={clearGuestSearch}>
+              <X size={14} strokeWidth={2.4} aria-hidden />
+            </button>
+          ) : null}
+        </label>
+        {gsActive && gsChips.length === 0 ? <span className="guest-search-none">없음</span> : null}
+        {gsChips.length ? (
+          <div className="guest-search-chips" role="list" aria-label="검색 결과">
+            {gsChips.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                role="listitem"
+                className={`chip sm ${c.roomId && gsFocusRoomId === c.roomId ? "on" : ""}`}
+                disabled={!c.roomId}
+                title={c.roomId ? `${c.labelName} · ${c.labelRoom}` : `${c.labelName} · 미배정`}
+                onClick={() => focusGuestChip(c)}
+              >
+                {c.labelName} · {c.labelRoom}
+                {c.roomId ? "호" : ""}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
   // 판매 캘린더와 객실 캘린더는 보는 기간(주·14일·월·기간)을 함께 써요
   const periodSeg = readOnly ? null : (
@@ -1390,13 +1525,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (nowFilter === "tentative") return null;
       const emptySel = !mvB && selectedRoomIds.includes(r.id);
       const flash = flashRoomId === r.id;
+      const gs = gsCellClass(r.id);
       return (
         <div
           key={r.id}
           id={`now-room-${r.id}`}
           data-room-id={r.id}
           {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+          className={`cell em nowempty ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls}`}
           onClick={mvClick ?? (() => selectRoom(r.id))}
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
@@ -1445,13 +1581,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     };
     const occupiedSel = !mvB && selectedRoomIds.includes(r.id);
     const flash = flashRoomId === r.id;
+    const gs = gsCellClass(r.id);
     return (
       <div
         key={r.id}
         id={`now-room-${r.id}`}
         data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -1672,7 +1809,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
-          {buildingTabs}
+          <div className="board-filter-sticky">
+            {buildingTabs}
+            {guestSearchBar}
+          </div>
           {vacancyGlance}
           <div className="nowlayout">
             <div className="nowgrid">
@@ -1889,7 +2029,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </button>
           </div>
         ) : null}
-        {buildingTabs}
+        <div className="board-filter-sticky">
+          {buildingTabs}
+          {guestSearchBar}
+        </div>
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
             전체
