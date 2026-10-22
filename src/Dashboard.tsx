@@ -27,7 +27,9 @@ import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
+import DayuseSaleModal from "./DayuseSaleModal";
 import EarlyInPayModal from "./EarlyInPayModal";
+import PaymentDeskModal from "./PaymentDeskModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
 import {
@@ -36,6 +38,21 @@ import {
   earlyInPayNotifyLine,
 } from "../shared/earlyInPay";
 import { dayuseByRoom as dayuseByRoomMap, dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
+import {
+  buildDayuseSaleBooking,
+  dayuseSaleNotifyLine,
+  planDayuseSale,
+  type DayuseSaleInput,
+} from "../shared/dayuseSale";
+import {
+  paymentDeskNotifyLine,
+  planPaymentDeskSurcharge,
+  sameGroupId,
+  type PaymentDeskPayPlan,
+} from "../shared/paymentDesk";
+import type { SurchargeReason } from "../shared/addSurcharge";
+import type { BookPayMethod } from "../shared/payment";
+import { surchargeNotifyLine } from "../shared/addSurcharge";
 import {
   type BoardTab,
   type Booking,
@@ -89,7 +106,7 @@ import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import { isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import { emptyGroupInfo, type GroupBadgeColor } from "../shared/settle";
+import { emptyGroupInfo, settle, type GroupBadgeColor } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -337,7 +354,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 빠른 입실: 추가금 팝업 대상 (확정 전엔 arrived 안 바꿈) */
   const [earlyPay, setEarlyPay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
-  /** 「현황」선택: 공실=복수 토글 · 점유=단실 운영 */
+  /** 대실 판매 전용 모달 (Entry 우회) */
+  const [dayuseSale, setDayuseSale] = useState<{ roomId: string; typeId: string; roomLabel: string } | null>(null);
+  const [dayuseSaleBusy, setDayuseSaleBusy] = useState(false);
+  const [dayuseSaleWarn, setDayuseSaleWarn] = useState<{ input: DayuseSaleInput; message: string } | null>(null);
+  /** 결제/납입 데스크 */
+  const [payDesk, setPayDesk] = useState<{ members: Booking[]; focusId?: string } | null>(null);
+  const [payDeskBusy, setPayDeskBusy] = useState(false);
+  /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
   /** 공실 글랜스 호수 탭 → 칸 스크롤·하이라이트만 (선택·예약 아님) */
@@ -454,8 +478,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const selectRoom = (roomId: string) => {
     setNightPopId(null);
     setSideMode("room");
-    // 퇴실예정 턴오버 가능 칸 = 공실과 같이 복수 선택(당일 예약). 그 외 점유 = 단실 운영.
+    // 퇴실예정 턴오버 가능 칸 = 공실과 같이 복수 선택(당일 예약).
+    // 점유 = 단실 · 예외: 동일 groupId 점유실만 토글 복수 (일괄 수납).
     if (!roomIsBookTarget(roomId)) {
+      const bk = nowBoardMap.get(roomId);
+      const gid = bk?.groupId ?? null;
+      if (gid && isActive(bk!)) {
+        setSelectedRoomIds((prev) => {
+          const prevBooks = prev.map((id) => nowBoardMap.get(id) ?? null);
+          const prevGid = sameGroupId(prevBooks);
+          if (prevGid === gid) {
+            if (prev.includes(roomId)) {
+              const next = prev.filter((id) => id !== roomId);
+              return next.length ? next : [roomId];
+            }
+            return [...prev, roomId];
+          }
+          return [roomId];
+        });
+        return;
+      }
       setSelectedRoomIds([roomId]);
       return;
     }
@@ -482,7 +524,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : selectedRoomIds[0] ?? null;
   const vacantBookLabels = selectedVacantIds.map((id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id);
   const vacantBookCta =
-    vacantBookLabels.length > 0 ? `${vacantBookLabels.map((n) => `${n}호`).join(", ")} 예약하기` : null;
+    vacantBookLabels.length > 0 ? `${vacantBookLabels.map((n) => `${n}호`).join(", ")} 숙박 판매` : null;
   const openVacantBook = () => {
     if (!selectedVacantIds.length) return;
     const first = L.rooms.get(selectedVacantIds[0]) ?? allRooms(s).find((r) => r.id === selectedVacantIds[0]);
@@ -491,12 +533,43 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       { roomIds: selectedVacantIds },
     );
   };
-  /** 현황 단실만 대실 판매 (복수 공실 대실 = Next) */
+  /** 현황 단실만 대실 판매 모달 (복수 공실 대실 = Next · Entry 금지) */
   const openNewDayuse = () => {
     if (readOnly || selectedRoomIds.length !== 1) return;
     const rid = selectedRoomIds[0];
     const room = L.rooms.get(rid) ?? allRooms(s).find((r) => r.id === rid);
-    onNew({ kind: "dayuse", checkIn: today, roomId: rid, typeId: room?.typeId ?? undefined });
+    if (!room?.typeId) {
+      notify("이 호실에 타입이 없어요. 설정에서 타입을 먼저 연결해 주세요.");
+      return;
+    }
+    setDayuseSale({
+      roomId: rid,
+      typeId: room.typeId,
+      roomLabel: L.roomLabel(rid) ?? room.no,
+    });
+  };
+  const selectedGroupBookings = useMemo(() => {
+    if (selectedRoomIds.length < 2) return [] as Booking[];
+    const books = selectedRoomIds
+      .map((id) => nowBoardMap.get(id) ?? null)
+      .filter((b): b is Booking => !!b && isActive(b) && b.kind === "stay");
+    if (books.length < 2) return [];
+    return sameGroupId(books) ? books : [];
+  }, [selectedRoomIds, nowBoardMap]);
+  const openPaymentDesk = (b?: Booking) => {
+    if (readOnly) return;
+    if (b) {
+      setPayDesk({ members: [b], focusId: b.id });
+      return;
+    }
+    if (selectedGroupBookings.length > 1) {
+      setPayDesk({ members: selectedGroupBookings });
+      return;
+    }
+    if (selectedRoomIds.length === 1) {
+      const bk = nowBoardMap.get(selectedRoomIds[0]);
+      if (bk && isActive(bk) && bk.kind === "stay") setPayDesk({ members: [bk], focusId: bk.id });
+    }
   };
   const nowDayuseByRoom = useMemo(() => dayuseByRoomMap(bookings, today), [bookings, today]);
   const selectedDayuse = selectedRoomIds.length === 1 ? (nowDayuseByRoom.get(selectedRoomIds[0]) ?? []) : [];
@@ -1503,17 +1576,166 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** Entry toggleNoClean과 동일 저장 경로 */
-  const toggleNoClean = async (b: Booking) => {
+  /** 청소 요청 팝업 확정 → noClean patch (즉시 토글 금지) */
+  const setNoClean = async (b: Booking, noClean: boolean) => {
     if (readOnly || ncxBusy || b.kind !== "stay") return;
-    const next = !b.noClean;
+    if (!!b.noClean === noClean) return;
     setNcxBusy(b.id);
     try {
-      await data.patchBooking(b.id, { noClean: next });
+      await data.patchBooking(b.id, { noClean });
+      notify(noClean ? `${b.guestName} 님 · 청소 안 함` : `${b.guestName} 님 · 청소 함`);
     } catch {
-      notify("청소X를 저장하지 못했어요. 다시 눌러 주세요.");
+      notify("청소 요청을 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setNcxBusy(null);
+    }
+  };
+
+  const commitDayuseSale = async (input: DayuseSaleInput, allowOverlap: boolean) => {
+    if (readOnly || dayuseSaleBusy) return;
+    const planned = planDayuseSale(s, input);
+    if ("err" in planned) {
+      notify(planned.err);
+      return;
+    }
+    if (!allowOverlap) {
+      const w = dayuseStayOverlapWarn(s, bookings, planned.booking);
+      if (!w.ok) {
+        setDayuseSaleWarn({ input, message: w.message });
+        return;
+      }
+    }
+    setDayuseSaleBusy(true);
+    setDayuseSaleWarn(null);
+    try {
+      const draft = buildDayuseSaleBooking(s, input);
+      const saved = await data.saveBooking(draft, true);
+      let collected = false;
+      if (planned.collectAmount > 0 && planned.method) {
+        try {
+          await data.addPayment(saved.id, {
+            kind: "balance",
+            method: planned.method,
+            amount: planned.collectAmount,
+            bizDate: today,
+          });
+          collected = true;
+        } catch (e) {
+          notify(
+            `${dayuseSaleNotifyLine(saved.guestName, dayuseSale?.roomLabel ?? "", saved.price, false, null)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          setDayuseSale(null);
+          return;
+        }
+      }
+      notify(
+        dayuseSaleNotifyLine(
+          saved.guestName,
+          dayuseSale?.roomLabel ?? L.roomLabel(saved.roomId) ?? "",
+          saved.price,
+          collected,
+          planned.method,
+        ),
+      );
+      setDayuseSale(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "대실 판매를 저장하지 못했어요"));
+    } finally {
+      setDayuseSaleBusy(false);
+    }
+  };
+
+  const commitPaymentDesk = async (plan: PaymentDeskPayPlan) => {
+    if (readOnly || payDeskBusy || !payDesk) return;
+    setPayDeskBusy(true);
+    try {
+      const members = payDesk.members;
+      const guest = members[0]?.groupName || members[0]?.guestName || "손님";
+      if (plan.asGroup) {
+        const gid = sameGroupId(members);
+        if (!gid) {
+          notify("같은 단체만 한 번에 받을 수 있어요.");
+          return;
+        }
+        await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
+        const info = data.groups.get(gid);
+        const plat = members[0] ? L.plats.get(members[0].platformId) : undefined;
+        const left = settle(members, info, plat).left;
+        notify(paymentDeskNotifyLine(guest, plan.amount, plan.method, plan.kind, Math.max(0, left - plan.amount), true));
+      } else {
+        const b = members[0];
+        if (!b) return;
+        await data.addPayment(b.id, {
+          kind: plan.kind,
+          method: plan.method,
+          amount: plan.amount,
+          bizDate: today,
+        });
+        const plat = L.plats.get(b.platformId);
+        const left = Math.max(0, (payState(b, plat).left || 0) - (plan.kind === "balance" || plan.kind === "deposit" ? plan.amount : 0));
+        notify(paymentDeskNotifyLine(guest, plan.amount, plan.method, plan.kind, left, false));
+      }
+      setPayDesk(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "결제를 저장하지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
+    }
+  };
+
+  const commitDeskSurcharge = async (
+    b: Booking,
+    input: {
+      reason: SurchargeReason;
+      hours: number;
+      amount: number;
+      memo: string;
+      collect: boolean;
+      method: BookPayMethod;
+      bizDate: string;
+    },
+  ) => {
+    if (readOnly || payDeskBusy) return;
+    const planned = planPaymentDeskSurcharge(b, input);
+    if ("err" in planned) {
+      notify(planned.err);
+      return;
+    }
+    setPayDeskBusy(true);
+    try {
+      const next: Booking = {
+        ...b,
+        price: planned.draft.price,
+        lateOut: planned.draft.lateOut,
+        timeFee: planned.draft.timeFee,
+        memo: planned.draft.memo,
+      };
+      const saved = await data.saveBooking(next, false);
+      let collected = false;
+      if (planned.collectAmount > 0) {
+        try {
+          await data.addPayment(saved.id, {
+            kind: "balance",
+            method: input.method,
+            amount: planned.collectAmount,
+            bizDate: today,
+            note: planned.payNote,
+          });
+          collected = true;
+        } catch (e) {
+          notify(
+            `${surchargeNotifyLine(saved.guestName, input.reason, input.amount, false, planned.draft.lateOut)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          setPayDesk(null);
+          return;
+        }
+      }
+      notify(surchargeNotifyLine(saved.guestName, input.reason, input.amount, collected, planned.draft.lateOut));
+      setPayDesk(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "할증을 저장하지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
     }
   };
 
@@ -1911,6 +2133,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   ? (nowBoardMap.get(selectedRoomId) ?? null)
                   : null
               }
+              selectedGroupBookings={selectedGroupBookings}
               mode={sideMode}
               onMode={setSideMode}
               glanceByRoom={glanceByRoom}
@@ -1929,13 +2152,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}
               moving={!!mvB}
-              onToggleNoClean={(bk) => void toggleNoClean(bk)}
+              onSetNoClean={(bk, v) => void setNoClean(bk, v)}
               ncxBusy={ncxBusy}
+              onPaymentDesk={(bk) => openPaymentDesk(bk)}
               nowOpts={nowOpts}
             />
           </div>
           {!readOnly && !mvB && vacantBookCta ? (
-            <div className="nowbookbar" role="region" aria-label="선택한 공실 예약">
+            <div className="nowbookbar" role="region" aria-label="선택한 공실 숙박 판매">
               <span className="nowbookbar-labs">{vacantBookLabels.map((n) => `${n}호`).join(", ")}</span>
               <button type="button" className="btn sm dark" onClick={openVacantBook}>
                 {vacantBookCta}
@@ -1973,6 +2197,43 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={earlyBusy === earlyPay.booking.id}
           onCancel={() => !earlyBusy && setEarlyPay(null)}
           onConfirm={(plan, method) => void confirmEarlyIn(plan, method)}
+        />
+      ) : null}
+      {dayuseSale ? (
+        <DayuseSaleModal
+          s={s}
+          today={today}
+          roomId={dayuseSale.roomId}
+          roomLabel={dayuseSale.roomLabel}
+          typeId={dayuseSale.typeId}
+          busy={dayuseSaleBusy}
+          onCancel={() => !dayuseSaleBusy && (setDayuseSale(null), setDayuseSaleWarn(null))}
+          onConfirm={(input) => void commitDayuseSale(input, false)}
+        />
+      ) : null}
+      {dayuseSaleWarn ? (
+        <DayuseStayOverlapConfirm
+          message={dayuseSaleWarn.message}
+          busy={dayuseSaleBusy}
+          onCancel={() => !dayuseSaleBusy && setDayuseSaleWarn(null)}
+          onContinue={() => void commitDayuseSale(dayuseSaleWarn.input, true)}
+        />
+      ) : null}
+      {payDesk ? (
+        <PaymentDeskModal
+          s={s}
+          today={today}
+          members={payDesk.members}
+          groupInfo={
+            payDesk.members[0]?.groupId ? (data.groups.get(payDesk.members[0].groupId) ?? null) : null
+          }
+          roomLabels={payDesk.members.map(
+            (b) => L.roomLabel(b.roomId) ?? allRooms(s).find((r) => r.id === b.roomId)?.no ?? "?",
+          )}
+          busy={payDeskBusy}
+          onCancel={() => !payDeskBusy && setPayDesk(null)}
+          onPay={(plan) => void commitPaymentDesk(plan)}
+          onSurcharge={(b, input) => void commitDeskSurcharge(b, input)}
         />
       ) : null}
       {renderAssignModals()}

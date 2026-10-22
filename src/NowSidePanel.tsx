@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CalendarPlus, CirclePlus } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, BedDouble } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -12,7 +12,6 @@ import {
   type UaCheckInFilter,
 } from "../shared/nowboard";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
-import { SURCHARGE_COPY, canAddSurcharge } from "../shared/addSurcharge";
 import { isLongStay } from "../shared/longstay";
 import {
   type Booking,
@@ -25,8 +24,13 @@ import {
   won,
 } from "../shared/ledger";
 import { isOnsite, payState } from "../shared/payment";
+import { CLEAN_REQUEST_COPY } from "../shared/cleanRequest";
+import { DAYUSE_SALE_CTA } from "../shared/dayuseSale";
+import { PAYMENT_DESK_CTA, canOpenPaymentDesk } from "../shared/paymentDesk";
 import type { OpenMemoGlance } from "../shared/roomMemo";
+import CleanRequestModal from "./CleanRequestModal";
 import { PlatBadge, lookups } from "./ui";
+import type { CleanRequestChoice } from "../shared/cleanRequest";
 
 export type SideMode = "room" | "simple" | "out";
 
@@ -63,12 +67,12 @@ interface Props {
   coBusy: string | null;
   onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   onSimple: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
-  /** 공실 복수선택 → 간단 예약 Path B */
+  /** 공실/턴오버 → 「숙박 판매」= 간단 Path B prefill */
   onBookVacant?: () => void;
   bookCtaLabel?: string | null;
   /** 선택 호실 당일 대실 (현황 · 숙박 축과 분리) */
   dayuseForRoom?: Booking[];
-  /** 단실 「대실」/「대실 추가」 → Entry kind=dayuse */
+  /** 단실 「대실 판매」→ DayuseSaleModal (Entry 금지) */
   onNewDayuse?: () => void;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
   /** 당일 대실 「이용 종료」· confirm 후 checkedOutAt */
@@ -78,9 +82,13 @@ interface Props {
   onRoomMove?: () => void;
   /** 이동 모드 중이면 CTA 비활성 */
   moving?: boolean;
-  /** Entry와 동일: 청소X 토글 → patchBooking({ noClean }) */
-  onToggleNoClean?: (b: Booking) => void;
+  /** 청소 요청 팝업 확정 → patchBooking({ noClean }) */
+  onSetNoClean?: (b: Booking, noClean: boolean) => void;
   ncxBusy?: string | null;
+  /** 결제/납입 데스크 (단실 · 동일 groupId 복수). b 주면 그 예약 기준 */
+  onPaymentDesk?: (b?: Booking) => void;
+  /** 동일 groupId 점유 복수 선택 시 멤버 (패널 글랜스) */
+  selectedGroupBookings?: Booking[];
   nowOpts?: Parameters<typeof nowFlags>[2];
 }
 
@@ -111,12 +119,15 @@ export default function NowSidePanel({
   onMemo,
   onRoomMove,
   moving = false,
-  onToggleNoClean,
+  onSetNoClean,
   ncxBusy = null,
+  onPaymentDesk,
+  selectedGroupBookings = [],
   nowOpts,
 }: Props) {
   const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
   const [outZoneOpen, setOutZoneOpen] = useState(false);
+  const [cleanAsk, setCleanAsk] = useState<Booking | null>(null);
 
   const filteredUa = useMemo(
     () => filterUnassignedByCheckIn(unassigned, today, uaFilter),
@@ -128,7 +139,8 @@ export default function NowSidePanel({
   const showOutZone = outCount > 0 || outZoneOpen;
 
   const selectedRoomId = selectedRoomIds.length === 1 ? selectedRoomIds[0] : selectedRoomIds[selectedRoomIds.length - 1] ?? null;
-  const multiVacant = selectedRoomIds.length > 1 && !selectedBooking;
+  const multiGroup = selectedGroupBookings.length > 1;
+  const multiVacant = selectedRoomIds.length > 1 && !selectedBooking && !multiGroup;
   const selectedRoom: (Room & { typeId?: string | null }) | null = selectedRoomId
     ? (L.rooms.get(selectedRoomId) ?? allRooms(s).find((r) => r.id === selectedRoomId) ?? null)
     : null;
@@ -137,21 +149,21 @@ export default function NowSidePanel({
     (id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id,
   );
   const roomLabel = roomLabels.length ? roomLabels.map((n) => `${n}호`).join(", ") : null;
-  const typeId = b?.typeId ?? selectedRoom?.typeId ?? null;
+  const typeId = b?.typeId ?? selectedGroupBookings[0]?.typeId ?? selectedRoom?.typeId ?? null;
   const t = typeId ? L.types.get(typeId) : null;
   const f = b ? nowFlags(b, today, nowOpts) : null;
   const plat = b ? L.plats.get(b.platformId) : null;
   const amount = b ? nowAmountGlance(b, plat) : null;
   const ps = b && !b.priceUnset ? payState(b, plat) : null;
-  const glance = selectedRoomId && !multiVacant ? glanceByRoom.get(selectedRoomId) : undefined;
+  const glance = selectedRoomId && !multiVacant && !multiGroup ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
-    typeId && !b && !multiVacant ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length : 0;
+    typeId && !b && !multiVacant && !multiGroup
+      ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length
+      : 0;
   const dayuseCtaLabel =
-    !readOnly && onNewDayuse && selectedRoomIds.length === 1
-      ? b
-        ? "대실 추가"
-        : "대실"
-      : null;
+    !readOnly && onNewDayuse && selectedRoomIds.length === 1 ? DAYUSE_SALE_CTA : null;
+  const payTarget = multiGroup ? selectedGroupBookings[0] : b;
+  const showPaymentDesk = !readOnly && onPaymentDesk && payTarget && canOpenPaymentDesk(payTarget);
 
   const nowliTone = (label: string, tentative?: boolean) => {
     if (tentative) return "tent";
@@ -182,9 +194,9 @@ export default function NowSidePanel({
           {coBusy === x.id ? "처리 중…" : "퇴실처리"}
         </button>
       ) : null}
-      {departingRow && !readOnly && canAddSurcharge(x) ? (
-        <button type="button" className="nowext side" onClick={() => onOpen(x, today, { openSurcharge: true })}>
-          {SURCHARGE_COPY}
+      {departingRow && !readOnly && onPaymentDesk && canOpenPaymentDesk(x) ? (
+        <button type="button" className="nowext side" onClick={() => onPaymentDesk(x)}>
+          {PAYMENT_DESK_CTA}
         </button>
       ) : null}
       {departingRow && !readOnly && canExtend(x) ? (
@@ -298,15 +310,17 @@ export default function NowSidePanel({
       {mode === "room" ? (
         <div className="nowside-body nowside-room">
           {!selectedRoomIds.length ? (
-            <div className="muted sm nowempty-side">공실을 여러 칸 고르면 예약하기 · 점유실은 단실 상세</div>
+            <div className="muted sm nowempty-side">칸을 고르면 바로 숙박·대실 판매 · 청소·결제</div>
           ) : (
             <>
               <div className="nsel-head">
                 <div className="nsel-no">{roomLabel}</div>
                 <div className="nsel-sub">
-                  {multiVacant
-                    ? `공실 ${selectedRoomIds.length}실`
-                    : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
+                  {multiGroup
+                    ? `단체 ${selectedGroupBookings.length}실 · 일괄 수납`
+                    : multiVacant
+                      ? `공실 ${selectedRoomIds.length}실`
+                      : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
                 </div>
               </div>
               {b ? (
@@ -354,13 +368,13 @@ export default function NowSidePanel({
                   </div>
                   {dayuseList}
                   <div className="nsel-acts">
-                    {/* MVP stay actions · Entry 동일 경로 · 공실/복수공실은 b 없음으로 숨김 */}
+                    {/* 선택 → 바로 액션 · Entry는 「예약 기록 열기」만 */}
                     {!readOnly && dayuseCtaLabel && onNewDayuse ? (
-                      <button type="button" className="btn sm line" disabled={moving} onClick={onNewDayuse}>
+                      <button type="button" className="btn sm info" disabled={moving} onClick={onNewDayuse}>
                         {dayuseCtaLabel}
                       </button>
                     ) : null}
-                    {!readOnly && canExtend(b) ? (
+                    {!readOnly && !multiGroup && canExtend(b) ? (
                       <button
                         type="button"
                         className="btn sm line"
@@ -372,32 +386,32 @@ export default function NowSidePanel({
                         {isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
                       </button>
                     ) : null}
-                    {!readOnly && b.kind === "stay" && onToggleNoClean ? (
+                    {!readOnly && !multiGroup && b.kind === "stay" && onSetNoClean ? (
                       <button
                         type="button"
                         className={`btn sm line ncx ${b.noClean ? "on" : ""}`}
                         aria-pressed={b.noClean}
                         disabled={moving || ncxBusy === b.id}
-                        onClick={() => onToggleNoClean(b)}
-                        title="청소하지 않음 · 누르면 바로 저장"
+                        onClick={() => setCleanAsk(b)}
+                        title="청소 함 / 안 함 선택"
                       >
                         <Ban size={14} strokeWidth={2.2} aria-hidden />
-                        {ncxBusy === b.id ? "저장 중…" : b.noClean ? "청소X · 해제" : "청소X"}
+                        {ncxBusy === b.id ? "저장 중…" : CLEAN_REQUEST_COPY}
                       </button>
                     ) : null}
-                    {!readOnly && canAddSurcharge(b) ? (
+                    {showPaymentDesk ? (
                       <button
                         type="button"
                         className="btn sm line"
                         disabled={moving}
-                        onClick={() => onOpen(b, today, { openSurcharge: true })}
-                        aria-label={SURCHARGE_COPY}
+                        onClick={() => onPaymentDesk?.()}
+                        aria-label={PAYMENT_DESK_CTA}
                       >
-                        <CirclePlus size={14} strokeWidth={2.2} aria-hidden />
-                        {SURCHARGE_COPY}
+                        <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
+                        {PAYMENT_DESK_CTA}
                       </button>
                     ) : null}
-                    {!readOnly && onRoomMove ? (
+                    {!readOnly && !multiGroup && onRoomMove ? (
                       <button
                         type="button"
                         className="btn sm dark"
@@ -409,24 +423,39 @@ export default function NowSidePanel({
                         {moving ? "이동 중…" : "객실 이동"}
                       </button>
                     ) : null}
-                    {!readOnly ? (
+                    {!readOnly && !multiGroup ? (
                       <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
                         예약 기록 열기
                       </button>
                     ) : null}
-                    {!readOnly && f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
+                    {!readOnly && !multiGroup && f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
                       <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
                         {coBusy === b.id ? "처리 중…" : "퇴실처리"}
                       </button>
                     ) : null}
                     {!readOnly && bookCtaLabel && onBookVacant && f && (f.kind === "departing" || f.kind === "lateOut") ? (
                       <button type="button" className="btn sm dark" disabled={moving} onClick={onBookVacant}>
+                        <BedDouble size={14} strokeWidth={2.2} aria-hidden />
                         {bookCtaLabel}
                       </button>
                     ) : null}
-                    {!readOnly ? (
-                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId!)}>
+                    {!readOnly && selectedRoomId ? (
+                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId)}>
                         호실 특이사항
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : multiGroup ? (
+                <div className="nsel-body">
+                  <div className="muted sm">
+                    동일 단체 {selectedGroupBookings.length}실 · {selectedGroupBookings[0]?.groupName || selectedGroupBookings[0]?.guestName}
+                  </div>
+                  <div className="nsel-acts">
+                    {showPaymentDesk ? (
+                      <button type="button" className="btn sm dark" disabled={moving} onClick={() => onPaymentDesk?.()}>
+                        <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
+                        {PAYMENT_DESK_CTA}
                       </button>
                     ) : null}
                   </div>
@@ -448,11 +477,12 @@ export default function NowSidePanel({
                     <div className="nsel-acts">
                       {bookCtaLabel && onBookVacant ? (
                         <button type="button" className="btn sm dark" onClick={onBookVacant}>
+                          <BedDouble size={14} strokeWidth={2.2} aria-hidden />
                           {bookCtaLabel}
                         </button>
                       ) : null}
                       {dayuseCtaLabel && onNewDayuse ? (
-                        <button type="button" className="btn sm line" onClick={onNewDayuse}>
+                        <button type="button" className="btn sm info" onClick={onNewDayuse}>
                           {dayuseCtaLabel}
                         </button>
                       ) : null}
@@ -530,6 +560,29 @@ export default function NowSidePanel({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {cleanAsk && onSetNoClean ? (
+        <CleanRequestModal
+          guestName={cleanAsk.guestName}
+          roomLabel={
+            cleanAsk.roomId
+              ? `${L.roomLabel(cleanAsk.roomId) ?? allRooms(s).find((r) => r.id === cleanAsk.roomId)?.no ?? ""}호`
+              : roomLabel ?? ""
+          }
+          currentNoClean={!!cleanAsk.noClean}
+          busy={ncxBusy === cleanAsk.id}
+          onCancel={() => !ncxBusy && setCleanAsk(null)}
+          onConfirm={(choice: CleanRequestChoice) => {
+            const next = choice === "no_clean";
+            if (next === !!cleanAsk.noClean) {
+              setCleanAsk(null);
+              return;
+            }
+            onSetNoClean(cleanAsk, next);
+            setCleanAsk(null);
+          }}
+        />
       ) : null}
     </aside>
   );
