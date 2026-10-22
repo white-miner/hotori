@@ -7,12 +7,15 @@ import {
   bookingCash,
   defaultBookingPlatformId,
   isOnsite,
+  onsiteCreatePayTail,
   paidOf,
   payKindLabel,
   payLineMain,
   payState,
+  planOnsiteCreatePay,
   isWalkInPlaceholderName,
   validateGuestPhone,
+  validateOnsiteCreateDeposit,
   validatePayment,
   walkInDisplayName,
   WALKIN_IMMEDIATE_PREFIX,
@@ -140,4 +143,34 @@ test("설정: 플랫폼의 현장 결제 값이 저장·불러오기 뒤에도 �
   const S = normalizeSettings({ platforms: [{ id: "p1", name: "야놀자", abbr: "야", onsite: true } as never, { id: "p2", name: "현장", abbr: "현" }] });
   assert.equal(isOnsite(S.platforms[0]), true);
   assert.equal(isOnsite(S.platforms[1]), true);
+});
+
+test("생성 progressive: 선불=완납 balance · 후불=none · 선금=deposit", () => {
+  assert.deepEqual(planOnsiteCreatePay("prepaid", { saleTotal: 80000, depAmt: "", depMethod: "card" }), {
+    kind: "balance",
+    amount: 80000,
+    method: "card",
+  });
+  assert.deepEqual(planOnsiteCreatePay("postpaid", { saleTotal: 80000, depAmt: "30000", depMethod: "cash" }), {
+    kind: "none",
+  });
+  assert.deepEqual(planOnsiteCreatePay("deposit", { saleTotal: 80000, depAmt: "30000", depMethod: "cash" }), {
+    kind: "deposit",
+    amount: 30000,
+    method: "cash",
+  });
+  assert.deepEqual(planOnsiteCreatePay("prepaid", { priceUnset: true, saleTotal: 80000, depAmt: "", depMethod: "card" }), {
+    kind: "none",
+  });
+  assert.equal(onsiteCreatePayTail({ kind: "balance", amount: 80000, method: "card" }), " · 선불(완납) 80,000원");
+  assert.equal(onsiteCreatePayTail({ kind: "deposit", amount: 30000, method: "cash" }), " · 선금 30,000원(현금)");
+  assert.equal(validateOnsiteCreateDeposit("postpaid", { saleTotal: 80000, depAmt: "", depMethod: "card", bizDate: "2026-10-22" }), null);
+  assert.match(
+    validateOnsiteCreateDeposit("deposit", { saleTotal: 80000, depAmt: "90000", depMethod: "card", bizDate: "2026-10-22" })!,
+    /선금이 판매금/,
+  );
+  assert.equal(
+    validateOnsiteCreateDeposit("deposit", { saleTotal: 80000, depAmt: "30000", depMethod: "card", bizDate: "2026-10-22" }),
+    null,
+  );
 });

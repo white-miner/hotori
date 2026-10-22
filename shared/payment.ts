@@ -136,3 +136,56 @@ export function paySplit(list: Pick<Payment, "method" | "amount" | "bizDate">[],
 export function splitLine(p: Record<BookPayMethod, number>): string {
   return BOOK_PAY_METHODS.filter((m) => p[m] > 0).map((m) => `${BOOK_PAY_LABEL[m]} ${won(p[m])}`).join(" · ");
 }
+
+/**
+ * 현장·전화 생성 progressive: 선불 / 후불 / 선금 (간단·Entry create stay 공유).
+ * 후불 = 수납 줄 없음 · 선불 = 판매금 완납(balance) · 선금 = deposit 일부.
+ * 판매금(총액)은 세 모드 모두 별도 필드 — 이 타입으로 숨기지 않음.
+ */
+export type OnsitePayMode = "prepaid" | "postpaid" | "deposit";
+export const ONSITE_PAY_MODES = ["prepaid", "postpaid", "deposit"] as const;
+export const ONSITE_PAY_MODE_LABEL: Record<OnsitePayMode, string> = {
+  prepaid: "선불",
+  postpaid: "후불",
+  deposit: "선금",
+};
+
+export type OnsiteCreatePayPlan =
+  | { kind: "none" }
+  | { kind: "balance"; amount: number; method: BookPayMethod }
+  | { kind: "deposit"; amount: number; method: BookPayMethod };
+
+/** 선금 모드일 때만 수납 액수 검증 · 선불/후불은 판매금 필드로 */
+export function validateOnsiteCreateDeposit(
+  payMode: OnsitePayMode,
+  opts: { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod; bizDate: string },
+): string | null {
+  if (opts.priceUnset || payMode !== "deposit") return null;
+  const amt = Number(opts.depAmt || 0);
+  const pv = validatePayment(amt, opts.depMethod, opts.bizDate);
+  if (pv) return pv;
+  if (amt > opts.saleTotal) return "선금이 판매금보다 커요.";
+  return null;
+}
+
+/** 저장 직후 addPayment에 넣을 계획 (금액미정·후불·0원 선불 → none) */
+export function planOnsiteCreatePay(
+  payMode: OnsitePayMode,
+  opts: { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod },
+): OnsiteCreatePayPlan {
+  if (opts.priceUnset) return { kind: "none" };
+  if (payMode === "prepaid" && opts.saleTotal > 0) {
+    return { kind: "balance", amount: opts.saleTotal, method: opts.depMethod };
+  }
+  if (payMode === "deposit") {
+    const amt = Number(opts.depAmt || 0);
+    if (amt > 0) return { kind: "deposit", amount: amt, method: opts.depMethod };
+  }
+  return { kind: "none" };
+}
+
+export function onsiteCreatePayTail(plan: OnsiteCreatePayPlan): string {
+  if (plan.kind === "balance") return ` · 선불(완납) ${won(plan.amount)}원`;
+  if (plan.kind === "deposit") return ` · 선금 ${won(plan.amount)}원(${BOOK_PAY_LABEL[plan.method]})`;
+  return "";
+}

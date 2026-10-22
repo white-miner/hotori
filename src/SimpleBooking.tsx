@@ -30,13 +30,14 @@ import { nightRatesFromTotal, splitAmountLast, syncStayNightRates } from "../sha
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
 import {
-  BOOK_PAY_LABEL,
-  BOOK_PAY_METHODS,
   type BookPayMethod,
+  type OnsitePayMode,
   defaultBookingPlatformId,
   isOnsite,
+  onsiteCreatePayTail,
+  planOnsiteCreatePay,
   validateGuestPhone,
-  validatePayment,
+  validateOnsiteCreateDeposit,
   walkInDisplayName,
 } from "../shared/payment";
 import { rateFormula, ratePrices } from "../shared/settle";
@@ -47,8 +48,8 @@ import { TypeBadge, lookups } from "./ui";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
+import OnsitePayModeFields from "./OnsitePayModeFields";
 
-type PayMode = "prepaid" | "postpaid" | "deposit";
 /** 플랫폼 판매금 입력: 박당 = rate×박 · 총액 = OTA 총액 그대로 (기본) */
 type SalesMode = "perNight" | "total";
 
@@ -130,7 +131,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   /** Path B · #71 roomIds / 단실 roomId prefill → 배치도에 선택 상태 */
   const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
-  const [payMode, setPayMode] = useState<PayMode>("postpaid");
+  const [payMode, setPayMode] = useState<OnsitePayMode>("postpaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
   /** 「바로 입실」: 이름·연락처 생략 · 호실 필수 · arrived */
@@ -372,11 +373,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         : ratePrices(saveTypeIds, rateNum, nights);
     const totalSale = priceUnset ? 0 : totalMode ? totalNum : prices.reduce((a, b) => a + b, 0);
 
-    if (onsite && payMode === "deposit" && !priceUnset) {
-      const amt = Number(depAmt || 0);
-      const pv = validatePayment(amt, depMethod, today);
-      if (pv) return setErr(pv);
-      if (amt > totalSale) return setErr("선금이 판매금보다 커요.");
+    if (onsite) {
+      const depErr = validateOnsiteCreateDeposit(payMode, {
+        priceUnset,
+        saleTotal: totalSale,
+        depAmt,
+        depMethod,
+        bizDate: today,
+      });
+      if (depErr) return setErr(depErr);
     }
 
     // validate one representative booking (name/dates/platform)
@@ -458,20 +463,25 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         });
         const saved = await data.saveBooking(one, true);
         let payTail = "";
-        if (onsite && !priceUnset && isOnsite(s.platforms.find((x) => x.id === saved.platformId))) {
-          try {
-            if (payMode === "prepaid" && saved.price > 0) {
-              await data.addPayment(saved.id, { kind: "balance", method: depMethod, amount: saved.price, bizDate: today });
-              payTail = ` · 선불(완납) ${won(saved.price)}원`;
-            } else if (payMode === "deposit") {
-              const amt = Number(depAmt || 0);
-              if (amt > 0) {
-                await data.addPayment(saved.id, { kind: "deposit", method: depMethod, amount: amt, bizDate: today });
-                payTail = ` · 선금 ${won(amt)}원(${BOOK_PAY_LABEL[depMethod]})`;
-              }
+        if (onsite && isOnsite(s.platforms.find((x) => x.id === saved.platformId))) {
+          const plan = planOnsiteCreatePay(payMode, {
+            priceUnset,
+            saleTotal: saved.price,
+            depAmt,
+            depMethod,
+          });
+          if (plan.kind !== "none") {
+            try {
+              await data.addPayment(saved.id, {
+                kind: plan.kind === "balance" ? "balance" : "deposit",
+                method: plan.method,
+                amount: plan.amount,
+                bizDate: today,
+              });
+              payTail = onsiteCreatePayTail(plan);
+            } catch (e) {
+              payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
             }
-          } catch (e) {
-            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
           }
         }
         const path = saved.roomId ? ` · ${L.roomLabel(saved.roomId)}호` : " · 미배정(타입 재고)";
@@ -509,18 +519,25 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       });
 
       let payTail = "";
-      if (onsite && !priceUnset && savedList[0]) {
+      if (onsite && savedList[0]) {
         try {
-          if (payMode === "prepaid" && totalSale > 0) {
+          if (payMode === "prepaid" && !priceUnset && totalSale > 0) {
             for (const b of savedList) {
-              if (b.price > 0) await data.addPayment(b.id, { kind: "balance", method: depMethod, amount: b.price, bizDate: today });
+              if (b.price > 0) {
+                await data.addPayment(b.id, { kind: "balance", method: depMethod, amount: b.price, bizDate: today });
+              }
             }
-            payTail = ` · 선불(완납) ${won(totalSale)}원`;
+            payTail = onsiteCreatePayTail({ kind: "balance", amount: totalSale, method: depMethod });
           } else if (payMode === "deposit") {
-            const amt = Number(depAmt || 0);
-            if (amt > 0) {
-              await data.addPayment(savedList[0].id, { kind: "deposit", method: depMethod, amount: amt, bizDate: today });
-              payTail = ` · 선금 ${won(amt)}원(${BOOK_PAY_LABEL[depMethod]})`;
+            const plan = planOnsiteCreatePay(payMode, { priceUnset, saleTotal: totalSale, depAmt, depMethod });
+            if (plan.kind === "deposit") {
+              await data.addPayment(savedList[0].id, {
+                kind: "deposit",
+                method: plan.method,
+                amount: plan.amount,
+                bizDate: today,
+              });
+              payTail = onsiteCreatePayTail(plan);
             }
           }
         } catch (e) {
@@ -749,36 +766,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
         </div>
 
-        {/* 현장·전화: 결제 모드 칩을 판매금 위에 두어, 선불/후불에서도 판매금 칸이 바로 보이게 */}
+        {/* 현장·전화: 결제 모드 칩을 판매금 위에 · shared OnsitePayModeFields */}
         {onsite ? (
-          <div className="fld">
-            <label>결제</label>
-            <div>
-              <ChipGroup>
-                {(
-                  [
-                    ["prepaid", "선불"],
-                    ["postpaid", "후불"],
-                    ["deposit", "선금"],
-                  ] as const
-                ).map(([k, lab]) => (
-                  <Chip key={k} active={payMode === k} onClick={() => setPayMode(k)}>
-                    {lab}
-                  </Chip>
-                ))}
-              </ChipGroup>
-              {payMode === "postpaid" ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                  후불 · 퇴실(또는 나중에) 정산 · 결제 줄 없음
-                </div>
-              ) : null}
-              {priceUnset ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                  금액미정 · 수납은 확정 후 Entry에서
-                </div>
-              ) : null}
-            </div>
-          </div>
+          <OnsitePayModeFields
+            part="chips"
+            payMode={payMode}
+            onPayMode={setPayMode}
+            depAmt={depAmt}
+            onDepAmt={setDepAmt}
+            depMethod={depMethod}
+            onDepMethod={setDepMethod}
+            priceUnset={priceUnset}
+          />
         ) : null}
 
         {/* 판매금: 선불·후불·선금·플랫폼 모두 표시 · 기본 총액(박·호실 자동 분배) */}
@@ -888,50 +887,18 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </div>
         </div>
 
-        {/* 선금만: 판매금과 별도인 수납 액수 · 선불/후불은 판매금만 */}
-        {onsite && payMode === "prepaid" && !priceUnset ? (
-          <div className="fld">
-            <label>수납</label>
-            <div className="muted sm">
-              저장 시 판매금만큼 받기(완납)로 적어요 · 방법
-              <ChipGroup style={{ display: "inline-flex", marginLeft: "var(--space-3)" }}>
-                {BOOK_PAY_METHODS.map((m) => (
-                  <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
-                    {BOOK_PAY_LABEL[m]}
-                  </Chip>
-                ))}
-              </ChipGroup>
-            </div>
-          </div>
-        ) : null}
-        {onsite && payMode === "deposit" && !priceUnset ? (
-          <div className="fld">
-            <label>받을 선금</label>
-            <div>
-              <div className="muted sm" style={{ marginBottom: "var(--space-chip)" }}>
-                판매금과 별개 · 일부만 먼저 받을 때
-              </div>
-              <PriceRow>
-                <PriceInp sm>
-                  <input
-                    className="num"
-                    inputMode="numeric"
-                    aria-label="받을 선금"
-                    placeholder="선금"
-                    value={depAmt !== "" ? won(Number(depAmt)) : ""}
-                    onChange={(e) => setDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  />
-                </PriceInp>
-                <ChipGroup>
-                  {BOOK_PAY_METHODS.map((m) => (
-                    <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
-                      {BOOK_PAY_LABEL[m]}
-                    </Chip>
-                  ))}
-                </ChipGroup>
-              </PriceRow>
-            </div>
-          </div>
+        {/* 선금·선불 수납만 · 후불은 숨김 · shared */}
+        {onsite ? (
+          <OnsitePayModeFields
+            part="take"
+            payMode={payMode}
+            onPayMode={setPayMode}
+            depAmt={depAmt}
+            onDepAmt={setDepAmt}
+            depMethod={depMethod}
+            onDepMethod={setDepMethod}
+            priceUnset={priceUnset}
+          />
         ) : null}
 
         {err ? <div className="err">{err}</div> : null}
