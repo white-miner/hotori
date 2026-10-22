@@ -332,21 +332,38 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const bk = nowBoardMap.get(roomId);
     return !bk || !isActive(bk);
   };
+  /** 퇴실예정(미퇴실)이어도 오늘 입실 밤이 안 겹치면 당일 예약·배정 타깃 */
+  const roomIsTurnoverBookable = (roomId: string) => {
+    const bk = nowBoardMap.get(roomId);
+    if (!bk || !isActive(bk)) return false;
+    const f = nowFlags(bk, today, nowOpts);
+    if (!isDepartingStatus(f.kind)) return false;
+    return freeRooms(s, bookings, {
+      id: "__turnover__",
+      kind: "stay",
+      checkIn: today,
+      nights: 1,
+      startTime: null,
+      endTime: null,
+    }).has(roomId);
+  };
+  const roomIsBookTarget = (roomId: string) => roomIsVacant(roomId) || roomIsTurnoverBookable(roomId);
   const selectRoom = (roomId: string) => {
     setNightPopId(null);
     setSideMode("room");
-    if (!roomIsVacant(roomId)) {
+    // 퇴실예정 턴오버 가능 칸 = 공실과 같이 복수 선택(당일 예약). 그 외 점유 = 단실 운영.
+    if (!roomIsBookTarget(roomId)) {
       setSelectedRoomIds([roomId]);
       return;
     }
     setSelectedRoomIds((prev) => {
-      const prevAllVacant = prev.length > 0 && prev.every((id) => roomIsVacant(id));
-      if (!prevAllVacant) return [roomId];
+      const prevAllBook = prev.length > 0 && prev.every((id) => roomIsBookTarget(id));
+      if (!prevAllBook) return [roomId];
       if (prev.includes(roomId)) return prev.filter((id) => id !== roomId);
       return [...prev, roomId];
     });
   };
-  const selectedVacantIds = selectedRoomIds.filter(roomIsVacant);
+  const selectedVacantIds = selectedRoomIds.filter(roomIsBookTarget);
   const selectedRoomId =
     selectedRoomIds.length === 1
       ? selectedRoomIds[0]
@@ -923,8 +940,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
       ) : null;
     const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${no(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${no(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
-    // 배정 모드: 점유 칸은 체크 없음 · 흐리게만
-    const occAssignCls = assignMode ? "assign-off" : "";
+    // 배정 모드: 기간이 비면(퇴실예정 턴오버 등) 점유 칸도 체크 · 아니면 흐리게
+    const canAssignOcc = !mvB && !!assignBk && assignEligible.has(r.id);
+    const sameTypeOcc = canAssignOcc && r.typeId === assignBk!.typeId;
+    const occAssignCls = assignMode
+      ? canAssignOcc
+        ? sameTypeOcc
+          ? "assign-ok"
+          : "assign-other"
+        : "assign-off"
+      : "";
     return (
       <div
         key={r.id}
@@ -933,12 +958,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onClick={
           mvClick ??
           (() => {
-            if (assignMode) return;
+            if (assignMode) {
+              if (canAssignOcc) requestAssign(assignBk!, r.id);
+              return;
+            }
             onOpen(b, selDate);
           })
         }
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
+        {canAssignOcc ? (
+          <label className="board-assign-check" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={false}
+              disabled={assignBusy}
+              aria-label={`${r.no}호에 배정${sameTypeOcc ? "" : " (타입 다름)"}`}
+              onChange={() => requestAssign(assignBk!, r.id)}
+            />
+          </label>
+        ) : null}
         {!cancelled && du.length ? (
           <span className="dumark" title={du.map((d) => `대실 ${d.startTime}~${d.endTime}`).join(" · ")}>
             <i>대실 </i>

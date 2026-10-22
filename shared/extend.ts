@@ -9,7 +9,9 @@ import {
   fitSegments,
   isActive,
   isEarlyOut,
-  legConflicts,
+  legsClash,
+  legsOf,
+  occupiesRoom,
   roomLabel,
   won,
 } from "./ledger";
@@ -164,13 +166,40 @@ export function applyExtend(
   };
 }
 
-/** 방 겹침으로 연장 막힘 문구, 아니면 null */
+/** 연장 충돌 경고 모달 제목 (Entry · 운영패널 → Entry) */
+export const EXTEND_OVERLAP_TITLE = "이 객실에 예약이 있습니다";
+
+/** 연장 후 초안 (겹침 검사·저장 공통) */
+export function extendDraftBooking(b: Booking, rate: number): { draft: Booking; extraNight: string } {
+  const d = applyExtend(b, rate);
+  return {
+    draft: { ...b, nights: d.nights, price: d.price, segments: d.segments },
+    extraNight: d.extraNight,
+  };
+}
+
+/**
+ * 1박 연장 시 같은 방·새 밤에 겹치는 다른 활성(미퇴실) 예약.
+ * 하드블록 아님 — UI에서 취소/승인 모달. 침묵 연장 금지.
+ */
+export function extendOverlaps(bookings: Booking[], b: Booking, rate: number): Booking[] {
+  if (!canExtend(b)) return [];
+  const { draft } = extendDraftBooking(b, rate);
+  const mine = legsOf(draft).filter((l) => l.roomId);
+  if (!mine.length) return [];
+  return bookings.filter((x) => {
+    if (x.id === b.id || !occupiesRoom(x) || x.kind !== "stay") return false;
+    return legsOf(x).some((o) => !!o.roomId && mine.some((m) => legsClash(m, o)));
+  });
+}
+
+/** 연장 가능·금액만 검사. 방 겹침은 extendOverlaps + 모달 (단체는 아래 planGroupExtend가 막음). */
 export function extendBlock(
   s: HotelSettings,
   bookings: Booking[],
   b: Booking,
   rate: number,
-  label: (id: string | null) => string | null = (id) => roomLabel(s, id),
+  _label: (id: string | null) => string | null = (id) => roomLabel(s, id),
 ): string | null {
   if (!canExtend(b)) {
     if (isEarlyOut(b)) return "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 고쳐 주세요.";
@@ -181,13 +210,7 @@ export function extendBlock(
   }
   if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 적어 주세요.";
   if (rate > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
-  const d = applyExtend(b, rate);
-  const draft: Booking = { ...b, nights: d.nights, price: d.price, segments: d.segments };
-  const busy = legConflicts(bookings, draft);
-  if (busy.length) {
-    const rooms = [...new Set(busy.map((l) => `${label(l.roomId) ?? "?"}호`))].join(", ");
-    return `${rooms}는 ${dayLabel(d.extraNight)} 밤에 다른 예약이 있어요. 방을 옮기거나 비운 뒤 연장해 주세요.`;
-  }
+  void bookings;
   return null;
 }
 
@@ -256,6 +279,12 @@ export function planGroupExtend(
     const rate = groupMemberRate(b, rates);
     const block = extendBlock(s, working, b, rate);
     if (block) return { err: block };
+    const hits = extendOverlaps(working, b, rate);
+    if (hits.length) {
+      const d = applyExtend(b, rate);
+      const rooms = [...new Set(hits.map((x) => `${roomLabel(s, x.roomId) ?? "?"}호`))].join(", ");
+      return { err: `${rooms}는 ${dayLabel(d.extraNight)} 밤에 다른 예약이 있어요. 방을 옮기거나 비운 뒤 연장해 주세요.` };
+    }
     const draft = applyExtend(b, rate);
     membersOut.push({ id: b.id, guestName: b.guestName, roomId: b.roomId, typeId: b.typeId, draft });
     totalRate += draft.rate;

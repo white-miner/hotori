@@ -75,7 +75,9 @@ import {
   applyExtend,
   canExtend,
   extendBlock,
+  extendDraftBooking,
   extendNotifyLine,
+  extendOverlaps,
   nightRate,
   nightsChangedWithoutPrice,
   planExtend,
@@ -85,6 +87,7 @@ import {
   unusedNightRefund,
   validateExtendRate,
 } from "../shared/extend";
+import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
   type StayNightRates,
   hasFullNightMatrix,
@@ -323,6 +326,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   );
   const [exBusy, setExBusy] = useState(false);
   const [exErr, setExErr] = useState<string | null>(null);
+  /** 연장 겹침 경고: 승인 시에만 저장 */
+  const [exOverlap, setExOverlap] = useState<{ rate: number; others: Booking[]; extraNight: string } | null>(null);
   // +추가금: 할증·시간료·기타 (박수 불변 · 받기/잔금)
   const initAsHours = () => {
     if (!live) return 1;
@@ -366,6 +371,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const ds = earlyOutDates(live);
     setEoErr(null);
     setEx(null);
+    setExOverlap(null);
     setAs(null);
     const date = ds.includes(today) ? today : ds[ds.length - 1];
     const sug = unusedNightRefund(live, date, groupRates?.[live.typeId]);
@@ -375,6 +381,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!live || !canAddSurcharge(live)) return;
     setAsErr(null);
     setEx(null);
+    setExOverlap(null);
     setEo(null);
     const hours = initAsHours();
     const elapsed = suggestElapsedLateHours(s.stayTimes.checkOut, hotelWallClock().time);
@@ -390,6 +397,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const openEx = () => {
     if (!live || !canExtend(live)) return;
     setExErr(null);
+    setExOverlap(null);
     setEo(null);
     setAs(null);
     const rate =
@@ -578,7 +586,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setAsBusy(false);
     }
   };
-  const confirmEx = async () => {
+  const confirmEx = async (opts?: { allowOverlap?: boolean }) => {
     if (!live || !ex || exBusy) return;
     setExBusy(true);
     setExErr(null);
@@ -588,6 +596,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         if ("err" in planned) return setExErr(planned.err);
         const block = extendBlock(s, data.bookings, live, planned.line.amount, (id) => L.roomLabel(id));
         if (block) return setExErr(block);
+        if (!opts?.allowOverlap) {
+          const others = extendOverlaps(data.bookings, live, planned.line.amount);
+          if (others.length) {
+            const { extraNight } = extendDraftBooking(live, planned.line.amount);
+            setExOverlap({ rate: planned.line.amount, others, extraNight });
+            return;
+          }
+        }
+        setExOverlap(null);
         const next: Booking = {
           ...live,
           nights: planned.draft.nights,
@@ -607,6 +624,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       if (rv) return setExErr(rv);
       const block = extendBlock(s, data.bookings, live, rate, (id) => L.roomLabel(id));
       if (block) return setExErr(block);
+      if (!opts?.allowOverlap) {
+        const others = extendOverlaps(data.bookings, live, rate);
+        if (others.length) {
+          const { extraNight } = extendDraftBooking(live, rate);
+          setExOverlap({ rate, others, extraNight });
+          return;
+        }
+      }
+      setExOverlap(null);
       const plan = planExtend(live, rate, ex.collect);
       if (ex.collect && plan.collectAmount > 0) {
         const pv = validatePayment(plan.collectAmount, ex.method, today);
@@ -1465,7 +1491,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </button>
             ) : null}
             {canEx ? (
-              <button type="button" className={`beo ${ex ? "on" : ""}`} aria-expanded={!!ex} onClick={() => (ex ? setEx(null) : openEx())}>
+              <button
+                type="button"
+                className={`beo ${ex ? "on" : ""}`}
+                aria-expanded={!!ex}
+                onClick={() => {
+                  if (ex) {
+                    setEx(null);
+                    setExOverlap(null);
+                  } else openEx();
+                }}
+              >
                 <CalendarPlus size={17} />
                 <b>{isLongStay(live ?? base) ? "재고 창 +1박" : EXTEND_COPY}</b>
               </button>
@@ -1724,7 +1760,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             )}
             {exErr ? <div className="ferr">{exErr}</div> : null}
             <div className="eoc-a">
-              <button type="button" className="btn" onClick={() => setEx(null)}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setEx(null);
+                  setExOverlap(null);
+                }}
+              >
                 닫기
               </button>
               <button type="button" className="btn dark" disabled={exBusy} onClick={() => void confirmEx()}>
@@ -3107,6 +3150,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         busy={swapBusy}
         onCancel={() => setSwapChoice(null)}
         onConfirm={() => void doEntrySwap(swapChoice)}
+      />
+    ) : null}
+    {exOverlap ? (
+      <ExtendOverlapConfirm
+        extraNight={exOverlap.extraNight}
+        others={exOverlap.others}
+        roomLabel={L.roomLabel(live?.roomId ?? null)}
+        busy={exBusy}
+        onCancel={() => setExOverlap(null)}
+        onApprove={() => void confirmEx({ allowOverlap: true })}
       />
     ) : null}
     </>

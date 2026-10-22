@@ -1,6 +1,6 @@
 // 장기숙박(퇴실 미정): 요금표 · 박별 누적 · 미수 · 재고 창 롤링
 import { type Booking, addDays, dayLabel, fitSegments, won } from "./ledger";
-import { applyExtend, canExtend, extendBlock, type ExtendDraft } from "./extend";
+import { applyExtend, canExtend, extendBlock, extendOverlaps, type ExtendDraft } from "./extend";
 import type { HotelSettings } from "./ledger";
 
 const PAY_MAX = 100_000_000;
@@ -236,6 +236,11 @@ export function windowExtendBlock(
     const amt = nightAmount(rate, night) ?? 0;
     const block = extendBlock(s, working, cur, amt, label);
     if (block) return block;
+    const hits = extendOverlaps(working, cur, amt);
+    if (hits.length) {
+      const rooms = [...new Set(hits.map((x) => `${label(x.roomId) ?? "?"}호`))].join(", ");
+      return `${rooms}는 ${dayLabel(night)} 밤에 다른 예약이 있어요. 방을 옮기거나 비운 뒤 연장해 주세요.`;
+    }
     const d = applyExtend(cur, amt);
     cur = { ...cur, nights: d.nights, price: d.price, segments: d.segments };
     working = working.map((x) => (x.id === b.id ? cur : x));
