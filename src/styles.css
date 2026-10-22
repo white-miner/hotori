@@ -2903,6 +2903,102 @@ button.nowstatus { cursor: pointer; }
   outline-offset: 1px;
   z-index: 1;
 }
+/* 「현황」공실 글랜스 — 칩 아래 타이포 · 카드/큰숫자 금지 · 그리드 미터치 */
+.now-vacancy {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line2);
+  color: var(--ink2);
+  font-size: 13px;
+}
+.now-page .btabs + .now-vacancy { margin-top: calc(var(--space-2) * -1); }
+.now-vacancy-sum {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+.now-vacancy-sum .num {
+  font-family: var(--num);
+  font-weight: 800;
+  color: var(--ink);
+  font-feature-settings: "tnum" 1;
+}
+.now-vacancy-dot {
+  margin: 0 var(--space-2);
+  color: var(--ink4);
+  font-weight: 500;
+}
+.now-vacancy-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  min-width: 0;
+}
+.now-vacancy-lab {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
+}
+.now-vacancy-none {
+  font-size: 12.5px;
+  color: var(--ink4);
+  font-weight: 500;
+}
+.now-vacancy-nos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+  align-items: baseline;
+  flex: 1;
+}
+.now-vacancy-nos.one {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 1px;
+}
+.now-vacancy-no {
+  flex: none;
+  font-family: var(--num);
+  font-weight: 750;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 2px;
+  letter-spacing: -0.02em;
+}
+.now-vacancy-no:hover { text-decoration-color: var(--ink3); }
+.now-vacancy-more {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink3);
+  height: 22px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+}
+.now-vacancy-more:hover { background: var(--hover); color: var(--ink2); }
+.now-page .cell.nowflash {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  animation: nowflash-pulse 1.4s ease-out;
+  z-index: 2;
+}
+@keyframes nowflash-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(26, 26, 26, 0.22); }
+  45% { box-shadow: 0 0 0 6px rgba(26, 26, 26, 0); }
+  100% { box-shadow: 0 0 0 0 transparent; outline-color: var(--ink4); }
+}
 /* 「현황」공실 복수선택 → 예약하기 (board CTA · sticky nowside untouched) */
 .nowbookbar {
   position: sticky;
