@@ -3466,3 +3466,79 @@ body.bulking .toast { bottom: 96px; }
   .npick-d { min-height: 44px; border-radius: 10px; font-size: 13.5px; }
   .npick-nav .sb { width: 44px; height: 44px; }
 }
+
+/* 고객 이름·연락처 검색 (현황·배치) — outline/opacity only · 칸 박스·비율 금지 */
+.board-filter-sticky {
+  position: sticky;
+  top: 64px;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 12px;
+  padding: 8px 0;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+}
+.board-filter-sticky .btabs { margin: 0; }
+.guest-search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.guest-search-bar .search.guest-search {
+  width: min(280px, 100%);
+  flex: 0 1 280px;
+  display: flex;
+}
+.guest-search-bar .guest-search-x {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: -6px;
+  border-radius: var(--radius-pill);
+  color: var(--ink3);
+  background: transparent;
+}
+.guest-search-bar .guest-search-x:hover { color: var(--ink); background: var(--hover); }
+.guest-search-none {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink3);
+}
+.guest-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+.guest-search-chips .chip:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* 매칭 하이라이트 · 비매칭 dim — min-height / grid / padding 금지 */
+.board-page .cell.gs-dim {
+  opacity: 0.28;
+}
+.board-page .cell.gs-hit {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  z-index: 2;
+}
+.board-page .cell.gs-hit.gs-focus {
+  outline-color: var(--ink);
+  outline-width: 2.5px;
+  box-shadow: 0 0 0 3px rgba(26, 26, 26, 0.12);
+}
+@media (max-width: 760px) {
+  .board-filter-sticky { top: 0; padding: 6px 0; }
+  .guest-search-bar .search.guest-search { width: 100%; flex: 1 1 100%; }
+}
