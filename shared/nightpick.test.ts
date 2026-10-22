@@ -48,6 +48,17 @@ test("monthGrid dow: 일=0…토=6, 1일이 목요일이어도 정렬", () => {
   }
 });
 
+test("monthGrid: 5주면 끝 out 주 잘라 35칸 (요약줄 위 빈 밴드 방지)", () => {
+  // 2026-10: 1=목 · 31=토 → 5주만 필요 · 예전 42칸 6주는 visibility:hidden 한 줄
+  const oct = monthGrid("2026-10-01");
+  assert.equal(oct.length, 35);
+  assert.ok(oct.some((c) => c.date === "2026-10-31" && c.inMonth));
+  assert.equal(oct.slice(-7).every((c) => !c.inMonth), false);
+  // 6주가 필요한 달(예: 2026-08, 1=토)은 42 유지
+  const aug = monthGrid("2026-08-01");
+  assert.equal(aug.length, 42);
+});
+
 test("11~21 칠함 → 11박 · 입 11 · 퇴 22", () => {
   const s = stayFromPaintedNights("2026-10-11", "2026-10-21");
   assert.deepEqual(s, { checkIn: "2026-10-11", nights: 11, stayEnd: "2026-10-22" });
