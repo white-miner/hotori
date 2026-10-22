@@ -133,6 +133,7 @@ import {
   withPlannedCharges,
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
+import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import { stopSellDatesForStay } from "../shared/salesCalendar";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, Inp, PriceInp, PriceRow, Stepper } from "./primitives";
@@ -204,10 +205,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 숙박: 퇴실 = 입실 + 박수. 입실·박수 바꾸면 퇴실이, 퇴실 고르면 박수가 맞춰져요 (장기는 재고 창만)
   const checkOutDate = checkOutFromStayNights(checkIn, nights);
   const long = stayMode === "long_stay";
-  /** 표준 숙박 Entry: 「기간 입력」↔「날짜 선택」(장기·대실은 숨김) */
+  /** 수정 표준 숙박만 탭 사용 · 신규 표준은 night-pick only (Option D absorb #1) */
   const [stayTab, setStayTab] = useState<"period" | "paint">("period");
   const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
   const setStayCheckIn = (d: string) => setCheckIn(d);
+  const stayDateUx = entryStayDateUx({ isNew, kind, longStay: long });
+  const showNightPick = stayDateUx === "night-pick" || (stayDateUx === "period-tabs" && stayTab === "paint");
   useEffect(() => {
     if (long || kind !== "stay") setStayTab("period");
   }, [long, kind]);
@@ -2045,7 +2048,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 </Chip>
               </ChipGroup>
             </div>
-            {!long ? (
+            {stayDateUx === "period-tabs" ? (
               <div className="fld">
                 <div className="seg wide staytabs" role="tablist" aria-label="숙박 기간 입력 방식">
                   <button type="button" role="tab" aria-selected={stayTab === "period"} className={stayTab === "period" ? "on" : ""} onClick={() => setStayTab("period")}>
@@ -2055,22 +2058,24 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     날짜 선택
                   </button>
                 </div>
-                {stayTab === "paint" ? <span className="muted sm staytab-sub">묵는 밤</span> : null}
               </div>
             ) : null}
-            {!long && stayTab === "paint" ? (
-              <NightPickCalendar
-                checkIn={checkIn}
-                nights={nights}
-                bookings={data.bookings}
-                roomId={roomId}
-                excludeId={base?.id ?? "__draft__"}
-                today={today}
-                onPick={(cin, n) => applyStayNights(n, { checkIn: cin })}
-                onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
-                nightAmounts={nightRates?.nights ?? null}
-                onEditNight={editNightAmount}
-              />
+            {showNightPick ? (
+              <div className="fld">
+                {stayDateUx === "night-pick" ? <label>이용 날짜</label> : null}
+                <NightPickCalendar
+                  checkIn={checkIn}
+                  nights={nights}
+                  bookings={data.bookings}
+                  roomId={roomId}
+                  excludeId={base?.id ?? "__draft__"}
+                  today={today}
+                  onPick={(cin, n) => applyStayNights(n, { checkIn: cin })}
+                  onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
+                  nightAmounts={nightRates?.nights ?? null}
+                  onEditNight={editNightAmount}
+                />
+              </div>
             ) : (
               <>
                 <div className="fld">

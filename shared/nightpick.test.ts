@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   blockedNightsForRoom,
+  entryStayDateUx,
   monthGrid,
   nextPaintedFromClick,
   nightPickGlance,
@@ -146,6 +147,16 @@ test("요약 카피", () => {
   assert.equal(nightPickSummary("2026-10-11", "2026-10-21"), "10/11 ~ 10/21 · 11박 12일");
   assert.equal(nightPickSummary("2026-10-11", "2026-10-11"), "10/11 ~ 10/11 · 1박 2일");
   assert.equal(nightPickGlance("2026-10-11", "2026-10-21"), "11박 · 10/22 아침 퇴실");
+});
+
+test("Entry create stay = night-pick only · edit/dayuse/long 분기", () => {
+  assert.equal(entryStayDateUx({ isNew: true, kind: "stay", longStay: false }), "night-pick");
+  assert.equal(entryStayDateUx({ isNew: false, kind: "stay", longStay: false }), "period-tabs");
+  assert.equal(entryStayDateUx({ isNew: true, kind: "stay", longStay: true }), "period-only");
+  assert.equal(entryStayDateUx({ isNew: false, kind: "stay", longStay: true }), "period-only");
+  assert.equal(entryStayDateUx({ isNew: true, kind: "dayuse", longStay: false }), "period-only");
+  assert.equal(entryStayDateUx({ isNew: false, kind: "dayuse", longStay: false }), "period-only");
+  assert.equal(entryStayDateUx({ isNew: true, kind: "group", longStay: false }), "period-only");
 });
 
 test("막힌 밤 포함 구간은 거부", () => {
