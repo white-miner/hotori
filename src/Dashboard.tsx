@@ -317,6 +317,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const nowBoardMap = useMemo(() => nowByRoom(bookings, today), [bookings, today]);
   const nowSide = useMemo(() => nowLists(bookings, today, nowOpts), [bookings, today, nowOpts]);
   const [coBusy, setCoBusy] = useState<string | null>(null);
+  const [ncxBusy, setNcxBusy] = useState<string | null>(null);
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
   const [nightPopId, setNightPopId] = useState<string | null>(null);
@@ -1179,6 +1180,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** Entry toggleNoClean과 동일 저장 경로 */
+  const toggleNoClean = async (b: Booking) => {
+    if (readOnly || ncxBusy || b.kind !== "stay") return;
+    const next = !b.noClean;
+    setNcxBusy(b.id);
+    try {
+      await data.patchBooking(b.id, { noClean: next });
+    } catch {
+      notify("청소X를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setNcxBusy(null);
+    }
+  };
+
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = nowBoardMap.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
@@ -1442,6 +1457,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}
               moving={!!mvB}
+              onToggleNoClean={(bk) => void toggleNoClean(bk)}
+              ncxBusy={ncxBusy}
               nowOpts={nowOpts}
             />
           </div>

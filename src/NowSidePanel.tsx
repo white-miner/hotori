@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CirclePlus } from "lucide-react";
 import {
   canCheckOut,
   filterUnassignedByCheckIn,
@@ -71,6 +71,9 @@ interface Props {
   onRoomMove?: () => void;
   /** 이동 모드 중이면 CTA 비활성 */
   moving?: boolean;
+  /** Entry와 동일: 청소X 토글 → patchBooking({ noClean }) */
+  onToggleNoClean?: (b: Booking) => void;
+  ncxBusy?: string | null;
   nowOpts?: Parameters<typeof nowFlags>[2];
 }
 
@@ -98,6 +101,8 @@ export default function NowSidePanel({
   onMemo,
   onRoomMove,
   moving = false,
+  onToggleNoClean,
+  ncxBusy = null,
   nowOpts,
 }: Props) {
   const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
@@ -300,6 +305,44 @@ export default function NowSidePanel({
                     </span>
                   </div>
                   <div className="nsel-acts">
+                    {/* MVP stay actions · Entry 동일 경로 · 공실/복수공실은 b 없음으로 숨김 */}
+                    {!readOnly && canExtend(b) ? (
+                      <button
+                        type="button"
+                        className="btn sm line"
+                        disabled={moving}
+                        onClick={() => onOpen(b, today, { openExtend: true })}
+                        aria-label={isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
+                      >
+                        <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
+                        {isLongStay(b) ? "재고 창 +1박" : EXTEND_COPY}
+                      </button>
+                    ) : null}
+                    {!readOnly && b.kind === "stay" && onToggleNoClean ? (
+                      <button
+                        type="button"
+                        className={`btn sm line ncx ${b.noClean ? "on" : ""}`}
+                        aria-pressed={b.noClean}
+                        disabled={moving || ncxBusy === b.id}
+                        onClick={() => onToggleNoClean(b)}
+                        title="청소하지 않음 · 누르면 바로 저장"
+                      >
+                        <Ban size={14} strokeWidth={2.2} aria-hidden />
+                        {ncxBusy === b.id ? "저장 중…" : b.noClean ? "청소X · 해제" : "청소X"}
+                      </button>
+                    ) : null}
+                    {!readOnly && canAddSurcharge(b) ? (
+                      <button
+                        type="button"
+                        className="btn sm line"
+                        disabled={moving}
+                        onClick={() => onOpen(b, today, { openSurcharge: true })}
+                        aria-label={SURCHARGE_COPY}
+                      >
+                        <CirclePlus size={14} strokeWidth={2.2} aria-hidden />
+                        {SURCHARGE_COPY}
+                      </button>
+                    ) : null}
                     {!readOnly && onRoomMove ? (
                       <button
                         type="button"
