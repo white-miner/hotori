@@ -65,6 +65,10 @@ interface Props {
   /** 공실 복수선택 → 간단 예약 Path B */
   onBookVacant?: () => void;
   bookCtaLabel?: string | null;
+  /** 선택 호실 당일 대실 (현황 · 숙박 축과 분리) */
+  dayuseForRoom?: Booking[];
+  /** 단실 「대실」/「대실 추가」 → Entry kind=dayuse */
+  onNewDayuse?: () => void;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
   onMemo: (roomId: string) => void;
   /** 점유/예약 단실 → 현황 보드 객실 이동 모드 */
@@ -97,6 +101,8 @@ export default function NowSidePanel({
   onSimple,
   onBookVacant,
   bookCtaLabel,
+  dayuseForRoom = [],
+  onNewDayuse,
   onCheckOut,
   onMemo,
   onRoomMove,
@@ -136,6 +142,12 @@ export default function NowSidePanel({
   const glance = selectedRoomId && !multiVacant ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
     typeId && !b && !multiVacant ? unassigned.filter((u) => u.typeId === typeId && u.checkIn <= today).length : 0;
+  const dayuseCtaLabel =
+    !readOnly && onNewDayuse && selectedRoomIds.length === 1
+      ? b
+        ? "대실 추가"
+        : "대실"
+      : null;
 
   const nowliTone = (label: string, tentative?: boolean) => {
     if (tentative) return "tent";
@@ -304,8 +316,33 @@ export default function NowSidePanel({
                       )}
                     </span>
                   </div>
+                  {dayuseForRoom.length ? (
+                    <div className="nsel-du" role="list" aria-label="당일 대실">
+                      {dayuseForRoom.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className="nsel-du-row"
+                          role="listitem"
+                          disabled={readOnly}
+                          onClick={() => onOpen(d, today)}
+                        >
+                          <span className="nsel-du-t">
+                            대실 {d.startTime}~{d.endTime}
+                          </span>
+                          <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
+                          {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="nsel-acts">
                     {/* MVP stay actions · Entry 동일 경로 · 공실/복수공실은 b 없음으로 숨김 */}
+                    {!readOnly && dayuseCtaLabel && onNewDayuse ? (
+                      <button type="button" className="btn sm line" disabled={moving} onClick={onNewDayuse}>
+                        {dayuseCtaLabel}
+                      </button>
+                    ) : null}
                     {!readOnly && canExtend(b) ? (
                       <button
                         type="button"
@@ -389,11 +426,38 @@ export default function NowSidePanel({
                       에서 방배정
                     </p>
                   ) : null}
-                  {!readOnly && bookCtaLabel && onBookVacant ? (
+                  {dayuseForRoom.length ? (
+                    <div className="nsel-du" role="list" aria-label="당일 대실">
+                      {dayuseForRoom.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          className="nsel-du-row"
+                          role="listitem"
+                          disabled={readOnly}
+                          onClick={() => onOpen(d, today)}
+                        >
+                          <span className="nsel-du-t">
+                            대실 {d.startTime}~{d.endTime}
+                          </span>
+                          <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
+                          {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {!readOnly && (bookCtaLabel || dayuseCtaLabel) ? (
                     <div className="nsel-acts">
-                      <button type="button" className="btn sm dark" onClick={onBookVacant}>
-                        {bookCtaLabel}
-                      </button>
+                      {bookCtaLabel && onBookVacant ? (
+                        <button type="button" className="btn sm dark" onClick={onBookVacant}>
+                          {bookCtaLabel}
+                        </button>
+                      ) : null}
+                      {dayuseCtaLabel && onNewDayuse ? (
+                        <button type="button" className="btn sm line" onClick={onNewDayuse}>
+                          {dayuseCtaLabel}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

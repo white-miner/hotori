@@ -11,7 +11,19 @@ import {
   normalizeTypeRates,
   normalizeTypeStopSell,
 } from "./salesCalendar";
-import { DEFAULT_HOUR_FEE, type ParkingSettings, type StayTimes, normalizeParking, type SurchargeTier, normalizeHourFee, normalizeSpecialDates, normalizeStayTimes, normalizeTiers } from "./tiers";
+import {
+  DEFAULT_HOUR_FEE,
+  type DayuseDefaults,
+  type ParkingSettings,
+  type StayTimes,
+  normalizeDayuseDefaults,
+  normalizeParking,
+  type SurchargeTier,
+  normalizeHourFee,
+  normalizeSpecialDates,
+  normalizeStayTimes,
+  normalizeTiers,
+} from "./tiers";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -92,6 +104,8 @@ export interface HotelSettings {
   specialDates: string[];
   /** 기본 입실 · 퇴실 시간 (없으면 16:00 · 12:00) */
   stayTimes: StayTimes;
+  /** 대실 기본 시작·종료·가격 (호텔 공통 · 없으면 14:00–17:00 · 0원) */
+  dayuseDefaults: DayuseDefaults;
   /** 빠른 입실 · 늦은 퇴실 1시간 추가 요금 (없으면 10,000원) */
   extraHourFee: number;
   /** 주차 관리 (없으면 꺼짐) */
@@ -240,6 +254,7 @@ export function emptySettings(): HotelSettings {
     surchargeTiers: normalizeTiers(undefined),
     specialDates: [],
     stayTimes: normalizeStayTimes(undefined),
+    dayuseDefaults: normalizeDayuseDefaults(undefined),
     extraHourFee: DEFAULT_HOUR_FEE,
     parking: normalizeParking(undefined),
     cardFeeRate: null,
@@ -289,6 +304,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     surchargeTiers: normalizeTiers((s as { surchargeTiers?: unknown }).surchargeTiers),
     specialDates: normalizeSpecialDates((s as { specialDates?: unknown }).specialDates),
     stayTimes: normalizeStayTimes((s as { stayTimes?: unknown }).stayTimes),
+    dayuseDefaults: normalizeDayuseDefaults((s as { dayuseDefaults?: unknown }).dayuseDefaults),
     extraHourFee: normalizeHourFee((s as { extraHourFee?: unknown }).extraHourFee),
     parking: normalizeParking((s as { parking?: unknown }).parking),
     cardFeeRate: normalizeRate((s as { cardFeeRate?: unknown }).cardFeeRate),
@@ -742,7 +758,8 @@ export function boardMove(b: LegPick, night: string, roomId: string): Placement 
   return segs ? { roomId: segs[0].roomId, segments: segs } : { roomId, segments: null };
 }
 /**
- * 옮길 수 있는 방: 숙박은 보는 밤부터 퇴실까지 내내 빈 방, 대실은 그날 그 시간에 빈 방이면서 그 밤 숙박도 없는 방.
+ * 옮길 수 있는 방: 숙박은 보는 밤부터 퇴실까지 내내 빈 방.
+ * 대실은 그날 그 시간에 다른 대실과 안 겹치는 방 (숙박 방은 허용 · UI 경고).
  * 지금 그 밤에 쓰는 방은 빼요.
  */
 export function boardMoveTargets(s: HotelSettings, bookings: Booking[], b: Booking, night: string): Set<string> {
@@ -754,11 +771,6 @@ export function boardMoveTargets(s: HotelSettings, bookings: Booking[], b: Booki
     return free;
   }
   const free = freeRooms(s, bookings, b);
-  for (const x of bookings) {
-    if (x.id === b.id || !occupiesRoom(x) || x.kind !== "stay") continue;
-    const r = roomOnNight(x, b.checkIn);
-    if (r) free.delete(r);
-  }
   if (b.roomId) free.delete(b.roomId);
   return free;
 }

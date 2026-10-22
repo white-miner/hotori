@@ -844,6 +844,53 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="sub stimes-f">빠른 입실 · 늦은 퇴실 1시간마다 이 금액을 판매 가격에 더해요. 예약 창에서 금액을 바꾸거나 서비스(0원)로 할 수 있어요.</div>
         </section>
 
+        <section className="card" id="set-dayuse">
+          <h3>대실 기본</h3>
+          <div className="sub">신규 대실 예약 창에 이 시작·종료·가격을 먼저 채워요. 호텔 공통(타입별은 다음).</div>
+          <div className="stimes">
+            <label>
+              <span>시작 시간</span>
+              <input
+                type="time"
+                step={1800}
+                value={s.dayuseDefaults.startTime}
+                aria-label="대실 기본 시작"
+                onChange={(e) =>
+                  e.target.value &&
+                  update((x) => ({ ...x, dayuseDefaults: { ...x.dayuseDefaults, startTime: e.target.value.slice(0, 5) } }))
+                }
+              />
+            </label>
+            <label>
+              <span>종료 시간</span>
+              <input
+                type="time"
+                step={1800}
+                value={s.dayuseDefaults.endTime}
+                aria-label="대실 기본 종료"
+                onChange={(e) =>
+                  e.target.value &&
+                  update((x) => ({ ...x, dayuseDefaults: { ...x.dayuseDefaults, endTime: e.target.value.slice(0, 5) } }))
+                }
+              />
+            </label>
+            <label>
+              <span>기본 판매가</span>
+              <span className="inp price hfee">
+                <NumInput
+                  aria-label="대실 기본 판매가"
+                  min={0}
+                  max={10_000_000}
+                  allowEmpty
+                  value={s.dayuseDefaults.price}
+                  onChange={(v) => update((x) => ({ ...x, dayuseDefaults: { ...x.dayuseDefaults, price: v ?? 0 } }))}
+                />
+                원
+              </span>
+            </label>
+          </div>
+        </section>
+
         <section className="card" id="set-parking">
           <h3>
             주차 관리

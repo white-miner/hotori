@@ -87,6 +87,25 @@ export function normalizeHourFee(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(HOUR_FEE_MAX, Math.round(v)) : DEFAULT_HOUR_FEE;
 }
 
+// ---------- 대실 기본 (호텔 공통 · 타입별은 Next) ----------
+/** settings.dayuseDefaults — 신규 대실 Entry 프리필 */
+export interface DayuseDefaults {
+  startTime: string; // HH:MM
+  endTime: string;
+  price: number; // 원
+}
+export const DEFAULT_DAYUSE_DEFAULTS: DayuseDefaults = { startTime: "14:00", endTime: "17:00", price: 0 };
+export const DAYUSE_PRICE_MAX = 10_000_000;
+export function normalizeDayuseDefaults(raw: unknown): DayuseDefaults {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const price = Math.round(Number(o.price));
+  return {
+    startTime: typeof o.startTime === "string" && HHMM.test(o.startTime) ? o.startTime : DEFAULT_DAYUSE_DEFAULTS.startTime,
+    endTime: typeof o.endTime === "string" && HHMM.test(o.endTime) ? o.endTime : DEFAULT_DAYUSE_DEFAULTS.endTime,
+    price: Number.isFinite(price) && price >= 0 ? Math.min(DAYUSE_PRICE_MAX, price) : DEFAULT_DAYUSE_DEFAULTS.price,
+  };
+}
+
 // ---------- 주차 관리 (설정에서 켜는 호텔만) ----------
 /**
  * extraCarFee: 추가 차량 1대 1박 요금 (2번째 차부터) · walkDiscount: 도보 할인 (예약 1건에 한 번)

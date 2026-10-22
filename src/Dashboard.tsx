@@ -24,8 +24,10 @@ import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
+import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
+import { dayuseByRoom as dayuseByRoomMap, dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import {
   type BoardTab,
   type Booking,
@@ -402,6 +404,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       { roomIds: selectedVacantIds },
     );
   };
+  /** 현황 단실만 대실 판매 (복수 공실 대실 = Next) */
+  const openNewDayuse = () => {
+    if (readOnly || selectedRoomIds.length !== 1) return;
+    const rid = selectedRoomIds[0];
+    const room = L.rooms.get(rid) ?? allRooms(s).find((r) => r.id === rid);
+    onNew({ kind: "dayuse", checkIn: today, roomId: rid, typeId: room?.typeId ?? undefined });
+  };
+  const nowDayuseByRoom = useMemo(() => dayuseByRoomMap(bookings, today), [bookings, today]);
+  const selectedDayuse = selectedRoomIds.length === 1 ? (nowDayuseByRoom.get(selectedRoomIds[0]) ?? []) : [];
   const autoArriveBusy = useRef(new Set<string>());
   // 설정 체크인 시각 도달 → arrived 저장 (표시는 effectiveArrived로 즉시 숙박)
   useEffect(() => {
@@ -462,6 +473,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [moving, setMoving] = useState(false);
   const [swapChoice, setSwapChoice] = useState<RoomSwapPlan | null>(null);
   const [swapTypeGate, setSwapTypeGate] = useState<RoomSwapPlan | null>(null);
+  const [dayuseMoveWarn, setDayuseMoveWarn] = useState<{ message: string; to: string } | null>(null);
   const targets = useMemo(() => (mvB && mvNight ? boardMoveTargets(s, bookings, mvB, mvNight) : new Set<string>()), [s, bookings, mvB, mvNight]);
   const swapTargets = useMemo(
     () => (mvB && mvNight && mvB.kind === "stay" ? boardSwapTargets(s, bookings, mvB, mvNight) : new Map<string, RoomSwapPlan>()),
@@ -473,6 +485,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setPick(null);
       setSwapChoice(null);
       setSwapTypeGate(null);
+      setDayuseMoveWarn(null);
       return;
     }
     // 옮길 예약이 없어졌거나 취소됐으면 끝
@@ -555,16 +568,24 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     void doSwap(plan);
   };
-  const doMove = async () => {
-    if (!mvB || !mvNight || !pick || moving) return;
+  const doMove = async (opts?: { allowDayuseOverlap?: boolean; to?: string }) => {
+    const to = opts?.to ?? pick;
+    if (!mvB || !mvNight || !to || moving) return;
     // 점유 방이면 맞교환 (빈 방만 여기로)
-    const swap = swapTargets.get(pick);
+    const swap = swapTargets.get(to);
     if (swap) {
       requestSwap(swap);
       return;
     }
     const b = mvB;
-    const to = pick;
+    if (b.kind === "dayuse" && !opts?.allowDayuseOverlap) {
+      const w = dayuseStayOverlapWarn(s, bookings, { ...b, roomId: to });
+      if (!w.ok) {
+        setDayuseMoveWarn({ message: w.message.replace("저장할까요?", "옮길까요?"), to });
+        return;
+      }
+    }
+    setDayuseMoveWarn(null);
     const before = placementOf(b);
     const after = boardMove(b, mvNight, to);
     const toName = roomName(to);
@@ -826,6 +847,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   const renderAssignModals = () => (
     <>
+      {dayuseMoveWarn ? (
+        <DayuseStayOverlapConfirm
+          message={dayuseMoveWarn.message}
+          busy={moving}
+          onCancel={() => setDayuseMoveWarn(null)}
+          onContinue={() => {
+            const to = dayuseMoveWarn.to;
+            setDayuseMoveWarn(null);
+            void doMove({ allowDayuseOverlap: true, to });
+          }}
+        />
+      ) : null}
       {checkoutChoice ? (
         <AssignCheckoutChoice
           s={s}
@@ -1286,9 +1319,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = nowBoardMap.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
+    const du = nowDayuseByRoom.get(r.id) ?? [];
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
     const glance = glanceByRoom.get(r.id);
+    const duMark =
+      du.length > 0 ? (
+        <span
+          className="dumark"
+          title={du.map((d) => `대실 ${d.startTime}~${d.endTime} · ${d.guestName || ""}`).join(" · ")}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (readOnly || mvB) return;
+            onOpen(du[0], today);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.stopPropagation();
+            if (readOnly || mvB) return;
+            onOpen(du[0], today);
+          }}
+          role={readOnly || mvB ? undefined : "button"}
+          tabIndex={readOnly || mvB ? undefined : 0}
+        >
+          <i>대실 </i>
+          {du[0].startTime}
+          {du.length > 1 ? <em> +{du.length - 1}</em> : null}
+        </span>
+      ) : null;
     const openN = glance?.count ?? 0;
     const memoBubble =
       openN > 0 || !readOnly ? (
@@ -1338,10 +1396,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           id={`now-room-${r.id}`}
           data-room-id={r.id}
           {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+          className={`cell em nowempty ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
           onClick={mvClick ?? (() => selectRoom(r.id))}
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
+          {duMark}
           <div className="cell-body nowstack sparse">
             {head}
             <TypeRow t={t} />
@@ -1392,10 +1451,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`now-room-${r.id}`}
         data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
+        {duMark}
         <div className="cell-body nowstack dense">
           {head}
           <TypeRow t={t} guests={b.guests} />
@@ -1624,6 +1684,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onSimple={onSimple}
               onBookVacant={openVacantBook}
               bookCtaLabel={vacantBookCta}
+              dayuseForRoom={selectedDayuse}
+              onNewDayuse={openNewDayuse}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}

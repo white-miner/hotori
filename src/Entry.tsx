@@ -45,9 +45,11 @@ import {
   validateBooking,
   won,
 } from "../shared/ledger";
+import { dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
+import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
@@ -185,7 +187,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const pickTypes = s.types.filter((t) => typeLabel(t) || t.id === base?.typeId);
   const p = req.preset ?? {};
   const isNew = !base;
-  const [kind, setKind] = useState<Kind>(base?.kind ?? p.kind ?? "stay");
+  const initKind: Kind = base?.kind ?? p.kind ?? "stay";
+  const [kind, setKind] = useState<Kind>(initKind);
   // 단체 예약: 새로 적을 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
   const [addGroup, setAddGroup] = useState(false);
@@ -209,8 +212,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (long || kind !== "stay") setStayTab("period");
   }, [long, kind]);
   // 대실 시간: 적는 중인 글자(raw)는 그대로 두고, 알아볼 수 있으면 HH:MM으로 저장해요
-  const [startRaw, setStartRaw] = useState(base?.startTime ?? "");
-  const [endRaw, setEndRaw] = useState(base?.endTime ?? "");
+  // 신규: 설정 dayuseDefaults 우선 (수정·preset 값은 유지)
+  const [startRaw, setStartRaw] = useState(
+    () => base?.startTime ?? p.startTime ?? (isNew && initKind === "dayuse" ? s.dayuseDefaults.startTime : ""),
+  );
+  const [endRaw, setEndRaw] = useState(
+    () => base?.endTime ?? p.endTime ?? (isNew && initKind === "dayuse" ? s.dayuseDefaults.endTime : ""),
+  );
   const startTime = parseTime(startRaw);
   const [dur, setDur] = useState<number | null>(() => {
     const m = base?.startTime && base?.endTime ? dayuseMinutes(base.startTime, base.endTime) : null;
@@ -220,17 +228,36 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const endTime = dur != null && startTime ? addMinutesToTime(startTime, dur * 60) : parseTime(endRaw);
   const useMin = dayuseMinutes(startTime, endTime);
   const startRef = useRef<HTMLInputElement>(null);
-  // 오늘 대실을 새로 적을 때는 지금 시각(5분 단위)을 시작 시간으로 넣어 둬요
+  // 신규 대실: 설정 기본 채움 · 설정 없고 오늘이면 예전처럼 nowRounded
   useEffect(() => {
-    if (!isNew || kind !== "dayuse" || startRaw || checkIn !== today) return;
-    setStartRaw(nowRounded());
+    if (!isNew || kind !== "dayuse") return;
+    if (!startRaw) {
+      if (s.dayuseDefaults.startTime) setStartRaw(s.dayuseDefaults.startTime);
+      else if (checkIn === today) setStartRaw(nowRounded());
+    }
+    if (!endRaw && s.dayuseDefaults.endTime) setEndRaw(s.dayuseDefaults.endTime);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, checkIn]);
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [guestPhone, setPhone] = useState(base?.guestPhone ?? "");
   /** 「바로 입실」: 이름·연락처 생략 · 호실 필수 · arrived */
   const [walkInImmediate, setWalkInImmediate] = useState(() => isWalkInPlaceholderName(base?.guestName));
-  const [price, setPrice] = useState(base ? String(base.price) : "");
+  const [price, setPrice] = useState(() =>
+    base
+      ? String(base.price)
+      : p.price != null
+        ? String(p.price)
+        : isNew && initKind === "dayuse"
+          ? String(s.dayuseDefaults.price)
+          : "",
+  );
+  const pickDayuseKind = () => {
+    setKind("dayuse");
+    if (!isNew) return;
+    if (!startRaw) setStartRaw(s.dayuseDefaults.startTime || (checkIn === today ? nowRounded() : ""));
+    if (!endRaw) setEndRaw(s.dayuseDefaults.endTime);
+    setPrice((cur) => (cur ? cur : String(s.dayuseDefaults.price)));
+  };
   /** 표준 숙박 1박 요금 (편집 가능). 박수↓ 시 총액 = 이 값 × 박수 + 가산분 */
   const initGroupRates = base?.groupId ? data.groups.get(base.groupId)?.rates ?? null : null;
   const [rateStr, setRateStr] = useState(() => {
@@ -888,6 +915,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   // PC 크롬·엣지는 날짜 칸을 눌러도 달력 아이콘이 아니면 달력이 안 열려요 → 직접 열어 줘요
@@ -1224,8 +1252,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const roomBusy = kind === "stay" ? busyLegs.length > 0 : !!roomId && !free.has(roomId);
   const preview = kind === "stay" && status === "active" ? previewChange(s, data.bookings, draft) : [];
 
-  async function save(again = false, override?: Status) {
+  async function save(again = false, override?: Status, opts?: { allowDayuseOverlap?: boolean }) {
     const draft = override ? { ...draftBase, status: override } : draftBase;
+    setDayuseWarn(null);
     // 현장·전화만 연락처 필수 · 「바로 입실」·OTA는 선택 (간단 예약과 동일 · validateGuestPhone SoT)
     {
       const phoneErr = validateGuestPhone(curPlat, guestPhone, { walkInImmediate });
@@ -1270,6 +1299,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       !window.confirm("타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.")
     )
       return;
+    // 대실 ∩ 숙박 입실/점유: 주의 팝업 · 동일 손님은 skip (하드블록 아님)
+    if (kind === "dayuse" && isActive(draft) && draft.roomId && !opts?.allowDayuseOverlap) {
+      const w = dayuseStayOverlapWarn(s, data.bookings, draft);
+      if (!w.ok) {
+        setDayuseWarn({ message: w.message, again, override });
+        return;
+      }
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -1422,7 +1459,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <button type="button" className={kind === "stay" ? "on" : ""} onClick={() => setKind("stay")}>
               숙박
             </button>
-            <button type="button" className={kind === "dayuse" ? "on" : ""} onClick={() => setKind("dayuse")}>
+            <button type="button" className={kind === "dayuse" ? "on" : ""} onClick={pickDayuseKind}>
               대실
             </button>
             {isNew ? (
@@ -2230,7 +2267,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       setEndRaw(endTime);
                       return;
                     }
-                    if (!startTime) setStartRaw(checkIn === today ? nowRounded() : "");
+                    if (!startTime)
+                      setStartRaw(s.dayuseDefaults.startTime || (checkIn === today ? nowRounded() : ""));
                     setDur(h);
                     if (!startTime && checkIn !== today) startRef.current?.focus();
                   }}
@@ -3161,6 +3199,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         busy={exBusy}
         onCancel={() => setExOverlap(null)}
         onApprove={() => void confirmEx({ allowOverlap: true })}
+      />
+    ) : null}
+    {dayuseWarn ? (
+      <DayuseStayOverlapConfirm
+        message={dayuseWarn.message}
+        busy={busy}
+        onCancel={() => setDayuseWarn(null)}
+        onContinue={() => void save(dayuseWarn.again, dayuseWarn.override, { allowDayuseOverlap: true })}
       />
     ) : null}
     </>
