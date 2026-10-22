@@ -185,4 +185,22 @@ export function monthOf(date: string): string {
   return `${date.slice(0, 7)}-01`;
 }
 
+/**
+ * Entry 숙박 날짜 UX (Option D absorb #1).
+ * - 신규 표준 숙박 = night-pick only (간단 예약과 동일 · 이중 탭 없음)
+ * - 수정 표준 숙박 = 기간 입력 | 날짜 선택 탭 유지 (연장·중도퇴실 등)
+ * - 대실·장기 = period-only (night-pick 숨김)
+ */
+export type EntryStayDateUx = "night-pick" | "period-tabs" | "period-only";
+
+export function entryStayDateUx(opts: {
+  isNew: boolean;
+  kind: string;
+  longStay: boolean;
+}): EntryStayDateUx {
+  if (opts.kind !== "stay" || opts.longStay) return "period-only";
+  if (opts.isNew) return "night-pick";
+  return "period-tabs";
+}
+
 export { STAY_NIGHTS_MIN, STAY_NIGHTS_MAX };
