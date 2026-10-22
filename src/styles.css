@@ -2397,7 +2397,7 @@ button.nowstatus { cursor: pointer; }
     margin-bottom: var(--space-3);
   }
   .board-page:not(.now-page):not(.one) .cell {
-    min-height: 112px;
+    min-height: 0;
     padding: 6px 7px 7px;
     border-radius: 14px;
   }
