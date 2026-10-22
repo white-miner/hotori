@@ -2473,6 +2473,13 @@ button.nowstatus { cursor: pointer; }
   box-sizing: border-box;
 }
 .mfp-block:hover:not(:disabled) { background: var(--hover); }
+/* 타입 후보(하늘색) ≠ 선택 확정(.on) · 불가(.busy) 유지 */
+.mfp-block.cand:not(.on):not(.busy):not(:disabled) {
+  background: #dff3fc;
+  border-color: #8ecae9;
+  color: var(--ink2);
+}
+.mfp-block.cand:not(.on):not(.busy):not(:disabled):hover { background: #c8e9f8; }
 .mfp-block.on {
   background: #fff;
   color: var(--ink);
@@ -2507,27 +2514,24 @@ button.nowstatus { cursor: pointer; }
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
 }
 .mfp-sum { margin-top: 2px; }
-.mfp-patha {
-  border-top: 1px solid var(--line2);
-  padding-top: var(--space-chip);
-  margin-top: 2px;
+/* 타입 줄(배치도 위) — 짧은 밀집 리스트 · 칩 캐러셀 아님 */
+.mfp-types { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.mfp-type-list {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+  max-height: 148px;
+  overflow: auto;
 }
-.mfp-patha-tog {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-chip);
-  height: 32px;
-  padding: 0 4px;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--ink3);
-  background: transparent;
-  border-radius: var(--radius-pill);
+.mfp-type-list .gcnt {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: space-between;
+  padding: 3px 6px 3px 8px;
+  border-radius: 10px;
+  gap: var(--space-3);
 }
-.mfp-patha-tog:hover { color: var(--ink); background: var(--panel); }
-.mfp-patha-ico { transition: transform 0.15s ease; flex: none; }
-.mfp-patha.open .mfp-patha-ico { transform: rotate(180deg); }
-.mfp-patha .gcounts { margin-top: var(--space-chip); }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「현황」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
 .now-page .nowgrid { overflow: visible; }
