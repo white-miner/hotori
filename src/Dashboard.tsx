@@ -6,6 +6,7 @@ import {
   hotelWallClock,
   isDepartingStatus,
   nowAmountGlance,
+  nowAmountTone,
   nowByRoom,
   nowFlags,
   nowLists,
@@ -1028,16 +1029,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {readOnly ? (
             <span />
           ) : (
-            ((left) =>
-              left > 0 ? (
-                <span className="pr dueamt" title={isLongStay(b) ? `미수 ${won(left)}원` : `판매 가격 ${won(b.price)}원`}>
-                  {isLongStay(b) ? "미수" : "잔금"} {won(left)}
-                </span>
-              ) : isLongStay(b) ? (
-                <span className="pr muted">장기</span>
-              ) : (
-                <span className="pr">{won(b.price)}</span>
-              ))(cancelled || b.groupId ? 0 : payState(b, L.plats.get(b.platformId)).left)
+            ((plat) => {
+              const ps = cancelled || b.groupId ? null : payState(b, plat);
+              const left = ps?.left ?? 0;
+              const tone = cancelled || b.groupId ? "paid" : nowAmountTone(b, plat);
+              if (left > 0) {
+                return (
+                  <span className={`pr tone-${tone}`} title={isLongStay(b) ? `미수 ${won(left)}원` : `판매 가격 ${won(b.price)}원`}>
+                    {isLongStay(b) ? "미수" : "잔금"} {won(left)}
+                  </span>
+                );
+              }
+              if (isLongStay(b)) return <span className="pr muted">장기</span>;
+              return <span className={`pr tone-${tone}`}>{won(b.price)}</span>;
+            })(L.plats.get(b.platformId))
           )}
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
@@ -1048,7 +1053,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 {ws[0].text}
               </span>
             ) : (
-              <span>{b.nights === 1 ? "1박" : !cancelled && isEarlyOut(b) && nth === usedNights(b) ? `${nth}박째 · 중도 퇴실` : `${b.nights}박 중 ${nth}박째`}</span>
+              <span className="nownights-acc">
+                {(() => {
+                  const n = usedNights(b) ?? b.nights ?? 1;
+                  if (n <= 1) return "1박";
+                  return `${nth}/${n}박`;
+                })()}
+              </span>
             )}
             {tags.length ? (
               <span className="ttags">
@@ -1322,9 +1333,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const f = nowFlags(b, today, nowOpts);
     if (nowFilter === "tentative" && !f.tentative) return null;
     const nights = nowNightRange(b);
-    // 숙박예약(입실 전)은 박째 숨김 · 1박도 총박·일만 (nowStaySummary)
+    // 숙박예약(입실 전)은 진행 숨김 · 길이 `N박` · 연박 진행 `K/N박` (풀 라인 금지)
     const staySummary = nowStaySummary(b, today, f.kind !== "arriving");
-    const amount = nowAmountGlance(b, L.plats.get(b.platformId));
+    const plat = L.plats.get(b.platformId);
+    const amount = nowAmountGlance(b, plat);
+    const amountTone = nowAmountTone(b, plat);
     const meta = nowMetaLine(b);
     const popOpen = nightPopId === b.id;
     const doEarlyIn = async (e: React.MouseEvent) => {
@@ -1377,6 +1390,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 ▾
               </span>
             </button>
+            {staySummary ? (
+              <span className="nowchip nownights" title="숙박">
+                {staySummary}
+              </span>
+            ) : null}
             {popOpen ? (
               <NowNightPopover
                 booking={b}
@@ -1391,7 +1409,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               />
             ) : null}
           </div>
-          {staySummary ? <span className="nowchip nownights">{staySummary}</span> : null}
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span className="gn">{b.guestName}</span>
@@ -1413,7 +1430,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             ) : null}
           </div>
           {amount ? (
-            <div className="nowamt" title={f.longStay ? "미수" : "요금·잔금"}>
+            <div className={`nowamt tone-${amountTone}`} title={f.longStay ? "미수" : "요금·잔금"}>
               {amount}
             </div>
           ) : null}

@@ -295,7 +295,7 @@ export function nowStayNightIndex(b: Booking, date: string): number | null {
   return Math.min(Math.max(raw, 1), u);
 }
 
-/** N박 N일 (박 = 진실, 일 = 박+1) */
+/** 박수 (+ 일 = 박+1 참고). 칸 표기는 `label` = `N박` (화이트보드 · 일 수 생략). */
 export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
   nights: number;
   days: number;
@@ -303,12 +303,12 @@ export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "
 } {
   const nights = usedNights(b) ?? b.nights ?? 0;
   const days = nights > 0 ? nights + 1 : 0;
-  return { nights, days, label: nights > 0 ? `${nights}박 ${days}일` : "" };
+  return { nights, days, label: nights > 0 ? `${nights}박` : "" };
 }
 
 /**
- * 「현황」 상단 숙박 요약 (#4): `{nights}박 {days}일` (+ 해당 시 ` · {k}박째`).
- * 1박 · 숙박예약(입실 전) · 진행 불가 → 총박·일만. 손님 줄 박 칩과 중복하지 않음.
+ * 「현황」·「배치」칸 숙박 칩: `N박` · 연박 진행 시 `K/N박`.
+ * 1박 · 숙박예약(입실 전) · 진행 불가 → 길이만. 풀 문구(`N박 M일` · `N박 중 K박째`) 금지.
  */
 export function nowStaySummary(b: Booking, date: string, showProgress = true): string {
   const nd = nowNightsDays(b);
@@ -316,22 +316,35 @@ export function nowStaySummary(b: Booking, date: string, showProgress = true): s
   if (!showProgress || nd.nights <= 1) return nd.label;
   const k = nowStayNightIndex(b, date);
   if (k == null) return nd.label;
-  return `${nd.label} · ${k}박째`;
+  return `${k}/${nd.nights}박`;
 }
 
-/** @deprecated 상단 요약은 nowStaySummary. 레거시: 총박·박째 칩 둘 */
+/** @deprecated 상단 요약은 nowStaySummary. 레거시 칩 배열 → 압축 한 토큰 */
 export function nowStayChips(b: Booking, date: string): string[] {
-  const u = usedNights(b) ?? b.nights ?? 0;
-  if (u <= 1) return [];
-  const k = nowStayNightIndex(b, date);
-  if (k == null) return [`${u}박`];
-  return [`${u}박`, `${k}박째`];
+  const s = nowStaySummary(b, date, true);
+  if (!s || s === "1박") return [];
+  return [s];
 }
 
 /** 테스트·표시용: 이용 박수 라벨 (상단 요약과 동일 문법, 진행 포함) */
 export function nowStayHint(b: Booking, date: string): string {
   const summary = nowStaySummary(b, date, true);
   return summary || "1박";
+}
+
+/** 칸 금액 글자색: 미수=빨강 · 선금·일부=파랑 · 완납=검정 (배경 칠 금지) */
+export type NowAmountTone = "due" | "partial" | "paid" | "neutral";
+
+export function nowAmountTone(
+  b: Booking,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+): NowAmountTone {
+  if (b.priceUnset) return "neutral";
+  const ps = payState(b, plat);
+  if (ps.tracked && ps.left > 0 && ps.paid > 0) return "partial";
+  if (ps.tracked && ps.left > 0) return "due";
+  if (b.price > 0 || ps.full || (ps.tracked && ps.paid > 0)) return "paid";
+  return "neutral";
 }
 
 /**
@@ -382,6 +395,7 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
  * 칸 금액 글랜스.
  * 일반: 잔금 있으면 `잔금 ₩X`, 없으면 `₩price`.
  * 장기: `미수 ₩X` (0이면 생략).
+ * 색은 nowAmountTone — 숫자만 칠함.
  */
 export function nowAmountGlance(
   b: Booking,
