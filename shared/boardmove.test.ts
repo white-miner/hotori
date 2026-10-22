@@ -80,11 +80,11 @@ test("옮길 수 있는 방: 보는 밤부터 퇴실까지 내내 빈 방만, �
   assert.deepEqual([...boardMoveTargets(S, all, me, "2026-10-19")].sort(), ["r603", "r605"], "2박째부터면 18일 밤 603은 상관없어요");
 });
 
-test("대실 옮길 방: 그 시간에 빈 방, 그 밤 숙박이 있는 방은 빼요", () => {
+test("대실 옮길 방: 대실↔대실 겹침만 제외 · 숙박 방은 허용 (경고는 UI)", () => {
   const d = bk({ id: "du", kind: "dayuse", nights: null, roomId: "r601", startTime: "14:00", endTime: "17:00" });
   const other = bk({ kind: "dayuse", nights: null, roomId: "r602", startTime: "15:00", endTime: "18:00" });
   const stay = bk({ roomId: "r603", checkIn: "2026-10-18", nights: 1 });
-  assert.deepEqual([...boardMoveTargets(S, [d, other, stay], d, "2026-10-18")].sort(), ["r605"]);
+  assert.deepEqual([...boardMoveTargets(S, [d, other, stay], d, "2026-10-18")].sort(), ["r603", "r605"]);
   const late = bk({ kind: "dayuse", nights: null, roomId: "r602", startTime: "18:00", endTime: "20:00" });
-  assert.deepEqual([...boardMoveTargets(S, [d, late, stay], d, "2026-10-18")].sort(), ["r602", "r605"]);
+  assert.deepEqual([...boardMoveTargets(S, [d, late, stay], d, "2026-10-18")].sort(), ["r602", "r603", "r605"]);
 });
