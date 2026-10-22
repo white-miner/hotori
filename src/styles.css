@@ -3112,8 +3112,8 @@ body.bulking .toast { bottom: 96px; }
 .npick-d:disabled { opacity: 0; }
 /* hover fill 없음 — 선택(.sel)과 헷갈림 */
 .npick-sum {
-  margin-top: 6px;
-  padding: 6px 10px;
+  margin-top: 2px;
+  padding: 4px 10px;
   background: #fff;
   border-radius: 12px;
   display: flex;
