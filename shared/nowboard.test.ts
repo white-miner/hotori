@@ -367,7 +367,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     "due",
   );
   assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
-  assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연 · 2명");
-  assert.equal(nowMetaLine({ memo: null, guests: 3 }), "3명");
+  assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
+  assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
   assert.equal(nowMetaLine({ memo: null, guests: null }), null);
 });
