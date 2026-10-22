@@ -1,7 +1,7 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
-import { clampHours } from "./extratime";
-import { type Booking, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
-import { payState } from "./payment";
+import { clampHours, outTimeOf } from "./extratime";
+import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
+import { BOOK_PAY_LABEL, payState, type BookPayMethod } from "./payment";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /** 칸·옆 패널에 쓰는 현장 상태 (우선순위 높은 것부터 판별) */
@@ -439,6 +439,39 @@ export function simplePayGlance(b: Booking, onsite: boolean): string | null {
 export function nowMetaLine(b: Pick<Booking, "memo" | "guests">): string | null {
   const memo = b.memo?.trim();
   return memo || null;
+}
+
+/**
+ * 칸 상단 퇴실 시각 마크 (`dumark`급 타이포).
+ * 늦은 퇴실(lateOut>0)일 때만 · 예: `14시 퇴실`. 칸 박스·비율 미터치.
+ */
+export function nowCheckoutMark(
+  s: Pick<HotelSettings, "stayTimes">,
+  b: Pick<Booking, "kind" | "lateOut">,
+): string | null {
+  if (b.kind !== "stay") return null;
+  if (!clampHours(b.lateOut)) return null;
+  const hhmm = outTimeOf(s, b);
+  const m = /^(\d{1,2}):/.exec(hhmm);
+  if (!m) return null;
+  return `${Number(m[1])}시 퇴실`;
+}
+
+/**
+ * 칸 결제수단 글랜스: 받은 결제 기준 · 최신→고유 라벨 · `카드` / `카드·이체`.
+ */
+export function nowPayMethodGlance(b: Pick<Booking, "payments">): string | null {
+  const pays = b.payments ?? [];
+  if (!pays.length) return null;
+  const ordered = [...pays].sort((a, c) => (c.createdAt || "").localeCompare(a.createdAt || ""));
+  const seen = new Set<BookPayMethod>();
+  const labels: string[] = [];
+  for (const p of ordered) {
+    if (seen.has(p.method)) continue;
+    seen.add(p.method);
+    labels.push(BOOK_PAY_LABEL[p.method]);
+  }
+  return labels.length ? labels.join("·") : null;
 }
 
 /**

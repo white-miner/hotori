@@ -23,7 +23,7 @@ test("서비스=0: effective · plan은 결제/가격 델타 없음", () => {
 
   const svc = planEarlyInPay({ amount: 99999, method: "service", bizDate: "2026-10-22" });
   assert.ok(!("err" in svc));
-  assert.deepEqual(svc, { priceDelta: 0, collectAmount: 0, method: null, payNote: null });
+  assert.deepEqual(svc, { priceDelta: 0, collectAmount: 0, method: null, payNote: null, hours: 0 });
 
   const zero = planEarlyInPay({ amount: 0, method: "transfer", bizDate: "2026-10-22" });
   assert.ok(!("err" in zero));
@@ -33,23 +33,24 @@ test("서비스=0: effective · plan은 결제/가격 델타 없음", () => {
 
 test("금액>0 · 카드/현금/이체 → 판매가 델타 + 수납 + 노트", () => {
   for (const method of ["card", "cash", "transfer"] as const) {
-    const p = planEarlyInPay({ amount: 15000, method, bizDate: "2026-10-22" });
+    const p = planEarlyInPay({ amount: 15000, method, bizDate: "2026-10-22", hours: 2 });
     assert.ok(!("err" in p));
     assert.deepEqual(p, {
       priceDelta: 15000,
       collectAmount: 15000,
       method,
       payNote: EARLY_IN_PAY_NOTE,
+      hours: 2,
     });
   }
 });
 
 test("알림 카피: 서비스·0원·유료", () => {
-  const empty = { priceDelta: 0, collectAmount: 0, method: null, payNote: null };
+  const empty = { priceDelta: 0, collectAmount: 0, method: null, payNote: null, hours: 0 };
   assert.match(earlyInPayNotifyLine("김손님", empty, "service"), /서비스\(0원\)/);
   assert.match(earlyInPayNotifyLine("김손님", empty, "card"), /빠른 입실했어요/);
   assert.equal(
-    earlyInPayNotifyLine("김손님", { priceDelta: 10000, collectAmount: 10000, method: "cash", payNote: EARLY_IN_PAY_NOTE }, "cash"),
+    earlyInPayNotifyLine("김손님", { priceDelta: 10000, collectAmount: 10000, method: "cash", payNote: EARLY_IN_PAY_NOTE, hours: 0 }, "cash"),
     "김손님 님 빠른 입실 · 현금 10,000원",
   );
 });
