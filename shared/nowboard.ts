@@ -435,13 +435,10 @@ export function simplePayGlance(b: Booking, onsite: boolean): string | null {
   return null;
 }
 
-/** 메모 · 인원 (연락처 필드 없음 → 있는 것만) */
+/** 메모만 (인원 `n명`은 TypeRow 우측 — 하단 중복 금지) */
 export function nowMetaLine(b: Pick<Booking, "memo" | "guests">): string | null {
-  const parts: string[] = [];
   const memo = b.memo?.trim();
-  if (memo) parts.push(memo);
-  if (b.guests != null && b.guests > 0) parts.push(`${b.guests}명`);
-  return parts.length ? parts.join(" · ") : null;
+  return memo || null;
 }
 
 /**

@@ -612,12 +612,12 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .r1.strip { padding: 3px 5px; }
 .fit { display: block; min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(var(--fmin, 9px), calc((100cqw - var(--fpad, 0px)) * var(--lines, 1) / var(--u) - 0.2px), var(--fmax, 12px)); }
 .cell { container-type: inline-size; }
-.cell .no { --fmax: 15px; --fmin: 11px; --fpad: 10px; font-family: var(--num); font-weight: 800; line-height: 1.25; }
+.cell .no { --fmax: 30px; --fmin: 22px; --fpad: 10px; font-family: var(--num); font-weight: 800; line-height: 1.25; }
 .cell .tl { --fmax: 14.5px; --fmin: 10.5px; --fpad: 6px; padding: 0 3px; color: var(--ink2); font-weight: 650; line-height: 1.2; letter-spacing: -0.02em; }
 .tl { --lines: 1.85; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .tl.none { display: block; color: var(--ink4); font-weight: 550; font-size: 11.5px; white-space: nowrap; overflow: hidden; }
 .cell.em .tl { color: var(--ink3); }
-.cell .no.k { font-family: "PV"; --fmax: 13.5px; letter-spacing: -0.03em; }
+.cell .no.k { font-family: "PV"; --fmax: 27px; letter-spacing: -0.03em; }
 .cell .nm { display: flex; align-items: center; gap: 5px; font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; padding: 0 3px; line-height: 1.12; }
 .cell .nm .gn { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-weight: 800; }
 .cell .nm span { overflow: hidden; text-overflow: ellipsis; }
@@ -970,8 +970,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell { min-height: 64px; border-radius: 13px; padding: 4px 4px 5px; gap: 1px; }
   .cell .r1 { padding: 1px 2px; border-radius: 7px; }
   .cell .r1.strip { padding: 2px 3px; }
-  .cell .no { --fmax: 12.5px; --fmin: 9.5px; --fpad: 6px; }
-  .cell .no.k { --fmax: 11px; }
+  .cell .no { --fmax: 25px; --fmin: 19px; --fpad: 6px; }
+  .cell .no.k { --fmax: 22px; }
   .cell .tl { --fmax: 9.5px; --fmin: 7.5px; --fpad: 4px; padding: 0 2px; }
   .cell .tl.none { font-size: 8.5px; }
   .cell.em .emt { display: none; }
@@ -2002,12 +2002,20 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   padding-top: var(--space-1);
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
-/* 점유(dense): 상태 바로 아래 붙여 여백 제거 · 공실(sparse): 하단 유지 */
-.nowstack.sparse > .nowstatus-slot { margin-top: auto; }
-.nowstack.dense > .nowstatus-slot { margin-top: var(--space-1); padding-top: 0; }
+/* 숙박·숙박예약(+빠른입실) 동일 하단 슬롯 · 뱃지가 칸 테두리를 뚫지 않게 */
+.nowstack.sparse > .nowstatus-slot,
+.nowstack.dense > .nowstatus-slot {
+  margin-top: auto;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-3);
+}
 .nowstatus {
   display: inline-flex;
   align-items: center;
@@ -2657,8 +2665,8 @@ button.nowstatus { cursor: pointer; }
   .now-page .cell { min-height: 150px; border-radius: 14px; }
   .now-page .cell-body { padding: var(--space-2); gap: 0; min-height: 100%; }
   .now-page .fh { padding-top: 0; padding-left: 2px; }
-  .now-page .cell .r1 .no { font-size: 13px; }
-  .now-page .cell .r1 .no.k { font-size: 11.5px; }
+  .now-page .cell .r1 .no { font-size: 26px; }
+  .now-page .cell .r1 .no.k { font-size: 23px; }
   .now-page .cell .nm { font-size: 17px; }
   .now-page .cell:has(.r1 .no.k) .nm { font-size: 15px; }
   .now-page .nowamt { font-size: 14.5px; }
@@ -2701,11 +2709,11 @@ button.nowstatus { cursor: pointer; }
   max-width: none;
   overflow: visible;
   text-overflow: clip;
-  /* 말풍선과 나란히 있어도 cqw clamp가 0으로 줄어들지 않게 고정 */
-  font-size: 15px;
+  /* 말풍선과 나란히 있어도 cqw clamp가 0으로 줄어들지 않게 고정 · ≈2× (15→30) */
+  font-size: 30px;
   line-height: 1.25;
 }
-.now-page .cell .r1 .no.k { font-size: 13.5px; }
+.now-page .cell .r1 .no.k { font-size: 27px; }
 /* 손님 이름 ≫ 호수 · 칸 본문 꽉 채움 (FitText/cqw 금지 · 고정 스케일) */
 .now-page .cell .nm { font-size: 22px; font-weight: 800; line-height: 1.12; margin: var(--space-1) 0 0; }
 .now-page .cell .nm .gn { font-size: inherit; font-weight: 800; }
