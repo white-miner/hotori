@@ -2002,12 +2002,20 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   padding-top: var(--space-1);
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
-/* 점유(dense): 상태 바로 아래 붙여 여백 제거 · 공실(sparse): 하단 유지 */
-.nowstack.sparse > .nowstatus-slot { margin-top: auto; }
-.nowstack.dense > .nowstatus-slot { margin-top: var(--space-1); padding-top: 0; }
+/* 숙박·숙박예약(+빠른입실) 동일 하단 슬롯 · 뱃지가 칸 테두리를 뚫지 않게 */
+.nowstack.sparse > .nowstatus-slot,
+.nowstack.dense > .nowstatus-slot {
+  margin-top: auto;
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-3);
+}
 .nowstatus {
   display: inline-flex;
   align-items: center;
