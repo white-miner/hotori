@@ -50,17 +50,23 @@ test("취소 빼고 · 노쇼 넣고 · 중도 퇴실 환불 빼고 · 추가 �
   assert.equal(st.total, 5400000 + 3320000 + 60000 + 45000 - 250000);
 });
 
-test("나눠 받기: 받은 돈이 쌓이고, 0이 되면 정산 완료 · 방에 받은 선금도 같이", () => {
+test("나눠 받기: 현장 결제면 받은 돈이 쌓이고 0이면 정산 완료 · OTA는 결제 줄이 있어도 잔금 없음", () => {
   const m = members();
   m[3] = { ...m[3], payments: [{ ...pay(360000, "cash"), kind: "deposit" }] };
-  const st1 = settle(m, info({ payments: [pay(5000000)] }), OTA);
+  const walk = { name: "현장·전화" };
+  const st1 = settle(m, info({ payments: [pay(5000000)] }), walk);
   assert.equal(st1.paid, 5360000);
   assert.equal(st1.left, 4000000);
   assert.equal(st1.settled, false);
-  const st2 = settle(m, info({ payments: [pay(5000000), pay(4000000, "cash")] }), OTA);
+  const st2 = settle(m, info({ payments: [pay(5000000), pay(4000000, "cash")] }), walk);
   assert.equal(st2.left, 0);
   assert.equal(st2.settled, true);
   assert.deepEqual(settleBadge(st2, info()), { text: "정산 완료", due: false });
+  // OTA 선결제: 일부 수납이 있어도 잔금·정산 대기 표시 금지
+  const otaPart = settle(m, info({ payMode: "prepaid", payments: [pay(5000000)] }), OTA);
+  assert.equal(otaPart.tracked, false);
+  assert.equal(otaPart.left, 0);
+  assert.equal(settleBadge(otaPart, info({ payMode: "prepaid" })), null);
 });
 
 test("선결제 OTA 단체(받은 돈 없음)는 남은 금액을 따지지 않아요 · 현장 결제면 잔금", () => {

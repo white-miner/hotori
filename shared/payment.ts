@@ -81,7 +81,7 @@ export function defaultBookingPlatformId(platforms: IdPlat[], presetId?: string 
 export const paidOf = (b: Pick<Booking, "payments">) => (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
 
 export interface PayState {
-  /** 잔금을 따지나요: 현장 결제 플랫폼이거나 받은 돈을 적었으면 */
+  /** 잔금을 따지나요: 현장 결제(`isOnsite`)만. OTA는 손님·플랫폼 선결제 → 잔금 없음 */
   tracked: boolean;
   due: number; // 받을 돈 (가격 − 환불)
   paid: number;
@@ -89,7 +89,8 @@ export interface PayState {
   full: boolean; // 완납
 }
 /**
- * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 플랫폼이 받은 걸로 봐서 잔금이 없어요.
+ * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 손님·플랫폼이 받은 걸로 봐서 잔금이 없어요
+ * (결제 줄이 있어도 현장 결제 채널이 아니면 잔금·미수 톤 금지 — 보드 완납/검정).
  * 받을 돈 = 판매 가격 − 중도 퇴실 환불.
  * 장기(long_stay): 받을 돈 = 원장 누적 − 받은 돈 (판매가 price 총액 모델 아님).
  */
@@ -102,7 +103,8 @@ export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: 
     const left = Math.max(0, due - paid);
     return { tracked: true, due, paid, left, full: due > 0 && left === 0 };
   }
-  const tracked = b.status === "active" && (isOnsite(plat) || paid > 0);
+  // 현장·전화(또는 설정에서 '현장 결제' ON)만 잔금. OTA는 paid>0이어도 잔금 표시 안 함.
+  const tracked = b.status === "active" && isOnsite(plat);
   const due = revenueOf(b);
   const left = tracked ? Math.max(0, due - paid) : 0;
   return { tracked, due, paid, left, full: tracked && left === 0 && due > 0 };
