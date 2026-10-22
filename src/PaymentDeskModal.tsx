@@ -195,11 +195,31 @@ export default function PaymentDeskModal({
           ) : null}
 
           <ChipGroup role="group" aria-label="데스크 모드">
-            <Chip sm active={mode === "pay"} disabled={busy} onClick={() => { setMode("pay"); setErr(null); }}>
+            <Chip
+              sm
+              active={mode === "pay"}
+              disabled={busy}
+              onClick={() => {
+                setMode("pay");
+                setAmount(glance.left > 0 ? String(glance.left) : "");
+                setErr(null);
+              }}
+            >
               받기 · 선금
             </Chip>
             {canSurcharge ? (
-              <Chip sm active={mode === "surcharge"} disabled={busy} onClick={() => { setMode("surcharge"); setErr(null); }}>
+              <Chip
+                sm
+                active={mode === "surcharge"}
+                disabled={busy}
+                onClick={() => {
+                  setMode("surcharge");
+                  // D: 받기 left를 할증 금액으로 재사용하지 않음 · 면제 기본 0 (원하면 시간×요금으로)
+                  setAmount("0");
+                  setCollect(false);
+                  setErr(null);
+                }}
+              >
                 할증
               </Chip>
             ) : null}
@@ -285,6 +305,7 @@ export default function PaymentDeskModal({
                   />
                 </label>
               ) : null}
+              <p className="muted sm">0원=면제(늦은 퇴실만 기록) · 청구하려면 금액 입력</p>
               <div className="paytake">
                 <PriceInp sm>
                   <span className="pl">할증액</span>
@@ -299,7 +320,7 @@ export default function PaymentDeskModal({
                   />
                 </PriceInp>
                 <ChipGroup role="group" aria-label="지금 받기">
-                  <Chip sm active={collect} disabled={busy} onClick={() => setCollect(true)}>
+                  <Chip sm active={collect} disabled={busy || Number(amount || 0) <= 0} onClick={() => setCollect(true)}>
                     지금 받기
                   </Chip>
                   <Chip sm active={!collect} disabled={busy} onClick={() => setCollect(false)}>

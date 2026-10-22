@@ -1088,13 +1088,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const e = which === "in" ? clampHours(earlyIn + d) : earlyIn;
     const l = which === "out" ? clampHours(lateOut + d) : lateOut;
     const wasNone = !earlyIn && !lateOut;
+    const wasServiceFee = timeFee === 0 && (earlyIn > 0 || lateOut > 0);
     setEarlyIn(e);
     setLateOut(l);
     if (!e && !l) return setTFee(0, "auto");
-    // 첫 마킹(늦은 퇴실·빠른 입실) = 기본 서비스(0원). 자동 시간당 요금은 옵트인(자동 계산/금액).
-    // 예전 auto 기본은 extraHourFee(기본 1만)×시간이 판매가에 들어가 오잔금이 남았음.
+    // 첫 마킹 = 서비스(0원). 자동 시간당 요금은 옵트인.
     if (wasNone && (e || l)) return setTFee(0, "service");
-    if (tMode === "service") return;
+    if (tMode === "service" || wasServiceFee) return setTFee(0, "service");
+    // E 가드: auto여도 기존 서비스(timeFee=0) earlyIn에 late만 올릴 때 early분 재청구 금지
     if (tMode === "auto") setTFee(autoTimeFee(s, e, l), "auto");
   };
   // 대실로 바꾸면 시간 추가는 빼요
