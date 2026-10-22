@@ -327,12 +327,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 운영 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
+  /** 공실 글랜스 호수 탭 → 칸 스크롤·하이라이트만 (선택·예약 아님) */
+  const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
+  const flashTimer = useRef<number | null>(null);
+  const [glanceExpand, setGlanceExpand] = useState(false);
   const memos = useRoomMemos(data.hotel!.id);
   const glanceByRoom = useMemo(() => openMemoGlances(memos.list ?? []), [memos.list]);
   const roomIsVacant = (roomId: string) => {
     const bk = nowBoardMap.get(roomId);
     return !bk || !isActive(bk);
   };
+  const jumpToVacantRoom = (roomId: string) => {
+    document.getElementById(`now-room-${roomId}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    setFlashRoomId(roomId);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlashRoomId(null), 1600);
+  };
+  useEffect(() => {
+    setGlanceExpand(false);
+  }, [bScope]);
+  useEffect(
+    () => () => {
+      if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    },
+    [],
+  );
   /** 퇴실예정(미퇴실)이어도 오늘 입실 밤이 안 겹치면 당일 예약·배정 타깃 */
   const roomIsTurnoverBookable = (roomId: string) => {
     const bk = nowBoardMap.get(roomId);
@@ -1301,11 +1320,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
       const emptySel = !mvB && selectedRoomIds.includes(r.id);
+      const flash = flashRoomId === r.id;
       return (
         <div
           key={r.id}
+          id={`now-room-${r.id}`}
+          data-room-id={r.id}
           {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+          className={`cell em nowempty ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
           onClick={mvClick ?? (() => selectRoom(r.id))}
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
         >
@@ -1350,11 +1372,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       selectRoom(r.id);
     };
     const occupiedSel = !mvB && selectedRoomIds.includes(r.id);
+    const flash = flashRoomId === r.id;
     return (
       <div
         key={r.id}
+        id={`now-room-${r.id}`}
+        data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk nowcell nk-${f.kind} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -1444,6 +1469,68 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const groupsNow = (multi ? s.buildings : s.buildings.slice(0, 1))
       .map((bd) => ({ bd, floors: multi ? floorsNow.filter((f) => f.buildingId === bd.id) : floorsNow }))
       .filter((g) => g.floors.length);
+    const glanceRooms = floorsNow.flatMap((f) => f.rooms);
+    const glanceVacant = glanceRooms.filter((r) => {
+      const bk = nowBoardMap.get(r.id);
+      return !bk || !isActive(bk);
+    });
+    const glanceTotal = glanceRooms.length;
+    const glanceUsed = glanceTotal - glanceVacant.length;
+    const glanceLeft = glanceVacant.length;
+    const GLANCE_CAP = 12;
+    const glanceHidden = !glanceExpand && glanceVacant.length > GLANCE_CAP ? glanceVacant.length - GLANCE_CAP : 0;
+    const glanceShown = glanceHidden ? glanceVacant.slice(0, GLANCE_CAP) : glanceVacant;
+    const vacancyGlance = (
+      <div className="now-vacancy" role="region" aria-label="공실 한눈 요약">
+        <div className="now-vacancy-sum">
+          총 <span className="num">{glanceTotal}</span>
+          <span className="now-vacancy-dot" aria-hidden>
+            ·
+          </span>
+          사용 <span className="num">{glanceUsed}</span>
+          <span className="now-vacancy-dot" aria-hidden>
+            ·
+          </span>
+          남음 <span className="num">{glanceLeft}</span>
+        </div>
+        {glanceLeft > 0 ? (
+          <div className="now-vacancy-row">
+            <span className="now-vacancy-lab">남은 호수</span>
+            <div className={`now-vacancy-nos ${glanceExpand ? "open" : "one"}`}>
+              {glanceShown.map((r) => {
+                const lab = multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className="now-vacancy-no"
+                    title={`${lab}로 이동`}
+                    onClick={() => jumpToVacantRoom(r.id)}
+                  >
+                    {lab}
+                  </button>
+                );
+              })}
+              {glanceHidden ? (
+                <button type="button" className="now-vacancy-more" onClick={() => setGlanceExpand(true)}>
+                  +{glanceHidden}
+                </button>
+              ) : null}
+              {glanceExpand && glanceVacant.length > GLANCE_CAP ? (
+                <button type="button" className="now-vacancy-more" onClick={() => setGlanceExpand(false)}>
+                  접기
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <div className="now-vacancy-row">
+            <span className="now-vacancy-lab">남은 호수</span>
+            <span className="now-vacancy-none">없음</span>
+          </div>
+        )}
+      </div>
+    );
     return (
     <>
       <main className="page board-page now-page">
@@ -1476,6 +1563,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           {mvBar}
           {buildingTabs}
+          {vacancyGlance}
           <div className="nowlayout">
             <div className="nowgrid">
               {multi && bScope === "all" ? null : null}
