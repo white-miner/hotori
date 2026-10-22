@@ -937,8 +937,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
   };
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
-  const [otherRooms, setOtherRooms] = useState(false);
-  /** 신규 숙박 미니 배치도 건물 칩 (간단 예약과 동일 shared MiniFloorPlan) */
+  /** 미니 배치도 건물 칩 (간단 예약 · Entry 숙박/대실 공용 MiniFloorPlan) */
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1299,8 +1298,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const busyLegs = kind === "stay" ? legConflicts(data.bookings, draft) : [];
   const allRooms = placedRooms(s); // 건물 → 층 순서
   const bpre = (bid: string) => (L.multi ? <em className="bpre">{L.buildings.get(bid)?.name}</em> : null);
-  const sameType = allRooms.filter((r) => r.typeId === typeId && (free.has(r.id) || r.id === roomId));
-  const otherType = allRooms.filter((r) => r.typeId !== typeId && (free.has(r.id) || r.id === roomId));
   const roomBusy = kind === "stay" ? busyLegs.length > 0 : !!roomId && !free.has(roomId);
   const preview = kind === "stay" && status === "active" ? previewChange(s, data.bookings, draft) : [];
 
@@ -2025,36 +2022,38 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <div className="fld">
             <label>
               객실 타입<em>*</em>
-              {kind === "stay" ? <span className="muted sm"> · 호텔 전체 남은 재고 (미배정도 차감)</span> : null}
             </label>
-            <div className="chips scroll">
-              {pickTypes.map((t, k) => {
-                const r = minRemain(t.id);
-                const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
-                return (
-                  <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
-                    <span className="t1">
-                      <TypeBadge t={t} />
-                    </span>
-                    {kind === "stay" ? (
-                      <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                        남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                        {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+            <div className="payb">
+              {kind === "stay" ? <div className="muted sm">호텔 전체 남은 재고 (미배정도 차감)</div> : null}
+              <div className="chips scroll">
+                {pickTypes.map((t, k) => {
+                  const r = minRemain(t.id);
+                  const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
+                  return (
+                    <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
+                      <span className="t1">
+                        <TypeBadge t={t} />
                       </span>
-                    ) : k < 9 ? (
-                      <span className="t2 kk">{TYPE_LABEL[k]}</span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-            {kind === "stay" && minRemain(typeId) <= 0 ? (
-              <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`} style={{ marginTop: 6 }}>
-                {minRemain(typeId) < 0
-                  ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
-                  : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+                      {kind === "stay" ? (
+                        <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
+                          남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                          {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+                        </span>
+                      ) : k < 9 ? (
+                        <span className="t2 kk">{TYPE_LABEL[k]}</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-            ) : null}
+              {kind === "stay" && minRemain(typeId) <= 0 ? (
+                <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
+                  {minRemain(typeId) < 0
+                    ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
+                    : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -2715,128 +2714,130 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 </>
               )}
             </label>
-            {kind === "stay" ? (
-              <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={salesMode === "perNight"}
-                  className={salesMode === "perNight" ? "on" : ""}
-                  onClick={() => setSalesMode("perNight")}
-                >
-                  박당
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={salesMode === "total"}
-                  className={salesMode === "total" ? "on" : ""}
-                  onClick={() => setSalesMode("total")}
-                >
-                  총액
-                </button>
-              </div>
-            ) : null}
-            {kind === "stay" ? (
-              salesMode === "total" ? (
-                <>
-                  <PriceRow>
-                    <PriceInp total>
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="총액"
-                        value={price ? won(Number(price)) : ""}
-                        onChange={(e) => setTotalAndRate(e.target.value)}
-                        aria-label="판매금 총액"
-                      />
-                    </PriceInp>
-                  </PriceRow>
-                  <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                    {isOnsite(curPlat) ? "총액 · 박은 자동 분배" : "플랫폼 총액 그대로"}
-                    {Number(price || 0) > 0 ? (
-                      <>
-                        {" · "}
-                        <b>{won(Number(price))}원</b>
-                        {nights > 1 ? ` · ${nights}박` : null}
-                      </>
-                    ) : null}
-                  </div>
-                </>
+            <div className="payb">
+              {kind === "stay" ? (
+                <div className="seg sm" role="tablist" aria-label="판매금 입력 모드">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={salesMode === "perNight"}
+                    className={salesMode === "perNight" ? "on" : ""}
+                    onClick={() => setSalesMode("perNight")}
+                  >
+                    박당
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={salesMode === "total"}
+                    className={salesMode === "total" ? "on" : ""}
+                    onClick={() => setSalesMode("total")}
+                  >
+                    총액
+                  </button>
+                </div>
+              ) : null}
+              {kind === "stay" ? (
+                salesMode === "total" ? (
+                  <>
+                    <PriceRow>
+                      <PriceInp total>
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          placeholder="총액"
+                          value={price ? won(Number(price)) : ""}
+                          onChange={(e) => setTotalAndRate(e.target.value)}
+                          aria-label="판매금 총액"
+                        />
+                      </PriceInp>
+                    </PriceRow>
+                    <div className="muted sm">
+                      {isOnsite(curPlat) ? "총액 · 박은 자동 분배" : "플랫폼 총액 그대로"}
+                      {Number(price || 0) > 0 ? (
+                        <>
+                          {" · "}
+                          <b>{won(Number(price))}원</b>
+                          {nights > 1 ? ` · ${nights}박` : null}
+                        </>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <PriceRow>
+                      <PriceInp sm suffix="원/박">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          placeholder="1박"
+                          value={rateStr ? won(Number(rateStr)) : ""}
+                          onChange={(e) => setRateAndTotal(e.target.value)}
+                          aria-label="1박 요금"
+                        />
+                      </PriceInp>
+                      <span className="muted sm">× {nights}박 =</span>
+                      <PriceInp total>
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          placeholder="총액"
+                          value={price ? won(Number(price)) : ""}
+                          onChange={(e) => setTotalAndRate(e.target.value)}
+                          aria-label="판매금"
+                        />
+                      </PriceInp>
+                    </PriceRow>
+                    <PriceRow wdwe>
+                      <PriceInp sm suffix="평일">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          placeholder="평일"
+                          value={wdStr ? won(Number(wdStr)) : ""}
+                          onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
+                          aria-label="평일 1박 기본"
+                        />
+                      </PriceInp>
+                      <PriceInp sm suffix="주말">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          placeholder="주말"
+                          value={weStr ? won(Number(weStr)) : ""}
+                          onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
+                          aria-label="주말 1박 기본 (금·토)"
+                        />
+                      </PriceInp>
+                      <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
+                    </PriceRow>
+                  </>
+                )
               ) : (
-                <>
-                  <PriceRow>
-                    <PriceInp sm suffix="원/박">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="1박"
-                        value={rateStr ? won(Number(rateStr)) : ""}
-                        onChange={(e) => setRateAndTotal(e.target.value)}
-                        aria-label="1박 요금"
-                      />
-                    </PriceInp>
-                    <span className="muted sm">× {nights}박 =</span>
-                    <PriceInp total>
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="총액"
-                        value={price ? won(Number(price)) : ""}
-                        onChange={(e) => setTotalAndRate(e.target.value)}
-                        aria-label="판매금"
-                      />
-                    </PriceInp>
-                  </PriceRow>
-                  <PriceRow wdwe>
-                    <PriceInp sm suffix="평일">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="평일"
-                        value={wdStr ? won(Number(wdStr)) : ""}
-                        onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
-                        aria-label="평일 1박 기본"
-                      />
-                    </PriceInp>
-                    <PriceInp sm suffix="주말">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="주말"
-                        value={weStr ? won(Number(weStr)) : ""}
-                        onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
-                        aria-label="주말 1박 기본 (금·토)"
-                      />
-                    </PriceInp>
-                    <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
-                  </PriceRow>
-                </>
-              )
-            ) : (
-              <PriceInp>
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  placeholder="금액"
-                  value={price ? won(Number(price)) : ""}
-                  onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                  aria-label="판매 가격"
-                />
-              </PriceInp>
-            )}
-            {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (
-              <div className="muted sm" style={{ marginTop: 6 }}>
-                {hasFullNightMatrix(checkIn, nights, nightRates)
-                  ? "총액 = 선택 밤 금액 합"
-                  : "총액 = 1박 요금 × 박수"}
-                {(() => {
-                  const a = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-                  return a ? ` + 가산 ${won(a)}원` : "";
-                })()}
-                {" · "}박수 줄이면 뒤 밤을 빼고 맞춰요
-              </div>
-            ) : null}
+                <PriceInp>
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    placeholder="금액"
+                    value={price ? won(Number(price)) : ""}
+                    onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                    aria-label="판매 가격"
+                  />
+                </PriceInp>
+              )}
+              {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (
+                <div className="muted sm">
+                  {hasFullNightMatrix(checkIn, nights, nightRates)
+                    ? "총액 = 선택 밤 금액 합"
+                    : "총액 = 1박 요금 × 박수"}
+                  {(() => {
+                    const a = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+                    return a ? ` + 가산 ${won(a)}원` : "";
+                  })()}
+                  {" · "}박수 줄이면 뒤 밤을 빼고 맞춰요
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
 
@@ -3035,13 +3036,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         ) : null}
 
         <div className="fld">
-          <label>
-            {moved ? "첫 방" : "호실"}
-            {kind === "stay" ? <span className="muted sm"> · 미배정=타입 재고</span> : null}
-          </label>
-          {(isNew && kind === "stay") || kind === "dayuse" ? (
-            <div className="mfp-wrap">
-              {/* 타입 줄 = 배치도 위 · shared MiniFloorPlan (숙박 신규 · 대실 생성/수정) */}
+          <label>{moved ? "첫 방" : "호실"}</label>
+          <div className="mfp-wrap">
+            {/* 숙박 수정: 미배정 칩 + MiniFloorPlan (칩 벽 제거 · P0) · 신규/대실은 타입 줄 포함 */}
+            {(isNew && kind === "stay") || kind === "dayuse" ? (
               <div className="mfp-types">
                 <div className="muted sm">{kind === "stay" ? "타입 · 남은 수" : "타입"}</div>
                 <div className="chips scroll">
@@ -3079,73 +3077,40 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </div>
                 ) : null}
               </div>
-              <MiniFloorPlan
-                s={s}
-                L={L}
-                free={free}
-                selectedIds={roomId ? [roomId] : []}
-                candidateTypeIds={typeId ? [typeId] : []}
-                buildingFilter={buildingFilter}
-                onBuildingFilter={setBuildingFilter}
-                onToggle={toggleFloorRoom}
-              />
-              <div className="muted sm mfp-sum">
-                {roomId
-                  ? `${L.roomLabel(roomId) ?? "?"}호`
-                  : kind === "dayuse"
+            ) : kind === "stay" ? (
+              <button
+                type="button"
+                className={`rchip lt ${roomId === null ? "on" : ""}`}
+                onClick={() => pickRoom(null)}
+                title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
+              >
+                간단 예약
+              </button>
+            ) : null}
+            <MiniFloorPlan
+              s={s}
+              L={L}
+              free={free}
+              selectedIds={roomId ? [roomId] : []}
+              candidateTypeIds={typeId ? [typeId] : []}
+              buildingFilter={buildingFilter}
+              onBuildingFilter={setBuildingFilter}
+              onToggle={toggleFloorRoom}
+            />
+            <div className="muted sm mfp-sum">
+              {roomId
+                ? `${L.roomLabel(roomId) ?? "?"}호`
+                : kind === "dayuse"
+                  ? "배치도에서 호실을 골라 주세요"
+                  : walkInImmediate
                     ? "배치도에서 호실을 골라 주세요"
-                    : walkInImmediate
-                      ? "배치도에서 호실을 골라 주세요"
+                    : !isNew && kind === "stay"
+                      ? "미배정 · 「현황」에서 호실 정하기"
                       : typeId
                         ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
                         : "타입을 고르거나 배치도에서 호실을 지정"}
-              </div>
             </div>
-          ) : (
-            <>
-              <ChipGroup>
-                <button
-                  type="button"
-                  className={`rchip lt ${roomId === null ? "on" : ""}`}
-                  onClick={() => pickRoom(null)}
-                  title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
-                >
-                  간단 예약
-                </button>
-                {sameType.map((r) => (
-                  <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => pickRoom(r.id)}>
-                    {bpre(r.buildingId)}
-                    {r.no}
-                  </button>
-                ))}
-                {otherRooms || (roomId && L.rooms.get(roomId)?.typeId !== typeId)
-                  ? otherType.map((r) => (
-                      <button
-                        type="button"
-                        key={r.id}
-                        className={`rchip other ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`}
-                        title={L.roomLabel(r.id) ?? r.no}
-                        onClick={() => pickRoom(r.id)}
-                      >
-                        {bpre(r.buildingId)}
-                        {r.no}
-                        <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
-                      </button>
-                    ))
-                  : otherType.length ? (
-                      <button type="button" className="rchip lt" onClick={() => setOtherRooms(true)}>
-                        다른 타입 방 +{otherType.length}
-                      </button>
-                    ) : null}
-                {!sameType.length && !otherRooms && roomId !== null ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
-              </ChipGroup>
-              {kind === "stay" && roomId === null ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
-                  미배정 · 「현황」에서 호실 정하기
-                </div>
-              ) : null}
-            </>
-          )}
+          </div>
         </div>
 
         {!isNew && kind === "stay" && nights >= 2 && roomId ? (
