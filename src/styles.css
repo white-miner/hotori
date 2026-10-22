@@ -1916,7 +1916,17 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   white-space: nowrap;
 }
 .nowchip.soft { font-weight: 700; color: var(--ink3); background: #f7f7f7; }
-.nowchip.nownights { align-self: flex-start; }
+/* 박수 칩 = 날짜 옆 작은 보조 (풀 라인 금지) */
+.nowchip.nownights {
+  flex: none;
+  height: 16px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink3);
+  background: #f7f7f7;
+  border-color: #d8d8d8;
+}
 /* 「현황」: 점유 밤 날짜 (탭 → 캘린더) */
 .nowchip.nowdate {
   font-family: var(--num);
@@ -1932,7 +1942,15 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 }
 .nowstack.sparse { justify-content: flex-start; }
 .nowstack.dense { gap: 3px; }
-.nowdate-row { position: relative; align-self: flex-start; max-width: 100%; }
+.nowdate-row {
+  position: relative;
+  align-self: flex-start;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
 .nowdate-btn {
   display: inline-flex;
   align-items: center;
@@ -1951,6 +1969,17 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--ink);
+}
+/* 금액 숫자만: 미수=빨강 · 선금·일부=파랑 · 완납=검정 */
+.nowamt.tone-due, .cell .pr.tone-due { color: var(--badge-danger); }
+.nowamt.tone-partial, .cell .pr.tone-partial { color: var(--badge-info); }
+.nowamt.tone-paid, .cell .pr.tone-paid { color: var(--ink); }
+.nowamt.tone-neutral { color: var(--ink3); }
+.nownights-acc {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink3);
+  letter-spacing: -0.02em;
 }
 .nowstack .nowdue, .nowamt { margin-top: 0; }
 .nowmeta {

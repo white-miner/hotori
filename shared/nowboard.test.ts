@@ -11,6 +11,7 @@ import {
   filterUnassignedByCheckIn,
   isDepartingStatus,
   nowAmountGlance,
+  nowAmountTone,
   nowBoardVisible,
   nowByRoom,
   nowDateLine,
@@ -114,7 +115,8 @@ test("2박 3일: 마지막 밤은 숙박, 퇴실 아침 06:00부터 퇴실예정
     nowFlags(b, "2026-10-21", { stayTimes: stay, clock: clock("15:00", "2026-10-21") }).kind,
     "departing",
   ); // 미처리면 계속 퇴실예정 · 자동 공실 금지
-  assert.equal(nowNightsDays(b).label, "2박 3일");
+  assert.equal(nowNightsDays(b).label, "2박");
+  assert.equal(nowNightsDays(b).days, 3);
 });
 
 test("늦은 퇴실: lateOut 반영한 윈도우 · 라벨 우선(슬롯 하나)", () => {
@@ -247,25 +249,25 @@ test("미배정 타입 카운트: 단체·타입별", () => {
   assert.equal(c.find((x) => !x.groupName && x.typeId === "s")?.n, 1);
 });
 
-test("상단 숙박 요약: N박 N일 · k박째 · 1박·숙박예약은 진행 숨김", () => {
+test("상단 숙박 요약: N박 · K/N박 · 1박·숙박예약은 진행 숨김", () => {
   const b = bk({ checkIn: "2026-10-10", nights: 11, arrived: true });
   assert.equal(nowStayNightIndex(b, "2026-10-18"), 9);
   assert.equal(nowStayNightIndex(b, "2026-10-10"), 1);
   assert.equal(nowStayNightIndex(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), null);
-  // 숙박 중: 총박·일 + 진행
-  assert.equal(nowStaySummary(b, "2026-10-18"), "11박 12일 · 9박째");
-  assert.equal(nowStaySummary(b, "2026-10-10"), "11박 12일 · 1박째");
-  // 1박: 박째 없음
-  assert.equal(nowStaySummary(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박 2일");
-  // 숙박예약(입실 전): 진행 숨김
-  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: false }), "2026-10-19", false), "2박 3일");
-  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: true }), "2026-10-19", true), "2박 3일 · 1박째");
+  // 숙박 중: 진행/전체
+  assert.equal(nowStaySummary(b, "2026-10-18"), "9/11박");
+  assert.equal(nowStaySummary(b, "2026-10-10"), "1/11박");
+  // 1박: 진행 없음
+  assert.equal(nowStaySummary(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박");
+  // 숙박예약(입실 전): 진행 숨김 · 길이만
+  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: false }), "2026-10-19", false), "2박");
+  assert.equal(nowStaySummary(bk({ checkIn: "2026-10-19", nights: 2, arrived: true }), "2026-10-19", true), "1/2박");
   // 퇴실 아침 = 마지막 박
-  assert.equal(nowStaySummary(b, "2026-10-21"), "11박 12일 · 11박째");
-  assert.equal(nowStayHint(b, "2026-10-18"), "11박 12일 · 9박째");
-  assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박 2일");
-  // 레거시 칩 배열 (손님 줄에서는 더 이상 쓰지 않음)
-  assert.deepEqual(nowStayChips(b, "2026-10-18"), ["11박", "9박째"]);
+  assert.equal(nowStaySummary(b, "2026-10-21"), "11/11박");
+  assert.equal(nowStayHint(b, "2026-10-18"), "9/11박");
+  assert.equal(nowStayHint(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), "1박");
+  // 레거시 칩 배열 → 압축 한 토큰
+  assert.deepEqual(nowStayChips(b, "2026-10-18"), ["9/11박"]);
   assert.deepEqual(nowStayChips(bk({ nights: 1, checkIn: "2026-10-19" }), "2026-10-19"), []);
 });
 
@@ -304,17 +306,29 @@ test("간단 예약 입실일 필터: 오늘(기한초과 포함) · 일주일 �
   );
 });
 
-test("금액 글랜스 · 메타 줄", () => {
+test("금액 글랜스 · 톤 · 메타 줄", () => {
   assert.equal(nowAmountGlance(bk({ price: 180000 }), null), "₩180,000");
+  assert.equal(nowAmountTone(bk({ price: 180000 }), null), "paid");
   assert.equal(nowAmountGlance(bk({ price: 0, priceUnset: true }), onsite), "금액미정");
+  assert.equal(nowAmountTone(bk({ price: 0, priceUnset: true }), onsite), "neutral");
   assert.equal(simplePayGlance(bk({ price: 180000, payments: [] }), true), "후불");
   assert.equal(
     simplePayGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), true),
     "선불",
   );
+  // 미수(수납 0) = due · 선금·일부 = partial · 완납 = paid
+  assert.equal(nowAmountTone(bk({ price: 180000, payments: [] }), onsite), "due");
   assert.equal(
     nowAmountGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
     "잔금 ₩130,000",
+  );
+  assert.equal(
+    nowAmountTone(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
+    "partial",
+  );
+  assert.equal(
+    nowAmountTone(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
+    "paid",
   );
   assert.equal(
     nowAmountGlance(
@@ -327,6 +341,18 @@ test("금액 글랜스 · 메타 줄", () => {
       onsite,
     ),
     "미수 ₩80,000",
+  );
+  assert.equal(
+    nowAmountTone(
+      bk({
+        stayMode: "long_stay",
+        price: 0,
+        charges: [{ id: "c1", bookingId: "b", nightDate: "2026-10-19", amount: 80000, createdAt: "" }],
+        payments: [],
+      }),
+      onsite,
+    ),
+    "due",
   );
   assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연 · 2명");
