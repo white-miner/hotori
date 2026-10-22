@@ -500,6 +500,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         payerPhone: phone,
         rates: ratesPersist,
         extras: [],
+        badgeColor: null,
       });
 
       let payTail = "";

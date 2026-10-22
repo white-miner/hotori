@@ -35,7 +35,7 @@ import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from 
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { cleanCoupons } from "../shared/fee";
-import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
+import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
 import {
   type NightCharge,
   chargesOutsideWindow,
@@ -156,9 +156,10 @@ interface GroupRow {
   payer_phone: string | null;
   rates: unknown;
   extras: unknown;
+  badge_color: string | null;
   booking_payments?: PaymentRow[];
 }
-const GROUP_COLS = `id,pay_mode,due_on,payer_company,payer_name,payer_phone,rates,extras,booking_payments(${PAY_COLS})`;
+const GROUP_COLS = `id,pay_mode,due_on,payer_company,payer_name,payer_phone,rates,extras,badge_color,booking_payments(${PAY_COLS})`;
 function groupFromRow(r: GroupRow): GroupInfo {
   const rates: Record<string, number> = {};
   if (r.rates && typeof r.rates === "object") for (const [k, v] of Object.entries(r.rates as Record<string, unknown>)) if (Number.isFinite(Number(v))) rates[k] = Number(v);
@@ -175,6 +176,7 @@ function groupFromRow(r: GroupRow): GroupInfo {
     rates: Object.keys(rates).length ? rates : null,
     extras,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    badgeColor: isGroupBadgeColor(r.badge_color) ? r.badge_color : null,
   };
 }
 const t = (v: string | null | undefined, max: number) => (v && v.trim() ? v.trim().slice(0, max) : null);
@@ -187,6 +189,7 @@ function groupToRow(g: Omit<GroupInfo, "payments">) {
     payer_phone: t(g.payerPhone, 30),
     rates: g.rates && Object.keys(g.rates).length ? g.rates : null,
     extras: g.extras.slice(0, 50).map((x) => ({ name: x.name.trim().slice(0, 30), amount: Math.round(x.amount) })),
+    badge_color: g.badgeColor,
   };
 }
 

@@ -4,6 +4,12 @@ import { type Payment, isOnsite, paidOf } from "./payment";
 
 export type GroupPayMode = "prepaid" | "postpaid";
 export const PAY_MODE_LABEL: Record<GroupPayMode, string> = { prepaid: "선결제", postpaid: "후불(퇴실 후 정산)" };
+/** 단체 뱃지 6색 팔레트 (현황·배치 동일) */
+export const GROUP_BADGE_COLORS = ["g1", "g2", "g3", "g4", "g5", "g6"] as const;
+export type GroupBadgeColor = (typeof GROUP_BADGE_COLORS)[number];
+export function isGroupBadgeColor(v: unknown): v is GroupBadgeColor {
+  return typeof v === "string" && (GROUP_BADGE_COLORS as readonly string[]).includes(v);
+}
 export interface GroupExtra {
   name: string;
   amount: number;
@@ -19,8 +25,21 @@ export interface GroupInfo {
   rates: Record<string, number> | null;
   extras: GroupExtra[];
   payments: Payment[];
+  /** 칸 「단체」뱃지 색 (g1..g6). null이면 기본 무채 */
+  badgeColor: GroupBadgeColor | null;
 }
-export const emptyGroupInfo = (id: string): GroupInfo => ({ id, payMode: "prepaid", dueOn: null, payerCompany: null, payerName: null, payerPhone: null, rates: null, extras: [], payments: [] });
+export const emptyGroupInfo = (id: string): GroupInfo => ({
+  id,
+  payMode: "prepaid",
+  dueOn: null,
+  payerCompany: null,
+  payerName: null,
+  payerPhone: null,
+  rates: null,
+  extras: [],
+  payments: [],
+  badgeColor: null,
+});
 export const EXTRA_NAME_MAX = 30;
 export const EXTRA_MAX = 50;
 

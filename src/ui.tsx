@@ -1,7 +1,9 @@
 import type { Booking, Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
 import { CalendarDays } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { FLOOR_PALETTE, onStrong, strongColor } from "../shared/floorColor";
 import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
+import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "../shared/settle";
 
 // 층·방 색 고르기 (진한 색). 예전 파스텔 값은 strongColor로 같은 계열 진한 색이 돼요.
 export const PALETTE: { name: string; value: string | null }[] = [{ name: "기본", value: null }, ...FLOOR_PALETTE.map(({ name, value }) => ({ name, value }))];
@@ -71,10 +73,95 @@ export function TypeLine({ t }: { t?: RoomType | null }) {
   const label = typeLabel(t);
   return label ? <FitText className="tl" text={label} /> : <span className="tl none">타입 없음</span>;
 }
+/** 타입 + 인원(우측 작게). 현황·배치 동일 */
+export function TypeRow({ t, guests }: { t?: RoomType | null; guests?: number | null }) {
+  return (
+    <div className="tl-row">
+      <TypeLine t={t} />
+      {guests != null && guests >= 1 ? (
+        <span className="gcount" title={`인원 ${guests}명`}>
+          {guests}명
+        </span>
+      ) : null}
+    </div>
+  );
+}
 export function PlatBadge({ p }: { p?: Platform | null }) {
   return (
     <span className="pb" title={p?.name}>
       {p?.abbr ?? "?"}
+    </span>
+  );
+}
+/** 칸 「단체」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
+export function GroupBadge({
+  groupName,
+  color,
+  readOnly,
+  onPick,
+}: {
+  groupName?: string | null;
+  color?: GroupBadgeColor | null;
+  readOnly?: boolean;
+  onPick?: (c: GroupBadgeColor) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const cls = `grptag${color ? ` ${color}` : ""}${open ? " open" : ""}`;
+  const title = groupName ? `단체 ${groupName}` : "단체";
+  if (readOnly || !onPick) {
+    return (
+      <span className={cls} title={title}>
+        단체
+      </span>
+    );
+  }
+  return (
+    <span className="grptag-wrap" ref={root}>
+      <button
+        type="button"
+        className={cls}
+        title={`${title} · 색 바꾸기`}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        disabled={busy}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        단체
+      </button>
+      {open ? (
+        <span className="grp-palette" role="listbox" aria-label="단체 뱃지 색" onClick={(e) => e.stopPropagation()}>
+          {GROUP_BADGE_COLORS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="option"
+              aria-selected={color === id}
+              className={`grp-swatch ${id}${color === id ? " on" : ""}`}
+              disabled={busy}
+              onClick={(e) => {
+                e.stopPropagation();
+                setBusy(true);
+                void Promise.resolve(onPick(id))
+                  .then(() => setOpen(false))
+                  .finally(() => setBusy(false));
+              }}
+            />
+          ))}
+        </span>
+      ) : null}
     </span>
   );
 }

@@ -57,7 +57,16 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
       setBusy(false);
     }
   };
-  const base = { payMode: info.payMode, dueOn: info.dueOn, payerCompany: info.payerCompany, payerName: info.payerName, payerPhone: info.payerPhone, rates: info.rates, extras: info.extras };
+  const base = {
+    payMode: info.payMode,
+    dueOn: info.dueOn,
+    payerCompany: info.payerCompany,
+    payerName: info.payerName,
+    payerPhone: info.payerPhone,
+    rates: info.rates,
+    extras: info.extras,
+    badgeColor: info.badgeColor,
+  };
   const addExtra = () => {
     const x = { name: extra.name.trim(), amount: Number(extra.amount || 0) };
     const v = validateExtra(x);
