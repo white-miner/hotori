@@ -1499,21 +1499,22 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const glanceShown = glanceHidden ? glanceVacant.slice(0, GLANCE_CAP) : glanceVacant;
     const vacancyGlance = (
       <div className="now-vacancy" role="region" aria-label="공실 한눈 요약">
-        <div className="now-vacancy-sum">
-          총 <span className="num">{glanceTotal}</span>
-          <span className="now-vacancy-dot" aria-hidden>
-            ·
+        <div className="now-vacancy-eyebrow">공실</div>
+        <div className="now-vacancy-sum" role="list">
+          <span className="now-vacancy-stat" role="listitem">
+            총 <span className="num">{glanceTotal}</span>
           </span>
-          사용 <span className="num">{glanceUsed}</span>
-          <span className="now-vacancy-dot" aria-hidden>
-            ·
+          <span className="now-vacancy-stat" role="listitem">
+            사용 <span className="num">{glanceUsed}</span>
           </span>
-          남음 <span className="num">{glanceLeft}</span>
+          <span className="now-vacancy-stat left" role="listitem">
+            남음 <span className="num">{glanceLeft}</span>
+          </span>
         </div>
         {glanceLeft > 0 ? (
           <div className="now-vacancy-row">
             <span className="now-vacancy-lab">남은 호수</span>
-            <div className={`now-vacancy-nos ${glanceExpand ? "open" : "one"}`}>
+            <div className={`now-vacancy-nos ${glanceExpand ? "open" : ""}`}>
               {glanceShown.map((r) => {
                 const lab = multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no;
                 return (
@@ -1546,6 +1547,38 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span className="now-vacancy-none">없음</span>
           </div>
         )}
+      </div>
+    );
+    /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
+    const nowLegend = (
+      <div className="lg nowlg" aria-label="상태 범례">
+        <span>
+          <i className="nkdot nk-empty" />공실
+        </span>
+        <span>
+          <i className="nkdot nk-arriving" />숙박예약
+        </span>
+        <span>
+          <i className="nkdot nk-inhouse" />숙박
+        </span>
+        <span>
+          <i className="nkdot nk-departing" />퇴실예정
+        </span>
+        <span>
+          <i className="nkdot nk-lateOut" />늦은 퇴실
+        </span>
+        <span>
+          <i className="nkdot nk-tent" />임시
+        </span>
+        <span>
+          <i className="nkdot nk-ua" />미배정
+        </span>
+        <span>
+          <i className="nkdot nk-ncx" />청소X
+        </span>
+        <span>
+          <MessageCircle size={12} strokeWidth={2.2} aria-hidden />특이사항
+        </span>
       </div>
     );
     return (
@@ -1583,10 +1616,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {vacancyGlance}
           <div className="nowlayout">
             <div className="nowgrid">
-              {multi && bScope === "all" ? null : null}
-              {groupsNow.map(({ bd, floors: fl }) => (
+              {groupsNow.map(({ bd, floors: fl }, gi) => (
                 <section key={bd.id} className="bblock">
-                  {multi ? <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2> : null}
+                  <div className="bname-row">
+                    <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
+                    {gi === 0 ? nowLegend : null}
+                  </div>
                   {fl.map((f) => (
                     <div className="floor" key={f.id}>
                       <div className="fh">
@@ -1649,35 +1684,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </button>
             </div>
           ) : null}
-          <div className="lg nowlg">
-            <span>
-              <i className="nkdot nk-empty" />공실
-            </span>
-            <span>
-              <i className="nkdot nk-arriving" />숙박예약
-            </span>
-            <span>
-              <i className="nkdot nk-inhouse" />숙박
-            </span>
-            <span>
-              <i className="nkdot nk-departing" />퇴실예정
-            </span>
-            <span>
-              <i className="nkdot nk-lateOut" />늦은 퇴실
-            </span>
-            <span>
-              <i className="nkdot nk-tent" />임시
-            </span>
-            <span>
-              <i className="nkdot nk-ua" />미배정
-            </span>
-            <span>
-              <i className="nkdot nk-ncx" />청소X
-            </span>
-            <span>
-              <MessageCircle size={12} strokeWidth={2.2} aria-hidden />특이사항
-            </span>
-          </div>
         </div>
       </main>
       {memoRoomId ? (

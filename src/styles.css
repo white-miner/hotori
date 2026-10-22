@@ -621,6 +621,19 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .nm { display: flex; align-items: center; gap: 5px; font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; padding: 0 3px; line-height: 1.12; }
 .cell .nm .gn { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-weight: 800; }
 .cell .nm span { overflow: hidden; text-overflow: ellipsis; }
+/* 플랫폼 약자(현·야·아·호…) ≈ 이름 글자 스케일 · 칸 박스 미터치 */
+.cell .nm .pb {
+  font-size: 1em;
+  font-weight: 800;
+  width: 1.2em;
+  height: 1.2em;
+  min-width: 1.2em;
+  min-height: 1.2em;
+  line-height: 1;
+  border-radius: 50%;
+  flex: none;
+  overflow: visible;
+}
 /* 타입 + 인원 같은 줄 (인원 우측 작게) */
 .tl-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); min-width: 0; padding: 0 3px; }
 .tl-row .tl { flex: 1 1 auto; min-width: 0; padding: 0; }
@@ -946,6 +959,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .hl h1 { font-size: 19px; font-weight: 800; }
   .hl-alert { font-size: 14.5px; }
   .hl-tail, .lg { display: none; }
+  /* 「현황」범례는 건물명 행 — 모바일에서도 유지 */
+  .now-page .nowlg { display: flex; }
   .stock-wrap { border-radius: 20px; }
   .stock { padding: 10px 8px 8px; min-width: 0; width: max-content; }
   .srow { grid-template-columns: 44px repeat(var(--days, 14), 41px); gap: 3px; }
@@ -976,7 +991,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .tl.none { font-size: 8.5px; }
   .cell.em .emt { display: none; }
   .cell .nm { font-size: 16px; gap: 3px; padding: 0 2px; }
-  .cell .nm .pb { width: 15px; height: 15px; font-size: 9px; }
+  /* .pb inherits 1em from .nm — do not shrink to tiny dots */
   .tl-row { padding: 0 2px; }
   .tl-row .gcount { font-size: 9.5px; }
   .cell .r3 { font-size: 9.5px; padding: 0 2px; }
@@ -2720,7 +2735,7 @@ button.nowstatus { cursor: pointer; }
 .now-page .cell:has(.r1 .no.k) .nm { font-size: 19px; }
 .now-page .cell .tl { --fmax: 15px; --fmin: 11px; }
 .now-page .tl-row .gcount { font-size: 13px; }
-.now-page .cell .nm .pb { width: 22px; height: 22px; font-size: 12px; }
+/* plat .pb = 1em of .nm (shared rule) · no fixed 12px shrink */
 .now-page .nowamt { font-size: 18px; }
 @keyframes nowmemo-in {
   from { opacity: 0; transform: scale(0.94); }
@@ -2986,91 +3001,122 @@ button.nowstatus { cursor: pointer; }
   outline-offset: 1px;
   z-index: 1;
 }
-/* 「현황」공실 글랜스 — 칩 아래 타이포 · 카드/큰숫자 금지 · 그리드 미터치 */
+/* 「현황」공실 글랜스 — 키워드 칩 · 카드 통계 금지 · 칸 그리드 미터치 */
 .now-vacancy {
   margin: 0 0 var(--space-4);
-  padding: var(--space-3) 0;
+  padding: var(--space-3) 0 var(--space-4);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line2);
-  color: var(--ink2);
-  font-size: 13px;
+  color: var(--ink);
+  min-width: 0;
 }
 .now-page .btabs + .now-vacancy { margin-top: calc(var(--space-2) * -1); }
-.now-vacancy-sum {
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1.35;
+.now-vacancy-eyebrow {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink3);
+  margin-bottom: var(--space-2);
 }
-.now-vacancy-sum .num {
+.now-vacancy-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-chip);
+  align-items: center;
+}
+.now-vacancy-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--ink2);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.now-vacancy-stat .num {
   font-family: var(--num);
   font-weight: 800;
+  font-size: 15.5px;
   color: var(--ink);
   font-feature-settings: "tnum" 1;
 }
-.now-vacancy-dot {
-  margin: 0 var(--space-2);
-  color: var(--ink4);
-  font-weight: 500;
+.now-vacancy-stat.left {
+  background: var(--badge-info-s);
+  border-color: var(--badge-info-border);
+  color: var(--badge-info);
 }
+.now-vacancy-stat.left .num { color: var(--badge-info); }
 .now-vacancy-row {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-chip) var(--space-3);
+  margin-top: var(--space-3);
   min-width: 0;
 }
 .now-vacancy-lab {
   flex: none;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 700;
   color: var(--ink3);
 }
 .now-vacancy-none {
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--ink4);
-  font-weight: 500;
+  font-weight: 600;
 }
 .now-vacancy-nos {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--space-chip);
   min-width: 0;
-  align-items: baseline;
-  flex: 1;
-}
-.now-vacancy-nos.one {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  padding-bottom: 1px;
+  align-items: center;
+  flex: 1 1 auto;
 }
 .now-vacancy-no {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 44px;
+  padding: 0 var(--space-4);
   font-family: var(--num);
-  font-weight: 750;
-  font-size: 13px;
+  font-weight: 800;
+  font-size: 14.5px;
   color: var(--ink);
-  padding: 0;
-  background: none;
-  border: 0;
+  background: #fff;
+  border: 1.5px solid var(--ink2);
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: var(--line);
-  text-underline-offset: 2px;
   letter-spacing: -0.02em;
+  font-feature-settings: "tnum" 1;
 }
-.now-vacancy-no:hover { text-decoration-color: var(--ink3); }
+.now-vacancy-no:hover {
+  background: var(--panel);
+  border-color: var(--ink);
+}
 .now-vacancy-more {
   flex: none;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ink3);
-  height: 22px;
-  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 var(--space-4);
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--ink2);
   border-radius: var(--radius-pill);
   background: var(--panel);
+  border: 1px solid var(--line);
 }
-.now-vacancy-more:hover { background: var(--hover); color: var(--ink2); }
+.now-vacancy-more:hover { background: var(--hover); color: var(--ink); }
 .now-page .cell.nowflash {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
@@ -3168,7 +3214,31 @@ button.nowstatus { cursor: pointer; }
 }
 .nowli b { font-size: 13.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nowempty-side { padding: 8px 2px; }
-.nowlg { margin-top: 14px; gap: 14px; }
+/* 「현황」건물명 행 — 좌 건물 · 우 상태 범례 (칸 박스 미터치) */
+.now-page .bname-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-3);
+  min-width: 0;
+}
+.now-page .bname {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  flex: none;
+}
+.nowlg {
+  margin: 0;
+  gap: var(--space-3) var(--space-4);
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
 .nkdot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid #999; margin-right: 4px; vertical-align: -1px; }
 .nkdot.nk-arriving { border-color: var(--badge-info-border); background: var(--badge-info-s); }
 .nkdot.nk-inhouse { border-color: var(--stay); background: #fff7f7; }
