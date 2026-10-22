@@ -57,13 +57,17 @@ import {
   BOOK_PAY_LABEL,
   BOOK_PAY_METHODS,
   type BookPayMethod,
+  type OnsitePayMode,
   type PayKind,
   isOnsite,
   isWalkInPlaceholderName,
+  onsiteCreatePayTail,
   payLineMain,
   paySplit,
+  planOnsiteCreatePay,
   splitLine,
   validateGuestPhone,
+  validateOnsiteCreateDeposit,
   validatePayment,
   walkInDisplayName,
 } from "../shared/payment";
@@ -134,6 +138,7 @@ import {
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
+import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import { stopSellDatesForStay } from "../shared/salesCalendar";
@@ -318,7 +323,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [coupons, setCoupons] = useState<{ amount: string; hotel: boolean }[]>(() => (base?.coupons ?? []).map((c) => ({ amount: String(c.amount), hotel: c.hotel })));
   const [payOk, setPayOk] = useState(base?.payoutOk === true);
   const [payAmt, setPayAmt] = useState(base?.payoutOk && base.payoutAmount != null ? String(base.payoutAmount) : "");
-  // 결제 Option A: 금액 한 칸 공유 · [받기]/[선금]으로 kind 분기
+  // 결제 Option A: 금액 한 칸 공유 · [받기]/[선금]으로 kind 분기 (수정·장기)
   const initLeft = (() => {
     if (!base) return "";
     const paid = (base.payments ?? []).reduce((n, x) => n + x.amount, 0);
@@ -340,6 +345,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   });
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
+  /** 신규 표준 숙박 · 현장: 간단과 같은 선불/후불/선금 progressive (Option D absorb #3) */
+  const [createPayMode, setCreatePayMode] = useState<OnsitePayMode>("postpaid");
+  const [createDepAmt, setCreateDepAmt] = useState("");
+  const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
   // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
   const [eo, setEo] = useState<{ date: string; refund: string } | null>(null);
   const [eoBusy, setEoBusy] = useState(false);
@@ -1132,6 +1141,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 현장 결제·장기만 잔금 UI. OTA는 결제 줄이 있어도 「플랫폼에서 결제 · 잔금 없음」.
   const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
+  /** 신규 표준 숙박·현장만 progressive · 수정/장기/대실/플랫폼은 Option A 또는 OTA */
+  const createOnsitePay = isNew && kind === "stay" && !long && isOnsite(curPlat);
   const po = payoutOf(draftBase, curPlat);
   const poLine = payoutLine(po);
   // 쿠폰 · 입금 칸: 플랫폼 예약이거나 수수료율이 있는 플랫폼 (또는 이미 쿠폰을 적었으면)
@@ -1302,6 +1313,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       if (rv) return setErr(rv);
       if (draftLongPreview && "err" in draftLongPreview) return setErr(draftLongPreview.err);
     }
+    // 신규 현장 progressive: 선금 액수 검증 (판매금은 validateBooking)
+    if (createOnsitePay) {
+      const depErr = validateOnsiteCreateDeposit(createPayMode, {
+        saleTotal: Number(draft.price || 0),
+        depAmt: createDepAmt,
+        depMethod: createDepMethod,
+        bizDate: today,
+      });
+      if (depErr) return setErr(depErr);
+    }
     const v = validateBooking(draft, s);
     if (v) return setErr(v);
     if (base && !override && nightsChangedWithoutPrice(base, draft) && !window.confirm(NIGHTS_PRICE_WARN)) return;
@@ -1347,15 +1368,43 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setErr(null);
     try {
       const saved = await data.saveBooking(draft, isNew);
+      let payTail = "";
+      if (
+        isNew &&
+        !override &&
+        createOnsitePay &&
+        isActive(saved) &&
+        isOnsite(s.platforms.find((x) => x.id === saved.platformId))
+      ) {
+        const plan = planOnsiteCreatePay(createPayMode, {
+          saleTotal: saved.price,
+          depAmt: createDepAmt,
+          depMethod: createDepMethod,
+        });
+        if (plan.kind !== "none") {
+          try {
+            await data.addPayment(saved.id, {
+              kind: plan.kind === "balance" ? "balance" : "deposit",
+              method: plan.method,
+              amount: plan.amount,
+              bizDate: today,
+            });
+            payTail = onsiteCreatePayTail(plan);
+          } catch (e) {
+            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
+          }
+        }
+      }
       const t = L.types.get(saved.typeId);
       const hold =
         kind === "stay" && isActive(saved) && !saved.roomId
           ? ` · ${t?.name ?? "타입"} ${saved.nights}박 · 재고 반영 · 호실 미정`
           : "";
-      const tail =
+      const stockTail =
         !hold && kind === "stay" && isActive(saved) && preview[0]
           ? ` · ${L.types.get(preview[0].typeId)?.name} 남은 객실 ${preview[0].after}`
           : hold;
+      const tail = `${stockTail}${payTail}`;
       onSaved(
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
@@ -2603,6 +2652,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
 
+        {/* 신규 현장 표준 숙박: 결제 모드 칩을 판매금 위 (간단과 동일 · 총액은 모드와 무관 표시) */}
+        {createOnsitePay ? (
+          <OnsitePayModeFields
+            part="chips"
+            payMode={createPayMode}
+            onPayMode={setCreatePayMode}
+            depAmt={createDepAmt}
+            onDepAmt={setCreateDepAmt}
+            depMethod={createDepMethod}
+            onDepMethod={setCreateDepMethod}
+          />
+        ) : null}
+
         {long ? (
           <div className="fld">
             <label>누적 요금</label>
@@ -2773,101 +2835,116 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         )}
 
-        <div className="fld pay">
-          <label className="paylab">
-            <span>{long ? "수납" : "결제"}</span>
-            {canAs && !as ? (
-              <button type="button" className="chip sm" onClick={openAs} title="늦은 퇴실·레이트·기타 할증을 한 번에">
-                {SURCHARGE_COPY}
-              </button>
-            ) : null}
-          </label>
-          <div className="payb">
-            {!payTracked ? (
-              <div className="muted sm payota">플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span></div>
-            ) : (
-              <>
-                {livePays.map((x) => (
-                  <div className="payrow" key={x.id} title={x.note?.trim() || undefined}>
-                    <b>{payLineMain(x.method, x.amount)}</b>
-                    <span className="muted">{payLineSub(x.kind, x.bizDate, x.note, long)}</span>
-                    <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))}
-                {livePays.length > 0 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
-                <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
-                  {payLeft > 0 ? (
-                    <>
-                      {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
-                      <span className="muted">
-                        {" "}
-                        = {long ? "청구 합계" : "판매"} {won(payDue)} − 받은 {won(payPaid)}
-                      </span>
-                    </>
-                  ) : payPaid > 0 ? (
-                    <>
-                      <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 받은 돈 {won(payPaid)}원</span>
-                    </>
-                  ) : (
-                    <span className="muted">{long ? "요금표를 적으면 미수가 보여요" : "판매 가격을 적으면 잔금이 보여요"}</span>
-                  )}
+        {/* 신규 현장: 선불/선금 수납만 · 후불은 숨김 · 수정·장기·대실·플랫폼은 Option A */}
+        {createOnsitePay ? (
+          <OnsitePayModeFields
+            part="take"
+            payMode={createPayMode}
+            onPayMode={setCreatePayMode}
+            depAmt={createDepAmt}
+            onDepAmt={setCreateDepAmt}
+            depMethod={createDepMethod}
+            onDepMethod={setCreateDepMethod}
+          />
+        ) : (
+          <div className="fld pay">
+            <label className="paylab">
+              <span>{long ? "수납" : "결제"}</span>
+              {canAs && !as ? (
+                <button type="button" className="chip sm" onClick={openAs} title="늦은 퇴실·레이트·기타 할증을 한 번에">
+                  {SURCHARGE_COPY}
+                </button>
+              ) : null}
+            </label>
+            <div className="payb">
+              {!payTracked ? (
+                <div className="muted sm payota">
+                  플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span>
                 </div>
-                <div className="paytake">
-                  <label className="inp price sm">
-                    <span className="pl">금액</span>
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      placeholder={payLeft > 0 ? won(payLeft) : "0"}
-                      aria-label="받은 금액"
-                      value={recv.amount ? won(Number(recv.amount)) : ""}
-                      onChange={(e) => setRecv({ ...recv, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void recordPay(payLeft > 0 ? "balance" : "deposit");
-                        }
-                      }}
-                    />
-                    원
-                  </label>
-                  <div className="seg sm" role="group" aria-label="결제 방법">
-                    {BOOK_PAY_METHODS.map((m) => (
-                      <button type="button" key={m} className={recv.method === m ? "on" : ""} onClick={() => setRecv({ ...recv, method: m })}>
-                        {BOOK_PAY_LABEL[m]}
+              ) : (
+                <>
+                  {livePays.map((x) => (
+                    <div className="payrow" key={x.id} title={x.note?.trim() || undefined}>
+                      <b>{payLineMain(x.method, x.amount)}</b>
+                      <span className="muted">{payLineSub(x.kind, x.bizDate, x.note, long)}</span>
+                      <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
+                        <X size={14} />
                       </button>
-                    ))}
+                    </div>
+                  ))}
+                  {livePays.length > 0 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
+                  <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
+                    {payLeft > 0 ? (
+                      <>
+                        {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
+                        <span className="muted">
+                          {" "}
+                          = {long ? "청구 합계" : "판매"} {won(payDue)} − 받은 {won(payPaid)}
+                        </span>
+                      </>
+                    ) : payPaid > 0 ? (
+                      <>
+                        <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 받은 돈 {won(payPaid)}원</span>
+                      </>
+                    ) : (
+                      <span className="muted">{long ? "요금표를 적으면 미수가 보여요" : "판매 가격을 적으면 잔금이 보여요"}</span>
+                    )}
                   </div>
-                  <input
-                    className="inp sm"
-                    type="date"
-                    aria-label="받은 날"
-                    value={recv.date}
-                    onChange={(e) => e.target.value && setRecv({ ...recv, date: e.target.value })}
-                  />
-                  <div className="paybtns">
-                    <button
-                      type="button"
-                      className="btn sm dark"
-                      disabled={payBusy || payLeft <= 0}
-                      title={payLeft <= 0 ? (long ? "받을 미수가 없어요" : "받을 잔금이 없어요") : undefined}
-                      onClick={() => void recordPay("balance")}
-                    >
-                      {payBusy ? "저장 중…" : long ? "미수 받기" : "받기"}
-                    </button>
-                    <button type="button" className="btn sm line" disabled={payBusy} onClick={() => void recordPay("deposit")}>
-                      {long ? "선수" : "선금"}
-                    </button>
+                  <div className="paytake">
+                    <label className="inp price sm">
+                      <span className="pl">금액</span>
+                      <input
+                        className="num"
+                        inputMode="numeric"
+                        placeholder={payLeft > 0 ? won(payLeft) : "0"}
+                        aria-label="받은 금액"
+                        value={recv.amount ? won(Number(recv.amount)) : ""}
+                        onChange={(e) => setRecv({ ...recv, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void recordPay(payLeft > 0 ? "balance" : "deposit");
+                          }
+                        }}
+                      />
+                      원
+                    </label>
+                    <div className="seg sm" role="group" aria-label="결제 방법">
+                      {BOOK_PAY_METHODS.map((m) => (
+                        <button type="button" key={m} className={recv.method === m ? "on" : ""} onClick={() => setRecv({ ...recv, method: m })}>
+                          {BOOK_PAY_LABEL[m]}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      className="inp sm"
+                      type="date"
+                      aria-label="받은 날"
+                      value={recv.date}
+                      onChange={(e) => e.target.value && setRecv({ ...recv, date: e.target.value })}
+                    />
+                    <div className="paybtns">
+                      <button
+                        type="button"
+                        className="btn sm dark"
+                        disabled={payBusy || payLeft <= 0}
+                        title={payLeft <= 0 ? (long ? "받을 미수가 없어요" : "받을 잔금이 없어요") : undefined}
+                        onClick={() => void recordPay("balance")}
+                      >
+                        {payBusy ? "저장 중…" : long ? "미수 받기" : "받기"}
+                      </button>
+                      <button type="button" className="btn sm line" disabled={payBusy} onClick={() => void recordPay("deposit")}>
+                        {long ? "선수" : "선금"}
+                      </button>
+                    </div>
                   </div>
-                </div>
-                {!base ? <div className="muted sm">아직 저장 전이에요 · 받기·선금을 누르면 예약과 함께 저장돼요</div> : null}
-                {payErr ? <div className="ferr">{payErr}</div> : null}
-              </>
-            )}
+                  {!base ? <div className="muted sm">아직 저장 전이에요 · 받기·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {payErr ? <div className="ferr">{payErr}</div> : null}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {feeOn ? (
           <div className="fld cfld">
