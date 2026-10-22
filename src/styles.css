@@ -695,6 +695,9 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .mh h2 { font-size: 21px; font-weight: 800; }
 .x { margin-left: auto; font-size: 12px; color: var(--ink3); display: flex; align-items: center; gap: 6px; }
 .fld { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 14px; }
+/* multi-line value · helpers live in value col only (never 3rd grid child / help-in-label) */
+.fld:has(.payb), .fld:has(.mfp-wrap) { align-items: start; }
+.fld:has(.payb) > label, .fld:has(.mfp-wrap) > label { padding-top: 9px; }
 .fld > label { font-size: 13px; font-weight: 650; color: var(--ink3); }
 .fld > label em { font-style: normal; color: var(--red); margin-left: 2px; }
 .fld > label.paylab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1619,11 +1622,26 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .payb { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .payota { padding: 9px 0; }
 .payota span { color: var(--ink4); }
-.paydep, .paybal, .paytake { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.paydep, .paybal { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* Entry Option A: 2-row grid-lock — amount|methods / date|받기·선금 (no wrap chaos) */
+.paytake {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "amt meth"
+    "date btns";
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.paytake > .inp.price { grid-area: amt; width: 100%; max-width: 170px; }
+.paytake > .seg { grid-area: meth; justify-self: end; }
+.paytake > input[type="date"].inp { grid-area: date; width: 100%; max-width: 150px; }
+.paytake > .paybtns { grid-area: btns; justify-self: end; }
 .paydep .pl, .paytake .pl { font-size: 13px; font-weight: 700; color: var(--ink2); min-width: 30px; }
-.paydep .inp.price, .paybal .inp.price, .paytake .inp.price { width: 170px; flex: none; }
-.paydep input[type="date"].inp, .paytake input[type="date"].inp { width: 150px; flex: none; }
-.paytake .paybtns { display: flex; gap: 8px; margin-left: auto; }
+.paydep .inp.price, .paybal .inp.price { width: 170px; flex: none; }
+.paydep input[type="date"].inp { width: 150px; flex: none; }
+.paytake .paybtns { display: flex; gap: 8px; margin-left: 0; }
 .payrow { display: flex; align-items: center; gap: 10px; background: var(--panel); border-radius: 12px; padding: 7px 8px 7px 12px; font-size: 13px; }
 .payrow b { font-weight: 800; }
 .payrow .num { font-weight: 750; }
@@ -1638,9 +1656,19 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .dueamt { color: var(--red) !important; font-weight: 800; white-space: nowrap; }
 .paidtag { font-size: 10.5px; font-weight: 750; color: var(--ink3); white-space: nowrap; }
 @media (max-width: 760px) {
-  .paydep .inp.price, .paybal .inp.price, .paytake .inp.price { width: 140px; }
-  .paydep input[type="date"].inp, .paytake input[type="date"].inp { width: 140px; }
-  .paytake .paybtns { margin-left: 0; width: 100%; }
+  .paydep .inp.price, .paybal .inp.price { width: 140px; }
+  .paydep input[type="date"].inp { width: 140px; }
+  .paytake {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "amt"
+      "meth"
+      "date"
+      "btns";
+  }
+  .paytake > .inp.price, .paytake > input[type="date"].inp { max-width: none; }
+  .paytake > .seg, .paytake > .paybtns { justify-self: stretch; }
+  .paytake .paybtns { width: 100%; }
   .paytake .paybtns .btn { flex: 1; }
 }
 
