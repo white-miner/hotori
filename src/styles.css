@@ -2581,26 +2581,36 @@ button.nowstatus { cursor: pointer; }
 }
 /* 배치 보드(.rooms/.cell)와 공유 클래스 → 「현황」만 ~2× 발자국 (글자는 거의 그대로) */
 .now-page .floor { grid-template-columns: 52px minmax(0, 1fr); gap: 12px; margin-bottom: 14px; overflow: visible; }
-.now-page .nowgrid { overflow: visible; }
+.now-page .nowgrid {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
 .now-page .rooms {
   /* LOCK: auto-fill (not auto-fit) + minmax(~2×, 1fr).
      auto-fit + 1fr collapses empty tracks → 1 room full-bleeds.
      auto-fit + max 50% + gap → 2×50%+gap overflows → only 1 column forever (#42 regression).
      auto-fill keeps empty tracks so multi rooms sit side-by-side; lone room stays ~1 track. */
+  width: 100%;
+  box-sizing: border-box;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 12px;
   align-items: stretch;
-  /* 행 높이 = 본문 채움 (강제 200px 여백 금지). 열 락(auto-fill+minmax)은 유지 */
-  grid-auto-rows: minmax(0, auto);
+  justify-items: stretch;
+  /* #83 fill-type minmax(0) crushed occupied cells → restore sensible floor */
+  grid-auto-rows: minmax(200px, auto);
   overflow: visible;
   padding: 2px; /* 테두리가 부모 clip에 먹히지 않게 */
 }
 .now-page .cell {
   /* container-type은 .cell-body로 옮김 — grid item의 size containment이 stretch를 깨면 빈 칸이 짧아짐 */
   container-type: normal;
-  min-height: 0;
+  width: auto;
+  max-width: none;
+  min-height: 200px;
   height: auto;
   align-self: stretch;
+  justify-self: stretch;
   padding: 0;
   gap: 0;
   border-radius: 18px;
@@ -2615,7 +2625,7 @@ button.nowstatus { cursor: pointer; }
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   min-width: 0;
-  min-height: 0;
+  min-height: 100%;
   border-radius: inherit;
   box-sizing: border-box;
 }
@@ -2639,12 +2649,13 @@ button.nowstatus { cursor: pointer; }
 @media (max-width: 760px) {
   .now-page .floor { grid-template-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 10px; }
   .now-page .rooms {
+    width: 100%;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
-    grid-auto-rows: minmax(0, auto);
+    grid-auto-rows: minmax(150px, auto);
   }
-  .now-page .cell { min-height: 0; border-radius: 14px; }
-  .now-page .cell-body { padding: var(--space-2); gap: 0; }
+  .now-page .cell { min-height: 150px; border-radius: 14px; }
+  .now-page .cell-body { padding: var(--space-2); gap: 0; min-height: 100%; }
   .now-page .fh { padding-top: 0; padding-left: 2px; }
   .now-page .cell .r1 .no { font-size: 13px; }
   .now-page .cell .r1 .no.k { font-size: 11.5px; }
