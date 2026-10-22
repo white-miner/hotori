@@ -2466,6 +2466,9 @@ button.nowstatus { cursor: pointer; }
 .assign-type-acts { justify-content: flex-end; gap: 10px; }
 .assign-type-acts .btn { min-width: 88px; }
 .clean-request-acts { flex-wrap: wrap; }
+.dayuse-sale-modal { max-width: min(480px, 96vw); width: min(480px, 100%); }
+.dayuse-sale-mfp { margin: 8px 0 12px; }
+.add-time-modal .add-time-sum { margin: 8px 0 10px; font-size: 14px; }
 .dayuse-sale-times {
   display: flex;
   align-items: flex-end;
@@ -3014,10 +3017,22 @@ button.nowstatus { cursor: pointer; }
   font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
 }
 .nsel-memobtn.muted { color: var(--ink3); text-decoration: none; }
-.nsel-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.nsel-acts { display: flex; flex-direction: column; gap: var(--space-3, 10px); margin-top: 8px; }
 .nsel-acts .btn { width: 100%; }
+.nsel-act-sec { display: flex; flex-direction: column; gap: 6px; }
+.nsel-act-sec + .nsel-act-sec {
+  padding-top: var(--space-2, 6px);
+  border-top: 1px solid var(--line);
+}
+.nsel-act-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.nsel-act-row .btn { width: 100%; }
 .nsel-du { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .nsel-du-item { display: flex; flex-direction: column; gap: 4px; }
+.nsel-du-acts { display: flex; flex-wrap: wrap; gap: 4px; }
 .nsel-du-row {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px;
   width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm, 8px);

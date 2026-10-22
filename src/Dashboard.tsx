@@ -29,6 +29,7 @@ import AssignTypeConfirm from "./AssignTypeConfirm";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import DayuseSaleModal from "./DayuseSaleModal";
 import EarlyInPayModal from "./EarlyInPayModal";
+import AddTimeModal from "./AddTimeModal";
 import PaymentDeskModal from "./PaymentDeskModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
@@ -53,6 +54,11 @@ import {
 import type { SurchargeReason } from "../shared/addSurcharge";
 import type { BookPayMethod } from "../shared/payment";
 import { surchargeNotifyLine } from "../shared/addSurcharge";
+import {
+  addTimeNotifyLine,
+  planAddTime,
+  type AddTimeInput,
+} from "../shared/addTime";
 import {
   type BoardTab,
   type Booking,
@@ -361,6 +367,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 결제/납입 데스크 */
   const [payDesk, setPayDesk] = useState<{ members: Booking[]; focusId?: string } | null>(null);
   const [payDeskBusy, setPayDeskBusy] = useState(false);
+  const [addTime, setAddTime] = useState<{ booking: Booking; roomLabel: string } | null>(null);
+  const [addTimeBusy, setAddTimeBusy] = useState(false);
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
@@ -1631,7 +1639,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       notify(
         dayuseSaleNotifyLine(
           saved.guestName,
-          dayuseSale?.roomLabel ?? L.roomLabel(saved.roomId) ?? "",
+          L.roomLabel(saved.roomId) ?? dayuseSale?.roomLabel ?? "",
           saved.price,
           collected,
           planned.method,
@@ -1680,6 +1688,82 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       notify(saveFailMessage(e, "결제를 저장하지 못했어요"));
     } finally {
       setPayDeskBusy(false);
+    }
+  };
+
+  const commitAddTime = async (input: AddTimeInput) => {
+    if (readOnly || addTimeBusy || !addTime) return;
+    const b = addTime.booking;
+    const planned = planAddTime(b, input);
+    if ("err" in planned) {
+      notify(planned.err);
+      return;
+    }
+    setAddTimeBusy(true);
+    try {
+      let saved: Booking;
+      if (planned.kind === "stay") {
+        const next: Booking = {
+          ...b,
+          price: planned.surcharge.draft.price,
+          lateOut: planned.surcharge.draft.lateOut,
+          timeFee: planned.surcharge.draft.timeFee,
+          memo: planned.surcharge.draft.memo,
+        };
+        saved = await data.saveBooking(next, false);
+        let collected = false;
+        if (planned.collect && planned.payMethod && planned.surcharge.collectAmount > 0) {
+          try {
+            await data.addPayment(saved.id, {
+              kind: "balance",
+              method: planned.payMethod,
+              amount: planned.surcharge.collectAmount,
+              bizDate: today,
+              note: planned.surcharge.payNote,
+            });
+            collected = true;
+          } catch (e) {
+            notify(
+              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            );
+            setAddTime(null);
+            return;
+          }
+        }
+        notify(addTimeNotifyLine(saved.guestName, planned, collected));
+      } else {
+        const next: Booking = {
+          ...b,
+          endTime: planned.endTime,
+          price: planned.price,
+        };
+        saved = await data.saveBooking(next, false);
+        let collected = false;
+        if (planned.collectAmount > 0 && planned.payMethod) {
+          try {
+            await data.addPayment(saved.id, {
+              kind: "balance",
+              method: planned.payMethod,
+              amount: planned.collectAmount,
+              bizDate: today,
+              note: planned.payNote,
+            });
+            collected = true;
+          } catch (e) {
+            notify(
+              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            );
+            setAddTime(null);
+            return;
+          }
+        }
+        notify(addTimeNotifyLine(saved.guestName, planned, collected));
+      }
+      setAddTime(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "시간 추가를 저장하지 못했어요"));
+    } finally {
+      setAddTimeBusy(false);
     }
   };
 
@@ -2155,15 +2239,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onSetNoClean={(bk, v) => void setNoClean(bk, v)}
               ncxBusy={ncxBusy}
               onPaymentDesk={(bk) => openPaymentDesk(bk)}
+              onAddTime={(bk) => {
+                const lab = bk.roomId
+                  ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`
+                  : vacantBookLabels[0]
+                    ? `${vacantBookLabels[0]}호`
+                    : "";
+                setAddTime({ booking: bk, roomLabel: lab || "호실" });
+              }}
               nowOpts={nowOpts}
             />
           </div>
-          {!readOnly && !mvB && vacantBookCta ? (
-            <div className="nowbookbar" role="region" aria-label="선택한 공실 숙박 판매">
-              <span className="nowbookbar-labs">{vacantBookLabels.map((n) => `${n}호`).join(", ")}</span>
-              <button type="button" className="btn sm dark" onClick={openVacantBook}>
-                {vacantBookCta}
-              </button>
+          {/* 숙박 판매 CTA는 패널 판매 섹션만 · 바는 선택 글랜스+해제 (중복 금지) */}
+          {!readOnly && !mvB && selectedRoomIds.length > 0 ? (
+            <div className="nowbookbar" role="region" aria-label="선택한 객실">
+              <span className="nowbookbar-labs">
+                {(vacantBookLabels.length ? vacantBookLabels : selectedRoomIds.map((id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id)).map((n) => `${n}호`).join(", ")}
+              </span>
+              {selectedVacantIds.length > 1 && vacantBookCta ? (
+                <button type="button" className="btn sm dark" onClick={openVacantBook}>
+                  {vacantBookCta}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn sm line nowbookbar-x"
@@ -2203,12 +2300,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <DayuseSaleModal
           s={s}
           today={today}
-          roomId={dayuseSale.roomId}
-          roomLabel={dayuseSale.roomLabel}
-          typeId={dayuseSale.typeId}
+          bookings={bookings}
+          initialRoomId={dayuseSale.roomId}
+          initialTypeId={dayuseSale.typeId}
           busy={dayuseSaleBusy}
           onCancel={() => !dayuseSaleBusy && (setDayuseSale(null), setDayuseSaleWarn(null))}
           onConfirm={(input) => void commitDayuseSale(input, false)}
+        />
+      ) : null}
+      {addTime ? (
+        <AddTimeModal
+          s={s}
+          today={today}
+          booking={addTime.booking}
+          roomLabel={addTime.roomLabel}
+          busy={addTimeBusy}
+          onCancel={() => !addTimeBusy && setAddTime(null)}
+          onConfirm={(input) => void commitAddTime(input)}
         />
       ) : null}
       {dayuseSaleWarn ? (

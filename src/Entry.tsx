@@ -1260,14 +1260,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const moved = legs.length > 1;
   // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요 (중도 퇴실했으면 실제로 묵은 밤까지만)
   const firstNights = Math.min(moved ? legs[0].nights : nights, usedNights(draft) ?? nights);
-  const free = useMemo(
-    () => freeRooms(s, data.bookings, { ...draft, nights: kind === "stay" ? firstNights : null }),
+  const free = useMemo(() => {
+    const f = freeRooms(s, data.bookings, { ...draft, nights: kind === "stay" ? firstNights : null });
+    // 편집 중 현재 호실·대실 선택 호실은 배치도에서 켜 둘 수 있게
+    if (roomId) f.add(roomId);
+    return f;
+  },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s, data.bookings, draft.id, kind, checkIn, nights, firstNights, startTime, endTime],
+    [s, data.bookings, draft.id, kind, checkIn, nights, firstNights, startTime, endTime, roomId],
   );
-  /** 신규 숙박 배치도: 단실 토글 · 호실 타입 → typeId 동기(Path B) */
+  /** 배치도: 단실 토글 · 호실 타입 → typeId 동기(Path B) · 숙박 신규·대실 공용 */
   const toggleFloorRoom = (id: string) => {
     if (roomId === id) {
+      if (kind === "dayuse") return; // 대실은 호실 필수 · 해제 금지
       pickRoom(null);
       return;
     }
@@ -2015,8 +2020,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </ChipGroup>
         </div>
 
-        {/* 신규 숙박: 타입 줄은 호실 미니 배치도 위(Option D absorb #2) · 대실·수정은 여기 유지 */}
-        {!(isNew && kind === "stay") ? (
+        {/* 신규 숙박·대실: 타입 줄은 호실 MiniFloorPlan 위(Option D) · 숙박 수정만 여기 유지 */}
+        {!(isNew && kind === "stay") && kind !== "dayuse" ? (
           <div className="fld">
             <label>
               객실 타입<em>*</em>
@@ -3034,11 +3039,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {moved ? "첫 방" : "호실"}
             {kind === "stay" ? <span className="muted sm"> · 미배정=타입 재고</span> : null}
           </label>
-          {isNew && kind === "stay" ? (
+          {(isNew && kind === "stay") || kind === "dayuse" ? (
             <div className="mfp-wrap">
-              {/* 타입 줄 = 배치도 위 · Path A + 하늘색 후보 (shared MiniFloorPlan · Option D #2) */}
+              {/* 타입 줄 = 배치도 위 · shared MiniFloorPlan (숙박 신규 · 대실 생성/수정) */}
               <div className="mfp-types">
-                <div className="muted sm">타입 · 남은 수</div>
+                <div className="muted sm">{kind === "stay" ? "타입 · 남은 수" : "타입"}</div>
                 <div className="chips scroll">
                   {pickTypes.map((t, k) => {
                     const r = minRemain(t.id);
@@ -3049,20 +3054,24 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         key={t.id}
                         className={`tchip ${t.id === typeId ? "on" : ""}`}
                         onClick={() => setTypeId(t.id)}
-                        title={`${t.name} · 선택 기간 최소 잔여 ${r}`}
+                        title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}
                       >
                         <span className="t1">
                           <TypeBadge t={t} />
                         </span>
-                        <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                          남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                          {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
-                        </span>
+                        {kind === "stay" ? (
+                          <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
+                            남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                            {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+                          </span>
+                        ) : k < 9 ? (
+                          <span className="t2 kk">{TYPE_LABEL[k]}</span>
+                        ) : null}
                       </button>
                     );
                   })}
                 </div>
-                {minRemain(typeId) <= 0 ? (
+                {kind === "stay" && minRemain(typeId) <= 0 ? (
                   <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
                     {minRemain(typeId) < 0
                       ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
@@ -3083,11 +3092,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <div className="muted sm mfp-sum">
                 {roomId
                   ? `${L.roomLabel(roomId) ?? "?"}호`
-                  : walkInImmediate
+                  : kind === "dayuse"
                     ? "배치도에서 호실을 골라 주세요"
-                    : typeId
-                      ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
-                      : "타입을 고르거나 배치도에서 호실을 지정"}
+                    : walkInImmediate
+                      ? "배치도에서 호실을 골라 주세요"
+                      : typeId
+                        ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
+                        : "타입을 고르거나 배치도에서 호실을 지정"}
               </div>
             </div>
           ) : (
