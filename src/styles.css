@@ -3050,13 +3050,13 @@ body.bulking .toast { bottom: 96px; }
 /* ---------- Entry 「날짜 선택」 묵는 밤 캘린더 ---------- */
 .staytabs { margin-bottom: 2px; }
 .staytab-sub { display: block; margin-top: 6px; }
-.npick { margin: 4px 0 14px; padding: 12px 12px 10px; background: var(--panel2); border-radius: 18px; }
-.npick-hint { font-size: 12.5px; font-weight: 650; color: var(--ink2); margin: 0 0 10px; line-height: 1.35; }
-.npick-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* 밀도: 힌트 제거 후 상·하 여백만 축소 · 날짜 셀 크기 유지 */
+.npick { margin: 0 0 8px; padding: 8px 10px 6px; background: var(--panel2); border-radius: 18px; }
+.npick-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .npick-nav .sb { width: 40px; height: 40px; border-radius: 50%; background: var(--panel); display: flex; align-items: center; justify-content: center; flex: none; }
 .npick-ml { flex: 1; text-align: center; font-size: 15px; font-weight: 800; letter-spacing: -0.02em; }
-.npick-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
-.npick-dow span { text-align: center; font-size: 11px; font-weight: 700; color: var(--ink4); padding: 2px 0; }
+.npick-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 2px; }
+.npick-dow span { text-align: center; font-size: 11px; font-weight: 700; color: var(--ink4); padding: 1px 0; }
 .npick-dow span.su { color: var(--red-d); }
 .npick-dow span.sa { color: var(--dayuse); }
 .npick-grid {
@@ -3084,7 +3084,7 @@ body.bulking .toast { bottom: 96px; }
 .npick-d.has-amt { flex-direction: column; gap: 1px; padding: 4px 2px; min-height: 52px; }
 .npick-amt { font-size: 10px; font-weight: 700; line-height: 1.1; opacity: 0.92; font-family: var(--num); letter-spacing: -0.03em; }
 .npick-d.sel .npick-amt { color: #fff; }
-.npick-rates { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.npick-rates { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
 .npick-ratechip {
   display: inline-flex; align-items: baseline; gap: 6px;
   padding: 6px 10px; border-radius: 12px; background: var(--panel);
@@ -3095,7 +3095,7 @@ body.bulking .toast { bottom: 96px; }
 .npick-ratechip:hover { background: var(--hover); }
 .npick-edit {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  margin: 8px 0 4px; padding: 8px 10px; background: var(--panel); border-radius: 14px;
+  margin: 4px 0 2px; padding: 6px 10px; background: var(--panel); border-radius: 14px;
 }
 .npick-edit-lab { font-size: 13px; font-weight: 700; }
 .npick-d.out { visibility: hidden; pointer-events: none; }
@@ -3112,17 +3112,17 @@ body.bulking .toast { bottom: 96px; }
 .npick-d:disabled { opacity: 0; }
 /* hover fill 없음 — 선택(.sel)과 헷갈림 */
 .npick-sum {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: 0;
+  padding: 4px 10px;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .npick-sum b { font-size: 13.5px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.35; }
 @media (max-width: 760px) {
-  .npick { padding: 10px 8px 8px; border-radius: 16px; }
+  .npick { padding: 6px 8px 4px; border-radius: 16px; }
   .npick-d { min-height: 44px; border-radius: 10px; font-size: 13.5px; }
   .npick-nav .sb { width: 44px; height: 44px; }
 }
