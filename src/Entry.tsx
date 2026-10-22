@@ -133,6 +133,7 @@ import {
   withPlannedCharges,
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
+import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import { stopSellDatesForStay } from "../shared/salesCalendar";
@@ -928,6 +929,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const [status, setStatus] = useState<Status>(base?.status ?? "active");
   const [otherRooms, setOtherRooms] = useState(false);
+  /** 신규 숙박 미니 배치도 건물 칩 (간단 예약과 동일 shared MiniFloorPlan) */
+  const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1251,6 +1254,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [s, data.bookings, draft.id, kind, checkIn, nights, firstNights, startTime, endTime],
   );
+  /** 신규 숙박 배치도: 단실 토글 · 호실 타입 → typeId 동기(Path B) */
+  const toggleFloorRoom = (id: string) => {
+    if (roomId === id) {
+      pickRoom(null);
+      return;
+    }
+    if (!free.has(id)) return;
+    const r = L.rooms.get(id);
+    if (r?.typeId) setTypeId(r.typeId);
+    pickRoom(id);
+  };
+  // 날짜 바뀌어 불가해진 신규 선택 호실 정리 (간단 예약과 동일)
+  useEffect(() => {
+    if (!isNew || kind !== "stay" || !roomId) return;
+    if (!free.has(roomId)) pickRoom(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [free, roomId, isNew, kind]);
   // 객실 이동: k박째부터 끝까지 비어 있는 방
   const mvFree = useMemo(
     () =>
@@ -1946,40 +1966,43 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </ChipGroup>
         </div>
 
-        <div className="fld">
-          <label>
-            객실 타입<em>*</em>
-            {kind === "stay" ? <span className="muted sm"> · 호텔 전체 남은 재고 (미배정도 차감)</span> : null}
-          </label>
-          <div className="chips scroll">
-            {pickTypes.map((t, k) => {
-              const r = minRemain(t.id);
-              const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
-              return (
-                <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
-                  <span className="t1">
-                    <TypeBadge t={t} />
-                  </span>
-                  {kind === "stay" ? (
-                    <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                      남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                      {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+        {/* 신규 숙박: 타입 줄은 호실 미니 배치도 위(Option D absorb #2) · 대실·수정은 여기 유지 */}
+        {!(isNew && kind === "stay") ? (
+          <div className="fld">
+            <label>
+              객실 타입<em>*</em>
+              {kind === "stay" ? <span className="muted sm"> · 호텔 전체 남은 재고 (미배정도 차감)</span> : null}
+            </label>
+            <div className="chips scroll">
+              {pickTypes.map((t, k) => {
+                const r = minRemain(t.id);
+                const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
+                return (
+                  <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
+                    <span className="t1">
+                      <TypeBadge t={t} />
                     </span>
-                  ) : k < 9 ? (
-                    <span className="t2 kk">{TYPE_LABEL[k]}</span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          {kind === "stay" && minRemain(typeId) <= 0 ? (
-            <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`} style={{ marginTop: 6 }}>
-              {minRemain(typeId) < 0
-                ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
-                : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+                    {kind === "stay" ? (
+                      <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
+                        남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                        {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+                      </span>
+                    ) : k < 9 ? (
+                      <span className="t2 kk">{TYPE_LABEL[k]}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
-          ) : null}
-        </div>
+            {kind === "stay" && minRemain(typeId) <= 0 ? (
+              <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`} style={{ marginTop: 6 }}>
+                {minRemain(typeId) < 0
+                  ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
+                  : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {kind === "dayuse" ? (
           <div className="fld">
@@ -2934,47 +2957,107 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {moved ? "첫 방" : "호실"}
             {kind === "stay" ? <span className="muted sm"> · 미배정=타입 재고</span> : null}
           </label>
-          <ChipGroup>
-            <button
-              type="button"
-              className={`rchip lt ${roomId === null ? "on" : ""}`}
-              onClick={() => pickRoom(null)}
-              title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
-            >
-              간단 예약
-            </button>
-            {sameType.map((r) => (
-              <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => pickRoom(r.id)}>
-                {bpre(r.buildingId)}
-                {r.no}
-              </button>
-            ))}
-            {otherRooms || (roomId && L.rooms.get(roomId)?.typeId !== typeId)
-              ? otherType.map((r) => (
-                  <button
-                    type="button"
-                    key={r.id}
-                    className={`rchip other ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`}
-                    title={L.roomLabel(r.id) ?? r.no}
-                    onClick={() => pickRoom(r.id)}
-                  >
+          {isNew && kind === "stay" ? (
+            <div className="mfp-wrap">
+              {/* 타입 줄 = 배치도 위 · Path A + 하늘색 후보 (shared MiniFloorPlan · Option D #2) */}
+              <div className="mfp-types">
+                <div className="muted sm">타입 · 남은 수</div>
+                <div className="chips scroll">
+                  {pickTypes.map((t, k) => {
+                    const r = minRemain(t.id);
+                    const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
+                    return (
+                      <button
+                        type="button"
+                        key={t.id}
+                        className={`tchip ${t.id === typeId ? "on" : ""}`}
+                        onClick={() => setTypeId(t.id)}
+                        title={`${t.name} · 선택 기간 최소 잔여 ${r}`}
+                      >
+                        <span className="t1">
+                          <TypeBadge t={t} />
+                        </span>
+                        <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
+                          남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                          {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {minRemain(typeId) <= 0 ? (
+                  <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
+                    {minRemain(typeId) < 0
+                      ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
+                      : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+                  </div>
+                ) : null}
+              </div>
+              <MiniFloorPlan
+                s={s}
+                L={L}
+                free={free}
+                selectedIds={roomId ? [roomId] : []}
+                candidateTypeIds={typeId ? [typeId] : []}
+                buildingFilter={buildingFilter}
+                onBuildingFilter={setBuildingFilter}
+                onToggle={toggleFloorRoom}
+              />
+              <div className="muted sm mfp-sum">
+                {roomId
+                  ? `${L.roomLabel(roomId) ?? "?"}호`
+                  : walkInImmediate
+                    ? "배치도에서 호실을 골라 주세요"
+                    : typeId
+                      ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
+                      : "타입을 고르거나 배치도에서 호실을 지정"}
+              </div>
+            </div>
+          ) : (
+            <>
+              <ChipGroup>
+                <button
+                  type="button"
+                  className={`rchip lt ${roomId === null ? "on" : ""}`}
+                  onClick={() => pickRoom(null)}
+                  title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
+                >
+                  간단 예약
+                </button>
+                {sameType.map((r) => (
+                  <button type="button" key={r.id} className={`rchip ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`} title={L.roomLabel(r.id) ?? r.no} onClick={() => pickRoom(r.id)}>
                     {bpre(r.buildingId)}
                     {r.no}
-                    <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
                   </button>
-                ))
-              : otherType.length ? (
-                  <button type="button" className="rchip lt" onClick={() => setOtherRooms(true)}>
-                    다른 타입 방 +{otherType.length}
-                  </button>
-                ) : null}
-            {!sameType.length && !otherRooms && roomId !== null ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
-          </ChipGroup>
-          {kind === "stay" && roomId === null ? (
-            <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
-              미배정 · 「현황」에서 호실 정하기
-            </div>
-          ) : null}
+                ))}
+                {otherRooms || (roomId && L.rooms.get(roomId)?.typeId !== typeId)
+                  ? otherType.map((r) => (
+                      <button
+                        type="button"
+                        key={r.id}
+                        className={`rchip other ${r.id === roomId ? "on" : ""} ${free.has(r.id) ? "" : "busy"}`}
+                        title={L.roomLabel(r.id) ?? r.no}
+                        onClick={() => pickRoom(r.id)}
+                      >
+                        {bpre(r.buildingId)}
+                        {r.no}
+                        <i>{typeLabel(L.types.get(r.typeId ?? ""))}</i>
+                      </button>
+                    ))
+                  : otherType.length ? (
+                      <button type="button" className="rchip lt" onClick={() => setOtherRooms(true)}>
+                        다른 타입 방 +{otherType.length}
+                      </button>
+                    ) : null}
+                {!sameType.length && !otherRooms && roomId !== null ? <span className="muted sm">이 타입은 그 {kind === "stay" ? "기간" : "시간"}에 빈 방이 없어요</span> : null}
+              </ChipGroup>
+              {kind === "stay" && roomId === null ? (
+                <div className="muted sm" style={{ marginTop: "var(--space-3)" }}>
+                  미배정 · 「현황」에서 호실 정하기
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
 
         {!isNew && kind === "stay" && nights >= 2 && roomId ? (
