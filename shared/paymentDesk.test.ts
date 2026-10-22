@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Booking } from "./ledger";
-import { paymentDeskGlance, planPaymentDeskPay, sameGroupId } from "./paymentDesk";
+import {
+  deskPaymentLines,
+  paymentDeskGlance,
+  planClearResidualBalance,
+  planPaymentDeskPay,
+  sameGroupId,
+} from "./paymentDesk";
 import { emptyGroupInfo } from "./settle";
 
 const stay = (over: Partial<Booking>): Booking =>
@@ -64,4 +70,48 @@ test("planPaymentDeskPay validates amount", () => {
   assert.ok(!("err" in ok));
   assert.equal(ok.kind, "deposit");
   assert.equal(ok.asGroup, false);
+});
+
+test("planClearResidualBalance zeros left via price adjust", () => {
+  const b = stay({
+    price: 110000,
+    payments: [{ id: "p", bookingId: "b1", kind: "balance", method: "card", amount: 100000, bizDate: "2026-10-20", createdAt: "" }],
+  });
+  const plat = { name: "현장·전화", onsite: true };
+  const planned = planClearResidualBalance(b, plat);
+  assert.ok(!("err" in planned));
+  assert.equal(planned.cleared, 10000);
+  assert.equal(planned.newPrice, 100000);
+  const none = planClearResidualBalance(stay({ price: 100000, payments: [{ id: "p", bookingId: "b1", kind: "balance", method: "card", amount: 100000, bizDate: "2026-10-20", createdAt: "" }] }), plat);
+  assert.ok("err" in none);
+});
+
+test("late-out auto 1만 오잔금: clear → price=paid · timeFee 0 (서비스)", () => {
+  // repro: 숙박 6만 완납 후 늦은퇴실(+1h) auto extraHourFee=1만 → due 7만 · left 1만 · 추가금 0 의도
+  const b = stay({
+    price: 70000,
+    lateOut: 1,
+    timeFee: 10000,
+    payments: [{ id: "p", bookingId: "b1", kind: "balance", method: "card", amount: 60000, bizDate: "2026-10-20", createdAt: "" }],
+  });
+  const planned = planClearResidualBalance(b, { name: "현장·전화", onsite: true });
+  assert.ok(!("err" in planned));
+  assert.equal(planned.cleared, 10000);
+  assert.equal(planned.newPrice, 60000);
+  assert.equal(planned.timeFee, 0);
+});
+
+test("deskPaymentLines merges booking + group pays", () => {
+  const members = [
+    stay({
+      id: "a",
+      groupId: "g1",
+      payments: [{ id: "p1", bookingId: "a", kind: "deposit", method: "cash", amount: 10000, bizDate: "2026-10-20", createdAt: "1" }],
+    }),
+  ];
+  const info = { ...emptyGroupInfo("g1"), payments: [{ id: "gp", bookingId: "", kind: "balance" as const, method: "card" as const, amount: 50000, bizDate: "2026-10-21", createdAt: "2" }] };
+  const lines = deskPaymentLines(members, info);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0]!.scope, "booking");
+  assert.equal(lines[1]!.scope, "group");
 });

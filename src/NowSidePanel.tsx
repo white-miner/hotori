@@ -26,7 +26,8 @@ import {
 import { isOnsite, payState } from "../shared/payment";
 import { CLEAN_REQUEST_COPY } from "../shared/cleanRequest";
 import { DAYUSE_SALE_CTA } from "../shared/dayuseSale";
-import { PAYMENT_DESK_CTA, canOpenPaymentDesk } from "../shared/paymentDesk";
+import { PAYMENT_DESK_CTA, canOpenPaymentDesk, paymentDeskGlance } from "../shared/paymentDesk";
+import type { GroupInfo } from "../shared/settle";
 import { ADD_TIME_CTA, canAddTime } from "../shared/addTime";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
@@ -92,6 +93,8 @@ interface Props {
   onAddTime?: (b: Booking) => void;
   /** 동일 groupId 점유 복수 선택 시 멤버 (패널 글랜스) */
   selectedGroupBookings?: Booking[];
+  /** 그룹 정산 정보 (복수 잔금 글랜스) */
+  selectedGroupInfo?: GroupInfo | null;
   nowOpts?: Parameters<typeof nowFlags>[2];
 }
 
@@ -127,6 +130,7 @@ export default function NowSidePanel({
   onPaymentDesk,
   onAddTime,
   selectedGroupBookings = [],
+  selectedGroupInfo = null,
   nowOpts,
 }: Props) {
   const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
@@ -159,6 +163,14 @@ export default function NowSidePanel({
   const plat = b ? L.plats.get(b.platformId) : null;
   const amount = b ? nowAmountGlance(b, plat) : null;
   const ps = b && !b.priceUnset ? payState(b, plat) : null;
+  const balGlance = useMemo(() => {
+    if (multiGroup && selectedGroupBookings.length > 1) {
+      const p0 = L.plats.get(selectedGroupBookings[0]!.platformId);
+      return paymentDeskGlance(selectedGroupBookings, p0, selectedGroupInfo);
+    }
+    if (b && !b.priceUnset) return paymentDeskGlance([b], plat);
+    return null;
+  }, [multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
   const glance = selectedRoomId && !multiVacant && !multiGroup ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
     typeId && !b && !multiVacant && !multiGroup
@@ -375,8 +387,17 @@ export default function NowSidePanel({
                       {b.priceUnset ? "금액미정" : amount ? amount : b.price > 0 ? `₩${won(b.price)}` : "—"}
                     </span>
                   </div>
+                  {balGlance?.tracked ? (
+                    <div className="nsel-row nsel-bal" aria-label="잔금 요약">
+                      <span className="nsel-k">정산</span>
+                      <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
+                        받을 {won(balGlance.due)} · 받은 {won(balGlance.paid)} · 남은{" "}
+                        <b>{won(balGlance.left)}</b>
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="nsel-row nsel-memo">
-                    <span className="nsel-k">특이사항</span>
+                    <span className="nsel-k">메모</span>
                     <span className="nsel-v">
                       {glance?.count ? (
                         <button type="button" className="nsel-memobtn" onClick={() => onMemo(selectedRoomId!)}>
@@ -385,7 +406,7 @@ export default function NowSidePanel({
                         </button>
                       ) : (
                         <button type="button" className="nsel-memobtn muted" onClick={() => onMemo(selectedRoomId!)} disabled={readOnly}>
-                          {readOnly ? "없음" : "특이사항 적기"}
+                          {readOnly ? "없음" : "메모 적기"}
                         </button>
                       )}
                     </span>
@@ -401,7 +422,7 @@ export default function NowSidePanel({
                           </button>
                         ) : null}
                         {showStaySellOnOccupied ? (
-                          <button type="button" className="btn sm dark" disabled={moving} onClick={onBookVacant}>
+                          <button type="button" className="btn sm stop" disabled={moving} onClick={onBookVacant}>
                             <BedDouble size={14} strokeWidth={2.2} aria-hidden />
                             {bookCtaLabel}
                           </button>
@@ -485,7 +506,7 @@ export default function NowSidePanel({
                         ) : null}
                         {selectedRoomId ? (
                           <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId)}>
-                            호실 특이사항
+                            메모
                           </button>
                         ) : null}
                       </div>
@@ -497,6 +518,15 @@ export default function NowSidePanel({
                   <div className="muted sm">
                     동일 단체 {selectedGroupBookings.length}실 · {selectedGroupBookings[0]?.groupName || selectedGroupBookings[0]?.guestName}
                   </div>
+                  {balGlance?.tracked ? (
+                    <div className="nsel-row nsel-bal" aria-label="잔금 요약">
+                      <span className="nsel-k">정산</span>
+                      <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
+                        받을 {won(balGlance.due)} · 받은 {won(balGlance.paid)} · 남은{" "}
+                        <b>{won(balGlance.left)}</b>
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="nsel-acts">
                     {showPaymentDesk ? (
                       <button type="button" className="btn sm dark" disabled={moving} onClick={() => onPaymentDesk?.()}>
@@ -523,7 +553,7 @@ export default function NowSidePanel({
                     <div className="nsel-acts">
                       <div className="nsel-act-sec" role="group" aria-label="판매">
                         {showStaySellOnVacant ? (
-                          <button type="button" className="btn sm dark" onClick={onBookVacant}>
+                          <button type="button" className="btn sm stop" onClick={onBookVacant}>
                             <BedDouble size={14} strokeWidth={2.2} aria-hidden />
                             {bookCtaLabel}
                           </button>

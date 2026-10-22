@@ -114,11 +114,11 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
 
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal room-memo-modal" role="dialog" aria-label={`${roomLabel} 특이사항`}>
+      <div className="modal room-memo-modal" role="dialog" aria-label={`${roomLabel} 메모`}>
         <div className="grab" />
         <div className="mh">
           <h2>
-            {roomLabel} 특이사항
+            {roomLabel} 메모
             {openN ? <span className="tag">{openN} 미해결</span> : null}
           </h2>
           <button type="button" className="x" onClick={onClose}>

@@ -37,15 +37,16 @@ export default function AddTimeModal({
 }) {
   const [hours, setHours] = useState(1);
   const [rate, setRate] = useState(String(s.extraHourFee || 0));
-  const [method, setMethod] = useState<AddTimeMethod>("card");
+  /** 숙박 늦은퇴실 마킹 기본 = 서비스(0원). 카드 기본이면 extraHourFee(1만)이 잔금으로 남음 */
+  const [method, setMethod] = useState<AddTimeMethod>(() => (booking.kind === "stay" ? "service" : "card"));
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     setHours(1);
     setRate(String(s.extraHourFee || 0));
-    setMethod("card");
+    setMethod(booking.kind === "stay" ? "service" : "card");
     setErr(null);
-  }, [booking.id, s.extraHourFee]);
+  }, [booking.id, booking.kind, s.extraHourFee]);
 
   useEffect(() => {
     if (method === "service") setErr(null);
