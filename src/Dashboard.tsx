@@ -52,7 +52,6 @@ import {
   type PaymentDeskPayPlan,
 } from "../shared/paymentDesk";
 import type { SurchargeReason } from "../shared/addSurcharge";
-import type { BookPayMethod } from "../shared/payment";
 import { surchargeNotifyLine } from "../shared/addSurcharge";
 import {
   addTimeNotifyLine,
@@ -111,7 +110,7 @@ import {
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
-import { isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
+import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { emptyGroupInfo, settle, type GroupBadgeColor } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
@@ -531,8 +530,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ? selectedVacantIds[selectedVacantIds.length - 1]
         : selectedRoomIds[0] ?? null;
   const vacantBookLabels = selectedVacantIds.map((id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id);
-  const vacantBookCta =
-    vacantBookLabels.length > 0 ? `${vacantBookLabels.map((n) => `${n}호`).join(", ")} 숙박 판매` : null;
+  /** 라벨 = 「숙박 판매」만 (호수 접두 금지 · prefs / ops-panel-upgrade) */
+  const vacantBookCta = vacantBookLabels.length > 0 ? "숙박 판매" : null;
   const openVacantBook = () => {
     if (!selectedVacantIds.length) return;
     const first = L.rooms.get(selectedVacantIds[0]) ?? allRooms(s).find((r) => r.id === selectedVacantIds[0]);
@@ -1767,6 +1766,48 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  const commitDeskDeletePay = async (bookingId: string, payId: string) => {
+    if (readOnly || payDeskBusy) return;
+    setPayDeskBusy(true);
+    try {
+      await data.deletePayment(bookingId, payId);
+      notify("결제 줄을 지웠어요");
+    } catch (e) {
+      notify(saveFailMessage(e, "결제 줄을 지우지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
+    }
+  };
+
+  const commitDeskDeleteGroupPay = async (groupId: string, payId: string) => {
+    if (readOnly || payDeskBusy) return;
+    setPayDeskBusy(true);
+    try {
+      await data.deleteGroupPayment(groupId, payId);
+      notify("단체 결제 줄을 지웠어요");
+    } catch (e) {
+      notify(saveFailMessage(e, "단체 결제 줄을 지우지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
+    }
+  };
+
+  /** 오잔금: 판매가=받은돈(+환불) 조정 · 결제 줄 유지 · 시간료 0(서비스) */
+  const commitDeskClearResidual = async (b: Booking, newPrice: number) => {
+    if (readOnly || payDeskBusy) return;
+    setPayDeskBusy(true);
+    try {
+      const live = data.bookings.find((x) => x.id === b.id) ?? b;
+      const hasTime = !!(live.earlyIn || live.lateOut);
+      await data.saveBooking({ ...live, price: newPrice, timeFee: hasTime ? 0 : live.timeFee }, false);
+      notify(`${live.guestName || "손님"} 님 잔금 맞춤 · 판매가 ${won(newPrice)}원`);
+    } catch (e) {
+      notify(saveFailMessage(e, "잔금을 맞추지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
+    }
+  };
+
   const commitDeskSurcharge = async (
     b: Booking,
     input: {
@@ -2218,6 +2259,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : null
               }
               selectedGroupBookings={selectedGroupBookings}
+              selectedGroupInfo={
+                selectedGroupBookings[0]?.groupId
+                  ? (data.groups.get(selectedGroupBookings[0].groupId) ?? null)
+                  : null
+              }
               mode={sideMode}
               onMode={setSideMode}
               glanceByRoom={glanceByRoom}
@@ -2257,7 +2303,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 {(vacantBookLabels.length ? vacantBookLabels : selectedRoomIds.map((id) => L.roomLabel(id) ?? allRooms(s).find((r) => r.id === id)?.no ?? id)).map((n) => `${n}호`).join(", ")}
               </span>
               {selectedVacantIds.length > 1 && vacantBookCta ? (
-                <button type="button" className="btn sm dark" onClick={openVacantBook}>
+                <button type="button" className="btn sm stop" onClick={openVacantBook}>
                   {vacantBookCta}
                 </button>
               ) : null}
@@ -2331,7 +2377,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <PaymentDeskModal
           s={s}
           today={today}
-          members={payDesk.members}
+          members={payDesk.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m)}
           groupInfo={
             payDesk.members[0]?.groupId ? (data.groups.get(payDesk.members[0].groupId) ?? null) : null
           }
@@ -2342,6 +2388,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onCancel={() => !payDeskBusy && setPayDesk(null)}
           onPay={(plan) => void commitPaymentDesk(plan)}
           onSurcharge={(b, input) => void commitDeskSurcharge(b, input)}
+          onDeletePayment={(bookingId, payId) => void commitDeskDeletePay(bookingId, payId)}
+          onDeleteGroupPayment={(groupId, payId) => void commitDeskDeleteGroupPay(groupId, payId)}
+          onClearResidual={(b, newPrice) => void commitDeskClearResidual(b, newPrice)}
         />
       ) : null}
       {renderAssignModals()}

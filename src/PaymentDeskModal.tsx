@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { type Booking, type HotelSettings, won } from "../shared/ledger";
 import type { GroupInfo } from "../shared/settle";
 import {
@@ -8,18 +9,22 @@ import {
   PAYMENT_DESK_SURCHARGE_REASONS,
   PAYMENT_DESK_TITLE,
   SURCHARGE_REASON_LABEL,
+  type DeskPayLine,
   type PaymentDeskKind,
   type PaymentDeskPayPlan,
+  clearResidualConfirmLine,
+  deskPaymentLines,
   paymentDeskGlance,
+  planClearResidualBalance,
   planPaymentDeskPay,
   planPaymentDeskSurcharge,
 } from "../shared/paymentDesk";
-import type { BookPayMethod } from "../shared/payment";
-import type { SurchargeReason } from "../shared/addSurcharge";
+import { type BookPayMethod, payLineMain } from "../shared/payment";
+import { payLineSub, type SurchargeReason } from "../shared/addSurcharge";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
 import { lookups } from "./ui";
 
-type Mode = "pay" | "surcharge";
+type Mode = "pay" | "surcharge" | "ledger";
 
 type SurchargeInput = {
   reason: SurchargeReason;
@@ -35,6 +40,7 @@ type SurchargeInput = {
  * 「현황」결제/납입 데스크 — Entry 우회.
  * 단실 Option A · 동일 groupId 복수는 합산 + addGroupPayment.
  * 할증(늦은 퇴실 등)은 사유 칩으로 흡수(단실만).
+ * 내역: 결제 줄 삭제(confirm) · 단실 오잔금 → 판매가 조정(confirm).
  */
 export default function PaymentDeskModal({
   s,
@@ -46,6 +52,9 @@ export default function PaymentDeskModal({
   onCancel,
   onPay,
   onSurcharge,
+  onDeletePayment,
+  onDeleteGroupPayment,
+  onClearResidual,
 }: {
   s: HotelSettings;
   today: string;
@@ -56,6 +65,9 @@ export default function PaymentDeskModal({
   onCancel: () => void;
   onPay: (plan: PaymentDeskPayPlan) => void;
   onSurcharge?: (b: Booking, input: SurchargeInput) => void;
+  onDeletePayment?: (bookingId: string, payId: string) => void;
+  onDeleteGroupPayment?: (groupId: string, payId: string) => void;
+  onClearResidual?: (b: Booking, newPrice: number) => void;
 }) {
   const L = lookups(s);
   const first = members[0];
@@ -63,6 +75,11 @@ export default function PaymentDeskModal({
   const glance = useMemo(() => paymentDeskGlance(members, plat, groupInfo), [members, plat, groupInfo]);
   const single = !glance.group && members.length === 1 ? members[0] : null;
   const canSurcharge = !!single && !!onSurcharge;
+  const lines = useMemo(() => deskPaymentLines(members, groupInfo), [members, groupInfo]);
+  const clearPlan = single && onClearResidual ? planClearResidualBalance(single, plat) : null;
+  const clearOk = clearPlan && !("err" in clearPlan) ? clearPlan : null;
+  const clearErr = clearPlan && "err" in clearPlan ? clearPlan.err : null;
+  const canClear = !!clearOk;
 
   const [mode, setMode] = useState<Mode>("pay");
   const [amount, setAmount] = useState("");
@@ -118,7 +135,26 @@ export default function PaymentDeskModal({
     onSurcharge(single, input);
   };
 
+  const removeLine = (line: DeskPayLine) => {
+    if (busy) return;
+    if (!window.confirm("이 결제 줄을 지울까요? 잔금이 다시 늘어날 수 있어요.")) return;
+    setErr(null);
+    if (line.scope === "booking") onDeletePayment?.(line.bookingId, line.pay.id);
+    else onDeleteGroupPayment?.(line.groupId, line.pay.id);
+  };
+
+  const clearResidual = () => {
+    if (busy || !single || !onClearResidual || !clearOk) return;
+    if (!window.confirm(clearResidualConfirmLine(clearOk.cleared, clearOk.newPrice))) return;
+    setErr(null);
+    onClearResidual(single, clearOk.newPrice);
+  };
+
   const guestLabel = first?.groupName || first?.guestName || "손님";
+  const roomHint = (bookingId: string) => {
+    const i = members.findIndex((m) => m.id === bookingId);
+    return i >= 0 ? roomLabels[i] : null;
+  };
 
   return (
     <div className="dim assign-type-dim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && !busy && onCancel()}>
@@ -152,17 +188,25 @@ export default function PaymentDeskModal({
           </div>
           {!glance.tracked ? <p className="muted sm">플랫폼 선결제 · 잔금 추적 없음 (기록만 가능)</p> : null}
           {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 받아 주세요.</p> : null}
+          {clearOk ? (
+            <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
+              잔금 없애기 · {won(clearOk.cleared)}원 맞춤 (오청구·시간료)
+            </button>
+          ) : null}
 
-          {canSurcharge ? (
-            <ChipGroup role="group" aria-label="데스크 모드">
-              <Chip sm active={mode === "pay"} disabled={busy} onClick={() => { setMode("pay"); setErr(null); }}>
-                받기 · 선금
-              </Chip>
+          <ChipGroup role="group" aria-label="데스크 모드">
+            <Chip sm active={mode === "pay"} disabled={busy} onClick={() => { setMode("pay"); setErr(null); }}>
+              받기 · 선금
+            </Chip>
+            {canSurcharge ? (
               <Chip sm active={mode === "surcharge"} disabled={busy} onClick={() => { setMode("surcharge"); setErr(null); }}>
                 할증
               </Chip>
-            </ChipGroup>
-          ) : null}
+            ) : null}
+            <Chip sm active={mode === "ledger"} disabled={busy} onClick={() => { setMode("ledger"); setErr(null); }}>
+              내역
+            </Chip>
+          </ChipGroup>
 
           {mode === "pay" ? (
             <>
@@ -205,7 +249,9 @@ export default function PaymentDeskModal({
                 </ChipGroup>
               </div>
             </>
-          ) : (
+          ) : null}
+
+          {mode === "surcharge" ? (
             <>
               <ChipGroup role="group" aria-label="할증 사유">
                 {PAYMENT_DESK_SURCHARGE_REASONS.map((r) => (
@@ -271,22 +317,68 @@ export default function PaymentDeskModal({
                 ) : null}
               </div>
             </>
-          )}
+          ) : null}
+
+          {mode === "ledger" ? (
+            <div className="payment-desk-ledger" aria-label="결제 내역">
+              {lines.length ? (
+                lines.map((line) => {
+                  const hint =
+                    line.scope === "group" ? "단체" : roomHint(line.bookingId) ? `${roomHint(line.bookingId)}호` : null;
+                  return (
+                    <div className="payrow" key={`${line.scope}-${line.pay.id}`} title={line.pay.note?.trim() || undefined}>
+                      <b>{payLineMain(line.pay.method, line.pay.amount)}</b>
+                      <span className="muted">
+                        {hint ? `${hint} · ` : ""}
+                        {payLineSub(line.pay.kind, line.pay.bizDate, line.pay.note)}
+                      </span>
+                      {(line.scope === "booking" ? onDeletePayment : onDeleteGroupPayment) ? (
+                        <button
+                          type="button"
+                          className="ic"
+                          aria-label="이 결제 지우기"
+                          disabled={busy}
+                          onClick={() => removeLine(line)}
+                        >
+                          <X size={14} />
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="muted sm">결제 내역이 없어요.</p>
+              )}
+              {single && clearErr && glance.tracked && glance.left > 0 ? (
+                <p className="muted sm">{clearErr}</p>
+              ) : null}
+              {glance.tracked && glance.left > 0 && !canClear && !single ? (
+                <p className="muted sm">단체는 내역에서 줄을 지우거나, 단실로 「잔금 없애기」를 써 주세요.</p>
+              ) : null}
+            </div>
+          ) : null}
+
           {err ? <div className="ferr">{err}</div> : null}
         </div>
         <div className="mf assign-type-acts">
           <button type="button" className="btn line" disabled={busy} onClick={onCancel}>
             취소
           </button>
-          <button
-            type="button"
-            className="btn dark"
-            disabled={busy || glance.priceUnset}
-            onClick={mode === "pay" ? submitPay : submitSurcharge}
-            autoFocus
-          >
-            {busy ? "처리 중…" : mode === "pay" ? PAYMENT_DESK_CTA : "할증 확정"}
-          </button>
+          {mode === "ledger" ? (
+            <button type="button" className="btn dark" disabled={busy} onClick={onCancel}>
+              닫기
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn dark"
+              disabled={busy || glance.priceUnset}
+              onClick={mode === "pay" ? submitPay : submitSurcharge}
+              autoFocus
+            >
+              {busy ? "처리 중…" : mode === "pay" ? PAYMENT_DESK_CTA : "할증 확정"}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -1348,6 +1348,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .btn.info { background: var(--badge-info); color: #fff; border: 1px solid var(--badge-info-border); }
 .btn.info:hover { filter: brightness(0.94); }
 .btn.info:disabled { opacity: 0.55; filter: none; }
+/* 숙박 판매 CTA · danger fill (대실 info 와 대칭) */
+.btn.stop { background: var(--badge-danger); color: #fff; border: 1px solid var(--badge-danger); }
+.btn.stop:hover { filter: brightness(0.94); }
+.btn.stop:disabled { opacity: 0.55; filter: none; }
 .mvbox { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
 .mvbtn { display: inline-flex; align-items: center; gap: 5px; }
 .mvnote { font-size: 11.5px; }
@@ -2530,6 +2534,10 @@ button.nowstatus { cursor: pointer; }
 .payment-desk-glance b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .payment-desk-glance .left b { color: var(--badge-danger, #c0392b); }
 .payment-desk-modal .paytake { display: flex; flex-direction: column; gap: 8px; }
+.payment-desk-ledger { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.payment-desk-ledger .payrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.payment-desk-ledger .payrow .muted { flex: 1; min-width: 0; }
+.payment-desk-clear { width: 100%; margin-top: 8px; }
 .modal.assign-co-modal { width: min(480px, 100%); }
 .assign-co-acts {
   justify-content: flex-end;
@@ -3038,6 +3046,8 @@ button.nowstatus { cursor: pointer; }
 .nsel-sub { font-size: 12px; font-weight: 650; color: var(--ink2); margin-top: 2px; }
 .nsel-body { display: flex; flex-direction: column; gap: 6px; }
 .nsel-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 6px; align-items: start; font-size: 12.5px; }
+.nsel-bal-v { font-variant-numeric: tabular-nums; }
+.nsel-bal-v.due b { color: var(--badge-danger); font-weight: 800; }
 .nsel-k { color: var(--ink3); font-weight: 700; padding-top: 1px; }
 .nsel-v { min-width: 0; font-weight: 650; word-break: break-word; }
 .nsel-memobtn {

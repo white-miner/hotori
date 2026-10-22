@@ -617,6 +617,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setPrice(String(saved.price));
       setLateOut(clampHours(saved.lateOut));
       setTimeFee(Math.max(0, saved.timeFee ?? 0));
+      // 0원 확정 = 서비스 유지(이후 시간 스텝이 auto로 다시 1만을 넣지 않게)
+      if (amount === 0 && (planned.draft.lateOut || planned.draft.timeFee === 0)) setTMode("service");
+      else if (amount > 0) setTMode(planned.draft.timeFee === autoTimeFee(s, clampHours(saved.earlyIn), clampHours(saved.lateOut)) ? "auto" : "manual");
       setMemo(saved.memo ?? "");
       setAs(null);
       notify(surchargeNotifyLine(saved.guestName, as.reason, amount, collected, planned.draft.lateOut));
@@ -1084,9 +1087,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const stepTime = (which: "in" | "out", d: number) => {
     const e = which === "in" ? clampHours(earlyIn + d) : earlyIn;
     const l = which === "out" ? clampHours(lateOut + d) : lateOut;
+    const wasNone = !earlyIn && !lateOut;
     setEarlyIn(e);
     setLateOut(l);
     if (!e && !l) return setTFee(0, "auto");
+    // 첫 마킹(늦은 퇴실·빠른 입실) = 기본 서비스(0원). 자동 시간당 요금은 옵트인(자동 계산/금액).
+    // 예전 auto 기본은 extraHourFee(기본 1만)×시간이 판매가에 들어가 오잔금이 남았음.
+    if (wasNone && (e || l)) return setTFee(0, "service");
+    if (tMode === "service") return;
     if (tMode === "auto") setTFee(autoTimeFee(s, e, l), "auto");
   };
   // 대실로 바꾸면 시간 추가는 빼요
