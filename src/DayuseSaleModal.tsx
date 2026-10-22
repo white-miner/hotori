@@ -1,10 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  type Booking,
-  type HotelSettings,
-  freeRooms,
-  won,
-} from "../shared/ledger";
+import { useEffect, useState } from "react";
+import { type Booking, type HotelSettings, won } from "../shared/ledger";
 import {
   DAYUSE_SALE_METHOD_LABEL,
   DAYUSE_SALE_METHODS,
@@ -15,17 +10,15 @@ import {
 } from "../shared/dayuseSale";
 import type { BookPayMethod } from "../shared/payment";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
-import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
-import { lookups, TypeBadge } from "./ui";
+import { lookups } from "./ui";
 
 /**
- * 「현황」대실 판매 전용 모달 — Entry 우회.
- * settings.dayuseDefaults 프리필 · MiniFloorPlan 호실 선택 · ±수납.
+ * 「현황」대실 판매 전용 모달 — Entry 우회 · selection-first.
+ * 선택 호실 고정 · MiniFloorPlan 금지 (헤더 간단 예약 Path는 별도).
  */
 export default function DayuseSaleModal({
   s,
   today,
-  bookings,
   initialRoomId,
   initialTypeId,
   busy,
@@ -43,9 +36,8 @@ export default function DayuseSaleModal({
 }) {
   const L = lookups(s);
   const defaults = s.dayuseDefaults;
-  const [roomId, setRoomId] = useState(initialRoomId);
-  const [typeId, setTypeId] = useState(initialTypeId);
-  const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
+  const roomId = initialRoomId;
+  const typeId = initialTypeId;
   const [startTime, setStartTime] = useState(defaults.startTime || "14:00");
   const [endTime, setEndTime] = useState(defaults.endTime || "17:00");
   const [price, setPrice] = useState(defaults.price > 0 ? String(defaults.price) : "");
@@ -55,8 +47,6 @@ export default function DayuseSaleModal({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setRoomId(initialRoomId);
-    setTypeId(initialTypeId);
     setStartTime(defaults.startTime || "14:00");
     setEndTime(defaults.endTime || "17:00");
     setPrice(defaults.price > 0 ? String(defaults.price) : "");
@@ -65,31 +55,8 @@ export default function DayuseSaleModal({
     setErr(null);
   }, [defaults.startTime, defaults.endTime, defaults.price, initialRoomId, initialTypeId]);
 
-  const free = useMemo(() => {
-    const f = freeRooms(s, bookings, {
-      id: "__dayuse_sale__",
-      kind: "dayuse",
-      checkIn: today,
-      nights: null,
-      startTime: startTime.trim().slice(0, 5),
-      endTime: endTime.trim().slice(0, 5),
-    });
-    if (roomId) f.add(roomId);
-    return f;
-  }, [s, bookings, today, startTime, endTime, roomId]);
-
-  // 선택 호실이 시간이 바뀌어 막히면 유지하되 경고는 submit에서
   const roomLabel = L.roomLabel(roomId) ?? s.floors.flatMap((f) => f.rooms).find((r) => r.id === roomId)?.no ?? roomId;
-
-  const toggleRoom = (id: string) => {
-    if (busy) return;
-    if (roomId === id) return;
-    if (!free.has(id) && id !== roomId) return;
-    const r = L.rooms.get(id);
-    if (r?.typeId) setTypeId(r.typeId);
-    setRoomId(id);
-    setErr(null);
-  };
+  const typeName = L.types.get(typeId)?.name ?? "";
 
   const submit = () => {
     if (busy) return;
@@ -130,42 +97,12 @@ export default function DayuseSaleModal({
           </button>
         </div>
         <div className="mb">
-          <p>
-            <b>{roomLabel}호</b> · 오늘
+          <p className="dayuse-sale-rooms" aria-label="선택 호실">
+            <b>
+              {roomLabel}호{typeName ? ` · ${typeName}` : ""}
+            </b>{" "}
+            · 오늘
           </p>
-          <div className="mfp-wrap dayuse-sale-mfp">
-            <div className="mfp-types">
-              <div className="muted sm">타입</div>
-              <div className="chips scroll">
-                {s.types.map((t) => (
-                  <button
-                    type="button"
-                    key={t.id}
-                    className={`tchip ${t.id === typeId ? "on" : ""}`}
-                    disabled={busy}
-                    onClick={() => {
-                      setTypeId(t.id);
-                      setErr(null);
-                    }}
-                  >
-                    <span className="t1">
-                      <TypeBadge t={t} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <MiniFloorPlan
-              s={s}
-              L={L}
-              free={free}
-              selectedIds={roomId ? [roomId] : []}
-              candidateTypeIds={typeId ? [typeId] : []}
-              buildingFilter={buildingFilter}
-              onBuildingFilter={setBuildingFilter}
-              onToggle={toggleRoom}
-            />
-          </div>
           <div className="dayuse-sale-times">
             <label className="dayuse-sale-field">
               <span className="muted sm">시작</span>

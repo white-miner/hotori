@@ -12,8 +12,12 @@ import {
   validatePayment,
 } from "./payment";
 
+/** @deprecated ops CTA removed — use LATE_OUT_CTA (selection-first) */
 export const ADD_TIME_CTA = "시간 추가";
 export const ADD_TIME_TITLE = "시간 추가";
+/** 운영패널 「늦은 퇴실」CTA · AddTime planner 재사용 */
+export const LATE_OUT_CTA = "늦은 퇴실";
+export const LATE_OUT_TITLE = "늦은 퇴실";
 export const ADD_TIME_HOUR_CHIPS = [1, 2, 3, 4, 5, 6] as const;
 
 /** 카드 · 이체 · 현금 · 서비스(0원) · 후불(잔금) */

@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { type Booking, type HotelSettings, won } from "../shared/ledger";
 import { outTimeOf } from "../shared/extratime";
 import {
-  ADD_TIME_CTA,
   ADD_TIME_HOUR_CHIPS,
   ADD_TIME_METHOD_LABEL,
   ADD_TIME_METHODS,
-  ADD_TIME_TITLE,
+  LATE_OUT_CTA,
+  LATE_OUT_TITLE,
   type AddTimeInput,
   type AddTimeMethod,
   addTimeAmount,
@@ -15,8 +15,9 @@ import {
 import { Chip, ChipGroup, PriceInp } from "./primitives";
 
 /**
- * 「현황」시간 추가 — Entry 우회.
+ * 「현황」늦은 퇴실 (구 「시간 추가」) — Entry 우회.
  * +N시간 · 시간당 요금 · 합계 · 카드/이체/현금/서비스/후불.
+ * AddTime planner 재사용 · selection-first.
  */
 export default function AddTimeModal({
   s,
@@ -87,11 +88,11 @@ export default function AddTimeModal({
       <div
         className="modal assign-type-modal add-time-modal"
         role="dialog"
-        aria-label={ADD_TIME_TITLE}
+        aria-label={LATE_OUT_TITLE}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="mh">
-          <h2>{ADD_TIME_TITLE}</h2>
+          <h2>{LATE_OUT_TITLE}</h2>
           <button type="button" className="x" aria-label="닫기" disabled={busy} onClick={onCancel}>
             닫기
           </button>
@@ -169,7 +170,7 @@ export default function AddTimeModal({
             취소
           </button>
           <button type="button" className="btn dark" disabled={busy} onClick={submit} autoFocus>
-            {busy ? "저장 중…" : ADD_TIME_CTA}
+            {busy ? "저장 중…" : LATE_OUT_CTA}
           </button>
         </div>
       </div>

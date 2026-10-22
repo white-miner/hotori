@@ -15,11 +15,13 @@ import {
   nowAmountTone,
   nowBoardVisible,
   nowByRoom,
+  nowCheckoutMark,
   nowDateLine,
   nowFlags,
   nowLists,
   nowMetaLine,
   nowNightRange,
+  nowPayMethodGlance,
   nowNightsDays,
   nowStayChips,
   nowStayHint,
@@ -376,4 +378,21 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
   assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
   assert.equal(nowMetaLine({ memo: null, guests: null }), null);
+});
+
+test("칸 마크: 늦은 퇴실 → N시 퇴실 · 결제수단 글랜스", () => {
+  const s = { stayTimes: { checkIn: "15:00", checkOut: "11:00" } };
+  assert.equal(nowCheckoutMark(s, { kind: "stay", lateOut: 0 }), null);
+  assert.equal(nowCheckoutMark(s, { kind: "dayuse", lateOut: 3 }), null);
+  assert.equal(nowCheckoutMark(s, { kind: "stay", lateOut: 3 }), "14시 퇴실");
+  assert.equal(nowPayMethodGlance({ payments: [] }), null);
+  assert.equal(
+    nowPayMethodGlance({
+      payments: [
+        { id: "1", bookingId: "b", kind: "balance", method: "card", amount: 1, bizDate: "2026-10-22", createdAt: "2026-10-22T10:00:00Z" },
+        { id: "2", bookingId: "b", kind: "deposit", method: "cash", amount: 1, bizDate: "2026-10-22", createdAt: "2026-10-22T12:00:00Z" },
+      ],
+    }),
+    "현금·카드",
+  );
 });
