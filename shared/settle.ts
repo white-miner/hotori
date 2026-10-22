@@ -77,7 +77,7 @@ export interface Settlement {
   paid: number; // 받은 돈 (단체 + 방마다 받은 선금)
   left: number;
   settled: boolean;
-  /** 잔금을 따지나요: 후불이거나, 현장 결제 플랫폼이거나, 받은 돈이 있으면 */
+  /** 잔금을 따지나요: 후불이거나 현장 결제 플랫폼일 때 (OTA 선결제는 잔금 없음) */
   tracked: boolean;
 }
 /**
@@ -116,7 +116,8 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
   const extras = (info?.extras ?? []).reduce((a, x) => a + Math.max(0, x.amount), 0);
   const total = Math.max(0, roomSum + extraGuests + extraTime + parking + extras - refunds);
   const paid = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0) + counted.reduce((a, b) => a + paidOf(b), 0);
-  const tracked = info?.payMode === "postpaid" || isOnsite(plat) || paid > 0 || extras > 0;
+  // 후불·현장 결제만 잔금. OTA 선결제(prepaid)는 결제 줄·추가항목이 있어도 플랫폼 선결제 → 잔금 없음.
+  const tracked = info?.payMode === "postpaid" || isOnsite(plat);
   const left = tracked ? Math.max(0, total - paid) : 0;
   return {
     lines,

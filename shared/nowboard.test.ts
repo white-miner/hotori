@@ -330,6 +330,18 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     nowAmountTone(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
     "paid",
   );
+  // OTA: 판매금만 · 결제 줄이 있어도 잔금 라벨·due/partial 톤 금지 (완납/검정)
+  const ota = { name: "야놀자" };
+  assert.equal(nowAmountGlance(bk({ price: 140000, payments: [] }), ota), "₩140,000");
+  assert.equal(nowAmountTone(bk({ price: 140000, payments: [] }), ota), "paid");
+  assert.equal(
+    nowAmountGlance(bk({ price: 140000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 70000, bizDate: "2026-10-22", createdAt: "" }] }), ota),
+    "₩140,000",
+  );
+  assert.equal(
+    nowAmountTone(bk({ price: 140000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 70000, bizDate: "2026-10-22", createdAt: "" }] }), ota),
+    "paid",
+  );
   assert.equal(
     nowAmountGlance(
       bk({

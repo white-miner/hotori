@@ -297,8 +297,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       return left > 0 ? String(left) : "";
     }
     const plat = s.platforms.find((p) => p.id === base.platformId);
-    const tracked = isOnsite(plat) || paid > 0;
-    if (!tracked) return "";
+    // OTA는 잔금 없음 (payState와 동일 · 결제 줄이 있어도 현장 결제만 따짐)
+    if (!isOnsite(plat)) return "";
     const left = Math.max(0, revenueOf(base) - paid);
     return left > 0 ? String(left) : "";
   })();
@@ -1082,7 +1082,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
   const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
-  const payTracked = long || isOnsite(L.plats.get(platformId)) || livePays.length > 0;
+  // 현장 결제·장기만 잔금 UI. OTA는 결제 줄이 있어도 「플랫폼에서 결제 · 잔금 없음」.
+  const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
   const po = payoutOf(draftBase, curPlat);
   const poLine = payoutLine(po);

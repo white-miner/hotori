@@ -85,10 +85,12 @@ test("현장 예약은 받은 돈이 없으면 전액이 잔금", () => {
   assert.equal(payState(bk({}), onsite).left, 150000);
 });
 
-test("OTA 예약은 잔금이 없어요 (플랫폼이 받음), 받은 돈을 적으면 그때부터 따져요", () => {
+test("OTA 예약은 잔금이 없어요 (플랫폼·손님 선결제) · 결제 줄이 있어도 잔금·미수 톤 금지", () => {
   assert.deepEqual(payState(bk({}), ota), { tracked: false, due: 150000, paid: 0, left: 0, full: false });
   const b = bk({ payments: [pay("deposit", "card", 30000)] });
-  assert.equal(payState(b, ota).left, 120000);
+  assert.deepEqual(payState(b, ota), { tracked: false, due: 150000, paid: 30000, left: 0, full: false });
+  assert.equal(isOnsite({ name: "야놀자", onsite: true }), true);
+  assert.equal(payState(b, { name: "야놀자", onsite: true }).left, 120000);
 });
 
 test("취소 · 노쇼 예약은 잔금을 보여 주지 않아요", () => {
