@@ -450,3 +450,11 @@ export function canCheckOut(b: Booking, today: string): boolean {
   if (b.stayMode === "long_stay") return b.checkIn <= today;
   return stayEnd(b) <= today;
 }
+
+/**
+ * 대실 이용 종료: 활성 대실 · 미퇴실.
+ * SoT = `checkedOutAt` (`occupiesRoom` / `dayuseByRoom`과 동일) · 취소(status)와 분리 · 숙박 canCheckOut과 별축.
+ */
+export function canEndDayuse(b: Pick<Booking, "kind" | "status" | "checkedOutAt">): boolean {
+  return b.kind === "dayuse" && isActive(b) && !isCheckedOut(b);
+}

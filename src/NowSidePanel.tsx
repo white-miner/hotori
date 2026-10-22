@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft, Ban, CalendarPlus, CirclePlus } from "lucide-react";
 import {
   canCheckOut,
+  canEndDayuse,
   filterUnassignedByCheckIn,
   type NowKind,
   nowAmountGlance,
@@ -70,6 +71,8 @@ interface Props {
   /** 단실 「대실」/「대실 추가」 → Entry kind=dayuse */
   onNewDayuse?: () => void;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
+  /** 당일 대실 「이용 종료」· confirm 후 checkedOutAt */
+  onEndDayuse?: (b: Booking) => void;
   onMemo: (roomId: string) => void;
   /** 점유/예약 단실 → 현황 보드 객실 이동 모드 */
   onRoomMove?: () => void;
@@ -104,6 +107,7 @@ export default function NowSidePanel({
   dayuseForRoom = [],
   onNewDayuse,
   onCheckOut,
+  onEndDayuse,
   onMemo,
   onRoomMove,
   moving = false,
@@ -239,6 +243,38 @@ export default function NowSidePanel({
     return f?.label ?? "";
   };
 
+  /** 당일 대실 목록 · 행 탭=Entry · 「이용 종료」= board-side end (숙박 퇴실축과 분리) */
+  const dayuseList = dayuseForRoom.length ? (
+    <div className="nsel-du" role="list" aria-label="당일 대실">
+      {dayuseForRoom.map((d) => (
+        <div key={d.id} className="nsel-du-item" role="listitem">
+          <button
+            type="button"
+            className="nsel-du-row"
+            disabled={readOnly}
+            onClick={() => onOpen(d, today)}
+          >
+            <span className="nsel-du-t">
+              대실 {d.startTime}~{d.endTime}
+            </span>
+            <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
+            {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
+          </button>
+          {!readOnly && onEndDayuse && canEndDayuse(d) ? (
+            <button
+              type="button"
+              className="nowext side nowco"
+              disabled={moving || coBusy === d.id}
+              onClick={() => void onEndDayuse(d)}
+            >
+              {coBusy === d.id ? "처리 중…" : "이용 종료"}
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <aside className="nowside" aria-label="운영">
       <div className="nowside-h">운영</div>
@@ -316,26 +352,7 @@ export default function NowSidePanel({
                       )}
                     </span>
                   </div>
-                  {dayuseForRoom.length ? (
-                    <div className="nsel-du" role="list" aria-label="당일 대실">
-                      {dayuseForRoom.map((d) => (
-                        <button
-                          key={d.id}
-                          type="button"
-                          className="nsel-du-row"
-                          role="listitem"
-                          disabled={readOnly}
-                          onClick={() => onOpen(d, today)}
-                        >
-                          <span className="nsel-du-t">
-                            대실 {d.startTime}~{d.endTime}
-                          </span>
-                          <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
-                          {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  {dayuseList}
                   <div className="nsel-acts">
                     {/* MVP stay actions · Entry 동일 경로 · 공실/복수공실은 b 없음으로 숨김 */}
                     {!readOnly && dayuseCtaLabel && onNewDayuse ? (
@@ -426,26 +443,7 @@ export default function NowSidePanel({
                       에서 방배정
                     </p>
                   ) : null}
-                  {dayuseForRoom.length ? (
-                    <div className="nsel-du" role="list" aria-label="당일 대실">
-                      {dayuseForRoom.map((d) => (
-                        <button
-                          key={d.id}
-                          type="button"
-                          className="nsel-du-row"
-                          role="listitem"
-                          disabled={readOnly}
-                          onClick={() => onOpen(d, today)}
-                        >
-                          <span className="nsel-du-t">
-                            대실 {d.startTime}~{d.endTime}
-                          </span>
-                          <span className="nsel-du-n">{d.guestName || "이름 없음"}</span>
-                          {d.price > 0 ? <span className="nsel-du-p">{won(d.price)}원</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
+                  {dayuseList}
                   {!readOnly && (bookCtaLabel || dayuseCtaLabel) ? (
                     <div className="nsel-acts">
                       {bookCtaLabel && onBookVacant ? (

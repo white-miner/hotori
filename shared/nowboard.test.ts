@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { type Booking } from "./ledger";
 import {
   canCheckOut,
+  canEndDayuse,
   checkInTimeReached,
   checkoutMorningVisible,
   departingWindowOpen,
@@ -136,6 +137,11 @@ test("퇴실처리 후 빈 칸 · 되돌리기 전제 · 당일 다음 예약은
   assert.equal(nowByRoom([b], "2026-10-21").has("r301"), false);
   assert.equal(canCheckOut(bk({ arrived: true, checkIn: "2026-10-19", nights: 2 }), "2026-10-21"), true);
   assert.equal(canCheckOut(b, "2026-10-21"), false);
+  // 대실 이용 종료는 숙박 퇴실축과 분리 · checkedOutAt만
+  assert.equal(canEndDayuse(bk({ kind: "dayuse", nights: null, startTime: "14:00", endTime: "17:00" })), true);
+  assert.equal(canEndDayuse(bk({ kind: "dayuse", nights: null, startTime: "14:00", endTime: "17:00", checkedOutAt: "2026-10-22T08:00:00Z" })), false);
+  assert.equal(canEndDayuse(bk({ kind: "stay", arrived: true })), false);
+  assert.equal(canCheckOut(bk({ kind: "dayuse", nights: null, startTime: "14:00", endTime: "17:00" }), "2026-10-22"), false);
 
   // 퇴실처리된 아침 + 당일 입실 다음 예약 → 칸은 다음 예약(숙박예약)
   const next = bk({

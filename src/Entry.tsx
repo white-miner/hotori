@@ -114,7 +114,7 @@ import {
   suggestElapsedLateHours,
   surchargeNotifyLine,
 } from "../shared/addSurcharge";
-import { canCheckOut, isCheckedOut, hotelWallClock } from "../shared/nowboard";
+import { canCheckOut, canEndDayuse, isCheckedOut, hotelWallClock } from "../shared/nowboard";
 import {
   LONG_STAY_WINDOW_DEFAULT,
   WINDOW_EXTEND_DEFAULT,
@@ -770,27 +770,40 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
   };
   const toggleCheckOut = async () => {
-    if (!base || coBusy || base.kind !== "stay") return;
+    if (!base || coBusy) return;
+    const isDayuse = base.kind === "dayuse";
+    if (!isDayuse && base.kind !== "stay") return;
     const done = isCheckedOut({ checkedOutAt });
     if (done) {
-      if (!window.confirm("퇴실처리를 취소할까요? 칸에 다시 보여요.")) return;
+      if (!window.confirm(isDayuse ? "이용 종료를 취소할까요? 대실이 다시 보여요." : "퇴실처리를 취소할까요? 칸에 다시 보여요.")) return;
       setCoBusy(true);
       setInErr(null);
       const prev = checkedOutAt;
       setCheckedOutAt(null);
       try {
         await data.patchBooking(base.id, { checkedOutAt: null });
-        notify(`${base.guestName} 님 퇴실처리를 취소했어요`);
+        notify(isDayuse ? `${base.guestName} 님 이용 종료를 취소했어요` : `${base.guestName} 님 퇴실처리를 취소했어요`);
       } catch {
         setCheckedOutAt(prev);
-        setInErr("퇴실처리 취소를 저장하지 못했어요. 다시 눌러 주세요.");
+        setInErr(isDayuse ? "이용 종료 취소를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리 취소를 저장하지 못했어요. 다시 눌러 주세요.");
       } finally {
         setCoBusy(false);
       }
       return;
     }
     const liveB = data.bookings.find((x) => x.id === base.id) ?? base;
-    if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
+    if (isDayuse) {
+      if (!canEndDayuse({ ...liveB, checkedOutAt: null })) {
+        setInErr("이미 이용이 끝났거나 취소된 대실이에요.");
+        return;
+      }
+      if (
+        !window.confirm(
+          `대실 이용을 종료할까요?\n${liveB.startTime ?? ""}~${liveB.endTime ?? ""} · ${liveB.guestName}`,
+        )
+      )
+        return;
+    } else if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
       setInErr(
         isLongStay(liveB)
           ? "입실일 전부터는 퇴실처리할 수 없어요."
@@ -806,17 +819,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     try {
       const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: at, arrived: true };
       // 장기: 창이 남았으면 실제 투숙 밤으로 nights를 맞춰 재고를 풀어요
-      if (isLongStay(liveB) && checkOut(liveB) > today) {
+      if (!isDayuse && isLongStay(liveB) && checkOut(liveB) > today) {
         const n = nightsAtCheckout(liveB.checkIn, today);
         patch.nights = n;
         patch.segments = fitSegments(liveB.segments, liveB.roomId, n);
         setNights(n);
       }
       await data.patchBooking(base.id, patch);
-      notify(`${base.guestName} 님 퇴실처리했어요`);
+      notify(isDayuse ? `${base.guestName} 님 대실 이용을 종료했어요` : `${base.guestName} 님 퇴실처리했어요`);
     } catch {
       setCheckedOutAt(null);
-      setInErr("퇴실처리를 저장하지 못했어요. 다시 눌러 주세요.");
+      setInErr(isDayuse ? "이용 종료를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리를 저장하지 못했어요. 다시 눌러 주세요.");
     } finally {
       setCoBusy(false);
     }
@@ -1475,7 +1488,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
         {base && isActive(base) ? (
           <div
-            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (live && isLongStay(live) && canExtend(live) ? 1 : 0) + (base.groupId ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0)}`}
+            className={`mtop n${1 + (base.kind === "stay" ? 2 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (live && isLongStay(live) && canExtend(live) ? 1 : 0) + (base.groupId ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0) + (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0)}`}
           >
             {onBoardMove ? (
               <button type="button" className="bmove" onClick={onBoardMove}>
@@ -1506,6 +1519,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               >
                 <DoorOpen size={17} />
                 <b>{checkedOutAt ? "퇴실처리됨 · 취소" : "퇴실처리"}</b>
+              </button>
+            ) : null}
+            {base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? (
+              <button
+                type="button"
+                className={`beo cout ${checkedOutAt ? "on" : ""}`}
+                aria-pressed={!!checkedOutAt}
+                disabled={coBusy}
+                onClick={() => void toggleCheckOut()}
+                title="대실 이용 종료 · 누르면 확인 후 저장 · 숙박 퇴실과 별축"
+              >
+                <DoorOpen size={17} />
+                <b>{checkedOutAt ? "이용 종료됨 · 취소" : "이용 종료"}</b>
               </button>
             ) : null}
             {base.kind === "stay" && roomId ? (

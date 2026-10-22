@@ -2978,7 +2978,8 @@ button.nowstatus { cursor: pointer; }
 .nsel-memobtn.muted { color: var(--ink3); text-decoration: none; }
 .nsel-acts { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .nsel-acts .btn { width: 100%; }
-.nsel-du { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.nsel-du { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.nsel-du-item { display: flex; flex-direction: column; gap: 4px; }
 .nsel-du-row {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px;
   width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm, 8px);
