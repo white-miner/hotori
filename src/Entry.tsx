@@ -411,9 +411,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
     if (!long && kind === "stay" && next >= 1 && (next !== nights || nextCheckIn !== checkIn)) {
       const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-      const platNow = s.platforms.find((x) => x.id === platformId);
-      // 플랫폼 총액 모드: 총액 유지 · night_rates만 재분배(나머지 마지막 박)
-      if (salesMode === "total" && !isOnsite(platNow) && Number(price || 0) > 0) {
+      // 총액 모드(플랫폼 + 현장·전화): 총액 유지 · night_rates만 재분배(나머지 마지막 박)
+      if (salesMode === "total" && Number(price || 0) > 0) {
         const room = Math.max(0, Number(price || 0) - addons);
         const redistributed = nightRatesFromTotal(nextCheckIn, next, room);
         setNightRates(redistributed);
@@ -485,9 +484,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (long || kind !== "stay" || nights < 1) return;
     const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
     const room = Math.max(0, Number(digits || 0) - addons);
-    const platNow = s.platforms.find((x) => x.id === platformId);
-    // 플랫폼 총액 모드: Σ = 총액(나머지 마지막 박). 박당/현장은 기존 균등 flat.
-    if (salesMode === "total" && !isOnsite(platNow)) {
+    // 총액 모드(플랫폼 + 현장·전화): Σ = 총액(나머지 마지막 박)
+    if (salesMode === "total") {
       const next = nightRatesFromTotal(checkIn, nights, room);
       setNightRates(next);
       setRateStr(String(next.flat ?? Math.floor(room / nights)));
@@ -2505,22 +2503,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <div className="fld">
             <label>
               {kind === "stay" ? (
-                !isOnsite(curPlat) ? (
-                  <>
-                    판매금<em>*</em>
-                  </>
-                ) : (
-                  <>
-                    총액<em>*</em>
-                  </>
-                )
+                <>
+                  판매금<em>*</em>
+                </>
               ) : (
                 <>
                   판매 가격<em>*</em>
                 </>
               )}
             </label>
-            {kind === "stay" && !isOnsite(curPlat) ? (
+            {kind === "stay" ? (
               <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
                 <button
                   type="button"
@@ -2543,7 +2535,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </div>
             ) : null}
             {kind === "stay" ? (
-              salesMode === "total" && !isOnsite(curPlat) ? (
+              salesMode === "total" ? (
                 <>
                   <PriceRow>
                     <PriceInp total>
@@ -2558,7 +2550,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     </PriceInp>
                   </PriceRow>
                   <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                    플랫폼 총액 그대로
+                    {isOnsite(curPlat) ? "총액 · 박은 자동 분배" : "플랫폼 총액 그대로"}
                     {Number(price || 0) > 0 ? (
                       <>
                         {" · "}
@@ -2589,7 +2581,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         placeholder="총액"
                         value={price ? won(Number(price)) : ""}
                         onChange={(e) => setTotalAndRate(e.target.value)}
-                        aria-label={!isOnsite(curPlat) ? "판매금" : "총액"}
+                        aria-label="판매금"
                       />
                     </PriceInp>
                   </PriceRow>
@@ -2630,7 +2622,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 />
               </PriceInp>
             )}
-            {kind === "stay" && Number(price || 0) > 0 && !(salesMode === "total" && !isOnsite(curPlat)) ? (
+            {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (
               <div className="muted sm" style={{ marginTop: 6 }}>
                 {hasFullNightMatrix(checkIn, nights, nightRates)
                   ? "총액 = 선택 밤 금액 합"
