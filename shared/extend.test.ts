@@ -7,6 +7,7 @@ import {
   applyExtend,
   canExtend,
   extendBlock,
+  extendOverlaps,
   groupMemberRate,
   nightRate,
   nightsChangedWithoutPrice,
@@ -98,11 +99,26 @@ test("applyExtend: 박수+1 · 가격+단가 · fitSegments로 마지막 방 연
   ]);
 });
 
-test("연장 막힘: 다음 밤에 같은 방 예약", () => {
+test("연장 겹침: 하드블록 아님 · extendOverlaps로 경고 대상", () => {
   const me = bk({ id: "me", checkIn: "2026-10-18", nights: 1, roomId: "r301", price: 100000 });
   const other = bk({ id: "ot", checkIn: "2026-10-19", nights: 1, roomId: "r301", price: 100000 });
-  assert.match(extendBlock(S(), [me, other], me, 100000)!, /301/);
-  assert.equal(extendBlock(S(), [me], me, 100000), null);
+  assert.equal(extendBlock(S(), [me, other], me, 100000), null);
+  assert.deepEqual(
+    extendOverlaps([me, other], me, 100000).map((x) => x.id),
+    ["ot"],
+  );
+  assert.deepEqual(extendOverlaps([me], me, 100000), []);
+});
+
+test("퇴실예정 턴오버 후 연장: 오늘 새 예약과 겹치면 overlaps", () => {
+  // A 10/21 1박 → 10/22 아침 퇴실예정 · B 10/22 입실 · A가 1박연장하면 10/22 밤 겹침
+  const a = bk({ id: "a", checkIn: "2026-10-21", nights: 1, roomId: "r301", price: 100000 });
+  const b = bk({ id: "b", checkIn: "2026-10-22", nights: 1, roomId: "r301", price: 100000 });
+  assert.equal(extendBlock(S(), [a, b], a, 100000), null);
+  assert.deepEqual(
+    extendOverlaps([a, b], a, 100000).map((x) => x.id),
+    ["b"],
+  );
 });
 
 test("수납 제안: collect면 단가만큼, 아니면 0 (잔금)", () => {

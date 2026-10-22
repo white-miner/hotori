@@ -322,6 +322,11 @@ export default function NowSidePanel({
                         {coBusy === b.id ? "처리 중…" : "퇴실처리"}
                       </button>
                     ) : null}
+                    {!readOnly && bookCtaLabel && onBookVacant && f && (f.kind === "departing" || f.kind === "lateOut") ? (
+                      <button type="button" className="btn sm dark" disabled={moving} onClick={onBookVacant}>
+                        {bookCtaLabel}
+                      </button>
+                    ) : null}
                     {!readOnly ? (
                       <button type="button" className="btn sm line" disabled={moving} onClick={() => onMemo(selectedRoomId!)}>
                         호실 특이사항
