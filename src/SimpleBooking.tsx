@@ -169,16 +169,19 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const rateNum: Record<string, number> = Object.fromEntries(
     Object.entries(rates).map(([k, v]) => [k, Number(v || 0)]),
   );
-  /** 플랫폼 + 총액 모드: 입력 총액이 그룹/예약 판매금 (균등 박당 강제 없음) */
-  const platformTotalMode = !onsite && salesMode === "total";
+  /**
+   * 총액 모드: 플랫폼(#75) + 현장·전화 선불/후불/선금 — 총액 우선, 박·호실은 자동 분배
+   * (나머지 원은 마지막 호실·마지막 박). 박당 강요 금지.
+   */
+  const totalMode = salesMode === "total";
   const totalNum = Math.max(0, Math.round(Number(totalStr || 0)));
   const linePrices = priceUnset
     ? effectiveTypeIds.map(() => 0)
-    : platformTotalMode
+    : totalMode
       ? splitAmountLast(totalNum, Math.max(1, effectiveTypeIds.length || 1)).slice(0, effectiveTypeIds.length)
       : ratePrices(effectiveTypeIds, rateNum, nights);
-  const sumPrice = priceUnset ? 0 : platformTotalMode ? totalNum : linePrices.reduce((a, b) => a + b, 0);
-  const formula = platformTotalMode
+  const sumPrice = priceUnset ? 0 : totalMode ? totalNum : linePrices.reduce((a, b) => a + b, 0);
+  const formula = totalMode
     ? ""
     : rateFormula(
         pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
@@ -343,12 +346,13 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       );
     if (n > GROUP_ROOMS_MAX) return setErr(`한 번에 ${GROUP_ROOMS_MAX}실까지예요.`);
 
+    // 선불·후불·선금 모두 판매금(총액) 필수 (금액미정 제외) — 선금 수납 칸과 별개
     if (!priceUnset) {
-      if (platformTotalMode) {
-        if (!(totalNum > 0)) return setErr("판매금을 적거나 금액미정을 켜 주세요.");
+      if (totalMode) {
+        if (!(totalNum > 0)) return setErr("판매금(총액)을 적거나 금액미정을 켜 주세요.");
       } else {
         const missing = slots.filter((x) => !(rateNum[x.typeId] > 0));
-        if (missing.length) return setErr("타입마다 1박 요금을 적거나 금액미정을 켜 주세요.");
+        if (missing.length) return setErr("판매금(1박 요금)을 적거나 금액미정을 켜 주세요.");
       }
     }
 
@@ -358,10 +362,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     const saveTypeIds = pathB ? roomIds.map((id) => rmap.get(id)?.typeId ?? "") : expandTypeSlots(slots);
     const prices = priceUnset
       ? saveTypeIds.map(() => 0)
-      : platformTotalMode
+      : totalMode
         ? splitAmountLast(totalNum, saveTypeIds.length)
         : ratePrices(saveTypeIds, rateNum, nights);
-    const totalSale = priceUnset ? 0 : platformTotalMode ? totalNum : prices.reduce((a, b) => a + b, 0);
+    const totalSale = priceUnset ? 0 : totalMode ? totalNum : prices.reduce((a, b) => a + b, 0);
 
     if (onsite && payMode === "deposit" && !priceUnset) {
       const amt = Number(depAmt || 0);
@@ -409,9 +413,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     try {
       const phone = guestPhone.trim() || null;
       const memberRates =
-        !priceUnset && !platformTotalMode ? saveTypeIds.map((tid) => rateNum[tid] ?? 0) : undefined;
+        !priceUnset && !totalMode ? saveTypeIds.map((tid) => rateNum[tid] ?? 0) : undefined;
       const ratesPersist =
-        !priceUnset && !platformTotalMode
+        !priceUnset && !totalMode
           ? Object.fromEntries(
               slots
                 .map((x) => [x.typeId, rateNum[x.typeId] ?? 0] as const)
@@ -421,7 +425,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
       const ratesForBooking = (typeId: string, roomPrice: number) => {
         if (priceUnset || !(roomPrice > 0)) return null;
-        if (platformTotalMode) return nightRatesFromTotal(checkIn, nights, roomPrice);
+        if (totalMode) return nightRatesFromTotal(checkIn, nights, roomPrice);
         const flat = rateNum[typeId] ?? 0;
         return flat > 0 ? syncStayNightRates(checkIn, nights, { flat }) : null;
       };
@@ -750,31 +754,62 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
         </div>
 
+        {/* 현장·전화: 결제 모드 칩을 판매금 위에 두어, 선불/후불에서도 판매금 칸이 바로 보이게 */}
+        {onsite ? (
+          <div className="fld">
+            <label>결제</label>
+            <div>
+              <ChipGroup>
+                {(
+                  [
+                    ["prepaid", "선불"],
+                    ["postpaid", "후불"],
+                    ["deposit", "선금"],
+                  ] as const
+                ).map(([k, lab]) => (
+                  <Chip key={k} active={payMode === k} onClick={() => setPayMode(k)}>
+                    {lab}
+                  </Chip>
+                ))}
+              </ChipGroup>
+              {payMode === "postpaid" ? (
+                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
+                  후불 · 퇴실(또는 나중에) 정산 · 결제 줄 없음
+                </div>
+              ) : null}
+              {priceUnset ? (
+                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
+                  금액미정 · 수납은 확정 후 Entry에서
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* 판매금: 선불·후불·선금·플랫폼 모두 표시 · 기본 총액(박·호실 자동 분배) */}
         <div className="fld">
-          <label>{onsite ? "요금" : "판매금"}</label>
+          <label>판매금</label>
           <div className="simple-price">
-            {!onsite ? (
-              <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={salesMode === "perNight"}
-                  className={salesMode === "perNight" ? "on" : ""}
-                  onClick={() => switchSalesMode("perNight")}
-                >
-                  박당
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={salesMode === "total"}
-                  className={salesMode === "total" ? "on" : ""}
-                  onClick={() => switchSalesMode("total")}
-                >
-                  총액
-                </button>
-              </div>
-            ) : null}
+            <div className="seg sm" role="tablist" aria-label="판매금 입력 모드" style={{ marginBottom: "var(--space-chip)" }}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={salesMode === "perNight"}
+                className={salesMode === "perNight" ? "on" : ""}
+                onClick={() => switchSalesMode("perNight")}
+              >
+                박당
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={salesMode === "total"}
+                className={salesMode === "total" ? "on" : ""}
+                onClick={() => switchSalesMode("total")}
+              >
+                총액
+              </button>
+            </div>
             <label className="ck">
               <input
                 type="checkbox"
@@ -790,7 +825,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               금액미정
             </label>
             {!priceUnset ? (
-              platformTotalMode ? (
+              totalMode ? (
                 <>
                   <PriceRow style={{ marginTop: "var(--space-chip)" }}>
                     <PriceInp total>
@@ -805,7 +840,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                     </PriceInp>
                   </PriceRow>
                   <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                    플랫폼 총액 그대로
+                    {onsite ? "총액 · 박·호실은 자동 분배" : "플랫폼 총액 그대로"}
                     {totalNum > 0 ? (
                       <>
                         {" · "}
@@ -858,62 +893,48 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </div>
         </div>
 
-        {onsite ? (
+        {/* 선금만: 판매금과 별도인 수납 액수 · 선불/후불은 판매금만 */}
+        {onsite && payMode === "prepaid" && !priceUnset ? (
           <div className="fld">
-            <label>결제</label>
-            <div>
-              <ChipGroup>
-                {(
-                  [
-                    ["prepaid", "선불"],
-                    ["postpaid", "후불"],
-                    ["deposit", "선금"],
-                  ] as const
-                ).map(([k, lab]) => (
-                  <Chip key={k} active={payMode === k} onClick={() => setPayMode(k)}>
-                    {lab}
+            <label>수납</label>
+            <div className="muted sm">
+              저장 시 판매금만큼 받기(완납)로 적어요 · 방법
+              <ChipGroup style={{ display: "inline-flex", marginLeft: "var(--space-3)" }}>
+                {BOOK_PAY_METHODS.map((m) => (
+                  <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
+                    {BOOK_PAY_LABEL[m]}
                   </Chip>
                 ))}
               </ChipGroup>
-              {payMode === "prepaid" && !priceUnset ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                  저장 시 판매금만큼 받기(완납)로 적어요 · 방법
-                  <ChipGroup style={{ display: "inline-flex", marginLeft: "var(--space-3)" }}>
-                    {BOOK_PAY_METHODS.map((m) => (
-                      <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
-                        {BOOK_PAY_LABEL[m]}
-                      </Chip>
-                    ))}
-                  </ChipGroup>
-                </div>
-              ) : null}
-              {payMode === "deposit" && !priceUnset ? (
-                <PriceRow style={{ marginTop: "var(--space-3)" }}>
-                  <PriceInp sm>
-                    <input
-                      className="num"
-                      inputMode="numeric"
-                      aria-label="선금"
-                      placeholder="선금"
-                      value={depAmt !== "" ? won(Number(depAmt)) : ""}
-                      onChange={(e) => setDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                    />
-                  </PriceInp>
-                  <ChipGroup>
-                    {BOOK_PAY_METHODS.map((m) => (
-                      <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
-                        {BOOK_PAY_LABEL[m]}
-                      </Chip>
-                    ))}
-                  </ChipGroup>
-                </PriceRow>
-              ) : null}
-              {payMode === "postpaid" ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>퇴실(또는 나중에) 정산 · 결제 줄 없음</div>
-              ) : null}
-              {priceUnset ? (
-                <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>금액미정 · 수납은 확정 후 Entry에서</div>
-              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {onsite && payMode === "deposit" && !priceUnset ? (
+          <div className="fld">
+            <label>받을 선금</label>
+            <div>
+              <div className="muted sm" style={{ marginBottom: "var(--space-chip)" }}>
+                판매금과 별개 · 일부만 먼저 받을 때
+              </div>
+              <PriceRow>
+                <PriceInp sm>
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    aria-label="받을 선금"
+                    placeholder="선금"
+                    value={depAmt !== "" ? won(Number(depAmt)) : ""}
+                    onChange={(e) => setDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                  />
+                </PriceInp>
+                <ChipGroup>
+                  {BOOK_PAY_METHODS.map((m) => (
+                    <Chip key={m} sm active={depMethod === m} onClick={() => setDepMethod(m)}>
+                      {BOOK_PAY_LABEL[m]}
+                    </Chip>
+                  ))}
+                </ChipGroup>
+              </PriceRow>
             </div>
           </div>
         ) : null}
