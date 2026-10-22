@@ -3,6 +3,7 @@ import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
 import {
   canCheckOut,
+  canEndDayuse,
   hotelWallClock,
   isDepartingStatus,
   nowAmountGlance,
@@ -1480,6 +1481,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 대실 이용 종료: confirm → checkedOutAt · 숙박 칸/상태 불변 · 슬롯만 해제 */
+  const doEndDayuse = async (b: Booking) => {
+    if (readOnly || coBusy || !canEndDayuse(b)) return;
+    const room = b.roomId ? L.roomLabel(b.roomId) ?? "" : "";
+    const when = b.startTime && b.endTime ? `${b.startTime}~${b.endTime}` : "";
+    if (
+      !window.confirm(
+        `대실 이용을 종료할까요?\n${room ? `${room}호 · ` : ""}${b.guestName}${when ? ` · ${when}` : ""}`,
+      )
+    )
+      return;
+    setCoBusy(b.id);
+    try {
+      await data.patchBooking(b.id, { checkedOutAt: new Date().toISOString(), arrived: true });
+      notify(`${b.guestName} 님 대실 이용을 종료했어요`);
+    } catch {
+      notify("이용 종료를 저장하지 못했어요. 다시 해 주세요");
+    } finally {
+      setCoBusy(null);
+    }
+  };
+
   /** Entry toggleNoClean과 동일 저장 경로 */
   const toggleNoClean = async (b: Booking) => {
     if (readOnly || ncxBusy || b.kind !== "stay") return;
@@ -1902,6 +1925,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               dayuseForRoom={selectedDayuse}
               onNewDayuse={openNewDayuse}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
+              onEndDayuse={(bk) => void doEndDayuse(bk)}
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}
               moving={!!mvB}

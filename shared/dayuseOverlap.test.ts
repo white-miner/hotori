@@ -184,3 +184,18 @@ test("dayuseByRoom: 당일 활성만 방별", () => {
   );
   assert.equal(m.has("r602"), false);
 });
+
+test("dayuseByRoom: 이용 종료(checkedOutAt)면 슬롯에서 빠짐 · 숙박 무관", () => {
+  const ended = bk({
+    id: "du-done",
+    kind: "dayuse",
+    nights: null,
+    startTime: "14:00",
+    endTime: "17:00",
+    roomId: "r601",
+    checkedOutAt: "2026-10-22T08:00:00Z",
+  });
+  const stay = bk({ id: "st", kind: "stay", roomId: "r601", arrived: true, nights: 1 });
+  const m = dayuseByRoom([ended, stay], "2026-10-22");
+  assert.equal(m.has("r601"), false);
+});
