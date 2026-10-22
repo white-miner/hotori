@@ -25,8 +25,14 @@ import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
+import EarlyInPayModal from "./EarlyInPayModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
+import {
+  type EarlyInPayMethod,
+  type EarlyInPayPlan,
+  earlyInPayNotifyLine,
+} from "../shared/earlyInPay";
 import { dayuseByRoom as dayuseByRoomMap, dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import {
   type BoardTab,
@@ -326,6 +332,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [tentBusy, setTentBusy] = useState(false);
   const [nightPopId, setNightPopId] = useState<string | null>(null);
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
+  /** 빠른 입실: 추가금 팝업 대상 (확정 전엔 arrived 안 바꿈) */
+  const [earlyPay, setEarlyPay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 운영 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
@@ -1277,6 +1285,41 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 빠른 입실 팝업 확정: arrived + (금액>0이면 판매가·수납) */
+  const confirmEarlyIn = async (plan: EarlyInPayPlan, method: EarlyInPayMethod) => {
+    if (!earlyPay || earlyBusy) return;
+    const b = earlyPay.booking;
+    setEarlyBusy(b.id);
+    try {
+      const patch: Parameters<typeof data.patchBooking>[1] = { arrived: true };
+      if (plan.priceDelta > 0) patch.price = Math.round(b.price) + plan.priceDelta;
+      await data.patchBooking(b.id, patch);
+      if (plan.collectAmount > 0 && plan.method) {
+        try {
+          await data.addPayment(b.id, {
+            kind: "balance",
+            method: plan.method,
+            amount: plan.collectAmount,
+            bizDate: today,
+            note: plan.payNote,
+          });
+        } catch (e) {
+          setEarlyPay(null);
+          notify(
+            `${earlyInPayNotifyLine(b.guestName, { ...plan, collectAmount: 0, method: null, payNote: null }, method)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          return;
+        }
+      }
+      setEarlyPay(null);
+      notify(earlyInPayNotifyLine(b.guestName, plan, method));
+    } catch {
+      notify("빠른 입실을 저장하지 못했어요. 다시 해 주세요");
+    } finally {
+      setEarlyBusy(null);
+    }
+  };
+
   /** 퇴실처리: 칸 하단 「퇴실예정」탭은 확인 필수 · 옆 패널도 동일 */
   const doCheckOut = async (b: Booking, needConfirm = false) => {
     if (readOnly || coBusy || !canCheckOut(b, today)) return;
@@ -1421,18 +1464,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const amountTone = nowAmountTone(b, plat);
     const meta = nowMetaLine(b);
     const popOpen = nightPopId === b.id;
-    const doEarlyIn = async (e: React.MouseEvent) => {
+    const openEarlyIn = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (readOnly || earlyBusy || b.arrived) return;
-      setEarlyBusy(b.id);
-      try {
-        await data.patchBooking(b.id, { arrived: true });
-        notify(`${b.guestName} 님 빠른 입실했어요`);
-      } catch {
-        notify("빠른 입실을 저장하지 못했어요. 다시 해 주세요");
-      } finally {
-        setEarlyBusy(null);
-      }
+      if (readOnly || earlyBusy || earlyPay || b.arrived) return;
+      setEarlyPay({ booking: b, roomLabel: L.roomLabel(r.id) ?? r.no });
     };
     const onStatusTap = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -1522,7 +1557,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {meta ? <div className="nowmeta">{meta}</div> : null}
           <div className="nowstatus-slot">
             {!readOnly && f.kind === "arriving" && !b.arrived ? (
-              <button type="button" className="nowearly" disabled={earlyBusy === b.id} onClick={(e) => void doEarlyIn(e)}>
+              <button
+                type="button"
+                className="nowearly"
+                disabled={!!earlyBusy || !!earlyPay}
+                onClick={openEarlyIn}
+              >
                 {earlyBusy === b.id ? "처리 중…" : "빠른 입실"}
               </button>
             ) : null}
@@ -1759,6 +1799,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onSetStatus={memos.setStatus}
           onRemove={memos.remove}
           notify={notify}
+        />
+      ) : null}
+      {earlyPay ? (
+        <EarlyInPayModal
+          guestName={earlyPay.booking.guestName}
+          roomLabel={earlyPay.roomLabel}
+          today={today}
+          busy={earlyBusy === earlyPay.booking.id}
+          onCancel={() => !earlyBusy && setEarlyPay(null)}
+          onConfirm={(plan, method) => void confirmEarlyIn(plan, method)}
         />
       ) : null}
       {renderAssignModals()}
