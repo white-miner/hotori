@@ -78,7 +78,8 @@ import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import { isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import { DateChip, FitText, PlatBadge, TypeBadge, TypeLine, floorPaint, lookups } from "./ui";
+import { emptyGroupInfo, type GroupBadgeColor } from "../shared/settle";
+import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -854,20 +855,36 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     </>
   );
 
+  const pickGroupColor = (groupId: string) => async (c: GroupBadgeColor) => {
+    const g = data.groups.get(groupId) ?? emptyGroupInfo(groupId);
+    try {
+      await data.saveGroupInfo(groupId, {
+        payMode: g.payMode,
+        dueOn: g.dueOn,
+        payerCompany: g.payerCompany,
+        payerName: g.payerName,
+        payerPhone: g.payerPhone,
+        rates: g.rates,
+        extras: g.extras,
+        badgeColor: c,
+      });
+    } catch {
+      notify("단체 뱃지 색을 저장하지 못했어요");
+    }
+  };
+
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const du = dayuseByRoom.get(r.id) ?? [];
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
-    const headOf = (extra?: React.ReactNode) => (
+    const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
         <FitText className={`no ${k}`} text={r.no} />
-        {extra}
       </div>
     );
-    const head = headOf();
-    const tline = <TypeLine t={t} />;
+    const typeRow = (guests?: number | null) => <TypeRow t={t} guests={guests} />;
     const duTags = du.map((d) => (
       <span key={d.id} className="du">
         대실 {d.startTime}~{d.endTime}
@@ -916,7 +933,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </label>
           ) : null}
           {head}
-          {tline}
+          {typeRow()}
           <div className="emt">{mvSame ? "같은 타입" : sameType ? "같은 타입" : "빈 방"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
@@ -986,15 +1003,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </span>
         ) : null}
         {pm}
-        {headOf(
-          <>
-            {b.guests && !cancelled ? <span className="gcount" title={`인원 ${b.guests}명`}>{b.guests}명</span> : null}
-          </>,
-        )}
-        {tline}
+        {head}
+        {typeRow(cancelled ? null : b.guests)}
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
-          <span>{b.guestName}</span>
+          <span className="gn">{b.guestName}</span>
           {!cancelled && isWalkInPlaceholderName(b.guestName) ? (
             <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
               바로입실
@@ -1002,7 +1015,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           ) : null}
           {!cancelled && b.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
           {!cancelled && b.tentative ? <span className="tenttag" title="임시 배치 · 재고는 막혀 있어요">임시</span> : null}
-          {b.groupId ? <span className="grptag" title={`단체 ${b.groupName ?? ""}`}>단체</span> : null}
+          {b.groupId ? (
+            <GroupBadge
+              groupName={b.groupName}
+              color={data.groups.get(b.groupId)?.badgeColor}
+              readOnly={readOnly}
+              onPick={pickGroupColor(b.groupId)}
+            />
+          ) : null}
         </div>
         <div className="r3 rp">
           {readOnly ? (
@@ -1291,7 +1311,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         >
           <div className="cell-body nowstack sparse">
             {head}
-            <TypeLine t={t} />
+            <TypeRow t={t} />
             <div className="nowstatus-slot">
               <span className="nowstatus nk-empty">{mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : "공실"}</span>
             </div>
@@ -1340,7 +1360,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       >
         <div className="cell-body nowstack dense">
           {head}
-          <TypeLine t={t} />
+          <TypeRow t={t} guests={b.guests} />
           <div className="nowdate-row">
             <button
               type="button"
@@ -1374,7 +1394,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {staySummary ? <span className="nowchip nownights">{staySummary}</span> : null}
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
-            <span>{b.guestName}</span>
+            <span className="gn">{b.guestName}</span>
             {isWalkInPlaceholderName(b.guestName) ? (
               <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
                 바로입실
@@ -1383,7 +1403,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
             {f.tentative ? <span className="tenttag">임시</span> : null}
             {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
-            {f.group ? <span className="grptag">단체</span> : null}
+            {f.group && b.groupId ? (
+              <GroupBadge
+                groupName={b.groupName}
+                color={data.groups.get(b.groupId)?.badgeColor}
+                readOnly={readOnly}
+                onPick={pickGroupColor(b.groupId)}
+              />
+            ) : null}
           </div>
           {amount ? (
             <div className="nowamt" title={f.longStay ? "미수" : "요금·잔금"}>
