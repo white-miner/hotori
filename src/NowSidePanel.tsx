@@ -11,7 +11,6 @@ import {
   simplePayGlance,
   type UaCheckInFilter,
 } from "../shared/nowboard";
-import { EXTEND_COPY, canExtend } from "../shared/extend";
 import { isLongStay } from "../shared/longstay";
 import {
   type Booking,
@@ -227,7 +226,9 @@ export default function NowSidePanel({
     return "";
   };
 
-  const sideRow = (x: Booking, label: string, departingRow = false) => (
+  /** Dense list row only — no per-row 「퇴실처리」 bar (ops-panel-list-density).
+   * Checkout: 칸 퇴실예정 → confirm · or 선택 객실 compact CTA. */
+  const sideRow = (x: Booking, label: string) => (
     <div key={x.id} className={`nowli-wrap ${x.tentative ? "tent" : ""} ${x.noClean ? "ncx" : ""} ${isLongStay(x) ? "long" : ""}`}>
       <button type="button" className={`nowli ${x.tentative ? "tent" : ""} ${x.noClean ? "ncx" : ""}`} onClick={() => onOpen(x, today)} disabled={readOnly}>
         <span className={`nowli-t ${nowliTone(label, x.tentative)}`}>{label}</span>
@@ -240,21 +241,6 @@ export default function NowSidePanel({
           {x.noClean ? " · 청소X" : ""}
         </span>
       </button>
-      {departingRow && !readOnly && canCheckOut(x, today) ? (
-        <button type="button" className="nowext side nowco" disabled={coBusy === x.id} onClick={() => void onCheckOut(x, true)}>
-          {coBusy === x.id ? "처리 중…" : "퇴실처리"}
-        </button>
-      ) : null}
-      {departingRow && !readOnly && onPaymentDesk && canOpenPaymentDesk(x) ? (
-        <button type="button" className="nowext side" onClick={() => onPaymentDesk(x)}>
-          {PAYMENT_DESK_CTA}
-        </button>
-      ) : null}
-      {departingRow && !readOnly && canExtend(x) ? (
-        <button type="button" className="nowext side" onClick={() => onOpen(x, today, { openExtend: true })}>
-          {EXTEND_COPY}
-        </button>
-      ) : null}
     </div>
   );
 
@@ -687,7 +673,7 @@ export default function NowSidePanel({
           <div className="nowsec">
             <h3>퇴실예정 {outCount}</h3>
             {outCount ? (
-              outList.map((x) => sideRow(x, lateOut.some((y) => y.id === x.id) ? "늦은 퇴실" : "퇴실예정", true))
+              outList.map((x) => sideRow(x, lateOut.some((y) => y.id === x.id) ? "늦은 퇴실" : "퇴실예정"))
             ) : (
               <div className="muted sm nowempty-side">오늘 퇴실예정 없어요</div>
             )}
@@ -695,12 +681,12 @@ export default function NowSidePanel({
           <div className={`nowsec nowco-zone ${showOutZone ? "open" : "collapsed"}`}>
             <button type="button" className="nowco-zone-h" aria-expanded={showOutZone} onClick={() => setOutZoneOpen((v) => !v)}>
               <h3>퇴실처리</h3>
-              <span className="muted sm">{outCount ? `${outCount}건 · 행에서 처리` : "없음 · 접힘"}</span>
+              <span className="muted sm">{outCount ? `${outCount}건 · 칸·선택에서` : "없음 · 접힘"}</span>
             </button>
             {showOutZone ? (
               <div className="nowco-zone-b">
                 {outCount ? (
-                  <p className="muted sm">퇴실예정 행의 「퇴실처리」로 확인 후 공실이 돼요. 자동 공실 없음.</p>
+                  <p className="muted sm">칸의 퇴실예정 탭 또는 선택 객실 「퇴실처리」로 확인해요. 자동 공실 없음.</p>
                 ) : (
                   <p className="muted sm">퇴실예정이 생기면 여기에 펼쳐져요.</p>
                 )}
