@@ -985,6 +985,17 @@ export function remaining(s: HotelSettings, bookings: Booking[], typeId: string,
   return stockTable(s, bookings, [date]).get(typeId)?.get(date) ?? 0;
 }
 
+/**
+ * 판매 캘린더·과거 창: 구간 조회 목록에 방금 저장한 로컬 예약을 합쳐요 (live가 같은 id면 우선).
+ * 저장 직후 hard refresh 없이 재고가 반영되게.
+ */
+export function mergeViewBookings(fetched: Booking[], live: Booking[]): Booking[] {
+  const m = new Map<string, Booking>();
+  for (const b of fetched) m.set(b.id, b);
+  for (const b of live) m.set(b.id, b);
+  return [...m.values()];
+}
+
 export type Level = "ok" | "low" | "full" | "over";
 export function stockLevel(rem: number, total: number, lowThreshold: number): Level {
   if (rem < 0) return "over";

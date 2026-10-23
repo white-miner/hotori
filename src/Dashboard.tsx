@@ -108,6 +108,7 @@ import {
   orderedFloors,
   stayEnd,
   stockTable,
+  mergeViewBookings,
   typeLabel,
   typeTotals,
   weekday,
@@ -344,7 +345,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needOld, oldKey, data.syncedAt]);
   const viewLoading = needOld && old?.key !== oldKey;
-  const viewBookings = needOld ? (old?.key === oldKey ? old.list : []) : bookings;
+  // needOld: 구간 조회 + 로컬 예약 합침 (저장 직후 old.list만 쓰면 판매 캘린더가 굳어요)
+  const viewBookings = useMemo(() => {
+    if (!needOld) return bookings;
+    if (old?.key !== oldKey) return bookings;
+    return mergeViewBookings(old.list, bookings);
+  }, [needOld, old, oldKey, bookings]);
   const viewTable = useMemo(() => stockTable(s, viewBookings, viewDates, scopeId), [s, viewBookings, viewDates, scopeId]);
   const viewOvers = useMemo(() => allOverbookings(s, viewTable, viewDates), [s, viewTable, viewDates]);
   // 넓은 표(월·긴 기간): 오늘이 들어 있으면 오늘 열이 보이게 옆으로 밀어 둬요

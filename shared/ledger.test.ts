@@ -30,6 +30,7 @@ import {
   perNight,
   previewChange,
   remaining,
+  mergeViewBookings,
   stockLevel,
   stockTable,
   validateBooking,
@@ -127,6 +128,29 @@ test("방을 정하면 실제 들어간 방의 타입에서 빠져요 (S로 팔�
   assert.equal(remaining(S, [up], "sd", "2026-10-18"), 0, "실제 방 타입 SD에서 빠져요");
   const noRoom = bk({ typeId: "s", roomId: null });
   assert.equal(remaining(S, [noRoom], "s", "2026-10-18"), 1, "방이 없으면 판 타입에서 빠져요");
+});
+
+test("판매 캘린더: 미배정(타입만·roomId=null) 1건 → 점유 숙박일 remaining −1", () => {
+  const dates = ["2026-10-20", "2026-10-21", "2026-10-22"];
+  const before = stockTable(S, [], dates).get("s")!;
+  assert.equal(before.get("2026-10-20"), 2);
+  const hold = bk({ typeId: "s", roomId: null, checkIn: "2026-10-20", nights: 2 });
+  const after = stockTable(S, [hold], dates).get("s")!;
+  assert.equal(after.get("2026-10-20"), 1, "입실일");
+  assert.equal(after.get("2026-10-21"), 1, "둘째 숙박일");
+  assert.equal(after.get("2026-10-22"), 2, "퇴실 아침은 차감 없음");
+  assert.equal(remaining(S, [{ ...hold, status: "cancelled" }], "s", "2026-10-20"), 2);
+  assert.equal(remaining(S, [{ ...hold, status: "noshow" }], "s", "2026-10-20"), 2);
+  assert.equal(remaining(S, [bk({ kind: "dayuse", nights: null, roomId: null, startTime: "14:00", endTime: "17:00" })], "s", "2026-10-20"), 2);
+});
+
+test("mergeViewBookings: 로컬 신규·갱신이 구간 조회보다 우선", () => {
+  const fetched = [bk({ id: "old", guestName: "옛", checkIn: "2026-09-01" })];
+  const live = [bk({ id: "new", guestName: "새", roomId: null, checkIn: "2026-09-02" }), bk({ id: "old", guestName: "고침", checkIn: "2026-09-01" })];
+  const m = mergeViewBookings(fetched, live);
+  assert.equal(m.length, 2);
+  assert.equal(m.find((b) => b.id === "old")?.guestName, "고침");
+  assert.equal(m.find((b) => b.id === "new")?.roomId, null);
 });
 
 test("오버부킹은 마이너스, 가장 가까운 날짜를 알려 줘요", () => {
