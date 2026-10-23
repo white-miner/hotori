@@ -574,7 +574,7 @@ export default function StaySaleModal({
             <>
               <button
                 type="button"
-                className="btn line"
+                className="btn stop"
                 disabled={busy}
                 onClick={() => submitCreate(false)}
                 autoFocus
@@ -583,7 +583,7 @@ export default function StaySaleModal({
               </button>
               <button
                 type="button"
-                className="btn dark"
+                className="btn green"
                 disabled={busy}
                 onClick={() => submitCreate(true)}
                 title="저장 후 바로 숙박(입실) · 이름·연락처 비우면 자동 표시명"

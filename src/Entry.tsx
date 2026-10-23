@@ -3442,14 +3442,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <button type="button" className="btn line" onClick={onClose}>
             {isNew ? "취소" : "닫기"}
           </button>
-          <button type="submit" className={isNew && kind === "stay" ? "btn line" : "btn red"} disabled={busy}>
+          <button type="submit" className={isNew && kind === "stay" ? "btn stop" : "btn red"} disabled={busy}>
             {busy ? "저장 중…" : isNew && kind === "stay" ? "저장하기" : "저장"}{" "}
             <span className="num kbdh">Enter</span>
           </button>
           {isNew && kind === "stay" ? (
             <button
               type="button"
-              className="btn dark"
+              className="btn green"
               disabled={busy}
               onClick={() => void save(false, undefined, { walkInImmediate: true })}
               title="저장 후 바로 숙박(입실) · 호실 필수 · 이름·연락처 비워도 됨"
