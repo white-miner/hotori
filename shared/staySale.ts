@@ -56,11 +56,20 @@ export function staySaleOtaPlatforms(s: Pick<HotelSettings, "platforms">): Platf
   return s.platforms.filter((p) => !isOnsite(p));
 }
 
-/** 박수 요약: 점유 밤 구간 · `M/D ~ M/D · n박 n+1일` */
+/**
+ * 숙박 요약(헤더 부제용 · 콤팩트):
+ * 1박 `10/23 1박` · 같은달 연박 `10/23~24 2박` · 월넘김 `10/30~11/2 3박`.
+ * (구 `M/D ~ M/D · n박 n+1일` 블록 금지)
+ */
 export function staySaleNightsSummary(checkIn: string, nights: number): string {
   const n = Math.max(1, Math.round(nights));
   const lastNight = addDays(checkIn, n - 1);
-  return `${md(checkIn)} ~ ${md(lastNight)} · ${n}박 ${n + 1}일`;
+  const start = md(checkIn);
+  if (n === 1) return `${start} ${n}박`;
+  const [, sm, sd] = checkIn.split("-").map(Number);
+  const [, em, ed] = lastNight.split("-").map(Number);
+  const end = sm === em ? String(ed) : md(lastNight);
+  return `${start}~${end} ${n}박`;
 }
 
 /**

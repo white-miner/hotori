@@ -116,10 +116,10 @@ export default function StaySaleModal({
   }, [s, roomIds, occupied, L.types]);
 
   const headLine = roomLabels.map((n, i) => `${n}호 · ${typeNames[i] ?? ""}`).join(" · ");
+  const stayCompact = !isOcc ? staySaleNightsSummary(today, nights) : null;
 
   const extendPrev = occupied ? staySaleExtendPreview(occupied, null) : null;
   const showExtend = isOcc && occupied && canExtend(occupied);
-  const nightsHint = !isOcc ? staySaleNightsSummary(today, nights) : null;
 
   const switchChannel = (next: StaySaleChannelMode) => {
     if (next === channel) return;
@@ -210,8 +210,33 @@ export default function StaySaleModal({
         aria-label={STAY_SALE_TITLE}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="mh">
+        <div className="mh stay-sale-mh">
           <h2>{STAY_SALE_TITLE}</h2>
+          {!isOcc ? (
+            <div className="seg sm stay-sale-mode" role="tablist" aria-label="숙박 판매 모드">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={channel === "onsite"}
+                className={channel === "onsite" ? "on" : ""}
+                disabled={busy}
+                onClick={() => switchChannel("onsite")}
+              >
+                현장
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={channel === "platform"}
+                className={channel === "platform" ? "on" : ""}
+                disabled={busy || !otaList.length}
+                onClick={() => switchChannel("platform")}
+                title={!otaList.length ? "등록된 플랫폼이 없어요" : "야놀자·에어비앤비 등"}
+              >
+                플랫폼
+              </button>
+            </div>
+          ) : null}
           <button type="button" className="x" aria-label="닫기" disabled={busy} onClick={onCancel}>
             닫기
           </button>
@@ -219,38 +244,15 @@ export default function StaySaleModal({
         <div className="mb">
           <p className="stay-sale-rooms" aria-label="선택 호실">
             <b>{headLine}</b>
-            {isOcc ? <span className="muted sm"> · 점유 · 연장·입·퇴</span> : <span className="muted sm"> · 오늘</span>}
+            {isOcc ? (
+              <span className="muted sm"> · 점유 · 연장·입·퇴</span>
+            ) : stayCompact ? (
+              <span className="muted sm"> · {stayCompact}</span>
+            ) : null}
           </p>
 
           {!isOcc ? (
             <>
-              <div className="fld">
-                <label>모드</label>
-                <div className="seg sm stay-sale-mode" role="tablist" aria-label="숙박 판매 모드">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={channel === "onsite"}
-                    className={channel === "onsite" ? "on" : ""}
-                    disabled={busy}
-                    onClick={() => switchChannel("onsite")}
-                  >
-                    현장
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={channel === "platform"}
-                    className={channel === "platform" ? "on" : ""}
-                    disabled={busy || !otaList.length}
-                    onClick={() => switchChannel("platform")}
-                    title={!otaList.length ? "등록된 플랫폼이 없어요" : "야놀자·에어비앤비 등"}
-                  >
-                    플랫폼
-                  </button>
-                </div>
-              </div>
-
               {channel === "platform" ? (
                 <div className="fld">
                   <label>채널</label>
@@ -299,7 +301,7 @@ export default function StaySaleModal({
                 <Stepper value={guests} min={1} max={12} onChange={setGuests} />
               </div>
               <div className="fld">
-                <label>박수</label>
+                <label>숙박</label>
                 <Stepper
                   value={nights}
                   unit="박"
@@ -310,12 +312,17 @@ export default function StaySaleModal({
                     setErr(null);
                   }}
                 />
-                {nightsHint ? <div className="muted sm stay-sale-nights-hint">{nightsHint}</div> : null}
               </div>
 
               {channel === "onsite" ? (
-                <>
-                  <div className="paytake">
+                <OnsitePayModeFields
+                  payMode={payMode}
+                  onPayMode={setPayMode}
+                  depAmt={depAmt}
+                  onDepAmt={setDepAmt}
+                  depMethod={depMethod}
+                  onDepMethod={setDepMethod}
+                  beforeChips={
                     <PriceInp sm>
                       <span className="pl">판매가</span>
                       <input
@@ -331,16 +338,8 @@ export default function StaySaleModal({
                         }}
                       />
                     </PriceInp>
-                  </div>
-                  <OnsitePayModeFields
-                    payMode={payMode}
-                    onPayMode={setPayMode}
-                    depAmt={depAmt}
-                    onDepAmt={setDepAmt}
-                    depMethod={depMethod}
-                    onDepMethod={setDepMethod}
-                  />
-                </>
+                  }
+                />
               ) : (
                 <div className="fld">
                   <label>판매금</label>

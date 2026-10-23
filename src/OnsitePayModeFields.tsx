@@ -2,6 +2,7 @@
  * 현장·전화 생성 progressive 결제 UI (선불/후불/선금).
  * 간단 예약 · Entry create stay 공유 — Option A 원장(수정)과 별개.
  */
+import type { ReactNode } from "react";
 import { won } from "../shared/ledger";
 import {
   BOOK_PAY_LABEL,
@@ -26,6 +27,8 @@ interface Props {
   priceUnset?: boolean;
   /** chips만 / 수납만 / 둘 다 (기본 both) */
   part?: "chips" | "take" | "both";
+  /** 결제 섹션 안 · 칩 위 (숙박 판매: 판매가 병합) */
+  beforeChips?: ReactNode;
 }
 
 export default function OnsitePayModeFields({
@@ -37,6 +40,7 @@ export default function OnsitePayModeFields({
   onDepMethod,
   priceUnset = false,
   part = "both",
+  beforeChips,
 }: Props) {
   const chips = part === "chips" || part === "both";
   const take = part === "take" || part === "both";
@@ -47,6 +51,7 @@ export default function OnsitePayModeFields({
         <div className="fld">
           <label>결제</label>
           <div>
+            {beforeChips ? <div className="stay-sale-pay-price">{beforeChips}</div> : null}
             <ChipGroup>
               {ONSITE_PAY_MODES.map((k) => (
                 <Chip key={k} active={payMode === k} onClick={() => onPayMode(k)}>
