@@ -3,6 +3,7 @@ import { CalendarDays } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { FLOOR_PALETTE, onStrong, strongColor } from "../shared/floorColor";
 import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
+import { platformAbbr } from "../shared/platform";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "../shared/settle";
 
 // 층·방 색 고르기 (진한 색). 예전 파스텔 값은 strongColor로 같은 계열 진한 색이 돼요.
@@ -89,7 +90,7 @@ export function TypeRow({ t, guests }: { t?: RoomType | null; guests?: number | 
 export function PlatBadge({ p }: { p?: Platform | null }) {
   return (
     <span className="pb" title={p?.name}>
-      {p?.abbr ?? "?"}
+      {platformAbbr(p)}
     </span>
   );
 }

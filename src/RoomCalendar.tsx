@@ -5,7 +5,7 @@ import { type Booking, type HotelSettings, addDays, dayLabel, isActive, isEarlyO
 import { type Bar, calendarLayout } from "../shared/calendar";
 import { clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
 import type { StayTimes } from "../shared/tiers";
-import { paint } from "../shared/platform";
+import { paint, platformAbbr } from "../shared/platform";
 import { pastelColor } from "../shared/floorColor";
 import { lookups } from "./ui";
 
@@ -73,7 +73,7 @@ const BarEl = memo(function BarEl({ bar, cw, L, readOnly, onOpen, typeCode, time
       <span className="cb-n">{b.guestName || "이름 없음"}</span>
       {lOut && px >= 76 ? <span className={`ttag ${eIn && px < 150 ? "hide" : ""}`}>{px >= 130 ? `늦은 ${lOut}` : lOut}</span> : null}
       {bar.next !== undefined ? <span className="cb-mv nx" title={`다음 날 ${L.roomLabel(bar.next) ?? "?"}호로 옮겨요`}>→{L.rooms.get(bar.next ?? "")?.no ?? "?"}</span> : null}
-      {px >= 96 ? <span className="cb-p">{p?.abbr ?? "?"}</span> : null}
+      {px >= 96 ? <span className="cb-p">{platformAbbr(p)}</span> : null}
         </>
       )}
     </div>

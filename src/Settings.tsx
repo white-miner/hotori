@@ -8,7 +8,15 @@ import NumInput from "./NumInput";
 import type { ToastOpt } from "./App";
 import { applyType, bulkToast, floorAllSelected, pickRoom, toggleFloor, undoType } from "../shared/bulktype";
 import { guestRangeMsg } from "../shared/numdraft";
-import { PRESETS as PLAT_PRESETS, defaultPlatformColor, paint as platPaint } from "../shared/platform";
+import {
+  PLATFORM_ADD_STUB_ABBR,
+  PLATFORM_ADD_STUB_NAME,
+  PRESETS as PLAT_PRESETS,
+  defaultPlatformAbbr,
+  defaultPlatformColor,
+  paint as platPaint,
+  platformAbbr,
+} from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, CheckSquare, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
@@ -958,14 +966,32 @@ export default function Settings({ data, email, notify }: Props) {
                 value={p.abbr}
                 maxLength={1}
                 aria-label="한 글자 표시"
-                onChange={(e) => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, abbr: e.target.value } : y)) }))}
+                onChange={(e) =>
+                  update((x) => ({
+                    ...x,
+                    platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, abbr: platformAbbr({ name: y.name, abbr: e.target.value }) } : y)),
+                  }))
+                }
               />
               <input
                 className="nin"
                 value={p.name}
                 maxLength={20}
                 aria-label="플랫폼 이름"
-                onChange={(e) => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, name: e.target.value } : y)) }))}
+                onChange={(e) =>
+                  update((x) => ({
+                    ...x,
+                    platforms: x.platforms.map((y) => {
+                      if (y.id !== p.id) return y;
+                      const name = e.target.value;
+                      const keepAbbr =
+                        y.abbr &&
+                        y.abbr !== PLATFORM_ADD_STUB_ABBR &&
+                        y.abbr !== defaultPlatformAbbr(y.name);
+                      return { ...y, name, abbr: keepAbbr ? y.abbr : defaultPlatformAbbr(name) };
+                    }),
+                  }))
+                }
               />
               <button
                 type="button"
@@ -991,7 +1017,12 @@ export default function Settings({ data, email, notify }: Props) {
           ))}
           <button
             className="add"
-            onClick={() => update((x) => ({ ...x, platforms: [...x.platforms, { id: uid("p"), abbr: "새", name: "새 플랫폼" }] }))}
+            onClick={() =>
+              update((x) => ({
+                ...x,
+                platforms: [...x.platforms, { id: uid("p"), abbr: PLATFORM_ADD_STUB_ABBR, name: PLATFORM_ADD_STUB_NAME }],
+              }))
+            }
           >
             <Plus size={14} />
             플랫폼 추가

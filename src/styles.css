@@ -604,14 +604,13 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell.em.duc.in { box-shadow: inset 0 0 0 1px var(--dayuse); }
 .cell.em.duc:hover { background: #f6f9ff; border-color: var(--dayuse); }
 .cell.em.duc .emt { color: var(--ink3); }
-/* 대실 마크 ≈ 2× (타이포만 · 칸 박스 미터치) */
-.cell .dumark { position: absolute; top: -12px; right: 8px; z-index: 1; font-family: var(--num); font-size: 20px; font-weight: 750; line-height: 1; color: #fff; background: var(--dayuse); border-radius: 10px; padding: 6px 10px; white-space: nowrap; letter-spacing: -0.02em; }
+/* 대실·퇴실 상단 마크 · 타이포만(~20%↓ · top −3px) · 칸 박스 미터치 · 우상단(호수 가림 금지) */
+.cell .dumark { position: absolute; top: -15px; right: 8px; z-index: 1; font-family: var(--num); font-size: 16px; font-weight: 750; line-height: 1; color: #fff; background: var(--dayuse); border-radius: 8px; padding: 5px 8px; white-space: nowrap; letter-spacing: -0.02em; }
 .cell .dumark i { font-style: normal; font-family: "PV", system-ui, sans-serif; }
 .cell .dumark em { font-style: normal; opacity: 0.85; }
-/* 퇴실 시각 마크 · dumark와 같은 우상단(호수 가림 금지) · 타이포만 · 칸 박스 미터치 */
-.cell .comark { position: absolute; top: -12px; right: 8px; z-index: 1; font-family: var(--num); font-size: 20px; font-weight: 750; line-height: 1; color: #fff; background: var(--badge-danger); border-radius: 10px; padding: 6px 10px; white-space: nowrap; letter-spacing: -0.02em; }
+.cell .comark { position: absolute; top: -15px; right: 8px; z-index: 1; font-family: var(--num); font-size: 16px; font-weight: 750; line-height: 1; color: #fff; background: var(--badge-danger); border-radius: 8px; padding: 5px 8px; white-space: nowrap; letter-spacing: -0.02em; }
 /* 대실+늦은퇴실 동시: dumark 아래 스택 · 호수(좌) 비움 */
-.cell.hasdu .comark { top: 28px; }
+.cell.hasdu .comark { top: 22px; }
 .cell .nowpay { font-weight: 700; margin-right: 2px; opacity: 0.92; }
 .cell > * { flex-shrink: 0; }
 .cell .r1 { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 2px 3px; border-radius: 9px; margin: 0 0 1px; }
@@ -1006,10 +1005,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .r3 { font-size: 9.5px; padding: 0 2px; }
   .cell .rp { display: none; }
   .cell .dus .du { font-size: 18px; padding: 2px 6px; }
-  .cell .dumark { top: -10px; right: 4px; font-size: 17px; padding: 4px 6px; border-radius: 8px; }
+  .cell .dumark { top: -13px; right: 4px; font-size: 14px; padding: 3px 5px; border-radius: 6px; }
   .cell .dumark i, .cell .dumark em { display: none; }
-  .cell .comark { top: -10px; right: 4px; font-size: 17px; padding: 4px 6px; border-radius: 8px; }
-  .cell.hasdu .comark { top: 24px; }
+  .cell .comark { top: -13px; right: 4px; font-size: 14px; padding: 3px 5px; border-radius: 6px; }
+  .cell.hasdu .comark { top: 19px; }
   .side { display: flex; margin: 14px 12px 0; padding: 18px 14px; border-radius: 20px; }
   .it .tm { width: 88px; font-size: 13px; }
   .dim { padding: 0; align-items: flex-end; }
@@ -1923,7 +1922,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cstep .sv { font-size: 16px; }
 .plates { display: flex; gap: 6px; flex-wrap: wrap; }
 .plates .plate { width: 190px; height: 34px; font-family: var(--num); font-weight: 650; }
-.pmark { font-size: 10px; font-weight: 800; color: var(--ink2); border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 0 4px; line-height: 15px; white-space: nowrap; }
+.pmark { font-size: 8px; font-weight: 800; color: var(--ink2); border: 1px solid var(--line); background: #fff; border-radius: 4px; padding: 0 3px; line-height: 12px; white-space: nowrap; }
 .pmark.walk { color: var(--ink3); }
 @media (max-width: 760px) { .plates .plate { width: 100%; } }
 .boardtabs.four button, .boardtabs.n4 button, .boardtabs.n5 button { padding: 8px 14px; }
@@ -3397,13 +3396,13 @@ button.nowstatus { cursor: pointer; }
   .park-q { min-width: 0; flex: 1; }
 }
 .park-sum { align-items: baseline; }
-.cell .pmark.ptab { position: absolute; top: -8px; left: 10px; z-index: 1; line-height: 14px; display: inline-flex; align-items: center; }
+.cell .pmark.ptab { position: absolute; top: -11px; left: 10px; z-index: 1; line-height: 12px; display: inline-flex; align-items: center; }
 .cell .pmark .pm-t { font-style: normal; }
 .cell .pmark .pm-i { display: none; align-items: center; gap: 1px; font-family: var(--num); }
 @media (max-width: 760px) {
-  .cell .pmark.ptab { top: -7px; left: 6px; padding: 0 3px; line-height: 12px; }
+  .cell .pmark.ptab { top: -10px; left: 6px; padding: 0 2px; line-height: 10px; }
   .cell .pmark .pm-t { display: none; }
-  .cell .pmark .pm-i { display: inline-flex; font-size: 9px; }
+  .cell .pmark .pm-i { display: inline-flex; font-size: 8px; }
 }
 /* 설정 · 수수료 · 입금 */
 .feegrid { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }

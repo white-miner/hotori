@@ -25,7 +25,7 @@ import { EARLY_IN_HOUR_CHIPS, EARLY_IN_PAY_LABEL, EARLY_IN_PAY_METHODS, type Ear
 import { canExtend } from "../shared/extend";
 import { Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import OnsitePayModeFields from "./OnsitePayModeFields";
-import { lookups } from "./ui";
+import { PlatBadge, lookups } from "./ui";
 
 /**
  * 「현황」숙박 판매 전용 — selection-first.
@@ -268,8 +268,10 @@ export default function StaySaleModal({
                           setErr(null);
                         }}
                         title={pl.name}
+                        aria-label={pl.name}
                       >
-                        {pl.abbr || pl.name}
+                        <PlatBadge p={pl} />
+                        {pl.name}
                       </Chip>
                     ))}
                   </ChipGroup>
