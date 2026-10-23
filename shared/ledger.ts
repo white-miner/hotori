@@ -578,6 +578,49 @@ export function stayInOutLabel(b: Pick<Booking, "kind" | "checkIn" | "nights" | 
   if (b.kind !== "stay") return `${b.startTime ?? "?"}~${b.endTime ?? "?"}`;
   return `${md(b.checkIn)}–${md(stayEnd(b))}`;
 }
+
+/** 장부 일주일 입실현황: 대실 · 숙박(1박) · 연박(≥2박). 취소·노쇼 제외 */
+export type CheckinStripKind = "dayuse" | "stay" | "multi";
+export interface CheckinStripCounts {
+  dayuse: number;
+  stay: number;
+  multi: number;
+}
+export const CHECKIN_STRIP_LABEL: Record<CheckinStripKind, string> = {
+  dayuse: "대실",
+  stay: "숙박",
+  multi: "연박",
+};
+/** 입실일 기준 분류 (취소·노쇼 → null) */
+export function checkinStripKind(b: Pick<Booking, "kind" | "nights" | "status">): CheckinStripKind | null {
+  if (b.status !== "active") return null;
+  if (b.kind === "dayuse") return "dayuse";
+  if (b.kind === "stay") {
+    const n = b.nights ?? 0;
+    if (n === 1) return "stay";
+    if (n >= 2) return "multi";
+  }
+  return null;
+}
+/** 날짜별 대실/숙박/연박 건수 (입실일 = checkIn · dates에 없는 날은 생략) */
+export function weekCheckinCounts(
+  bookings: readonly Pick<Booking, "kind" | "nights" | "status" | "checkIn">[],
+  dates: readonly string[],
+): Map<string, CheckinStripCounts> {
+  const out = new Map<string, CheckinStripCounts>(dates.map((d) => [d, { dayuse: 0, stay: 0, multi: 0 }]));
+  for (const b of bookings) {
+    const k = checkinStripKind(b);
+    if (!k) continue;
+    const cell = out.get(b.checkIn);
+    if (cell) cell[k] += 1;
+  }
+  return out;
+}
+/** 달력 주(월~일) 7일 · weekStart와 동일 */
+export function weekDates(anchor: string): string[] {
+  const a = weekStart(anchor);
+  return Array.from({ length: 7 }, (_, i) => addDays(a, i));
+}
 /** 중도 퇴실 단추를 보여 줄까요: 정상 숙박 2박 이상, 오늘(영업일)이 첫 밤 다음 날 ~ 퇴실 전날 */
 export const canEarlyOutToday = (b: Pick<Booking, "kind" | "checkIn" | "nights" | "status" | "earlyOut">, today: string): boolean =>
   b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 2 && !isEarlyOut(b) && today > b.checkIn && today < addDays(b.checkIn, b.nights);
