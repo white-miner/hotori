@@ -2535,22 +2535,36 @@ button.nowstatus { cursor: pointer; }
 }
 .side-collapse-btn:hover { background: var(--hover); color: var(--ink2); }
 
-/* 배치 칸: auto-fill + 큰 min (board-room-grid-lock) · auto-fit/% 금지 */
+/* 배치 칸 = 현황과 동일 비율 (board-room-grid-lock + board-cell-ratio-lock) · auto-fit/% 금지 */
 .board-page:not(.now-page):not(.one) .rooms {
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: var(--space-4);
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 12px;
   align-items: stretch;
+  justify-items: stretch;
+  grid-auto-rows: minmax(200px, auto);
+  overflow: visible;
+  padding: 2px;
 }
 .board-page:not(.now-page):not(.one) .floor {
-  grid-template-columns: 48px minmax(0, 1fr);
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+  overflow: visible;
 }
 .board-page:not(.now-page):not(.one) .cell {
-  min-height: 0;
+  container-type: normal;
+  width: auto;
+  max-width: none;
+  min-height: 200px;
+  height: auto;
+  align-self: stretch;
+  justify-self: stretch;
   padding: var(--space-2) var(--space-3) var(--space-2);
   gap: 0;
   border-radius: 18px;
+  box-sizing: border-box;
 }
 .board-page:not(.now-page):not(.one) .cell .r1 {
   padding: var(--space-1) 6px;
@@ -2603,16 +2617,18 @@ button.nowstatus { cursor: pointer; }
 @media (max-width: 760px) {
   .side.collapsed { margin: 14px 12px 0; }
   .board-page:not(.now-page):not(.one) .rooms {
-    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-    gap: var(--space-3);
+    width: 100%;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+    grid-auto-rows: minmax(150px, auto);
   }
   .board-page:not(.now-page):not(.one) .floor {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
+    gap: 6px;
+    margin-bottom: 10px;
   }
   .board-page:not(.now-page):not(.one) .cell {
-    min-height: 0;
+    min-height: 150px;
     padding: 6px 7px 7px;
     border-radius: 14px;
   }

@@ -714,19 +714,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     roomId: string;
     overlaps: Booking[];
   } | null>(null);
-  /** 「방배정」모드: 「배치」칸 체크 · 본관·별관 한 풀 · 입실일로 보드 맞춤 */
-  const setAssigningMode = (id: string | null) => {
+  /**
+   * 「방배정」모드: 「배치」칸 체크 · 입실일로 보드 맞춤.
+   * 건물 필터·층 칩은 유지 (배정 성공/단체 다음 건에서 별관→전체 리셋 금지).
+   * continueNext: 같은 세션 이어가기 — 탭/층/스크롤 세션 유지, 입실일만 필요 시 맞춤.
+   */
+  const setAssigningMode = (id: string | null, opts?: { continueNext?: boolean }) => {
     setAssigning(id);
     setTypeConfirm(null);
     setCheckoutChoice(null);
-    if (id) {
-      const bk = bookings.find((x) => x.id === id && isActive(x) && !x.roomId);
-      setSideMode("simple");
-      if (multi) setBTab("all");
-      setFloorTab("all");
-      if (bk) setSelDate(bk.checkIn);
-      setTab("rooms");
+    if (!id) return;
+    const bk = bookings.find((x) => x.id === id && isActive(x) && !x.roomId);
+    setSideMode("simple");
+    if (opts?.continueNext) {
+      if (bk && bk.checkIn !== selDate) setSelDate(bk.checkIn);
+      return;
     }
+    // 최초 진입만: 배치 탭 · 층=전체. 건물 탭(bTab)은 건드리지 않음.
+    setFloorTab("all");
+    if (bk) setSelDate(bk.checkIn);
+    setTab("rooms");
   };
   // ---------- 객실 배치에서 옮기기 (+ 활성 투숙 맞교환) ----------
   const mvB = !readOnly && move ? (bookings.find((x) => x.id === move.id && isActive(x)) ?? null) : null;
@@ -1025,8 +1032,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       const siblings = b.groupId
         ? bookings.filter((u) => u.id !== b.id && u.groupId === b.groupId && isActive(u) && !u.roomId)
         : [];
-      if (siblings.length) setAssigningMode(siblings[0].id);
-      else setAssigningMode(null);
+      // 건물 필터·스크롤·배정 세션 유지 (#113/#114 survive-refresh)
+      if (siblings.length) setAssigningMode(siblings[0].id, { continueNext: true });
+      else setAssigning(null);
     } catch (e) {
       notify(saveFailMessage(e, "방을 배정하지 못했어요"));
     } finally {
