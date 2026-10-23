@@ -4,3 +4,4 @@ export { Stepper } from "./Stepper";
 export { PriceRow } from "./PriceRow";
 export { HeaderCTA } from "./HeaderCTA";
 export { BookingModeSeg } from "./BookingModeSeg";
+export { TypeStockChip } from "./TypeStockChip";

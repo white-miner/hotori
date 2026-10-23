@@ -31,7 +31,7 @@ import {
   typeRateDefaults,
 } from "../shared/salesCalendar";
 import type { HotelData } from "./data";
-import { Chip, ChipGroup, PriceInp, PriceRow } from "./primitives";
+import { Chip, ChipGroup, PriceInp, PriceRow, TypeStockChip } from "./primitives";
 import { TypeBadge } from "./ui";
 
 type CellKey = { typeId: string; date: string };
@@ -241,19 +241,21 @@ export default function SalesCalendar({
         <div className="sales-glance" aria-label="타입별 재고">
           {types.map((t) => {
             const g = glance.get(t.id)!;
-            const lv = stockLevel(g.min, g.total, s.lowThreshold);
             return (
-              <button
+              <TypeStockChip
                 key={t.id}
-                type="button"
-                className={`sales-gchip lv-${lv}`}
-                onClick={() => !readOnly && setTypeEdit(t.id)}
+                t={t}
+                rem={g.min}
+                total={g.total}
+                lowThreshold={s.lowThreshold}
+                small={
+                  <>
+                    칸~ · {g.total}실{g.stopped ? ` · 마감 ${g.stopped}` : ""}
+                  </>
+                }
+                onClick={readOnly ? undefined : () => setTypeEdit(t.id)}
                 title={readOnly ? undefined : "평일·주말 기본 요금"}
-              >
-                <TypeBadge t={t} />
-                <b className="num">{g.min < 0 ? `−${-g.min}` : g.min}</b>
-                <small>칸~ · {g.total}실{g.stopped ? ` · 마감 ${g.stopped}` : ""}</small>
-              </button>
+              />
             );
           })}
         </div>

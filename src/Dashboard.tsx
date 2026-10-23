@@ -134,6 +134,7 @@ import SalesCalendar from "./SalesCalendar";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
+import { TypeStockChip } from "./primitives";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -2508,9 +2509,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const typeStockAll = s.types
       .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
       .map((t) => ({
-        id: t.id,
-        name: typeLabel(t),
+        t,
         rem: tableAll.get(t.id)?.get(today) ?? 0,
+        total: totalsAll.get(t.id) ?? 0,
       }));
     const typeStockHidden =
       !typeStockExpand && typeStockAll.length > GLANCE_CAP ? typeStockAll.length - GLANCE_CAP : 0;
@@ -2568,20 +2569,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {typeStockAll.length ? (
           <div className="now-vacancy-row now-vacancy-types">
             <span className="now-vacancy-lab">타입 여유</span>
-            <div className={`now-vacancy-nos ${typeStockExpand ? "open" : ""}`}>
-              {typeStockShown.map((t) => {
-                const tone = t.rem < 0 ? "over" : t.rem === 0 ? "zero" : "ok";
-                const remLab = t.rem < 0 ? `−${-t.rem}` : String(t.rem);
+            <div className={`now-vacancy-typechips ${typeStockExpand ? "open" : ""}`} role="list">
+              {typeStockShown.map(({ t, rem, total }) => {
+                const remLab = rem < 0 ? `−${-rem}` : String(rem);
                 return (
-                  <button
+                  <TypeStockChip
                     key={t.id}
-                    type="button"
-                    className={`now-vacancy-type ${tone}`}
-                    title={`${t.name} 여유 ${remLab} · 판매 캘린더`}
+                    t={t}
+                    rem={rem}
+                    total={total}
+                    lowThreshold={s.lowThreshold}
+                    title={`${typeLabel(t)} 여유 ${remLab} · 판매 캘린더`}
                     onClick={() => jumpToTypeStock(t.id)}
-                  >
-                    {t.name} 여유 <span className="num">{remLab}</span>
-                  </button>
+                  />
                 );
               })}
               {typeStockHidden ? (
