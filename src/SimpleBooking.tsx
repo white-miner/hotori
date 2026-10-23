@@ -648,7 +648,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                 : undefined
             }
           />
-          <span className="muted sm">전화·현장·OTA · 다타입·호실 · 지금 또는 나중에</span>
           <button type="button" className="x" onClick={onClose} aria-label="닫기">
             ×
           </button>
