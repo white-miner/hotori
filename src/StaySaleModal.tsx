@@ -13,6 +13,7 @@ import {
   staySaleNightsSummary,
   staySaleOtaPlatforms,
   staySalePlatformIdForMode,
+  staySaleDraftSessionKey,
   staySaleResolvePrice,
   type StaySaleChannelMode,
   type StaySaleCreateInput,
@@ -83,6 +84,9 @@ export default function StaySaleModal({
   const plat = s.platforms.find((p) => p.id === platformId);
   const onsite = isOnsite(plat);
 
+  // Draft session = 선택 호실·점유 예약만 (`staySaleDraftSessionKey`).
+  // `s`를 deps에 넣으면 10s poll이 settings 새 참조를 넣을 때마다 이름·전화가 지워짐.
+  const draftSessionKey = staySaleDraftSessionKey(occupied?.id, roomIds);
   useEffect(() => {
     setChannel("onsite");
     setPlatformId(staySalePlatformIdForMode(s, "onsite"));
@@ -105,7 +109,8 @@ export default function StaySaleModal({
     setLateAmt("");
     setLateMethod("service");
     setErr(null);
-  }, [occupied?.id, roomIds.join(","), s]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset only on draftSessionKey
+  }, [draftSessionKey]);
 
   const typeNames = useMemo(() => {
     const rmap = new Map(allRooms(s).map((r) => [r.id, r]));
