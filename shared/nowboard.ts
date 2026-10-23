@@ -424,10 +424,11 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
 
 /**
  * 칸 금액 글랜스.
- * 일반: 잔금 있으면 `잔금 ₩X`, 없으면 `₩price`.
+ * 일반: left>0 → `잔금 ₩X` · left=0 → `₩price`(완납, 「잔금」 금지).
  * 단체: PaymentDesk 단체 수납을 settle로 반영(방 payments만 보면 오잔금).
  * 장기: `미수 ₩X` (0이면 생략).
  * 색은 nowAmountTone — 숫자만 칠함.
+ * 수단은 nowPayMethodPrefix — `이체 잔금` 합침 금지.
  */
 export function nowAmountGlance(
   b: Booking,
@@ -443,6 +444,18 @@ export function nowAmountGlance(
   if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
   if (b.price > 0) return `₩${won(b.price)}`;
   return null;
+}
+
+/**
+ * 칸에서 결제수단을 금액 **앞**에 둘지.
+ * left>0(`잔금`/`미수` 라벨)이면 수단 병기 금지 → `이체 잔금`/`카드 잔금` 합침 방지.
+ * 완납(left=0)이면 `이체 ₩…` 형태 OK.
+ */
+export function nowPayMethodPrefix(amount: string | null, method: string | null): string | null {
+  if (!method) return null;
+  // 한글에는 JS `\b`가 안 먹음 → startsWith
+  if (amount && (amount.startsWith("잔금") || amount.startsWith("미수"))) return null;
+  return method;
 }
 
 /** 간단 예약 패널 · 입실일 필터 (영업일 기준) */
