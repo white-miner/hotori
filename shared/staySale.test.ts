@@ -35,9 +35,11 @@ test("staySalePlatformId prefers onsite · OTA helper prefers first non-onsite",
   );
 });
 
-test("staySaleNightsSummary: occupied nights range · n박 n+1일", () => {
-  assert.equal(staySaleNightsSummary("2026-10-23", 1), "10/23 ~ 10/23 · 1박 2일");
-  assert.equal(staySaleNightsSummary("2026-10-20", 5), "10/20 ~ 10/24 · 5박 6일");
+test("staySaleNightsSummary: compact · 1박 / 같은달 연박 / 월넘김", () => {
+  assert.equal(staySaleNightsSummary("2026-10-23", 1), "10/23 1박");
+  assert.equal(staySaleNightsSummary("2026-10-23", 2), "10/23~24 2박");
+  assert.equal(staySaleNightsSummary("2026-10-23", 4), "10/23~26 4박");
+  assert.equal(staySaleNightsSummary("2026-10-30", 3), "10/30~11/1 3박");
 });
 
 test("staySaleResolvePrice: 총액 기본 · 박당×박 · 금액미정=0", () => {
