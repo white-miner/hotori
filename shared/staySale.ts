@@ -1,9 +1,13 @@
 // 「현황」숙박 판매 전용 · selection-first · SimpleBooking/MiniFloorPlan 금지
+// 모드: 현장 | 플랫폼 (운영에 간단예약 병렬 금지 · OTA 잔금 금지)
 import {
   type Booking,
   type HotelSettings,
+  type Platform,
+  addDays,
   allRooms,
   freeRooms,
+  md,
   validateBooking,
   won,
 } from "./ledger";
@@ -24,9 +28,59 @@ import { clampHours } from "./extratime";
 export const STAY_SALE_TITLE = "숙박 판매";
 export const STAY_SALE_CTA = "숙박 판매";
 
+/** 숙박 판매 채널 모드 · 바로입실⊂현장 · 상호 배타 */
+export type StaySaleChannelMode = "onsite" | "platform";
+/** 플랫폼 판매금: 총액 기본 · 박당 옵션 (OTA SoT) */
+export type StaySaleSalesMode = "total" | "perNight";
+
 /** 현장·전화 우선 (ops 판매). 없으면 첫 플랫폼. */
 export function staySalePlatformId(s: Pick<HotelSettings, "platforms">): string {
   return s.platforms.find((p) => isOnsite(p))?.id ?? s.platforms[0]?.id ?? "";
+}
+
+/** 플랫폼(OTA) 기본 채널 · 비현장 우선 */
+export function staySaleOtaPlatformId(s: Pick<HotelSettings, "platforms">): string {
+  return s.platforms.find((p) => !isOnsite(p))?.id ?? s.platforms[0]?.id ?? "";
+}
+
+/** 모드에 맞는 기본 platformId */
+export function staySalePlatformIdForMode(
+  s: Pick<HotelSettings, "platforms">,
+  mode: StaySaleChannelMode,
+): string {
+  return mode === "onsite" ? staySalePlatformId(s) : staySaleOtaPlatformId(s);
+}
+
+/** 플랫폼 모드 칩 목록 (야/아/여/호… · 현장·전화 제외) */
+export function staySaleOtaPlatforms(s: Pick<HotelSettings, "platforms">): Platform[] {
+  return s.platforms.filter((p) => !isOnsite(p));
+}
+
+/** 박수 요약: 점유 밤 구간 · `M/D ~ M/D · n박 n+1일` */
+export function staySaleNightsSummary(checkIn: string, nights: number): string {
+  const n = Math.max(1, Math.round(nights));
+  const lastNight = addDays(checkIn, n - 1);
+  return `${md(checkIn)} ~ ${md(lastNight)} · ${n}박 ${n + 1}일`;
+}
+
+/**
+ * 판매금 해석: 플랫폼 박당 = rate×박 · 총액/현장 = 입력 총액.
+ * 금액미정이면 0.
+ */
+export function staySaleResolvePrice(input: {
+  channel: StaySaleChannelMode;
+  salesMode: StaySaleSalesMode;
+  priceUnset?: boolean;
+  total: number;
+  perNight: number;
+  nights: number;
+}): number {
+  if (input.priceUnset) return 0;
+  const nights = Math.max(1, Math.round(input.nights));
+  if (input.channel === "platform" && input.salesMode === "perNight") {
+    return Math.max(0, Math.round(input.perNight)) * nights;
+  }
+  return Math.max(0, Math.round(input.total));
 }
 
 export interface StaySaleCreateInput {
@@ -79,7 +133,10 @@ export function validateStaySaleCreate(s: HotelSettings, input: StaySaleCreateIn
   if (!name) return "이름을 적어 주세요.";
   const phoneErr = validateGuestPhone(plat, input.guestPhone, { walkInImmediate: !!input.walkInImmediate });
   if (phoneErr) return phoneErr;
-  if (!input.priceUnset && !(input.price > 0)) return "판매가를 적거나 금액미정을 켜 주세요.";
+  if (!input.priceUnset && !(input.price > 0)) {
+    return isOnsite(plat) ? "판매가를 적거나 금액미정을 켜 주세요." : "판매금을 적거나 금액미정을 켜 주세요.";
+  }
+  // OTA: 현장 결제/선금 검증 스킵 · 잔금 없음 (#84)
   if (isOnsite(plat) && !input.priceUnset) {
     const depErr = validateOnsiteCreateDeposit(input.payMode, {
       priceUnset: false,
@@ -101,6 +158,13 @@ export function validateStaySaleCreate(s: HotelSettings, input: StaySaleCreateIn
   // freeRooms with empty bookings = all rooms free; real clash checked at commit with live list
   void free;
   return null;
+}
+
+/** 채널 모드와 platformId 정합 (현장↔OTA 배타) */
+export function staySaleChannelOfPlat(
+  plat: Pick<Platform, "name"> & { onsite?: boolean | null } | null | undefined,
+): StaySaleChannelMode {
+  return isOnsite(plat) ? "onsite" : "platform";
 }
 
 export function buildStaySaleDrafts(

@@ -2510,6 +2510,9 @@ button.nowstatus { cursor: pointer; }
 .stay-sale-modal { max-width: min(480px, 96vw); width: min(480px, 100%); }
 .stay-sale-rooms { margin: 0 0 10px; }
 .stay-sale-extra { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.stay-sale-mode { margin-bottom: 2px; }
+.stay-sale-nights-hint { margin-top: 6px; }
+.stay-sale-plat-price { display: flex; flex-direction: column; gap: 4px; }
 .add-time-modal .add-time-sum { margin: 8px 0 10px; font-size: 14px; }
 .dayuse-sale-times {
   display: flex;
