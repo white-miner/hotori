@@ -333,7 +333,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
   assert.equal(simplePayGlance(bk({ price: 180000, payments: [] }), true), "후불");
   assert.equal(
     simplePayGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), true),
-    "선불",
+    "완납",
   );
   // 미수(수납 0) = due · 선금·일부 = partial · 완납 = paid
   assert.equal(nowAmountTone(bk({ price: 180000, payments: [] }), onsite), "due");

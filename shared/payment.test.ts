@@ -145,7 +145,7 @@ test("설정: 플랫폼의 현장 결제 값이 저장·불러오기 뒤에도 �
   assert.equal(isOnsite(S.platforms[1]), true);
 });
 
-test("생성 progressive: 선불=완납 balance · 후불=none · 선금=deposit", () => {
+test("생성 progressive: prepaid=완납 balance · 후불=none · 선금=deposit", () => {
   assert.deepEqual(planOnsiteCreatePay("prepaid", { saleTotal: 80000, depAmt: "", depMethod: "card" }), {
     kind: "balance",
     amount: 80000,
@@ -162,7 +162,7 @@ test("생성 progressive: 선불=완납 balance · 후불=none · 선금=deposit
   assert.deepEqual(planOnsiteCreatePay("prepaid", { priceUnset: true, saleTotal: 80000, depAmt: "", depMethod: "card" }), {
     kind: "none",
   });
-  assert.equal(onsiteCreatePayTail({ kind: "balance", amount: 80000, method: "card" }), " · 선불(완납) 80,000원");
+  assert.equal(onsiteCreatePayTail({ kind: "balance", amount: 80000, method: "card" }), " · 완납 80,000원");
   assert.equal(onsiteCreatePayTail({ kind: "deposit", amount: 30000, method: "cash" }), " · 선금 30,000원(현금)");
   assert.equal(validateOnsiteCreateDeposit("postpaid", { saleTotal: 80000, depAmt: "", depMethod: "card", bizDate: "2026-10-22" }), null);
   assert.match(
