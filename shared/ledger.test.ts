@@ -479,3 +479,19 @@ test("기간 고르기: 끝 < 시작이면 바꾸고, 92일까지만", async () 
   assert.equal(L.stockRangeLabel("week", "2026-10-19", "2026-10-25", "2026-10-18"), "10/19(월) ~ 10/25(일)");
   assert.equal(L.stockRangeLabel("range", "2026-12-28", "2027-01-03", "2026-10-18"), "2026. 12/28(월) ~ 2027. 1/3(일)");
 });
+
+test("장부 이용내역: 입실전 · 이용중 · 완료 · 입–퇴 라벨", async () => {
+  const { stayPhase, stayStatusLabel, stayInOutLabel } = await import("./ledger");
+  assert.equal(stayPhase(bk({ arrived: false })), "pre");
+  assert.equal(stayStatusLabel(bk({ arrived: false })), "입실전");
+  assert.equal(stayPhase(bk({ arrived: true })), "in");
+  assert.equal(stayStatusLabel(bk({ arrived: true })), "이용중");
+  assert.equal(stayPhase(bk({ arrived: true, checkedOutAt: "2026-10-19T03:00:00.000Z" })), "done");
+  assert.equal(stayStatusLabel(bk({ arrived: true, checkedOutAt: "2026-10-19T03:00:00.000Z" })), "완료");
+  assert.equal(stayPhase(bk({ arrived: true, nights: 3, earlyOut: "2026-10-20" })), "done");
+  assert.equal(stayStatusLabel(bk({ status: "cancelled" })), "취소");
+  assert.equal(stayStatusLabel(bk({ status: "noshow" })), "노쇼");
+  assert.equal(stayPhase(bk({ status: "cancelled" })), null);
+  assert.equal(stayInOutLabel(bk({ checkIn: "2026-10-18", nights: 2 })), "10/18–10/20");
+  assert.equal(stayInOutLabel(bk({ kind: "dayuse", nights: null, startTime: "14:00", endTime: "18:00" })), "14:00~18:00");
+});

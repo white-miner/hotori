@@ -1,11 +1,34 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import { saveFailMessage } from "../shared/errors";
 import { Check, ChevronRight, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
-import { type Booking, addDays, dayLabel, isActive, isEarlyOut, isMoved, legsOf, perNight, roomRevenue, stayRoomIds, typeLabel, usableTypes, usedLabel, usedNights, won } from "../shared/ledger";
+import {
+  type Booking,
+  type StayPhase,
+  addDays,
+  dayLabel,
+  isActive,
+  isEarlyOut,
+  isMoved,
+  legsOf,
+  md,
+  perNight,
+  roomRevenue,
+  stayEnd,
+  stayInOutLabel,
+  stayPhase,
+  stayRoomIds,
+  stayStatusLabel,
+  STAY_PHASE_LABEL,
+  typeLabel,
+  usableTypes,
+  usedLabel,
+  usedNights,
+  won,
+} from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
 import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights } from "../shared/extend";
@@ -23,17 +46,19 @@ interface Props {
   today: string;
   query: string;
   setQuery: (q: string) => void;
+  searchRef?: RefObject<HTMLInputElement | null>;
   onOpen: (b: Booking, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   notify: (m: string) => void;
 }
 type LTab = "bookings" | "expenses";
 const LT_KEY = "hotori.ledgerTab";
 type StatusF = "all" | "active" | "void";
+type PhaseF = "all" | StayPhase;
+type PeriodChip = "today" | "7" | "30" | "custom";
 type MoneyBasis = "sale" | "payout";
 const MB_KEY = "hotori.moneyBasis";
-const STATUS: Record<string, string> = { active: "", cancelled: "취소", noshow: "노쇼" };
 
-export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, notify }: Props) {
+export default function Ledger({ data, hotelId, today, query, setQuery, searchRef, onOpen, notify }: Props) {
   // 장부 탭: 예약 · 지출 (기기마다 마지막 탭 기억)
   const [tab, setTabRaw] = useState<LTab>(() => {
     try {
@@ -53,13 +78,36 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const [exEdit, setExEdit] = useState<Expense | "new" | null>(null);
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
-  const [from, setFrom] = useState(addDays(today, -30));
-  const [to, setTo] = useState(addDays(today, 60));
+  const [from, setFrom] = useState(addDays(today, -7));
+  const [to, setTo] = useState(addDays(today, 7));
+  const [period, setPeriod] = useState<PeriodChip>("7");
   const [plat, setPlat] = useState("");
   const [type, setType] = useState("");
   const [kind, setKind] = useState("");
   const [st, setSt] = useState<StatusF>("all");
+  const [phase, setPhase] = useState<PhaseF>("all");
   const [dueOnly, setDueOnly] = useState(false);
+  const applyPeriod = (p: Exclude<PeriodChip, "custom">) => {
+    setPeriod(p);
+    if (p === "today") {
+      setFrom(today);
+      setTo(today);
+    } else if (p === "7") {
+      setFrom(addDays(today, -7));
+      setTo(addDays(today, 7));
+    } else {
+      setFrom(addDays(today, -30));
+      setTo(addDays(today, 30));
+    }
+  };
+  const setFromCustom = (v: string) => {
+    setFrom(v);
+    setPeriod("custom");
+  };
+  const setToCustom = (v: string) => {
+    setTo(v);
+    setPeriod("custom");
+  };
   const [poWait, setPoWait] = useState(false);
   // 남은 금액 기준: 판매가 · 입금 예정 (수수료 · 숙소 부담 쿠폰 · 카드 수수료를 뺀 금액). 기기마다 기억
   const [mBasis, setMBasisRaw] = useState<MoneyBasis>(() => {
@@ -152,12 +200,17 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     if (kind && b.kind !== kind) return false;
     if (st === "active" && !isActive(b)) return false;
     if (st === "void" && isActive(b)) return false;
+    if (phase !== "all" && stayPhase(b) !== phase) return false;
     if (dueOnly && leftOf(b) <= 0) return false;
     if (poWait && !payoutWaiting(b, L.plats.get(b.platformId))) return false;
     if (q) {
       const p = L.plats.get(b.platformId);
-      const hay = [b.guestName, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)].join(" ").toLowerCase();
-      if (!hay.includes(q) && !plateMatches(b, q)) return false;
+      const hay = [b.guestName, b.guestPhone, b.groupName, p?.name, p?.abbr, b.memo, L.stayRoomLabel(b), ...stayRoomIds(b).map((id) => L.rooms.get(id)?.no)]
+        .join(" ")
+        .toLowerCase();
+      const digits = q.replace(/\D/g, "");
+      const phoneDigits = (b.guestPhone ?? "").replace(/\D/g, "");
+      if (!hay.includes(q) && !plateMatches(b, q) && !(digits && phoneDigits.includes(digits))) return false;
     }
     return true;
   });
@@ -170,8 +223,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
   const rev = roomRevenue(matched, from, to);
   const sum = rev.net;
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
-  // 플랫폼·타입·종류·검색으로 거르면 매점은 상관없어서 빼요
-  const filtered = !!(plat || type || kind || q || st === "void" || dueOnly || poWait);
+  // 플랫폼·타입·종류·검색·상태로 거르면 매점은 상관없어서 빼요
+  const filtered = !!(plat || type || kind || q || st === "void" || phase !== "all" || dueOnly || poWait);
   const dueTotal =
     list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0) +
     [...new Set(list.map((b) => b.groupId).filter((x): x is string => !!x))].reduce((n, id) => n + (groupSettle(id)?.left ?? 0), 0);
@@ -196,6 +249,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             const ps = b.groupId ? { left: 0, full: false } : payState(b, p);
             const po = payoutOf(b, p);
             const poV = payoutValue(po);
+            const stLabel = stayStatusLabel(b);
+            const ph = stayPhase(b);
             return (
               <div key={b.id} role="button" tabIndex={0} className={`lrow ${gm ? "gmem" : ""} ${b.status === "cancelled" ? "cx" : ""} ${b.status === "noshow" ? "ns" : ""} ${eo ? "eo" : ""}`} onClick={() => onOpen(b)}>
                 <span className="c-date">{dayLabel(b.checkIn)}</span>
@@ -208,17 +263,31 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                   <span className="gn">{b.guestName}</span>
                   {b.groupId && !gm ? <span className="grptag" title="단체 예약">단체 {b.groupName}</span> : null}
                   {b.noClean && b.status === "active" ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
-                  {STATUS[b.status] ? <span className={b.status === "noshow" ? "nst" : "cxt"} title={b.status === "noshow" ? "결제한 금액은 매출에 남아요" : "전액 환불 · 매출에서 빠져요"}>{STATUS[b.status]}</span> : null}
                   {b.memo ? <span className="memo">{b.memo}</span> : null}
                 </span>
-                <span className="c-type">
-                  <TypeBadge t={L.types.get(b.typeId)} />
+                <span className="c-phone" title={b.guestPhone ?? undefined}>
+                  {b.guestPhone?.trim() || "—"}
                 </span>
-                <span className="c-len" title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}>
-                  {b.kind !== "stay" ? `${b.startTime}~${b.endTime}` : eo ? `${usedLabel(b)} · 중도 퇴실` : `${b.nights}박`}
-                  {b.guests ? <small className="gcount"> · {b.guests}명</small> : null}
+                <span className="c-status">
+                  {stLabel ? (
+                    <span
+                      className={`stag ${b.status === "cancelled" ? "cx" : b.status === "noshow" ? "ns" : ph === "pre" ? "pre" : ph === "in" ? "in" : "done"}`}
+                      title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}
+                    >
+                      {stLabel}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </span>
+                <span className="c-inout" title={eo ? `${usedLabel(b)} · 중도 퇴실` : b.kind === "stay" ? `${b.nights}박` : undefined}>
+                  {stayInOutLabel(b)}
                   {s.parking.enabled && parkingMark(b) ? <small className="gcount" title={b.plates?.length ? `차량번호 ${b.plates.join(", ")}` : undefined}> · {parkingMark(b)}</small> : null}
                   {timeTags(s, b).length ? <small className="gcount" title={`${timeLine(b)}${isTimeService(b) ? " · 서비스" : b.timeFee ? ` · ${won(b.timeFee)}원 포함` : ""}`}> · {timeTags(s, b).join(" · ")}</small> : null}
+                </span>
+                <span className="c-guests">{b.guests ? `${b.guests}명` : "—"}</span>
+                <span className="c-type">
+                  <TypeBadge t={L.types.get(b.typeId)} />
                 </span>
                 <span className={`c-room ${isMoved(b) ? "mv" : ""}`} title={isMoved(b) ? `객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId)}호 ${l.nights}박`).join(" → ")}` : (L.roomLabel(b.roomId) ?? undefined)}>
                   {!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")}
@@ -233,7 +302,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
                   ) : null}
                   {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
                 </span>
-                <span className="c-ring">{isActive(b) && b.arrived ? <span className="intag">완료</span> : null}</span>
               </div>
             );
   };
@@ -382,14 +450,26 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             <span className="grptag">{g.rooms}실</span>
             {g.members.length > g.rooms ? <span className="cxt">취소 {g.members.length - g.rooms}</span> : null}
           </span>
+          <span className="c-phone">—</span>
+          <span className="c-status">
+            {cancelled ? (
+              <span className="stag cx">취소</span>
+            ) : g.arrived && g.rooms ? (
+              <span className={`stag ${g.arrived === g.rooms ? "done" : "in"}`}>{g.arrived === g.rooms ? "완료" : `이용중 ${g.arrived}/${g.rooms}`}</span>
+            ) : (
+              <span className="stag pre">입실전</span>
+            )}
+          </span>
+          <span className="c-inout">
+            {md(g.checkIn)}–{md(stayEnd({ kind: "stay", checkIn: g.checkIn, nights: g.nights, earlyOut: null }))}
+          </span>
+          <span className="c-guests">—</span>
           <span className="c-type gts">{tsum}</span>
-          <span className="c-len">{g.nights}박</span>
           <span className="c-room">{g.members.length}개 방</span>
           <span className="c-price r">
             {won(gst?.total ?? g.total)}
             {badge ? <small className={badge.due ? "dueamt" : "paidtag"}>{badge.text}</small> : <small>단체 합계</small>}
           </span>
-          <span className="c-ring">{g.arrived && g.rooms ? <span className="intag">{g.arrived === g.rooms ? "완료" : `${g.arrived}/${g.rooms}`}</span> : null}</span>
         </div>
         {open ? (
           <>
@@ -502,7 +582,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
     <main className="page ledger">
       <div className="ph">
         <div>
-          <h1>장부</h1>
+          <h1>
+            장부 <span className="h1-sub">통합 이용내역</span>
+          </h1>
           <div className="sub">
             {tab === "bookings" ? (
               <>
@@ -655,12 +737,41 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
       <div className="filters">
         <label className="search ls">
           <Search size={16} />
-          <input value={query} placeholder={s.parking.enabled ? "이름·플랫폼·메모·방·차량번호" : "이름·플랫폼·메모·방 번호"} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            ref={searchRef}
+            value={query}
+            placeholder={s.parking.enabled ? "이름·연락처·플랫폼·메모·방·차량번호" : "이름·연락처·플랫폼·메모·방 번호"}
+            aria-label="통합 이용내역 검색"
+            aria-keyshortcuts="/"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && (e.currentTarget.blur(), setQuery(""))}
+          />
+          <kbd>/</kbd>
         </label>
+        <div className="chips period-chips" role="group" aria-label="조회 기간">
+          {(
+            [
+              ["today", "오늘"],
+              ["7", "7일"],
+              ["30", "30일"],
+              ["custom", "사용자"],
+            ] as const
+          ).map(([k, l]) => (
+            <button
+              key={k}
+              type="button"
+              className={`chip sm ${period === k ? "on" : ""}`}
+              aria-pressed={period === k}
+              onClick={() => (k === "custom" ? setPeriod("custom") : applyPeriod(k))}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
         <label className="fdate">
           입실일
-          <input type="date" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} />~
-          <input type="date" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} />
+          <input type="date" value={from} onChange={(e) => e.target.value && setFromCustom(e.target.value)} />~
+          <input type="date" value={to} onChange={(e) => e.target.value && setToCustom(e.target.value)} />
         </label>
         <select value={plat} onChange={(e) => setPlat(e.target.value)} aria-label="플랫폼">
           <option value="">플랫폼 전체</option>
@@ -696,7 +807,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
             입금 미확인
           </button>
         ) : null}
-        <div className="seg">
+        <div className="seg" role="group" aria-label="예약 상태">
           {(
             [
               ["all", "전체"],
@@ -704,7 +815,21 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
               ["void", "취소·노쇼"],
             ] as const
           ).map(([k, l]) => (
-            <button key={k} className={st === k ? "on" : ""} onClick={() => setSt(k)}>
+            <button key={k} type="button" className={st === k ? "on" : ""} onClick={() => setSt(k)}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="seg" role="group" aria-label="이용 상태">
+          {(
+            [
+              ["all", "이용 전체"],
+              ["pre", STAY_PHASE_LABEL.pre],
+              ["in", STAY_PHASE_LABEL.in],
+              ["done", STAY_PHASE_LABEL.done],
+            ] as const
+          ).map(([k, l]) => (
+            <button key={k} type="button" className={phase === k ? "on" : ""} onClick={() => setPhase(k)}>
               {l}
             </button>
           ))}
@@ -717,11 +842,13 @@ export default function Ledger({ data, hotelId, today, query, setQuery, onOpen, 
           <span>종류</span>
           <span>플랫폼</span>
           <span>이름</span>
+          <span>연락처</span>
+          <span>상태</span>
+          <span>입–퇴</span>
+          <span>인원</span>
           <span>타입</span>
-          <span>박수·시간</span>
           <span>방</span>
           <span className="r">가격</span>
-          <span>입실</span>
         </div>
         {rows === null ? (
           <div className="lempty">불러오는 중…</div>
