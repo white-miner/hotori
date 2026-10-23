@@ -1,6 +1,6 @@
 // 단체 정산: 단체 하나를 결제자 하나로. 금액은 방들의 지금 상태로 계산해요.
-import { type Booking, type Platform } from "./ledger";
-import { type Payment, isOnsite, paidOf } from "./payment";
+import { type Booking, type Platform, won } from "./ledger";
+import { type Payment, isOnsite, paidOf, payState } from "./payment";
 
 export type GroupPayMode = "prepaid" | "postpaid";
 export const PAY_MODE_LABEL: Record<GroupPayMode, string> = { prepaid: "선결제", postpaid: "후불(퇴실 후 정산)" };
@@ -142,6 +142,81 @@ export function settleBadge(st: Settlement, info: GroupInfo | null | undefined):
   if (st.settled) return { text: "정산 완료", due: false };
   const v = st.left.toLocaleString("ko-KR");
   return { text: info?.payMode === "postpaid" ? `정산 대기 ${v}` : `잔금 ${v}`, due: true };
+}
+
+/** P1 글랜스 뱃지: 단체 줄만 → 단체납 · 한 방 대납 완납 → 대납 · 방마다(S1) → 없음 */
+export type GroupSettlePayBadge = "단체납" | "대납";
+
+/**
+ * 단체 N/K 글랜스 (P1 · settleMode/라우팅 없음).
+ * K: settle.left=0 → 0. left>0이면 방 payState.left>0 개수.
+ * 단, 방 수납 없고 단체만 일부면 K=N(허위 완납 금지).
+ */
+export interface GroupSettleGlance {
+  n: number;
+  /** 잔금 있는 방 수 */
+  k: number;
+  /** 완납 표기 방 수 (= n − k) */
+  paidRooms: number;
+  left: number;
+  settled: boolean;
+  tracked: boolean;
+  badge: GroupSettlePayBadge | null;
+  /** Ops: `단체 · N실 완납 / K실 잔금 · 남은 ₩…` */
+  strip: string;
+  /** 칸 콤팩트: `N완/K잔` · 완납 시 `N완` */
+  compact: string;
+}
+
+export function groupSettleGlance(
+  members: Booking[],
+  info: GroupInfo | null | undefined,
+  plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null,
+): GroupSettleGlance | null {
+  const active = members.filter((b) => b.status !== "cancelled");
+  if (active.length === 0) return null;
+  const st = settle(active, info, plat);
+  if (!st.tracked || st.total <= 0) return null;
+
+  const n = active.length;
+  const groupPaidAmt = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0);
+  const groupPaid = groupPaidAmt > 0;
+  const roomsWithPay = active.filter((b) => paidOf(b) > 0);
+  const anyRoomPay = roomsWithPay.length > 0;
+
+  let k: number;
+  if (st.left === 0) {
+    k = 0;
+  } else if (!anyRoomPay) {
+    // 방 수납 없음(미수납·단체만 일부) → 전원 잔금 (허위 완납 금지)
+    k = n;
+  } else {
+    k = active.filter((b) => payState(b, plat).left > 0).length;
+  }
+  const paidRooms = n - k;
+
+  let badge: GroupSettlePayBadge | null = null;
+  if (groupPaid && !anyRoomPay) badge = "단체납";
+  else if (st.left === 0 && roomsWithPay.length === 1) badge = "대납";
+
+  // 완납: `단체 · N실 완납` (정산 완료와 동치 · Ops는 N실 표기 유지)
+  const strip =
+    k === 0
+      ? `단체 · ${n}실 완납`
+      : `단체 · ${paidRooms}실 완납 / ${k}실 잔금 · 남은 ₩${won(st.left)}`;
+  const compact = k === 0 ? `${n}완` : `${paidRooms}완/${k}잔`;
+
+  return {
+    n,
+    k,
+    paidRooms,
+    left: st.left,
+    settled: st.settled || k === 0,
+    tracked: st.tracked,
+    badge,
+    strip,
+    compact,
+  };
 }
 export function validateExtra(x: GroupExtra): string | null {
   if (!x.name.trim()) return "항목 이름을 적어 주세요.";

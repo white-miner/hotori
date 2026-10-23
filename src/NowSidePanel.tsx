@@ -28,7 +28,7 @@ import { CLEAN_REQUEST_COPY } from "../shared/cleanRequest";
 import { DAYUSE_SALE_CTA } from "../shared/dayuseSale";
 import { STAY_SALE_CTA } from "../shared/staySale";
 import { PAYMENT_DESK_CTA, canOpenPaymentDesk, paymentDeskGlance } from "../shared/paymentDesk";
-import type { GroupInfo } from "../shared/settle";
+import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
 import type { OpenMemoGlance } from "../shared/roomMemo";
@@ -188,6 +188,22 @@ export default function NowSidePanel({
       return paymentDeskGlance(selectedGroupBookings, p0, selectedGroupInfo);
     }
     if (b && !b.priceUnset) return paymentDeskGlance([b], plat);
+    return null;
+  }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
+  /** P1 단체 N/K 스트립 · 단체납/대납 (settleMode 없음) */
+  const grpGlance = useMemo(() => {
+    if (settleMembers.length >= 1 && settleMembers[0]?.groupId) {
+      const p0 = L.plats.get(settleMembers[0]!.platformId);
+      return groupSettleGlance(settleMembers, settleGroupInfo, p0);
+    }
+    if (multiGroup && selectedGroupBookings.length > 1) {
+      const p0 = L.plats.get(selectedGroupBookings[0]!.platformId);
+      return groupSettleGlance(selectedGroupBookings, selectedGroupInfo, p0);
+    }
+    if (b?.groupId && settleMembers.length === 0) {
+      // 형제 미전달 시 단실만 — N=1 글랜스
+      return groupSettleGlance([b], settleGroupInfo, plat);
+    }
     return null;
   }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
   const glance = selectedRoomId && !multiVacant && !multiGroup ? glanceByRoom.get(selectedRoomId) : undefined;
@@ -426,6 +442,15 @@ export default function NowSidePanel({
                       </span>
                     </div>
                   ) : null}
+                  {grpGlance ? (
+                    <div className="nsel-row nsel-grp-settle" aria-label="단체 정산 글랜스">
+                      <span className="nsel-k">단체</span>
+                      <span className={`nsel-v nsel-bal-v${grpGlance.k > 0 ? " due" : ""}`}>
+                        {grpGlance.strip.replace(/^단체 · /, "")}
+                        {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="nsel-row nsel-memo">
                     <span className="nsel-k">메모</span>
                     <span className="nsel-v">
@@ -561,6 +586,15 @@ export default function NowSidePanel({
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
                         받을 {won(balGlance.due)} · 받은 {won(balGlance.paid)} · 남은{" "}
                         <b>{won(balGlance.left)}</b>
+                      </span>
+                    </div>
+                  ) : null}
+                  {grpGlance ? (
+                    <div className="nsel-row nsel-grp-settle" aria-label="단체 정산 글랜스">
+                      <span className="nsel-k">단체</span>
+                      <span className={`nsel-v nsel-bal-v${grpGlance.k > 0 ? " due" : ""}`}>
+                        {grpGlance.strip.replace(/^단체 · /, "")}
+                        {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
                       </span>
                     </div>
                   ) : null}

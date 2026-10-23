@@ -126,7 +126,7 @@ import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
-import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
+import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -2237,6 +2237,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const amount = nowAmountGlance(b, plat, groupCtx);
     const amountTone = nowAmountTone(b, plat, groupCtx);
     const payMethod = nowPayMethodPrefix(amount, nowPayMethodGlance(b, groupCtx?.info?.payments));
+    const grpGlance =
+      groupCtx && groupCtx.members.length > 0 ? groupSettleGlance(groupCtx.members, groupCtx.info, plat) : null;
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
     const coMark = coMarkLabel ? (
@@ -2337,6 +2339,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               {payMethod ? <span className="nowpay">{payMethod}</span> : null}
               {payMethod && amount ? " " : null}
               {amount}
+            </div>
+          ) : null}
+          {grpGlance ? (
+            <div className="nowgrp-settle" title={grpGlance.strip} aria-label={grpGlance.strip}>
+              <span className="nowgrp-settle-k">{grpGlance.compact}</span>
+              {grpGlance.badge ? <span className="nowgrp-settle-badge">{grpGlance.badge}</span> : null}
             </div>
           ) : null}
           {meta ? <div className="nowmeta">{meta}</div> : null}
