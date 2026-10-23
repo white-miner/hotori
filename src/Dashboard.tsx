@@ -280,6 +280,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const tableAll = useMemo(() => stockTable(s, bookings, dates), [s, bookings, dates]);
   const table = useMemo(() => (scopeId ? stockTable(s, bookings, dates, scopeId) : tableAll), [s, bookings, dates, scopeId, tableAll]);
   const totals = useMemo(() => typeTotals(s, scopeId), [s, scopeId]);
+  /** 타입 여유 칩 = 호텔 전체 (건물 필터 독립 · 미배정 반영) */
+  const totalsAll = useMemo(() => typeTotals(s), [s]);
   const over = firstOverbooking(s, table, dates);
   const overs = useMemo(() => allOverbookings(s, table, dates), [s, table, dates]);
   // 건물 하나를 보는 중이어도 호텔 전체에 오버부킹이 있으면 알려 줘요 (방 미배정 숙박 때문일 수 있어요)
@@ -416,6 +418,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
   const [glanceExpand, setGlanceExpand] = useState(false);
+  /** 타입 여유 칩 펼침 (+N) */
+  const [typeStockExpand, setTypeStockExpand] = useState(false);
+  /** 글랜스 칩 → 판매 캘린더 오늘·타입 포커스 */
+  const [stockFocus, setStockFocus] = useState<{ typeId: string; date: string } | null>(null);
   /** 고객 이름·연락처 검색 (현황·배치 공통 · 칸 비율 무변경) */
   const [guestQuery, setGuestQuery] = useState("");
   const [guestQueryLive, setGuestQueryLive] = useState("");
@@ -435,8 +441,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashRoomId(null), 1600);
   };
+  const jumpToTypeStock = (typeId: string) => {
+    goToday();
+    setSelDate(today);
+    setStockFocus({ typeId, date: today });
+    setTab("stock");
+  };
   useEffect(() => {
     setGlanceExpand(false);
+    setTypeStockExpand(false);
   }, [bScope]);
   useEffect(
     () => () => {
@@ -2491,6 +2504,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const GLANCE_CAP = 12;
     const glanceHidden = !glanceExpand && glanceVacant.length > GLANCE_CAP ? glanceVacant.length - GLANCE_CAP : 0;
     const glanceShown = glanceHidden ? glanceVacant.slice(0, GLANCE_CAP) : glanceVacant;
+    /** 오늘 · 호텔 전체 stockTable remaining · 방 0개 타입 숨김 · 설정 타입 순서 */
+    const typeStockAll = s.types
+      .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
+      .map((t) => ({
+        id: t.id,
+        name: typeLabel(t),
+        rem: tableAll.get(t.id)?.get(today) ?? 0,
+      }));
+    const typeStockHidden =
+      !typeStockExpand && typeStockAll.length > GLANCE_CAP ? typeStockAll.length - GLANCE_CAP : 0;
+    const typeStockShown = typeStockHidden ? typeStockAll.slice(0, GLANCE_CAP) : typeStockAll;
     const vacancyGlance = (
       <div className="now-vacancy" role="region" aria-label="공실 한눈 요약">
         <div className="now-vacancy-eyebrow">공실</div>
@@ -2541,6 +2565,38 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span className="now-vacancy-none">없음</span>
           </div>
         )}
+        {typeStockAll.length ? (
+          <div className="now-vacancy-row now-vacancy-types">
+            <span className="now-vacancy-lab">타입 여유</span>
+            <div className={`now-vacancy-nos ${typeStockExpand ? "open" : ""}`}>
+              {typeStockShown.map((t) => {
+                const tone = t.rem < 0 ? "over" : t.rem === 0 ? "zero" : "ok";
+                const remLab = t.rem < 0 ? `−${-t.rem}` : String(t.rem);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`now-vacancy-type ${tone}`}
+                    title={`${t.name} 여유 ${remLab} · 판매 캘린더`}
+                    onClick={() => jumpToTypeStock(t.id)}
+                  >
+                    {t.name} 여유 <span className="num">{remLab}</span>
+                  </button>
+                );
+              })}
+              {typeStockHidden ? (
+                <button type="button" className="now-vacancy-more" onClick={() => setTypeStockExpand(true)}>
+                  +{typeStockHidden}
+                </button>
+              ) : null}
+              {typeStockExpand && typeStockAll.length > GLANCE_CAP ? (
+                <button type="button" className="now-vacancy-more" onClick={() => setTypeStockExpand(false)}>
+                  접기
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
     /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
@@ -2888,6 +2944,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         wideRef={wideRef}
         notify={(m) => notify(m)}
         onSimple={onSimple}
+        focusCell={stockFocus}
+        onFocusConsumed={() => setStockFocus(null)}
       />
     );
 

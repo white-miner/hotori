@@ -58,6 +58,9 @@ interface Props {
   wideRef: RefObject<HTMLDivElement | null>;
   notify: (m: string) => void;
   onSimple: (preset?: Partial<Booking>) => void;
+  /** 현황 타입 여유 칩 → 오늘·타입 카드 포커스 */
+  focusCell?: CellKey | null;
+  onFocusConsumed?: () => void;
 }
 
 export default function SalesCalendar({
@@ -81,6 +84,8 @@ export default function SalesCalendar({
   wideRef,
   notify,
   onSimple,
+  focusCell = null,
+  onFocusConsumed,
 }: Props) {
   const [cell, setCell] = useState<CellKey | null>(null);
   const [typeEdit, setTypeEdit] = useState<string | null>(null);
@@ -127,6 +132,16 @@ export default function SalesCalendar({
   useEffect(() => {
     if (!picked.length) setBulkPanel(false);
   }, [picked.length]);
+
+  useEffect(() => {
+    if (!focusCell) return;
+    setCell(focusCell);
+    const id = `sales-tcard-${focusCell.typeId}-${focusCell.date}`;
+    requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    });
+    onFocusConsumed?.();
+  }, [focusCell, onFocusConsumed]);
 
   /** 타입별 창 안 최소 판매가능 칸 — 한눈에 */
   const glance = useMemo(() => {
@@ -334,6 +349,7 @@ export default function SalesCalendar({
                         return (
                           <button
                             key={t.id}
+                            id={`sales-tcard-${t.id}-${d}`}
                             type="button"
                             className={`sales-tcard lv-${lv}`}
                             onClick={() => setCell({ typeId: t.id, date: d })}
