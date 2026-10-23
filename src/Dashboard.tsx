@@ -16,6 +16,7 @@ import {
   nowMetaLine,
   nowNightRange,
   nowPayMethodGlance,
+  nowPayMethodPrefix,
   nowStaySummary,
   shouldAutoArrive,
 } from "../shared/nowboard";
@@ -2235,7 +2236,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : null;
     const amount = nowAmountGlance(b, plat, groupCtx);
     const amountTone = nowAmountTone(b, plat, groupCtx);
-    const payMethod = nowPayMethodGlance(b, groupCtx?.info?.payments);
+    const payMethod = nowPayMethodPrefix(amount, nowPayMethodGlance(b, groupCtx?.info?.payments));
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
     const coMark = coMarkLabel ? (

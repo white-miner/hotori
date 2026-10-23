@@ -22,6 +22,7 @@ import {
   nowMetaLine,
   nowNightRange,
   nowPayMethodGlance,
+  nowPayMethodPrefix,
   nowNightsDays,
   nowStayChips,
   nowStayHint,
@@ -390,10 +391,33 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
     assert.equal(nowAmountTone(b, onsite, ctx), "paid");
     assert.equal(nowPayMethodGlance(a, info.payments), "카드");
-    // 단체 수납 없으면 방만 볼 때와 같이 잔금(단체 합)
+    // 완납: 수단+판매가 OK · 「잔금」 금지
+    assert.equal(nowPayMethodPrefix("₩80,000", "카드"), "카드");
+    // 단체 수납 없으면 방만 볼 때와 같이 잔금(단체 합) · 수단+잔금 합침 금지
     const unpaid = { members: [a, b], info: emptyGroupInfo("g1") };
     assert.equal(nowAmountGlance(a, onsite, unpaid), "잔금 ₩150,000");
     assert.equal(nowAmountTone(a, onsite, unpaid), "due");
+    assert.equal(nowPayMethodPrefix("잔금 ₩150,000", "카드"), null);
+  }
+  // 수단+잔금 합침 금지 · 완납은 이체 ₩… OK
+  {
+    const partial = bk({
+      price: 180000,
+      payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "transfer", amount: 50000, bizDate: "2026-10-19", createdAt: "" }],
+    });
+    const leftAmt = nowAmountGlance(partial, onsite);
+    assert.equal(leftAmt, "잔금 ₩130,000");
+    assert.equal(nowPayMethodGlance(partial), "이체");
+    assert.equal(nowPayMethodPrefix(leftAmt, "이체"), null);
+    const paid = bk({
+      price: 180000,
+      payments: [{ id: "2", bookingId: "b", kind: "balance", method: "transfer", amount: 180000, bizDate: "2026-10-22", createdAt: "" }],
+    });
+    const paidAmt = nowAmountGlance(paid, onsite);
+    assert.equal(paidAmt, "₩180,000");
+    assert.equal(nowPayMethodPrefix(paidAmt, nowPayMethodGlance(paid)), "이체");
+    assert.equal(nowPayMethodPrefix("미수 ₩80,000", "현금"), null);
+    assert.equal(nowPayMethodPrefix(null, "카드"), "카드");
   }
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
   assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
