@@ -5,6 +5,7 @@ import {
   canCheckOut,
   canEndDayuse,
   hotelWallClock,
+  isCheckedOut,
   isDepartingStatus,
   groupStayPeers,
   nowAmountGlance,
@@ -3155,7 +3156,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                         {readOnly ? null : ` · ${won(d.price)}원`}
                       </span>
                     </div>
-                    {isActive(d) && d.arrived ? <span className="intag">입실 완료</span> : null}
+                    {isActive(d) && isCheckedOut(d) ? (
+                      <span className="intag done">이용완료</span>
+                    ) : isActive(d) && d.arrived ? (
+                      <span className="intag">입실 완료</span>
+                    ) : null}
                   </div>
                 ))
               ) : (
