@@ -1,9 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PALETTE, PRESETS, contrast, defaultPlatformColor, paint, platformColor, textOn, tint } from "./platform";
+import {
+  PALETTE,
+  PRESETS,
+  contrast,
+  defaultPlatformAbbr,
+  defaultPlatformColor,
+  paint,
+  platformAbbr,
+  platformColor,
+  textOn,
+  tint,
+} from "./platform";
 import { normalizeSettings } from "./ledger";
 
 const P = (name: string, id = "p1", color?: string | null) => ({ id, name, abbr: name[0], color });
+
+test("플랫폼 한 글자 약자 SoT · 알려진 이름 · stub「새」복구", () => {
+  assert.equal(defaultPlatformAbbr("야놀자"), "야");
+  assert.equal(defaultPlatformAbbr("여기어때"), "여");
+  assert.equal(defaultPlatformAbbr("아고다"), "아");
+  assert.equal(defaultPlatformAbbr("호텔타임"), "호");
+  assert.equal(defaultPlatformAbbr("에어비앤비"), "에");
+  assert.equal(defaultPlatformAbbr("현장·전화"), "현");
+  assert.equal(platformAbbr({ name: "야놀자", abbr: "야" }), "야");
+  assert.equal(platformAbbr({ name: "에어비앤비", abbr: "새" }), "에", "추가 stub「새」는 이름 기본값으로");
+  assert.equal(platformAbbr({ name: "새 플랫폼", abbr: "새" }), "새", "이름이 새…면 stub 유지");
+  assert.equal(platformAbbr({ name: "동네", abbr: "" }), "동");
+  assert.equal(platformAbbr({ name: "x", abbr: "ab" }), "a", "한 글자만");
+  assert.equal(platformAbbr(null), "?");
+});
+
+test("normalizeSettings: stub「새」약자를 이름으로 고침", () => {
+  const s = normalizeSettings({
+    platforms: [{ id: "p", name: "에어비앤비", abbr: "새" }],
+  } as never);
+  assert.equal(s.platforms[0]!.abbr, "에");
+});
 
 test("잘 알려진 플랫폼은 이름으로 기본 색", () => {
   assert.equal(defaultPlatformColor(P("네이버")), "#03C75A");

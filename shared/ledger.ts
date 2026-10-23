@@ -1,4 +1,5 @@
 import { normalizePlatformFee, normalizeRate } from "./feerate";
+import { platformAbbr } from "./platform";
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
 import type { LongStayRate, NightCharge, SettleCycle, StayMode } from "./longstay";
@@ -295,7 +296,10 @@ export function normalizeSettings(raw: unknown): HotelSettings {
           .filter((p) => p && typeof p.id === "string")
           .map((p) => {
             const { color, ...rest } = normalizePlatformFee(p);
-            return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? { ...rest, color: color.toUpperCase() } : rest;
+            const name = typeof rest.name === "string" && rest.name.trim() ? rest.name.trim() : "플랫폼";
+            const abbr = platformAbbr({ name, abbr: typeof rest.abbr === "string" ? rest.abbr : "" });
+            const base = { ...rest, name, abbr };
+            return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? { ...base, color: color.toUpperCase() } : base;
           })
       : [],
     lowThreshold: Number.isInteger(th) && th >= 0 && th <= 20 ? th : 2,
