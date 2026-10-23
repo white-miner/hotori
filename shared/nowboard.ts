@@ -435,10 +435,18 @@ export function simplePayGlance(b: Booking, onsite: boolean): string | null {
   return null;
 }
 
-/** 메모만 (인원 `n명`은 TypeRow 우측 — 하단 중복 금지) */
+/**
+ * 칸 메타: 메모만 (인원 `n명`은 TypeRow 우측 — 하단 중복 금지).
+ * `[추가금·늦은 퇴실]` 등 할증 태그는 comark·하단 상태와 중복 → 표시에서 제거(저장 메모는 유지).
+ */
 export function nowMetaLine(b: Pick<Booking, "memo" | "guests">): string | null {
   const memo = b.memo?.trim();
-  return memo || null;
+  if (!memo) return null;
+  const cleaned = memo
+    .replace(/\[추가금[·.][^\]]*\][^\n]*/g, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return cleaned || null;
 }
 
 /**

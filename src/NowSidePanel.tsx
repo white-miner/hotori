@@ -326,9 +326,12 @@ export default function NowSidePanel({
     !!onStaySale &&
     !multiGroup &&
     ((!b && selectedRoomIds.length > 0) || (!!b && b.kind === "stay"));
+  /** 숙박예약·미입실만 · 이미 입실/늦은퇴실이면 숨김 */
   const showEarlyIn =
     !readOnly && !!onEarlyIn && !!b && b.kind === "stay" && !!f && f.kind === "arriving" && !b.arrived;
+  /** 활성 숙박·대실 · 이미 늦은퇴실이어도 조정 시트 입구 유지 */
   const showLateOut = !readOnly && !!onLateOut && !!b && canAddTime(b);
+  const showInOutCtas = showEarlyIn || showLateOut;
 
   return (
     <aside className="nowside" aria-label="운영">
@@ -435,12 +438,16 @@ export default function NowSidePanel({
                         ) : null}
                       </div>
                     ) : null}
-                    {!readOnly && !multiGroup ? (
-                      <div className="nsel-act-sec nsel-act-row" role="group" aria-label="숙박 운영">
+                    {!readOnly && !multiGroup && showInOutCtas ? (
+                      <div
+                        className={`nsel-act-sec${showEarlyIn && showLateOut ? " nsel-act-row" : ""}`}
+                        role="group"
+                        aria-label="빠른 입실 · 늦은 퇴실"
+                      >
                         {showEarlyIn ? (
                           <button
                             type="button"
-                            className="btn sm line"
+                            className="btn sm dark"
                             disabled={moving}
                             onClick={() => onEarlyIn?.(b)}
                             aria-label={EARLY_IN_CTA}
@@ -452,7 +459,7 @@ export default function NowSidePanel({
                         {showLateOut ? (
                           <button
                             type="button"
-                            className="btn sm line"
+                            className="btn sm stop"
                             disabled={moving}
                             onClick={() => onLateOut?.(b)}
                             aria-label={LATE_OUT_CTA}
@@ -461,6 +468,10 @@ export default function NowSidePanel({
                             {LATE_OUT_CTA}
                           </button>
                         ) : null}
+                      </div>
+                    ) : null}
+                    {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk) ? (
+                      <div className="nsel-act-sec nsel-act-row" role="group" aria-label="숙박 운영">
                         {b.kind === "stay" && onSetNoClean ? (
                           <button
                             type="button"

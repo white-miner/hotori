@@ -608,8 +608,10 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .cell .dumark { position: absolute; top: -12px; right: 8px; z-index: 1; font-family: var(--num); font-size: 20px; font-weight: 750; line-height: 1; color: #fff; background: var(--dayuse); border-radius: 10px; padding: 6px 10px; white-space: nowrap; letter-spacing: -0.02em; }
 .cell .dumark i { font-style: normal; font-family: "PV", system-ui, sans-serif; }
 .cell .dumark em { font-style: normal; opacity: 0.85; }
-/* 퇴실 시각 마크 · dumark와 대칭(좌) · 타이포만 · 칸 박스 미터치 */
-.cell .comark { position: absolute; top: -12px; left: 8px; z-index: 1; font-family: var(--num); font-size: 20px; font-weight: 750; line-height: 1; color: #fff; background: var(--badge-danger); border-radius: 10px; padding: 6px 10px; white-space: nowrap; letter-spacing: -0.02em; }
+/* 퇴실 시각 마크 · dumark와 같은 우상단(호수 가림 금지) · 타이포만 · 칸 박스 미터치 */
+.cell .comark { position: absolute; top: -12px; right: 8px; z-index: 1; font-family: var(--num); font-size: 20px; font-weight: 750; line-height: 1; color: #fff; background: var(--badge-danger); border-radius: 10px; padding: 6px 10px; white-space: nowrap; letter-spacing: -0.02em; }
+/* 대실+늦은퇴실 동시: dumark 아래 스택 · 호수(좌) 비움 */
+.cell.hasdu .comark { top: 28px; }
 .cell .nowpay { font-weight: 700; margin-right: 2px; opacity: 0.92; }
 .cell > * { flex-shrink: 0; }
 .cell .r1 { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 2px 3px; border-radius: 9px; margin: 0 0 1px; }
@@ -1006,7 +1008,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .cell .dus .du { font-size: 18px; padding: 2px 6px; }
   .cell .dumark { top: -10px; right: 4px; font-size: 17px; padding: 4px 6px; border-radius: 8px; }
   .cell .dumark i, .cell .dumark em { display: none; }
-  .cell .comark { top: -10px; left: 4px; font-size: 17px; padding: 4px 6px; border-radius: 8px; }
+  .cell .comark { top: -10px; right: 4px; font-size: 17px; padding: 4px 6px; border-radius: 8px; }
+  .cell.hasdu .comark { top: 24px; }
   .side { display: flex; margin: 14px 12px 0; padding: 18px 14px; border-radius: 20px; }
   .it .tm { width: 88px; font-size: 13px; }
   .dim { padding: 0; align-items: flex-end; }
