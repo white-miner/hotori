@@ -3369,6 +3369,53 @@ button.nowstatus { cursor: pointer; }
   border: 1px solid var(--line);
 }
 .now-vacancy-more:hover { background: var(--hover); color: var(--ink); }
+/* 타입 여유 칩 — 판매캘린더 stockTable · 호수 칩만큼 눈에 띄게 · 칸 CSS 무변경 */
+.now-vacancy-types { margin-top: var(--space-3); }
+.now-vacancy-type {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-4);
+  font-size: 14.5px;
+  font-weight: 750;
+  color: var(--ink);
+  background: #fff;
+  border: 1.5px solid var(--ink2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.now-vacancy-type .num {
+  font-family: var(--num);
+  font-weight: 800;
+  font-size: 15.5px;
+  font-feature-settings: "tnum" 1;
+}
+.now-vacancy-type:hover {
+  background: var(--panel);
+  border-color: var(--ink);
+}
+.now-vacancy-type.ok {
+  background: var(--badge-info-s);
+  border-color: var(--badge-info-border);
+  color: var(--badge-info);
+}
+.now-vacancy-type.ok .num { color: var(--badge-info); }
+.now-vacancy-type.zero {
+  background: var(--badge-warn-s);
+  border-color: var(--badge-warn-border);
+  color: var(--badge-warn);
+}
+.now-vacancy-type.zero .num { color: var(--badge-warn); }
+.now-vacancy-type.over {
+  background: var(--badge-danger-s);
+  border-color: var(--badge-danger);
+  color: var(--badge-danger);
+}
+.now-vacancy-type.over .num { color: var(--badge-danger); }
 .now-page .cell.nowflash {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
