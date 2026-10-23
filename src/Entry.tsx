@@ -62,6 +62,8 @@ import {
   type PayKind,
   isOnsite,
   onsiteCreatePayTail,
+  guestPhoneOptsForBooking,
+  isGuestPhoneRequired,
   payLineMain,
   paySplit,
   payState,
@@ -1228,6 +1230,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 현장 결제·장기만 잔금 UI. OTA는 결제 줄이 있어도 「플랫폼에서 결제 · 잔금 없음」.
   const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
+  /** 라벨 * · HTML required · save validateGuestPhone 동일 SoT (바로입실 빈 연락처 수정 완화) */
+  const phoneRequired = isGuestPhoneRequired(
+    curPlat,
+    guestPhoneOptsForBooking({
+      existing: base ? { guestPhone: base.guestPhone, guestName: base.guestName } : null,
+      guestName,
+    }),
+  );
   /** 신규 표준 숙박·현장만 progressive · 수정/장기/대실/플랫폼은 Option A 또는 OTA */
   const createOnsitePay = isNew && kind === "stay" && !long && isOnsite(curPlat);
   const po = payoutOf(draftBase, curPlat);
@@ -1409,9 +1419,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       };
     }
     setDayuseWarn(null);
-    // 현장·전화만 연락처 필수 · 바로입실·OTA는 선택 (validateGuestPhone SoT)
+    // 현장·전화만 연락처 필수 · 바로입실·이미 빈 연락처 수정·OTA는 선택 (SoT)
     {
-      const phoneErr = validateGuestPhone(curPlat, guestPhone, { walkInImmediate });
+      const phoneOpts = guestPhoneOptsForBooking({
+        walkInImmediate,
+        existing: base ? { guestPhone: base.guestPhone, guestName: base.guestName } : null,
+        guestName,
+      });
+      const phoneErr = validateGuestPhone(curPlat, guestPhone, phoneOpts);
       if (phoneErr) return setErr(phoneErr);
     }
     if (walkInImmediate && draft.kind === "stay" && !draft.roomId) return setErr("바로 입실은 호실을 골라 주세요.");
@@ -2521,7 +2536,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="fld">
           <label>
-            이름<em>*</em> · 연락처{isOnsite(curPlat) ? <em>*</em> : null}
+            이름<em>*</em> · 연락처{phoneRequired ? <em>*</em> : null}
           </label>
           {/* value col only — GuestNamePhone as .fld sibling put .two under the 86px label */}
           <div className="payb">
@@ -2531,10 +2546,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               phone={guestPhone}
               onName={setName}
               onPhone={setPhone}
-              phoneRequired={isOnsite(curPlat)}
+              phoneRequired={phoneRequired}
             />
             {isNew && kind === "stay" ? (
               <div className="muted sm">바로입실 시 이름·연락처 비워도 돼요 · 호실 필수</div>
+            ) : !isNew && !phoneRequired && isOnsite(curPlat) ? (
+              <div className="muted sm">바로입실 예약 · 연락처는 비워도 돼요</div>
             ) : null}
           </div>
         </div>

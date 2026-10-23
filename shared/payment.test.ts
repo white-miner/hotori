@@ -13,6 +13,8 @@ import {
   payLineMain,
   payState,
   planOnsiteCreatePay,
+  guestPhoneOptsForBooking,
+  isGuestPhoneRequired,
   isWalkInPlaceholderName,
   validateGuestPhone,
   validateOnsiteCreateDeposit,
@@ -53,6 +55,37 @@ test("연락처: OTA는 빈 번호 OK · 현장·전화만 필수 · 바로 입�
   assert.equal(validateGuestPhone(null, ""), null);
   assert.equal(validateGuestPhone(onsite, "", { walkInImmediate: true }), null);
   assert.equal(validateGuestPhone(onsite, "  ", { walkInImmediate: true }), null);
+  // 바로입실로 빈 연락처 저장한 예약 수정: 계속 선택
+  assert.equal(validateGuestPhone(onsite, "", { priorPhoneEmpty: true }), null);
+  assert.equal(validateGuestPhone(onsite, "", { walkInPlaceholder: true }), null);
+  assert.equal(isGuestPhoneRequired(onsite), true);
+  assert.equal(isGuestPhoneRequired(onsite, { priorPhoneEmpty: true }), false);
+  assert.equal(isGuestPhoneRequired(ota), false);
+  // 신규는 existing 없으면 prior 완화 없음
+  assert.equal(guestPhoneOptsForBooking({}).priorPhoneEmpty, false);
+  assert.equal(
+    guestPhoneOptsForBooking({ existing: { guestPhone: null, guestName: "바로입실 10/23" } }).priorPhoneEmpty,
+    true,
+  );
+  assert.equal(
+    guestPhoneOptsForBooking({
+      existing: { guestPhone: null, guestName: "바로입실 10/23" },
+      guestName: "바로입실 10/23",
+    }).walkInPlaceholder,
+    true,
+  );
+  assert.equal(
+    guestPhoneOptsForBooking({ existing: { guestPhone: "010", guestName: "김손님" } }).priorPhoneEmpty,
+    false,
+  );
+  // 이름만 실명으로 바꿔도 기존 빈 연락처면 선택 유지
+  const editEmpty = guestPhoneOptsForBooking({
+    existing: { guestPhone: null, guestName: "바로입실 10/23" },
+    guestName: "김손님",
+  });
+  assert.equal(editEmpty.priorPhoneEmpty, true);
+  assert.equal(editEmpty.walkInPlaceholder, false);
+  assert.equal(validateGuestPhone(onsite, "", editEmpty), null);
 });
 
 test("바로 입실 표시명: M/D · prefix 감지", () => {
