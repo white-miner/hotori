@@ -1,8 +1,18 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
-import { BOOK_PAY_LABEL, payState, type BookPayMethod } from "./payment";
+import { BOOK_PAY_LABEL, payState, type BookPayMethod, type Payment } from "./payment";
+import { type GroupInfo, settle } from "./settle";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
+
+/**
+ * 단체 칸/정산: PaymentDesk `addGroupPayment`는 단체 줄에만 쌓이므로
+ * 방 `payState`만 보면 완납 후에도 「잔금」이 남음 → settle 스냅샷 사용.
+ */
+export type NowPayGroupCtx = {
+  members: Booking[];
+  info?: GroupInfo | null;
+};
 
 /** 칸·옆 패널에 쓰는 현장 상태 (우선순위 높은 것부터 판별) */
 export type NowKind = "lateOut" | "departing" | "arriving" | "inhouse" | "unassigned" | "empty";
@@ -335,12 +345,33 @@ export function nowStayHint(b: Booking, date: string): string {
 /** 칸 금액 글자색: 미수=빨강 · 선금·일부=파랑 · 완납=검정 (배경 칠 금지) */
 export type NowAmountTone = "due" | "partial" | "paid" | "neutral";
 
+/** 단실=payState · 단체=settle(방+단체 수납). 장기·금액미정은 방 단위. */
+function nowPaySnap(
+  b: Booking,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+  group?: NowPayGroupCtx | null,
+): { tracked: boolean; paid: number; left: number; full: boolean } {
+  if (
+    group &&
+    b.groupId &&
+    b.stayMode !== "long_stay" &&
+    !b.priceUnset &&
+    group.members.length > 0
+  ) {
+    const st = settle(group.members, group.info ?? null, plat);
+    return { tracked: st.tracked, paid: st.paid, left: st.left, full: st.settled };
+  }
+  const ps = payState(b, plat);
+  return { tracked: ps.tracked, paid: ps.paid, left: ps.left, full: ps.full };
+}
+
 export function nowAmountTone(
   b: Booking,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+  group?: NowPayGroupCtx | null,
 ): NowAmountTone {
   if (b.priceUnset) return "neutral";
-  const ps = payState(b, plat);
+  const ps = nowPaySnap(b, plat, group);
   if (ps.tracked && ps.left > 0 && ps.paid > 0) return "partial";
   if (ps.tracked && ps.left > 0) return "due";
   if (b.price > 0 || ps.full || (ps.tracked && ps.paid > 0)) return "paid";
@@ -394,19 +425,21 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
 /**
  * 칸 금액 글랜스.
  * 일반: 잔금 있으면 `잔금 ₩X`, 없으면 `₩price`.
+ * 단체: PaymentDesk 단체 수납을 settle로 반영(방 payments만 보면 오잔금).
  * 장기: `미수 ₩X` (0이면 생략).
  * 색은 nowAmountTone — 숫자만 칠함.
  */
 export function nowAmountGlance(
   b: Booking,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+  group?: NowPayGroupCtx | null,
 ): string | null {
   if (b.priceUnset) return "금액미정";
   if (b.stayMode === "long_stay") {
     const left = payState(b, plat).left;
     return left > 0 ? `미수 ₩${won(left)}` : null;
   }
-  const ps = payState(b, plat);
+  const ps = nowPaySnap(b, plat, group);
   if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
   if (b.price > 0) return `₩${won(b.price)}`;
   return null;
@@ -467,9 +500,13 @@ export function nowCheckoutMark(
 
 /**
  * 칸 결제수단 글랜스: 받은 결제 기준 · 최신→고유 라벨 · `카드` / `카드·이체`.
+ * 단체 줄(`group.payments`)도 합쳐 완납 후 수단이 보이게.
  */
-export function nowPayMethodGlance(b: Pick<Booking, "payments">): string | null {
-  const pays = b.payments ?? [];
+export function nowPayMethodGlance(
+  b: Pick<Booking, "payments">,
+  extraPays?: readonly Payment[] | null,
+): string | null {
+  const pays = [...(b.payments ?? []), ...(extraPays ?? [])];
   if (!pays.length) return null;
   const ordered = [...pays].sort((a, c) => (c.createdAt || "").localeCompare(a.createdAt || ""));
   const seen = new Set<BookPayMethod>();
@@ -480,6 +517,12 @@ export function nowPayMethodGlance(b: Pick<Booking, "payments">): string | null 
     labels.push(BOOK_PAY_LABEL[p.method]);
   }
   return labels.length ? labels.join("·") : null;
+}
+
+/** 현황·데스크: 같은 groupId 활성 숙박 형제 */
+export function groupStayPeers(list: readonly Booking[], groupId: string | null | undefined): Booking[] {
+  if (!groupId) return [];
+  return list.filter((x) => x.groupId === groupId && isActive(x) && x.kind === "stay");
 }
 
 /**

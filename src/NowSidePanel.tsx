@@ -99,6 +99,9 @@ interface Props {
   selectedGroupBookings?: Booking[];
   /** 그룹 정산 정보 (복수 잔금 글랜스) */
   selectedGroupInfo?: GroupInfo | null;
+  /** 선택 방의 groupId 형제(단실 포함) · 정산 글랜스 SoT = settle */
+  settleMembers?: Booking[];
+  settleGroupInfo?: GroupInfo | null;
   nowOpts?: Parameters<typeof nowFlags>[2];
 }
 
@@ -136,6 +139,8 @@ export default function NowSidePanel({
   onEarlyIn,
   selectedGroupBookings = [],
   selectedGroupInfo = null,
+  settleMembers = [],
+  settleGroupInfo = null,
   nowOpts,
 }: Props) {
   const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
@@ -166,16 +171,25 @@ export default function NowSidePanel({
   const t = typeId ? L.types.get(typeId) : null;
   const f = b ? nowFlags(b, today, nowOpts) : null;
   const plat = b ? L.plats.get(b.platformId) : null;
-  const amount = b ? nowAmountGlance(b, plat) : null;
+  const groupPayCtx =
+    b?.groupId && settleMembers.length
+      ? { members: settleMembers, info: settleGroupInfo }
+      : null;
+  const amount = b ? nowAmountGlance(b, plat, groupPayCtx) : null;
   const ps = b && !b.priceUnset ? payState(b, plat) : null;
   const balGlance = useMemo(() => {
+    // 단체: 형제+GroupInfo settle (칸 nowAmountGlance와 동일 SoT · 단체 수납 반영)
+    if (settleMembers.length >= 1 && settleMembers[0]?.groupId) {
+      const p0 = L.plats.get(settleMembers[0]!.platformId);
+      return paymentDeskGlance(settleMembers, p0, settleGroupInfo);
+    }
     if (multiGroup && selectedGroupBookings.length > 1) {
       const p0 = L.plats.get(selectedGroupBookings[0]!.platformId);
       return paymentDeskGlance(selectedGroupBookings, p0, selectedGroupInfo);
     }
     if (b && !b.priceUnset) return paymentDeskGlance([b], plat);
     return null;
-  }, [multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
+  }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
   const glance = selectedRoomId && !multiVacant && !multiGroup ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
     typeId && !b && !multiVacant && !multiGroup
@@ -392,7 +406,13 @@ export default function NowSidePanel({
                     </span>
                   </div>
                   <div className="nsel-row">
-                    <span className="nsel-k">{b.priceUnset ? "요금" : ps?.tracked && ps.left > 0 ? "잔금" : "판매금"}</span>
+                    <span className="nsel-k">
+                      {b.priceUnset
+                        ? "요금"
+                        : (balGlance?.tracked ? balGlance.left > 0 : !!(ps?.tracked && ps.left > 0))
+                          ? "잔금"
+                          : "판매금"}
+                    </span>
                     <span className="nsel-v">
                       {b.priceUnset ? "금액미정" : amount ? amount : b.price > 0 ? `₩${won(b.price)}` : "—"}
                     </span>

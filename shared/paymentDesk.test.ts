@@ -62,6 +62,22 @@ test("paymentDeskGlance group uses settle", () => {
   assert.equal(g.left, 100000);
 });
 
+test("paymentDeskGlance single groupId + group pay → left 0 (칸/ops SoT)", () => {
+  const plat = { name: "현장·전화", onsite: true };
+  const members = [
+    stay({ id: "a", groupId: "g1", price: 50000, roomId: "r1", payments: [] }),
+    stay({ id: "b", groupId: "g1", price: 50000, roomId: "r2", payments: [] }),
+  ];
+  const info = {
+    ...emptyGroupInfo("g1"),
+    payments: [{ id: "gp", bookingId: "", kind: "balance" as const, method: "card" as const, amount: 100000, bizDate: "2026-10-22", createdAt: "" }],
+  };
+  const g = paymentDeskGlance(members, plat, info);
+  assert.equal(g.left, 0);
+  assert.equal(g.full, true);
+  assert.equal(g.paid, 100000);
+});
+
 test("planPaymentDeskPay validates amount", () => {
   const glance = paymentDeskGlance([stay({})], { name: "현장·전화", onsite: true });
   const bad = planPaymentDeskPay(glance, { amount: 0, method: "card", kind: "balance", bizDate: "2026-10-22" });

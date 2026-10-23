@@ -49,7 +49,8 @@ export function paymentDeskGlance(
   const active = members.filter((b) => b.status === "active");
   const priceUnset = active.some((b) => b.priceUnset);
   const groupId = active[0]?.groupId ?? null;
-  const isGroup = !!groupId && active.length > 1 && active.every((b) => b.groupId === groupId);
+  // 같은 groupId면 settle(방+단체 수납). 호출측이 형제 전부 넘겨야 due가 맞음.
+  const isGroup = !!groupId && active.every((b) => b.groupId === groupId);
 
   if (isGroup) {
     const st = settle(active, groupInfo ?? null, plat);
@@ -59,7 +60,7 @@ export function paymentDeskGlance(
       paid: st.paid,
       left: st.left,
       full: st.settled,
-      group: true,
+      group: active.length > 1,
       memberCount: active.length,
       priceUnset,
     };
