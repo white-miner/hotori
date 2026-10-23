@@ -7,7 +7,9 @@ import {
   won,
 } from "../shared/ledger";
 import {
+  STAY_SALE_CHECKIN,
   STAY_SALE_CTA,
+  STAY_SALE_SAVE,
   STAY_SALE_TITLE,
   staySaleExtendPreview,
   staySaleNightsSummary,
@@ -138,27 +140,29 @@ export default function StaySaleModal({
     setErr(null);
   };
 
-  const submit = () => {
-    if (busy) return;
-    if (isOcc && occupied) {
-      if (!extend && earlyH < 1 && lateH < 1) {
-        setErr("1박 연장 · 빠른 입실 · 늦은 퇴실 중 하나를 골라 주세요.");
-        return;
-      }
-      setErr(null);
-      onConfirmOccupied({
-        bookingId: occupied.id,
-        extend,
-        earlyInHours: earlyH || undefined,
-        earlyInAmount: earlyMethod === "service" ? 0 : Number(earlyAmt || 0),
-        earlyInMethod: earlyMethod,
-        lateOutHours: lateH || undefined,
-        lateOutAmount: lateMethod === "service" ? 0 : Number(lateAmt || 0),
-        lateOutMethod: lateMethod,
-        bizDate: today,
-      });
+  const submitOccupied = () => {
+    if (busy || !occupied) return;
+    if (!extend && earlyH < 1 && lateH < 1) {
+      setErr("1박 연장 · 빠른 입실 · 늦은 퇴실 중 하나를 골라 주세요.");
       return;
     }
+    setErr(null);
+    onConfirmOccupied({
+      bookingId: occupied.id,
+      extend,
+      earlyInHours: earlyH || undefined,
+      earlyInAmount: earlyMethod === "service" ? 0 : Number(earlyAmt || 0),
+      earlyInMethod: earlyMethod,
+      lateOutHours: lateH || undefined,
+      lateOutAmount: lateMethod === "service" ? 0 : Number(lateAmt || 0),
+      lateOutMethod: lateMethod,
+      bizDate: today,
+    });
+  };
+
+  /** 저장하기=숙박예약 · 바로입실=저장+arrived (현장·플랫폼 공통) */
+  const submitCreate = (walkInImmediate: boolean) => {
+    if (busy) return;
     if (channel === "platform" && !otaList.length) {
       setErr("등록된 플랫폼 채널이 없어요.");
       return;
@@ -201,7 +205,7 @@ export default function StaySaleModal({
       lateOutAmount:
         channel === "onsite" && lateH ? (lateMethod === "service" ? 0 : Number(lateAmt || 0)) : undefined,
       lateOutMethod: channel === "onsite" && lateH ? lateMethod : undefined,
-      walkInImmediate: false,
+      walkInImmediate,
     };
     setErr(null);
     onConfirmCreate(input);
@@ -562,9 +566,32 @@ export default function StaySaleModal({
           <button type="button" className="btn line" disabled={busy} onClick={onCancel}>
             취소
           </button>
-          <button type="button" className="btn stop" disabled={busy} onClick={submit} autoFocus>
-            {busy ? "저장 중…" : STAY_SALE_CTA}
-          </button>
+          {isOcc ? (
+            <button type="button" className="btn stop" disabled={busy} onClick={submitOccupied} autoFocus>
+              {busy ? "저장 중…" : STAY_SALE_CTA}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn line"
+                disabled={busy}
+                onClick={() => submitCreate(false)}
+                autoFocus
+              >
+                {busy ? "저장 중…" : STAY_SALE_SAVE}
+              </button>
+              <button
+                type="button"
+                className="btn dark"
+                disabled={busy}
+                onClick={() => submitCreate(true)}
+                title="저장 후 바로 숙박(입실) · 이름·연락처 비우면 자동 표시명"
+              >
+                {busy ? "저장 중…" : STAY_SALE_CHECKIN}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

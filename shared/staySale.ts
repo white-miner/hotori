@@ -40,8 +40,12 @@ export function staySaleDraftSessionKey(
   return `${occupiedId ?? "new"}|${roomIds.join(",")}`;
 }
 
-/** 숙박 판매 채널 모드 · 바로입실⊂현장 · 상호 배타 */
+/** 숙박 판매 채널 모드 · 현장 | 플랫폼 (바로입실은 푸터 CTA · 채널 배타 없음) */
 export type StaySaleChannelMode = "onsite" | "platform";
+
+/** 푸터: 저장하기 = 숙박예약 · 바로입실 = 저장+arrived */
+export const STAY_SALE_SAVE = "저장하기";
+export const STAY_SALE_CHECKIN = "바로입실";
 /** 플랫폼 판매금: 총액 기본 · 박당 옵션 (OTA SoT) */
 export type StaySaleSalesMode = "total" | "perNight";
 
@@ -126,7 +130,7 @@ export interface StaySaleCreateInput {
   lateOutHours?: number;
   lateOutAmount?: number;
   lateOutMethod?: BookPayMethod | "service" | "deferred";
-  /** 오늘 입실 + 바로 입실 */
+  /** 푸터 「바로입실」: 저장 + arrived · 이름·전화 완화 · 현장·플랫폼 공통 */
   walkInImmediate?: boolean;
 }
 

@@ -58,7 +58,7 @@ export function isWalkInPlaceholderName(name: string | null | undefined): boolea
 }
 
 /**
- * 연락처 필수 = 현장·전화(`isOnsite`)만. 「바로 입실」ON이면 현장·전화도 선택.
+ * 연락처 필수 = 현장·전화(`isOnsite`)만. 푸터 「바로입실」이면 현장·전화도 선택.
  * OTA 등 플랫폼은 빈 연락처로 저장 가능. 간단 예약·Entry·결제 저장이 이 함수만 써요.
  */
 export function validateGuestPhone(
