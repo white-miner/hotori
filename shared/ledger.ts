@@ -555,6 +555,29 @@ export function usedNights(b: EarlyPick): number | null {
 }
 /** 실제 퇴실일 (중도 퇴실이면 그날) */
 export const stayEnd = (b: EarlyPick): string => addDays(b.checkIn, usedNights(b) ?? 0);
+
+/** 장부 이용내역: 입실전 · 이용중 · 완료 (취소·노쇼는 null) */
+export type StayPhase = "pre" | "in" | "done";
+type PhasePick = Pick<Booking, "status" | "arrived" | "checkedOutAt" | "kind" | "checkIn" | "nights" | "earlyOut">;
+export function stayPhase(b: PhasePick): StayPhase | null {
+  if (b.status !== "active") return null;
+  if (b.checkedOutAt || isEarlyOut(b)) return "done";
+  if (b.arrived) return "in";
+  return "pre";
+}
+export const STAY_PHASE_LABEL: Record<StayPhase, string> = { pre: "입실전", in: "이용중", done: "완료" };
+/** 장부 상태 열: 취소·노쇼 · 입실전/이용중/완료 */
+export function stayStatusLabel(b: PhasePick): string {
+  if (b.status === "cancelled") return "취소";
+  if (b.status === "noshow") return "노쇼";
+  const p = stayPhase(b);
+  return p ? STAY_PHASE_LABEL[p] : "";
+}
+/** 장부 입–퇴 열 (숙박=입실–퇴실 · 대실=시작~종료) */
+export function stayInOutLabel(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut" | "startTime" | "endTime">): string {
+  if (b.kind !== "stay") return `${b.startTime ?? "?"}~${b.endTime ?? "?"}`;
+  return `${md(b.checkIn)}–${md(stayEnd(b))}`;
+}
 /** 중도 퇴실 단추를 보여 줄까요: 정상 숙박 2박 이상, 오늘(영업일)이 첫 밤 다음 날 ~ 퇴실 전날 */
 export const canEarlyOutToday = (b: Pick<Booking, "kind" | "checkIn" | "nights" | "status" | "earlyOut">, today: string): boolean =>
   b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 2 && !isEarlyOut(b) && today > b.checkIn && today < addDays(b.checkIn, b.nights);

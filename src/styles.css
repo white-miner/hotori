@@ -780,7 +780,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .fdate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink3); font-weight: 600; }
 .fdate input { font-family: var(--num); padding: 0 10px; }
 .ltable { background: var(--panel2); border-radius: 22px; padding: 8px; }
-.lrow { display: grid; grid-template-columns: 92px 48px minmax(110px, 1.1fr) minmax(140px, 1.6fr) 54px 96px 64px 120px 40px; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 14px; font-size: 13.5px; cursor: pointer; }
+.lrow { display: grid; grid-template-columns: 84px 40px minmax(90px, 1fr) minmax(110px, 1.3fr) 108px 64px 96px 40px 48px 56px 108px; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 14px; font-size: 13.5px; cursor: pointer; }
 .lrow + .lrow { margin-top: 3px; }
 .lrow:not(.lhead) { background: #fff; }
 .lrow:not(.lhead):hover { background: var(--panel); }
@@ -793,11 +793,22 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .lrow .c-name { display: flex; gap: 6px; align-items: center; font-weight: 650; min-width: 0; white-space: nowrap; }
 .lrow .c-name .gn { overflow: hidden; text-overflow: ellipsis; }
 .lrow .memo { font-size: 11.5px; color: var(--ink3); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
-.lrow .c-len, .lrow .c-room { font-family: var(--num); font-weight: 650; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lrow .c-phone, .lrow .c-inout, .lrow .c-guests, .lrow .c-room { font-family: var(--num); font-weight: 650; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lrow .c-phone { font-size: 12.5px; font-weight: 600; }
+.lrow .c-status { min-width: 0; }
+.lrow .stag { display: inline-block; font-size: 11.5px; font-weight: 750; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.lrow .stag.pre { color: var(--badge-info); background: var(--badge-info-s); }
+.lrow .stag.in { color: var(--red-d); background: var(--red-s); }
+.lrow .stag.done { color: var(--ink3); background: var(--panel); }
+.lrow .stag.cx { color: var(--ink4); background: var(--panel); }
+.lrow .stag.ns { color: var(--badge-warn); background: var(--badge-warn-s); }
 .lrow .c-type { min-width: 0; display: flex; }
 .lrow .c-price { font-family: var(--num); font-weight: 750; display: flex; flex-direction: column; align-items: flex-end; }
 .lrow .c-price small { font-size: 10.5px; color: var(--ink3); font-weight: 550; }
 .lrow.cx { background: #fafafa !important; }
+.page.ledger .h1-sub { font-size: 0.55em; font-weight: 650; color: var(--ink3); margin-left: 6px; vertical-align: middle; }
+.filters .period-chips { flex: none; }
+.filters .search.ls kbd { margin-left: 4px; }
 /* 노쇼: 줄을 긋지 않아요 (받은 금액은 매출) · 중도 퇴실: 이용한 박수와 환불 */
 .nst { font-size: 10px; font-weight: 750; color: var(--ink2); background: #efefef; border-radius: 6px; padding: 1px 5px; white-space: nowrap; }
 .lrow.ns .c-name .gn { color: var(--ink2); }
@@ -945,7 +956,7 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .sgrid { grid-template-columns: 1fr 1fr; }
   .sgrid .card#set-plan { grid-column: 1 / -1; }
   .dim { padding: 60px 24px 20px; justify-content: center; }
-  .lrow { grid-template-columns: 82px 40px minmax(90px, 1fr) minmax(110px, 1.4fr) 46px 86px 52px 100px 30px; gap: 8px; }
+  .lrow { grid-template-columns: 76px 36px minmax(80px, 1fr) minmax(90px, 1.2fr) 96px 56px 88px 36px 44px 48px 96px; gap: 6px; }
 }
 
 /* ---------- 휴대폰 ---------- */
@@ -1044,14 +1055,14 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
   .fdate input { flex: 1; min-width: 0; }
   .ltable { padding: 6px; }
   .lrow.lhead { display: none; }
-  .lrow { grid-template-columns: auto 1fr auto; grid-template-areas: "date name price" "plat len ring"; row-gap: 4px; padding: 10px 12px; }
+  .lrow { grid-template-columns: auto 1fr auto; grid-template-areas: "date name price" "status inout guests"; row-gap: 4px; padding: 10px 12px; }
   .lrow .c-date { grid-area: date; }
   .lrow .c-name { grid-area: name; }
   .lrow .c-price { grid-area: price; }
-  .lrow .c-plat { grid-area: plat; font-size: 12px; }
-  .lrow .c-len { grid-area: len; font-size: 12px; color: var(--ink3); }
-  .lrow .c-ring { grid-area: ring; justify-self: end; }
-  .lrow .c-kind, .lrow .c-type, .lrow .c-room { display: none; }
+  .lrow .c-status { grid-area: status; }
+  .lrow .c-inout { grid-area: inout; font-size: 12px; color: var(--ink3); }
+  .lrow .c-guests { grid-area: guests; justify-self: end; font-size: 12px; }
+  .lrow .c-kind, .lrow .c-plat, .lrow .c-phone, .lrow .c-type, .lrow .c-room { display: none; }
   .sgrid { grid-template-columns: minmax(0, 1fr); }
   .sfl { grid-template-columns: minmax(0, 1fr); }
   .flbtn { height: 30px; }

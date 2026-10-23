@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, BookOpen, ClipboardList, LayoutGrid, LogOut, Menu, Search, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { Bell, BookOpen, ClipboardList, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData, useHotelNotices, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
@@ -27,7 +27,7 @@ const NAV_VIEWS: { id: View; label: string }[] = [
   { id: "expenses", label: "지출" },
   { id: "ledger", label: "장부" },
 ];
-const TAB_VIEWS: { id: View; label: string; icon: typeof Search }[] = [
+const TAB_VIEWS: { id: View; label: string; icon: typeof LayoutGrid }[] = [
   { id: "board", label: "보드", icon: LayoutGrid },
   { id: "shop", label: "매점", icon: ShoppingBag },
   { id: "expenses", label: "지출", icon: Wallet },
@@ -124,7 +124,9 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [noticesTab, setNoticesTab] = useState<NoticesHubTab | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  /** `/` → 장부 통합 이용내역 검색 포커스 */
+  const ledgerSearchRef = useRef<HTMLInputElement>(null);
+  const [ledgerFocusTick, setLedgerFocusTick] = useState(0);
   const handoffOpen = useMemo(() => openForHandoff(memos.list ?? []), [memos.list]);
   const issueBadge = badgeCountLabel(handoffOpen.issues.length);
   const noticeBadge = badgeCountLabel(unresolvedNoticeCount(notices.list ?? []));
@@ -162,7 +164,6 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
     if (location.hash !== "#/board/now") history.pushState(history.state, "", `${location.pathname}${location.search}#/board/now`);
     setView("board");
     setHome((n) => n + 1); // 현황판을 새로 그려 층·기간·고른 방 같은 화면 상태를 처음으로
-    searchRef.current?.blur();
     window.scrollTo({ top: 0 });
   };
   const notify = useCallback((m: string, opt?: ToastOpt) => {
@@ -215,21 +216,27 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
         go("shop");
       } else if (e.key === "/") {
         e.preventDefault();
-        searchRef.current?.focus();
+        if (view !== "ledger") {
+          go("ledger");
+          setLedgerFocusTick((n) => n + 1);
+        } else {
+          ledgerSearchRef.current?.focus();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [entry, openSimple, selDate]);
+  }, [entry, openSimple, selDate, view]);
+
+  useEffect(() => {
+    if (!ledgerFocusTick || view !== "ledger") return;
+    const id = requestAnimationFrame(() => ledgerSearchRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [ledgerFocusTick, view]);
 
   const { hotel } = data;
   if (!hotel)
     return <div className="center-msg">{data.error ? `불러오지 못했어요: ${data.error}` : "장부를 불러오는 중…"}</div>;
-
-  const search = (q: string) => {
-    setQuery(q);
-    if (view !== "ledger") go("ledger");
-  };
 
   return (
     <div className="app">
@@ -289,17 +296,6 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
               <Gear size={18} strokeWidth={2.2} aria-hidden />
             </button>
           </div>
-          <label className="search">
-            <Search size={16} />
-            <input
-              ref={searchRef}
-              value={query}
-              placeholder={hotel.settings.parking.enabled ? "이름·플랫폼·차량번호로 찾기" : "이름·플랫폼으로 찾기"}
-              onChange={(e) => search(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && (e.currentTarget.blur(), search(""))}
-            />
-            <kbd>/</kbd>
-          </label>
           <HeaderCTA onClick={() => openSimple({ checkIn: selDate })} />
           <div className="menu-wrap">
             <button className="av" aria-label="메뉴" onClick={() => setMenu((m) => !m)}>
@@ -334,7 +330,16 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           onMoveEnd={() => setBoardMove(null)}
         />
       ) : view === "ledger" ? (
-        <Ledger data={data} hotelId={hotelId} today={today} query={query} setQuery={setQuery} onOpen={(b, opts) => setEntry({ booking: b, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge })} notify={notify} />
+        <Ledger
+          data={data}
+          hotelId={hotelId}
+          today={today}
+          query={query}
+          setQuery={setQuery}
+          searchRef={ledgerSearchRef}
+          onOpen={(b, opts) => setEntry({ booking: b, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge })}
+          notify={notify}
+        />
       ) : view === "expenses" ? (
         <ExpensesPage data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : view === "shop" ? (
