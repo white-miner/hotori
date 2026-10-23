@@ -495,3 +495,32 @@ test("장부 이용내역: 입실전 · 이용중 · 완료 · 입–퇴 라벨"
   assert.equal(stayInOutLabel(bk({ checkIn: "2026-10-18", nights: 2 })), "10/18–10/20");
   assert.equal(stayInOutLabel(bk({ kind: "dayuse", nights: null, startTime: "14:00", endTime: "18:00" })), "14:00~18:00");
 });
+
+test("장부 일주일 입실현황: 대실·숙박·연박 · 취소·노쇼 제외", async () => {
+  const { checkinStripKind, weekCheckinCounts, weekDates, weekStart, CHECKIN_STRIP_LABEL } = await import("./ledger");
+  assert.equal(checkinStripKind(bk({ kind: "dayuse", nights: null })), "dayuse");
+  assert.equal(checkinStripKind(bk({ nights: 1 })), "stay");
+  assert.equal(checkinStripKind(bk({ nights: 2 })), "multi");
+  assert.equal(checkinStripKind(bk({ status: "cancelled", nights: 2 })), null);
+  assert.equal(checkinStripKind(bk({ status: "noshow", nights: 1 })), null);
+  assert.equal(CHECKIN_STRIP_LABEL.dayuse, "대실");
+  assert.equal(CHECKIN_STRIP_LABEL.stay, "숙박");
+  assert.equal(CHECKIN_STRIP_LABEL.multi, "연박");
+  const days = weekDates("2026-10-23"); // 목 → 월 10/19 ~ 일 10/25
+  assert.equal(weekStart("2026-10-23"), "2026-10-19");
+  assert.deepEqual(days, ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"]);
+  const counts = weekCheckinCounts(
+    [
+      bk({ checkIn: "2026-10-23", kind: "dayuse", nights: null }),
+      bk({ checkIn: "2026-10-23", nights: 1 }),
+      bk({ checkIn: "2026-10-23", nights: 3 }),
+      bk({ checkIn: "2026-10-23", nights: 1, status: "cancelled" }),
+      bk({ checkIn: "2026-10-20", nights: 2 }),
+      bk({ checkIn: "2026-10-01", nights: 1 }), // 주 밖
+    ],
+    days,
+  );
+  assert.deepEqual(counts.get("2026-10-23"), { dayuse: 1, stay: 1, multi: 1 });
+  assert.deepEqual(counts.get("2026-10-20"), { dayuse: 0, stay: 0, multi: 1 });
+  assert.deepEqual(counts.get("2026-10-19"), { dayuse: 0, stay: 0, multi: 0 });
+});

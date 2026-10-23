@@ -809,6 +809,99 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .page.ledger .h1-sub { font-size: 0.55em; font-weight: 650; color: var(--ink3); margin-left: 6px; vertical-align: middle; }
 .filters .period-chips { flex: none; }
 .filters .search.ls kbd { margin-left: 4px; }
+
+/* 장부 · 일주일 입실현황 (큼직 · 탭=그날 리스트) */
+.lweek {
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4);
+  background: var(--panel2);
+  border-radius: var(--radius-panel);
+}
+.lweek-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+}
+.lweek-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.lweek-title b { font-size: 17px; font-weight: 800; }
+.lweek-title .muted { font-size: 12.5px; font-weight: 550; }
+.lweek-nav { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; }
+.lweek-nav .btn { min-width: 40px; padding: 0 12px; }
+.lweek-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.lweek-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 148px;
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-inp);
+  background: #fff;
+  text-align: left;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+.lweek-day:hover { background: var(--panel); }
+.lweek-day.td:not(.on) { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.lweek-day.on { background: var(--ink); color: #fff; }
+.lweek-day.on .lweek-date span,
+.lweek-day.on .lweek-row em,
+.lweek-day.on .lweek-today { color: rgba(255, 255, 255, 0.72); }
+.lweek-day.on .lweek-row strong { color: #fff; }
+.lweek-date {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  line-height: 1.15;
+}
+.lweek-date b { font-family: var(--num); font-size: 22px; font-weight: 800; }
+.lweek-date span { font-size: 13px; font-weight: 650; color: var(--ink3); }
+.lweek-day.sa:not(.on) .lweek-date b,
+.lweek-day.sa:not(.on) .lweek-date span { color: var(--dayuse); }
+.lweek-day.su:not(.on) .lweek-date b,
+.lweek-day.su:not(.on) .lweek-date span { color: var(--red-d); }
+.lweek-today {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--ink2);
+  background: var(--panel);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+}
+.lweek-day.on .lweek-today { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.lweek-counts { display: flex; flex-direction: column; gap: var(--space-2); margin-top: auto; }
+.lweek-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  line-height: 1.1;
+}
+.lweek-row em { font-style: normal; font-size: 13px; font-weight: 650; color: var(--ink3); }
+.lweek-row strong { font-family: var(--num); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+@media (max-width: 980px) {
+  .lweek-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .lweek-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lweek-day { min-height: 132px; }
+  .lweek-row strong { font-size: 22px; }
+}
 /* 노쇼: 줄을 긋지 않아요 (받은 금액은 매출) · 중도 퇴실: 이용한 박수와 환불 */
 .nst { font-size: 10px; font-weight: 750; color: var(--ink2); background: #efefef; border-radius: 6px; padding: 1px 5px; white-space: nowrap; }
 .lrow.ns .c-name .gn { color: var(--ink2); }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { saveFailMessage } from "../shared/errors";
-import { Check, ChevronRight, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
@@ -8,6 +8,7 @@ import GroupAdd from "./GroupAdd";
 import {
   type Booking,
   type StayPhase,
+  CHECKIN_STRIP_LABEL,
   addDays,
   dayLabel,
   isActive,
@@ -27,6 +28,10 @@ import {
   usableTypes,
   usedLabel,
   usedNights,
+  weekCheckinCounts,
+  weekDates,
+  weekStart,
+  weekday,
   won,
 } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
@@ -81,6 +86,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const [from, setFrom] = useState(addDays(today, -7));
   const [to, setTo] = useState(addDays(today, 7));
   const [period, setPeriod] = useState<PeriodChip>("7");
+  /** 일주일 입실현황: 달력 주(월~일) 앵커 */
+  const [weekAnchor, setWeekAnchor] = useState(() => weekStart(today));
   const [plat, setPlat] = useState("");
   const [type, setType] = useState("");
   const [kind, setKind] = useState("");
@@ -100,6 +107,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
       setTo(addDays(today, 30));
     }
   };
+  const stripDays = useMemo(() => weekDates(weekAnchor), [weekAnchor]);
+  const stripCounts = useMemo(() => weekCheckinCounts(data.bookings, stripDays), [data.bookings, stripDays]);
+  const pickStripDay = (d: string) => {
+    setFrom(d);
+    setTo(d);
+    setPeriod("custom");
+  };
+  const shiftStripWeek = (dir: -1 | 1) => setWeekAnchor((a) => addDays(weekStart(a), 7 * dir));
   const setFromCustom = (v: string) => {
     setFrom(v);
     setPeriod("custom");
@@ -734,6 +749,72 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         />
       ) : (
         <>
+      <section className="lweek" aria-label="일주일 입실현황">
+        <div className="lweek-h">
+          <div className="lweek-title">
+            <b>일주일 입실현황</b>
+            <span className="muted">
+              {dayLabel(stripDays[0])} ~ {dayLabel(stripDays[6])} · 취소·노쇼 제외 · 날짜 탭 = 그날 입실
+            </span>
+          </div>
+          <div className="lweek-nav" role="group" aria-label="주 이동">
+            <button type="button" className="btn sm line" aria-label="이전 주" onClick={() => shiftStripWeek(-1)}>
+              <ChevronLeft size={18} strokeWidth={2.4} />
+            </button>
+            <button
+              type="button"
+              className="btn sm line"
+              disabled={weekStart(weekAnchor) === weekStart(today)}
+              onClick={() => setWeekAnchor(weekStart(today))}
+            >
+              이번 주
+            </button>
+            <button type="button" className="btn sm line" aria-label="다음 주" onClick={() => shiftStripWeek(1)}>
+              <ChevronRight size={18} strokeWidth={2.4} />
+            </button>
+          </div>
+        </div>
+        <div className="lweek-grid" role="list">
+          {stripDays.map((d) => {
+            const c = stripCounts.get(d) ?? { dayuse: 0, stay: 0, multi: 0 };
+            const selected = from === d && to === d;
+            const isToday = d === today;
+            const wd = weekday(d);
+            const we = wd === "토" || wd === "일";
+            return (
+              <button
+                key={d}
+                type="button"
+                role="listitem"
+                className={`lweek-day${selected ? " on" : ""}${isToday ? " td" : ""}${we ? " we" : ""}${wd === "토" ? " sa" : ""}${wd === "일" ? " su" : ""}`}
+                aria-pressed={selected}
+                aria-label={`${dayLabel(d)} 입실 · 대실 ${c.dayuse} · 숙박 ${c.stay} · 연박 ${c.multi}`}
+                onClick={() => pickStripDay(d)}
+              >
+                <span className="lweek-date">
+                  <b>{md(d)}</b>
+                  <span>{wd}</span>
+                  {isToday ? <i className="lweek-today">오늘</i> : null}
+                </span>
+                <span className="lweek-counts">
+                  <span className="lweek-row">
+                    <em>{CHECKIN_STRIP_LABEL.dayuse}</em>
+                    <strong>{c.dayuse}</strong>
+                  </span>
+                  <span className="lweek-row">
+                    <em>{CHECKIN_STRIP_LABEL.stay}</em>
+                    <strong>{c.stay}</strong>
+                  </span>
+                  <span className="lweek-row">
+                    <em>{CHECKIN_STRIP_LABEL.multi}</em>
+                    <strong>{c.multi}</strong>
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
       <div className="filters">
         <label className="search ls">
           <Search size={16} />
