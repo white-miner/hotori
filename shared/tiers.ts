@@ -58,17 +58,26 @@ export function normalizeSpecialDates(raw: unknown): string[] {
  * 호텔의 기본 입실·퇴실 시간 (HH:MM, 24시간). settings.stayTimes에 저장해요.
  * 빠른 입실 · 늦은 퇴실은 예약마다 이 시간에서 몇 시간 앞당기고 미루는지(시간 수)만 적을 거예요 → shiftTime으로 계산.
  */
+/** 숙박예약→숙박: auto=입실시각 후(기본) · manual=칸 하단 「숙박예약」탭만 */
+export type CheckInMode = "auto" | "manual";
+export const CHECK_IN_MODES: CheckInMode[] = ["auto", "manual"];
+export const CHECK_IN_MODE_LABEL: Record<CheckInMode, string> = { auto: "자동", manual: "수동" };
+export const isCheckInMode = (v: unknown): v is CheckInMode => v === "auto" || v === "manual";
+
 export interface StayTimes {
   checkIn: string; // 기본 16:00
   checkOut: string; // 기본 12:00
+  /** 입실 전환 모드 (없으면 자동) */
+  checkInMode: CheckInMode;
 }
-export const DEFAULT_STAY_TIMES: StayTimes = { checkIn: "16:00", checkOut: "12:00" };
+export const DEFAULT_STAY_TIMES: StayTimes = { checkIn: "16:00", checkOut: "12:00", checkInMode: "auto" };
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 export function normalizeStayTimes(raw: unknown): StayTimes {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return {
     checkIn: typeof o.checkIn === "string" && HHMM.test(o.checkIn) ? o.checkIn : DEFAULT_STAY_TIMES.checkIn,
     checkOut: typeof o.checkOut === "string" && HHMM.test(o.checkOut) ? o.checkOut : DEFAULT_STAY_TIMES.checkOut,
+    checkInMode: isCheckInMode(o.checkInMode) ? o.checkInMode : DEFAULT_STAY_TIMES.checkInMode,
   };
 }
 /** 기준 시간에서 몇 시간(음수면 앞당김) 옮긴 시간과 날짜 차이: shiftTime("16:00", -3) → {time: "13:00", days: 0} */

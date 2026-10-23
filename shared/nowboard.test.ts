@@ -62,7 +62,7 @@ const bk = (p: Partial<Booking>): Booking => ({
 });
 
 const clock = (time: string, wallDate = "2026-10-21"): NowClock => ({ wallDate, time });
-const stay = { checkIn: "16:00", checkOut: "12:00" };
+const stay = { checkIn: "16:00", checkOut: "12:00", checkInMode: "auto" as const };
 const onsite = { name: "현장", onsite: true };
 
 test("지금 상태: 숙박예약 · 숙박 · 마지막 밤은 숙박(퇴실예정 아님)", () => {
@@ -217,6 +217,15 @@ test("자동 입실: 체크인 시각 전후 · 입실일 전날 금지 · 빠�
   assert.equal(nowFlags(bk({ arrived: true, checkIn: date }), date, { stayTimes: stay, clock: clock("10:00", date) }).kind, "inhouse");
   // 이미 arrived면 자동 대상 아님
   assert.equal(shouldAutoArrive(bk({ arrived: true, checkIn: date }), date, { stayTimes: stay, clock: clock("16:00", date) }), false);
+  // 수동 입실 전환: 시각 지나도 자동 금지 · 표시는 숙박예약 유지 · arrived면 숙박
+  const manual = { ...stay, checkInMode: "manual" as const };
+  assert.equal(shouldAutoArrive(b, date, { stayTimes: manual, clock: clock("16:00", date) }), false);
+  assert.equal(nowFlags(b, date, { stayTimes: manual, clock: clock("16:00", date) }).kind, "arriving");
+  assert.equal(nowFlags(b, date, { stayTimes: manual, clock: clock("16:00", date) }).label, "숙박예약");
+  assert.equal(
+    nowFlags(bk({ arrived: true, checkIn: date }), date, { stayTimes: manual, clock: clock("10:00", date) }).kind,
+    "inhouse",
+  );
 });
 
 test("옆 패널: 임시·미배정·퇴실·늦은퇴실·숙박예약 분류 (퇴실일 기준)", () => {
@@ -428,7 +437,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
 });
 
 test("칸 마크: 늦은 퇴실 → N시 퇴실 · 결제수단 글랜스", () => {
-  const s = { stayTimes: { checkIn: "15:00", checkOut: "11:00" } };
+  const s = { stayTimes: { checkIn: "15:00", checkOut: "11:00", checkInMode: "auto" as const } };
   assert.equal(nowCheckoutMark(s, { kind: "stay", lateOut: 0 }), null);
   assert.equal(nowCheckoutMark(s, { kind: "dayuse", lateOut: 3 }), null);
   assert.equal(nowCheckoutMark(s, { kind: "stay", lateOut: 3 }), "14시 퇴실");

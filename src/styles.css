@@ -2004,6 +2004,8 @@ kbd { font-family: var(--num); font-size: 11px; background: var(--panel); border
 .stimes .hfee { display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink2); font-size: 14px; }
 .stimes .hfee input { border: 0; padding: 0; min-width: 0; width: 96px; text-align: right; }
 .stimes-f { margin-top: 10px; }
+.stimes-mode { margin-top: 12px; }
+.stimes-mode .seg { margin-top: 2px; }
 .cell .r3 .ttags { display: inline-flex; gap: 3px; flex: none; }
 .cell .r3 .ttag.warn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cbar .ttag { flex: none; background: rgba(255, 255, 255, 0.9); }
@@ -2634,6 +2636,8 @@ button.nowstatus { cursor: pointer; }
 .modal.assign-type-modal .mb p { margin: 0 0 8px; }
 .assign-type-acts { justify-content: flex-end; gap: 10px; }
 .assign-type-acts .btn { min-width: 88px; }
+.checkout-co-acts { flex-wrap: wrap; }
+.checkout-co-acts .btn { min-width: 0; }
 .clean-request-acts { flex-wrap: wrap; }
 .dayuse-sale-modal { max-width: min(480px, 96vw); width: min(480px, 100%); }
 .dayuse-sale-rooms { margin: 0 0 10px; }

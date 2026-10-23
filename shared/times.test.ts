@@ -3,11 +3,28 @@ import assert from "node:assert/strict";
 import { DEFAULT_DAYUSE_DEFAULTS, DEFAULT_STAY_TIMES, normalizeDayuseDefaults, normalizeStayTimes, shiftTime } from "./tiers";
 import { normalizeSettings } from "./ledger";
 
-test("입실 · 퇴실 시간: 없거나 잘못되면 16:00 · 12:00", () => {
+test("입실 · 퇴실 시간: 없거나 잘못되면 16:00 · 12:00 · 입실전환 자동", () => {
   assert.deepEqual(normalizeStayTimes(undefined), DEFAULT_STAY_TIMES);
-  assert.deepEqual(normalizeStayTimes({ checkIn: "25:00", checkOut: "9:00" }), { checkIn: "16:00", checkOut: "12:00" });
-  assert.deepEqual(normalizeStayTimes({ checkIn: "15:00", checkOut: "11:30" }), { checkIn: "15:00", checkOut: "11:30" });
-  assert.deepEqual(normalizeSettings({} as never).stayTimes, { checkIn: "16:00", checkOut: "12:00" });
+  assert.deepEqual(normalizeStayTimes({ checkIn: "25:00", checkOut: "9:00" }), {
+    checkIn: "16:00",
+    checkOut: "12:00",
+    checkInMode: "auto",
+  });
+  assert.deepEqual(normalizeStayTimes({ checkIn: "15:00", checkOut: "11:30" }), {
+    checkIn: "15:00",
+    checkOut: "11:30",
+    checkInMode: "auto",
+  });
+  assert.deepEqual(normalizeStayTimes({ checkIn: "15:00", checkOut: "11:00", checkInMode: "manual" }), {
+    checkIn: "15:00",
+    checkOut: "11:00",
+    checkInMode: "manual",
+  });
+  assert.deepEqual(normalizeSettings({} as never).stayTimes, {
+    checkIn: "16:00",
+    checkOut: "12:00",
+    checkInMode: "auto",
+  });
 });
 
 test("대실 기본: 없거나 잘못되면 14:00 · 17:00 · 0원", () => {

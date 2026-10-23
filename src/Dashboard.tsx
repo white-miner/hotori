@@ -36,9 +36,14 @@ import EarlyInPayModal from "./EarlyInPayModal";
 import AddTimeModal from "./AddTimeModal";
 import StaySaleModal from "./StaySaleModal";
 import PaymentDeskModal from "./PaymentDeskModal";
+import CheckoutConfirmModal from "./CheckoutConfirmModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
+import {
+  checkoutLeaveBalanceNotifyLine,
+  checkoutPayNotifyLine,
+} from "../shared/checkoutConfirm";
 import {
   type EarlyInPayMethod,
   type EarlyInPayPlan,
@@ -374,6 +379,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
   /** 빠른 입실: 추가금 팝업 대상 (확정 전엔 arrived 안 바꿈) */
   const [earlyPay, setEarlyPay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
+  /** 퇴실처리 확인(+잔금 결제) 모달 */
+  const [coConfirm, setCoConfirm] = useState<{ booking: Booking; members: Booking[] } | null>(null);
   const [memoRoomId, setMemoRoomId] = useState<string | null>(null);
   /** 대실 판매 전용 모달 (Entry 우회) */
   const [dayuseSale, setDayuseSale] = useState<{ roomId: string; typeId: string; roomLabel: string } | null>(null);
@@ -1613,20 +1620,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** 퇴실처리: 칸 하단 「퇴실예정」탭은 확인 필수 · 옆 패널도 동일 · Hotori 모달 */
-  const doCheckOut = async (b: Booking, needConfirm = false) => {
+  /** 퇴실처리 본문(확인·결제 이후). 공실은 절대 자동이 아님. */
+  const commitCheckOut = async (b: Booking, notifyLine?: string) => {
     if (readOnly || coBusy || !canCheckOut(b, today)) return;
-    if (needConfirm) {
-      const room = b.roomId ? L.roomLabel(b.roomId) ?? "" : "";
-      const dates = nowNightRange(b).label;
-      const ok = await askConfirm({
-        title: "퇴실처리",
-        body: `퇴실처리할까요?\n${room ? `${room} · ` : ""}${b.guestName} · ${dates}`,
-        confirmLabel: "퇴실처리",
-        danger: true,
-      });
-      if (!ok) return;
-    }
     setCoBusy(b.id);
     try {
       const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: new Date().toISOString(), arrived: true };
@@ -1636,11 +1632,91 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         patch.segments = fitSegments(b.segments, b.roomId, n);
       }
       await data.patchBooking(b.id, patch);
-      notify(`${b.guestName} 님 퇴실처리했어요`);
+      notify(notifyLine ?? `${b.guestName} 님 퇴실처리했어요`);
     } catch {
       notify("퇴실처리를 저장하지 못했어요. 다시 해 주세요");
     } finally {
       setCoBusy(null);
+    }
+  };
+
+  /** 퇴실처리: 칸·패널은 확인 필수 · 잔금 있으면 결제 UI 동시 · Hotori 모달 */
+  const doCheckOut = async (b: Booking, needConfirm = false) => {
+    if (readOnly || coBusy || !canCheckOut(b, today)) return;
+    if (needConfirm) {
+      setCoConfirm({ booking: b, members: payDeskMembersFor(b) });
+      return;
+    }
+    await commitCheckOut(b);
+  };
+
+  const closeCoConfirm = () => {
+    if (coBusy) return;
+    setCoConfirm(null);
+  };
+
+  const confirmCheckoutOnly = async () => {
+    if (!coConfirm) return;
+    const b = coConfirm.booking;
+    const members = coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
+    const plat = L.plats.get(b.platformId);
+    const gid = b.groupId;
+    const info = gid ? data.groups.get(gid) ?? null : null;
+    const glanceLeft = gid
+      ? settle(members, info, plat).left
+      : payState(b, plat).left;
+    setCoConfirm(null);
+    await commitCheckOut(
+      b,
+      glanceLeft > 0 ? checkoutLeaveBalanceNotifyLine(b.guestName, glanceLeft) : undefined,
+    );
+  };
+
+  const confirmCheckoutPayThen = async (plan: PaymentDeskPayPlan) => {
+    if (!coConfirm || coBusy) return;
+    const b = coConfirm.booking;
+    const members = coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
+    setCoBusy(b.id);
+    try {
+      if (plan.asGroup) {
+        const gid = sameGroupId(members);
+        if (!gid) {
+          notify("같은 단체만 한 번에 받을 수 있어요.");
+          return;
+        }
+        await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
+      } else {
+        await data.addPayment(b.id, {
+          kind: plan.kind,
+          method: plan.method,
+          amount: plan.amount,
+          bizDate: today,
+        });
+      }
+      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: new Date().toISOString(), arrived: true };
+      if (isLongStay(b) && stayEnd(b) > today) {
+        const n = nightsAtCheckout(b.checkIn, today);
+        patch.nights = n;
+        patch.segments = fitSegments(b.segments, b.roomId, n);
+      }
+      await data.patchBooking(b.id, patch);
+      setCoConfirm(null);
+      notify(checkoutPayNotifyLine(b.guestName, plan.amount, plan.method, plan.asGroup));
+    } catch (e) {
+      notify(saveFailMessage(e, "결제·퇴실처리를 저장하지 못했어요"));
+    } finally {
+      setCoBusy(null);
+    }
+  };
+
+  /** 칸 하단 「숙박예약」탭 → 숙박 (수동 입실 전환 · 자동 모드에서도 즉시 가능) */
+  const markArrivedFromStatus = async (b: Booking) => {
+    if (readOnly || b.arrived || b.kind !== "stay" || !isActive(b)) return;
+    try {
+      await data.patchBooking(b.id, { arrived: true });
+      notify(`${b.guestName} 님 · 숙박`);
+    } catch {
+      notify("입실 전환을 저장하지 못했어요. 다시 눌러 주세요.");
     }
   };
 
@@ -2267,6 +2343,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         void doCheckOut(b, true);
         return;
       }
+      // 숙박예약 → 숙박 (수동 모드 필수 경로 · 빠른입실과 별개)
+      if (f.kind === "arriving" && !b.arrived) {
+        void markArrivedFromStatus(b);
+        return;
+      }
       selectRoom(r.id);
     };
     const occupiedSel = !mvB && selectedRoomIds.includes(r.id);
@@ -2369,9 +2450,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             ) : null}
             <button
               type="button"
-              className={`nowstatus nk-${f.kind}${isDepartingStatus(f.kind) ? " tap" : ""}`}
+              className={`nowstatus nk-${f.kind}${isDepartingStatus(f.kind) || (f.kind === "arriving" && !b.arrived) ? " tap" : ""}`}
               onClick={onStatusTap}
-              title={isDepartingStatus(f.kind) ? "탭하면 퇴실처리" : f.label}
+              title={
+                isDepartingStatus(f.kind)
+                  ? "탭하면 퇴실처리"
+                  : f.kind === "arriving" && !b.arrived
+                    ? "탭하면 숙박으로 전환"
+                    : f.label
+              }
             >
               {f.label}
             </button>
@@ -2643,6 +2730,25 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={earlyBusy === earlyPay.booking.id}
           onCancel={() => !earlyBusy && setEarlyPay(null)}
           onConfirm={(plan, method) => void confirmEarlyIn(plan, method)}
+        />
+      ) : null}
+      {coConfirm ? (
+        <CheckoutConfirmModal
+          s={s}
+          today={today}
+          booking={coConfirm.booking}
+          members={coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m)}
+          groupInfo={
+            coConfirm.booking.groupId ? (data.groups.get(coConfirm.booking.groupId) ?? null) : null
+          }
+          roomLabel={
+            coConfirm.booking.roomId ? (L.roomLabel(coConfirm.booking.roomId) ?? "") : ""
+          }
+          datesLabel={nowNightRange(coConfirm.booking).label}
+          busy={coBusy === coConfirm.booking.id}
+          onCancel={closeCoConfirm}
+          onCheckoutOnly={() => void confirmCheckoutOnly()}
+          onPayThenCheckout={(plan) => void confirmCheckoutPayThen(plan)}
         />
       ) : null}
       {dayuseSale ? (
