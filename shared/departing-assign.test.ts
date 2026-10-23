@@ -50,7 +50,7 @@ const bk = (p: Partial<Booking> = {}): Booking => ({
   ...p,
 });
 
-const stayTimes = { checkIn: "15:00", checkOut: "11:00" };
+const stayTimes = { checkIn: "15:00", checkOut: "11:00", checkInMode: "auto" as const };
 const clock = (time: string, wallDate: string) => ({ time, wallDate });
 
 test("A1: 퇴실예정 601 · 오늘 입실 초안 → freeRooms·legConflicts 허용", () => {

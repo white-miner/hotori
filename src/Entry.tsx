@@ -65,6 +65,7 @@ import {
   onsiteCreatePayTail,
   payLineMain,
   paySplit,
+  payState,
   planOnsiteCreatePay,
   splitLine,
   validateGuestPhone,
@@ -119,7 +120,14 @@ import {
   suggestElapsedLateHours,
   surchargeNotifyLine,
 } from "../shared/addSurcharge";
-import { canCheckOut, canEndDayuse, isCheckedOut, hotelWallClock } from "../shared/nowboard";
+import { canCheckOut, canEndDayuse, groupStayPeers, isCheckedOut, hotelWallClock } from "../shared/nowboard";
+import CheckoutConfirmModal from "./CheckoutConfirmModal";
+import {
+  checkoutLeaveBalanceNotifyLine,
+  checkoutPayNotifyLine,
+} from "../shared/checkoutConfirm";
+import { sameGroupId, type PaymentDeskPayPlan } from "../shared/paymentDesk";
+import { settle } from "../shared/settle";
 import {
   LONG_STAY_WINDOW_DEFAULT,
   WINDOW_EXTEND_DEFAULT,
@@ -771,6 +779,91 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [tentBusy, setTentBusy] = useState(false);
   const [ncxBusy, setNcxBusy] = useState(false);
   const [coBusy, setCoBusy] = useState(false);
+  const [coConfirm, setCoConfirm] = useState<{ booking: Booking; members: Booking[] } | null>(null);
+
+  const applyEntryCheckOut = async (liveB: Booking, isDayuse: boolean, notifyLine?: string) => {
+    if (!base || coBusy) return;
+    setCoBusy(true);
+    setInErr(null);
+    const at = new Date().toISOString();
+    setCheckedOutAt(at);
+    setArrived(true);
+    try {
+      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: at, arrived: true };
+      if (!isDayuse && isLongStay(liveB) && checkOut(liveB) > today) {
+        const n = nightsAtCheckout(liveB.checkIn, today);
+        patch.nights = n;
+        patch.segments = fitSegments(liveB.segments, liveB.roomId, n);
+        setNights(n);
+      }
+      await data.patchBooking(base.id, patch);
+      notify(
+        notifyLine ??
+          (isDayuse ? `${base.guestName} 님 대실 이용을 종료했어요` : `${base.guestName} 님 퇴실처리했어요`),
+      );
+    } catch {
+      setCheckedOutAt(null);
+      setInErr(isDayuse ? "이용 종료를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리를 저장하지 못했어요. 다시 눌러 주세요.");
+    } finally {
+      setCoBusy(false);
+    }
+  };
+
+  const confirmEntryCheckoutOnly = async () => {
+    if (!coConfirm || !base) return;
+    const b = coConfirm.booking;
+    const members = coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
+    const plat = L.plats.get(b.platformId);
+    const info = b.groupId ? data.groups.get(b.groupId) ?? null : null;
+    const left = b.groupId ? settle(members, info, plat).left : payState(b, plat).left;
+    setCoConfirm(null);
+    await applyEntryCheckOut(b, false, left > 0 ? checkoutLeaveBalanceNotifyLine(b.guestName, left) : undefined);
+  };
+
+  const confirmEntryCheckoutPayThen = async (plan: PaymentDeskPayPlan) => {
+    if (!coConfirm || !base || coBusy) return;
+    const b = coConfirm.booking;
+    const members = coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
+    setCoBusy(true);
+    setInErr(null);
+    const at = new Date().toISOString();
+    setCheckedOutAt(at);
+    setArrived(true);
+    try {
+      if (plan.asGroup) {
+        const gid = sameGroupId(members);
+        if (!gid) {
+          setInErr("같은 단체만 한 번에 받을 수 있어요.");
+          setCheckedOutAt(null);
+          return;
+        }
+        await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
+      } else {
+        await data.addPayment(b.id, {
+          kind: plan.kind,
+          method: plan.method,
+          amount: plan.amount,
+          bizDate: today,
+        });
+      }
+      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: at, arrived: true };
+      if (isLongStay(b) && checkOut(b) > today) {
+        const n = nightsAtCheckout(b.checkIn, today);
+        patch.nights = n;
+        patch.segments = fitSegments(b.segments, b.roomId, n);
+        setNights(n);
+      }
+      await data.patchBooking(base.id, patch);
+      setCoConfirm(null);
+      notify(checkoutPayNotifyLine(b.guestName, plan.amount, plan.method, plan.asGroup));
+    } catch (e) {
+      setCheckedOutAt(null);
+      setInErr(saveFailMessage(e, "결제·퇴실처리를 저장하지 못했어요"));
+    } finally {
+      setCoBusy(false);
+    }
+  };
+
   const toggleIn = async () => {
     if (!base || inBusy) return;
     const next = !arrived;
@@ -826,45 +919,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         danger: true,
       });
       if (!endOk) return;
-    } else if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
+      await applyEntryCheckOut(liveB, true);
+      return;
+    }
+    if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
       setInErr(
         isLongStay(liveB)
           ? "입실일 전부터는 퇴실처리할 수 없어요."
           : "퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.",
       );
       return;
-    } else {
-      const room = liveB.roomId ? L.roomLabel(liveB.roomId) ?? "" : "";
-      const coOk = await askConfirm({
-        title: "퇴실처리",
-        body: `퇴실처리할까요?\n${room ? `${room} · ` : ""}${liveB.guestName}`,
-        confirmLabel: "퇴실처리",
-        danger: true,
-      });
-      if (!coOk) return;
     }
-    setCoBusy(true);
-    setInErr(null);
-    const at = new Date().toISOString();
-    setCheckedOutAt(at);
-    setArrived(true);
-    try {
-      const patch: Parameters<typeof data.patchBooking>[1] = { checkedOutAt: at, arrived: true };
-      // 장기: 창이 남았으면 실제 투숙 밤으로 nights를 맞춰 재고를 풀어요
-      if (!isDayuse && isLongStay(liveB) && checkOut(liveB) > today) {
-        const n = nightsAtCheckout(liveB.checkIn, today);
-        patch.nights = n;
-        patch.segments = fitSegments(liveB.segments, liveB.roomId, n);
-        setNights(n);
-      }
-      await data.patchBooking(base.id, patch);
-      notify(isDayuse ? `${base.guestName} 님 대실 이용을 종료했어요` : `${base.guestName} 님 퇴실처리했어요`);
-    } catch {
-      setCheckedOutAt(null);
-      setInErr(isDayuse ? "이용 종료를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리를 저장하지 못했어요. 다시 눌러 주세요.");
-    } finally {
-      setCoBusy(false);
-    }
+    const peers = liveB.groupId ? groupStayPeers(data.bookings, liveB.groupId) : [];
+    setCoConfirm({ booking: liveB, members: peers.length ? peers : [liveB] });
   };
   const toggleTent = async () => {
     if (!base || tentBusy) return;
@@ -3417,6 +3484,24 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         busy={busy}
         onCancel={() => setDayuseWarn(null)}
         onContinue={() => void save(dayuseWarn.again, dayuseWarn.override, { allowDayuseOverlap: true })}
+      />
+    ) : null}
+    {coConfirm ? (
+      <CheckoutConfirmModal
+        s={s}
+        today={today}
+        booking={coConfirm.booking}
+        members={coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m)}
+        groupInfo={
+          coConfirm.booking.groupId ? (data.groups.get(coConfirm.booking.groupId) ?? null) : null
+        }
+        roomLabel={
+          coConfirm.booking.roomId ? (L.roomLabel(coConfirm.booking.roomId) ?? "") : ""
+        }
+        busy={coBusy}
+        onCancel={() => !coBusy && setCoConfirm(null)}
+        onCheckoutOnly={() => void confirmEntryCheckoutOnly()}
+        onPayThenCheckout={(plan) => void confirmEntryCheckoutPayThen(plan)}
       />
     ) : null}
     </>

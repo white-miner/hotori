@@ -879,6 +879,32 @@ export default function Settings({ data, email, notify }: Props) {
               </span>
             </label>
           </div>
+          <div className="stimes stimes-mode">
+            <label>
+              <span>입실 전환</span>
+              <div className="seg sm" role="group" aria-label="입실 전환">
+                <button
+                  type="button"
+                  className={s.stayTimes.checkInMode !== "manual" ? "on" : ""}
+                  aria-pressed={s.stayTimes.checkInMode !== "manual"}
+                  onClick={() => update((x) => ({ ...x, stayTimes: { ...x.stayTimes, checkInMode: "auto" } }))}
+                >
+                  자동
+                </button>
+                <button
+                  type="button"
+                  className={s.stayTimes.checkInMode === "manual" ? "on" : ""}
+                  aria-pressed={s.stayTimes.checkInMode === "manual"}
+                  onClick={() => update((x) => ({ ...x, stayTimes: { ...x.stayTimes, checkInMode: "manual" } }))}
+                >
+                  수동
+                </button>
+              </div>
+            </label>
+          </div>
+          <div className="sub stimes-f">
+            자동: 입실 시간이 되면 숙박예약→숙박. 수동: 칸 하단 「숙박예약」을 눌러야 숙박(빠른 입실은 모드와 무관). 퇴실·공실은 자동이 아니에요.
+          </div>
           <div className="sub stimes-f">빠른 입실 · 늦은 퇴실 1시간마다 이 금액을 판매 가격에 더해요. 예약 창에서 금액을 바꾸거나 서비스(0원)로 할 수 있어요.</div>
         </section>
 

@@ -43,7 +43,7 @@ export interface NowClock {
 }
 
 export interface NowOpts {
-  stayTimes?: Pick<StayTimes, "checkIn" | "checkOut">;
+  stayTimes?: Pick<StayTimes, "checkIn" | "checkOut"> & Partial<Pick<StayTimes, "checkInMode">>;
   clock?: NowClock;
 }
 
@@ -140,6 +140,7 @@ export function checkInTimeReached(
 
 /**
  * 자동 입실 대상: 활성 숙박 · 보드 가시 · 미입실 · 입실일≤보드일 · 체크인 시각 도달.
+ * checkInMode=manual 이면 항상 false (칸 「숙박예약」탭·빠른입실만 arrived).
  * 효과는 표시상 숙박 + (UI가) arrived 저장. 퇴실/공실은 절대 자동이 아님.
  */
 export function shouldAutoArrive(b: Booking | null | undefined, boardDate: string, opts?: NowOpts): boolean {
@@ -147,6 +148,7 @@ export function shouldAutoArrive(b: Booking | null | undefined, boardDate: strin
   if (!nowBoardVisible(b, boardDate)) return false;
   if (boardDate < b.checkIn) return false;
   const stayTimes = opts?.stayTimes ?? DEFAULT_STAY_TIMES;
+  if (stayTimes.checkInMode === "manual") return false;
   const clock = opts?.clock ?? hotelWallClock();
   return checkInTimeReached(b.checkIn, stayTimes, clock);
 }
