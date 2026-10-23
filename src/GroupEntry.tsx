@@ -2,6 +2,7 @@
 // · 호실 지정 / 타입만(호실 나중에) · 방별 1박 · 방별 총액(타입 요금 프리필)
 import { useEffect, useMemo, useState } from "react";
 import { saveFailMessage } from "../shared/errors";
+import { askConfirm } from "./ConfirmDialog";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
 import {
   type HotelSettings,
@@ -203,13 +204,14 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     });
     if (v) return setErr(v);
     // 타입 오버부킹: 경고만 · 저장 허용 (호실 모드의 물리 방 겹침은 free/validate에서 차단)
-    if (
-      over.length &&
-      !window.confirm(
-        `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
-      )
-    )
-      return;
+    if (over.length) {
+      const overOk = await askConfirm({
+        title: "타입 재고 부족",
+        body: `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
+        confirmLabel: "저장",
+      });
+      if (!overOk) return;
+    }
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
     if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");

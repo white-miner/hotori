@@ -22,6 +22,7 @@ import {
 import { type BookPayMethod, payLineMain } from "../shared/payment";
 import { payLineSub, type SurchargeReason } from "../shared/addSurcharge";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
+import { askConfirm } from "./ConfirmDialog";
 import { lookups } from "./ui";
 
 type Mode = "pay" | "surcharge" | "ledger";
@@ -137,17 +138,33 @@ export default function PaymentDeskModal({
 
   const removeLine = (line: DeskPayLine) => {
     if (busy) return;
-    if (!window.confirm("이 결제 줄을 지울까요? 잔금이 다시 늘어날 수 있어요.")) return;
-    setErr(null);
-    if (line.scope === "booking") onDeletePayment?.(line.bookingId, line.pay.id);
-    else onDeleteGroupPayment?.(line.groupId, line.pay.id);
+    void (async () => {
+      const ok = await askConfirm({
+        title: "결제 줄 삭제",
+        body: "이 결제 줄을 지울까요? 잔금이 다시 늘어날 수 있어요.",
+        confirmLabel: "지우기",
+        danger: true,
+      });
+      if (!ok) return;
+      setErr(null);
+      if (line.scope === "booking") onDeletePayment?.(line.bookingId, line.pay.id);
+      else onDeleteGroupPayment?.(line.groupId, line.pay.id);
+    })();
   };
 
   const clearResidual = () => {
     if (busy || !single || !onClearResidual || !clearOk) return;
-    if (!window.confirm(clearResidualConfirmLine(clearOk.cleared, clearOk.newPrice))) return;
-    setErr(null);
-    onClearResidual(single, clearOk.newPrice);
+    void (async () => {
+      const ok = await askConfirm({
+        title: "잔금 없애기",
+        body: clearResidualConfirmLine(clearOk.cleared, clearOk.newPrice),
+        confirmLabel: "잔금 없애기",
+        danger: true,
+      });
+      if (!ok) return;
+      setErr(null);
+      onClearResidual(single, clearOk.newPrice);
+    })();
   };
 
   const guestLabel = first?.groupName || first?.guestName || "손님";

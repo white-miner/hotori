@@ -19,6 +19,7 @@ import {
 } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, CheckSquare, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { askConfirm } from "./ConfirmDialog";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
   FREE_SHOP_ITEM_LIMIT,
@@ -118,7 +119,16 @@ function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | 
             <button
               className="btn line sm"
               disabled={busy}
-              onClick={() => confirm("새 링크를 만들까요? 지금 링크는 바로 열리지 않게 돼요.") && void run(() => shareCreate(hotelId), "새 링크를 만들었어요. 직원에게 새 링크를 보내 주세요.")}
+              onClick={() =>
+                void askConfirm({
+                  title: "새 링크 만들기",
+                  body: "새 링크를 만들까요? 지금 링크는 바로 열리지 않게 돼요.",
+                  confirmLabel: "새 링크",
+                  danger: true,
+                }).then((ok) => {
+                  if (ok) void run(() => shareCreate(hotelId), "새 링크를 만들었어요. 직원에게 새 링크를 보내 주세요.");
+                })
+              }
             >
               <RefreshCw size={14} />
               새 링크 만들기
@@ -615,9 +625,19 @@ export default function Settings({ data, email, notify }: Props) {
                   onClick={() => {
                     const fl = floorsOf(s, building.id);
                     const n = fl.reduce((k, f) => k + f.rooms.length, 0);
-                    if (n && !confirm(`${buildingName(s, building.id)}${josa(buildingName(s, building.id), "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
-                    update((x) => removeBuilding(x, building.id));
-                    setSelBuilding(null);
+                    void (async () => {
+                      if (n) {
+                        const ok = await askConfirm({
+                          title: "건물 지우기",
+                          body: `${buildingName(s, building.id)}${josa(buildingName(s, building.id), "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
+                          confirmLabel: "지우기",
+                          danger: true,
+                        });
+                        if (!ok) return;
+                      }
+                      update((x) => removeBuilding(x, building.id));
+                      setSelBuilding(null);
+                    })();
                   }}
                 >
                   <Trash2 size={14} />건물 지우기
@@ -649,9 +669,19 @@ export default function Settings({ data, email, notify }: Props) {
                 <button
                   className="btn sm ghost"
                   onClick={() => {
-                    if (floor.rooms.length && !confirm(`${floor.name}${josa(floor.name, "과", "와")} 방 ${floor.rooms.length}개를 지울까요? 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`)) return;
-                    update((x) => ({ ...x, floors: x.floors.filter((f) => f.id !== floor.id) }));
-                    setSelFloor(null);
+                    void (async () => {
+                      if (floor.rooms.length) {
+                        const ok = await askConfirm({
+                          title: "층 지우기",
+                          body: `${floor.name}${josa(floor.name, "과", "와")} 방 ${floor.rooms.length}개를 지울까요? 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
+                          confirmLabel: "지우기",
+                          danger: true,
+                        });
+                        if (!ok) return;
+                      }
+                      update((x) => ({ ...x, floors: x.floors.filter((f) => f.id !== floor.id) }));
+                      setSelFloor(null);
+                    })();
                   }}
                 >
                   <Trash2 size={14} />층 지우기

@@ -10,6 +10,7 @@ import {
   type RoomMemoStatus,
   validateRoomMemoDraft,
 } from "../shared/roomMemo";
+import { askConfirm } from "./ConfirmDialog";
 
 interface Props {
   roomId: string;
@@ -93,7 +94,13 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
   }
 
   async function erase(m: RoomMemo) {
-    if (!window.confirm(`이 특이사항을 지울까요?\n${m.body}`)) return;
+    const ok = await askConfirm({
+      title: "특이사항 삭제",
+      body: `이 특이사항을 지울까요?\n${m.body}`,
+      confirmLabel: "지우기",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await onRemove(m.id);

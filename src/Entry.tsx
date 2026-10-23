@@ -50,6 +50,7 @@ import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
+import { askConfirm } from "./ConfirmDialog";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
@@ -791,7 +792,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!isDayuse && base.kind !== "stay") return;
     const done = isCheckedOut({ checkedOutAt });
     if (done) {
-      if (!window.confirm(isDayuse ? "이용 종료를 취소할까요? 대실이 다시 보여요." : "퇴실처리를 취소할까요? 칸에 다시 보여요.")) return;
+      const undoOk = await askConfirm({
+        title: isDayuse ? "이용 종료 취소" : "퇴실처리 취소",
+        body: isDayuse ? "이용 종료를 취소할까요? 대실이 다시 보여요." : "퇴실처리를 취소할까요? 칸에 다시 보여요.",
+        confirmLabel: "취소 확정",
+      });
+      if (!undoOk) return;
       setCoBusy(true);
       setInErr(null);
       const prev = checkedOutAt;
@@ -813,12 +819,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         setInErr("이미 이용이 끝났거나 취소된 대실이에요.");
         return;
       }
-      if (
-        !window.confirm(
-          `대실 이용을 종료할까요?\n${liveB.startTime ?? ""}~${liveB.endTime ?? ""} · ${liveB.guestName}`,
-        )
-      )
-        return;
+      const endOk = await askConfirm({
+        title: "이용 종료",
+        body: `대실 이용을 종료할까요?\n${liveB.startTime ?? ""}~${liveB.endTime ?? ""} · ${liveB.guestName}`,
+        confirmLabel: "이용 종료",
+        danger: true,
+      });
+      if (!endOk) return;
     } else if (!canCheckOut({ ...liveB, checkedOutAt: null }, today)) {
       setInErr(
         isLongStay(liveB)
@@ -826,6 +833,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           : "퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.",
       );
       return;
+    } else {
+      const room = liveB.roomId ? L.roomLabel(liveB.roomId) ?? "" : "";
+      const coOk = await askConfirm({
+        title: "퇴실처리",
+        body: `퇴실처리할까요?\n${room ? `${room} · ` : ""}${liveB.guestName}`,
+        confirmLabel: "퇴실처리",
+        danger: true,
+      });
+      if (!coOk) return;
     }
     setCoBusy(true);
     setInErr(null);
@@ -1245,7 +1261,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const delPay = async (id: string) => {
     if (!base || payBusy) return;
-    if (!window.confirm(long ? "이 결제 줄을 지울까요? 미수가 다시 늘어나요." : "이 결제 줄을 지울까요? 잔금이 다시 늘어나요.")) return;
+    const delOk = await askConfirm({
+      title: "결제 줄 삭제",
+      body: long ? "이 결제 줄을 지울까요? 미수가 다시 늘어나요." : "이 결제 줄을 지울까요? 잔금이 다시 늘어나요.",
+      confirmLabel: "지우기",
+      danger: true,
+    });
+    if (!delOk) return;
     setPayBusy(true);
     setPayErr(null);
     try {
@@ -1336,7 +1358,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
     const v = validateBooking(draft, s);
     if (v) return setErr(v);
-    if (base && !override && nightsChangedWithoutPrice(base, draft) && !window.confirm(NIGHTS_PRICE_WARN)) return;
+    if (base && !override && nightsChangedWithoutPrice(base, draft)) {
+      const nightsOk = await askConfirm({
+        title: "박수 변경",
+        body: NIGHTS_PRICE_WARN,
+        confirmLabel: "저장",
+      });
+      if (!nightsOk) return;
+    }
     const slotChanged =
       !base ||
       !isActive(base) ||
@@ -1361,12 +1390,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
     // 타입 오버부킹: 경고만 · 저장 허용 (물리 방 겹침은 위에서 차단)
     const typeOver = kind === "stay" && isActive(draft) && preview.some((r) => r.after < 0);
-    if (
-      typeOver &&
-      !override &&
-      !window.confirm("타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.")
-    )
-      return;
+    if (typeOver && !override) {
+      const overOk = await askConfirm({
+        title: "타입 재고 부족",
+        body: "타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.",
+        confirmLabel: "저장",
+      });
+      if (!overOk) return;
+    }
     // 대실 ∩ 숙박 입실/점유: 주의 팝업 · 동일 손님은 skip (하드블록 아님)
     if (kind === "dayuse" && isActive(draft) && draft.roomId && !opts?.allowDayuseOverlap) {
       const w = dayuseStayOverlapWarn(s, data.bookings, draft);

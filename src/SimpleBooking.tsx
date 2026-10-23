@@ -29,6 +29,7 @@ import {
 import { nightRatesFromTotal, splitAmountLast, syncStayNightRates } from "../shared/nightrates";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
+import { askConfirm } from "./ConfirmDialog";
 import {
   type BookPayMethod,
   type OnsitePayMode,
@@ -407,16 +408,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       }
     }
 
-    if (
-      typeOver &&
-      !window.confirm(
-        `${impact
+    if (typeOver) {
+      const overOk = await askConfirm({
+        title: "타입 재고 부족",
+        body: `${impact
           .filter((x) => x.after < 0)
           .map((x) => typeLabel(L.types.get(x.typeId)))
           .join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.`,
-      )
-    )
-      return;
+        confirmLabel: "저장",
+      });
+      if (!overOk) return;
+    }
 
     setBusy(true);
     setErr(null);

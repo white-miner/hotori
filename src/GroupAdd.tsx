@@ -1,6 +1,7 @@
 // 기존 단체에 객실(또는 타입만) 추가 · group_id는 그대로, booking_groups는 새로 만들지 않아요
 import { useEffect, useMemo, useState } from "react";
 import { saveFailMessage } from "../shared/errors";
+import { askConfirm } from "./ConfirmDialog";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
 import {
   type Booking,
@@ -194,13 +195,14 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       typeOnly: assignMode === "typeOnly" ? typeOnlySlots : undefined,
     });
     if (v) return setErr(v);
-    if (
-      over.length &&
-      !window.confirm(
-        `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
-      )
-    )
-      return;
+    if (over.length) {
+      const overOk = await askConfirm({
+        title: "타입 재고 부족",
+        body: `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
+        confirmLabel: "저장",
+      });
+      if (!overOk) return;
+    }
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
     if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
