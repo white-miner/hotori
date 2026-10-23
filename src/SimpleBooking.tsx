@@ -135,8 +135,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [payMode, setPayMode] = useState<OnsitePayMode>("postpaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
-  /** 「바로 입실」: 이름·연락처 생략 · 호실 필수 · arrived */
-  const [walkInImmediate, setWalkInImmediate] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -147,8 +145,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   const plat = s.platforms.find((x) => x.id === platformId);
   const onsite = isOnsite(plat);
-  /** Path B = 배치도에서 호실 선택(또는 바로 입실) · Path A = 호실 없이 타입만 */
-  const pathB = walkInImmediate || roomIds.length > 0;
+  /** Path B = 배치도에서 호실 선택 · Path A = 호실 없이 타입만 */
+  const pathB = roomIds.length > 0;
   const allPlaced = placedRooms(s);
   const rmap = useMemo(() => new Map(allPlaced.map((r) => [r.id, r])), [allPlaced]);
   const multi = isMultiBuilding(s);
@@ -227,7 +225,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     nights,
     startTime: null,
     endTime: null,
-    arrived: walkInImmediate,
+    arrived: false,
     tentative: false,
     memo: null,
     guests,
@@ -324,7 +322,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     [types, typeCounts],
   );
 
-  useEffect(() => setErr(null), [typeCounts, roomIds, nights, checkIn, rates, totalStr, salesMode, payMode, priceUnset, walkInImmediate]);
+  useEffect(() => setErr(null), [typeCounts, roomIds, nights, checkIn, rates, totalStr, salesMode, payMode, priceUnset]);
 
   // 날짜 바뀌어 불가해진 선택 호실 정리
   useEffect(() => {
@@ -337,7 +335,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [free]);
 
-  async function save() {
+  /** 저장하기 · 바로입실(저장+arrived · 이름·전화 완화 · 호실 필수) */
+  async function save(opts?: { walkInImmediate?: boolean }) {
+    const walkInImmediate = !!opts?.walkInImmediate;
     const name = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
     if (!name) return setErr("이름을 적어 주세요.");
     const phoneErr = validateGuestPhone(plat, guestPhone, { walkInImmediate });
@@ -633,40 +633,19 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             {s.platforms.map((pl) => (
               <Chip
                 key={pl.id}
-                active={!walkInImmediate && pl.id === platformId}
-                onClick={() => {
-                  setWalkInImmediate(false);
-                  setPlatformId(pl.id);
-                }}
+                active={pl.id === platformId}
+                onClick={() => setPlatformId(pl.id)}
                 title={isOnsite(pl) ? "현장/전화" : "플랫폼"}
               >
                 {pl.name}
               </Chip>
             ))}
-            <Chip
-              active={walkInImmediate}
-              tone="info"
-              onClick={() => {
-                setWalkInImmediate((v) => {
-                  const next = !v;
-                  if (next) {
-                    // 바로 입실 ↔ 채널 배타 · 저장/결제는 현장·전화 플랫폼
-                    const onsitePlat = s.platforms.find((x) => isOnsite(x));
-                    if (onsitePlat) setPlatformId(onsitePlat.id);
-                  }
-                  return next;
-                });
-              }}
-              title="이름·연락처 없이 즉시 숙박 · 채널과 배타"
-            >
-              바로 입실
-            </Chip>
           </ChipGroup>
         </div>
 
         <div className="fld">
           <label>
-            이름{walkInImmediate ? null : <em>*</em>} · 연락처{onsite && !walkInImmediate ? <em>*</em> : null}
+            이름<em>*</em> · 연락처{onsite ? <em>*</em> : null}
           </label>
           {/* value col only — muted helper as 3rd .fld child sat under the 86px label */}
           <div className="payb">
@@ -676,9 +655,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               phone={guestPhone}
               onName={setName}
               onPhone={setPhone}
-              phoneRequired={onsite && !walkInImmediate}
+              phoneRequired={onsite}
             />
-            {walkInImmediate ? <div className="muted sm">비우면 「{walkInDisplayName(checkIn)}」로 저장 · 나중에 Entry에서 수정</div> : null}
+            <div className="muted sm">바로입실 시 이름·연락처 비워도 돼요 · 호실 필수</div>
           </div>
         </div>
 
@@ -686,60 +665,58 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <label>호실</label>
           <div className="mfp-wrap">
             {/* 타입 줄 = 배치도 위 · Path A 본체 + 하늘색 후보 필터 */}
-            {!walkInImmediate ? (
-              <div className="mfp-types">
-                <div className="muted sm">타입 · 남은 수</div>
-                <div className="gcounts mfp-type-list">
-                  {types.map((t) => {
-                    const c = typeCounts[t.id] ?? 0;
-                    const left = stockByType[t.id] ?? 0;
-                    const max = Math.max(left, c, GROUP_ROOMS_MAX);
-                    return (
-                      <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
-                        <TypeBadge t={t} />
-                        <span className="muted sm">남은 {left}</span>
-                        <span className="step sm">
-                          <button
-                            type="button"
-                            className="sb"
-                            aria-label={`${typeLabel(t)} 1실 빼기`}
-                            disabled={!c}
-                            onClick={() => setCount(t.id, c - 1)}
-                          >
-                            <Minus size={14} />
-                          </button>
-                          <input
-                            className="gin num"
-                            inputMode="numeric"
-                            aria-label={`${typeLabel(t)} 방 수`}
-                            value={c}
-                            onChange={(e) => setCount(t.id, Number(e.target.value.replace(/\D/g, "") || 0))}
-                          />
-                          <button
-                            type="button"
-                            className="sb"
-                            aria-label={`${typeLabel(t)} 1실 더하기`}
-                            disabled={c >= max && typeIdsFromCounts.length >= GROUP_ROOMS_MAX}
-                            onClick={() => setCount(t.id, c + 1)}
-                          >
-                            <Plus size={14} />
-                          </button>
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {!roomIds.length && typeIdsFromCounts.length ? (
-                  <div className={`muted sm${typeOver ? " tred" : ""}`}>
-                    합계 {typeIdsFromCounts.length}실(미배정)
-                    {pickedTypes.length
-                      ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}`
-                      : null}
-                    {typeOver ? " · 재고 부족(오버부킹 경고)" : null}
-                  </div>
-                ) : null}
+            <div className="mfp-types">
+              <div className="muted sm">타입 · 남은 수</div>
+              <div className="gcounts mfp-type-list">
+                {types.map((t) => {
+                  const c = typeCounts[t.id] ?? 0;
+                  const left = stockByType[t.id] ?? 0;
+                  const max = Math.max(left, c, GROUP_ROOMS_MAX);
+                  return (
+                    <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
+                      <TypeBadge t={t} />
+                      <span className="muted sm">남은 {left}</span>
+                      <span className="step sm">
+                        <button
+                          type="button"
+                          className="sb"
+                          aria-label={`${typeLabel(t)} 1실 빼기`}
+                          disabled={!c}
+                          onClick={() => setCount(t.id, c - 1)}
+                        >
+                          <Minus size={14} />
+                        </button>
+                        <input
+                          className="gin num"
+                          inputMode="numeric"
+                          aria-label={`${typeLabel(t)} 방 수`}
+                          value={c}
+                          onChange={(e) => setCount(t.id, Number(e.target.value.replace(/\D/g, "") || 0))}
+                        />
+                        <button
+                          type="button"
+                          className="sb"
+                          aria-label={`${typeLabel(t)} 1실 더하기`}
+                          disabled={c >= max && typeIdsFromCounts.length >= GROUP_ROOMS_MAX}
+                          onClick={() => setCount(t.id, c + 1)}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            ) : null}
+              {!roomIds.length && typeIdsFromCounts.length ? (
+                <div className={`muted sm${typeOver ? " tred" : ""}`}>
+                  합계 {typeIdsFromCounts.length}실(미배정)
+                  {pickedTypes.length
+                    ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}`
+                    : null}
+                  {typeOver ? " · 재고 부족(오버부킹 경고)" : null}
+                </div>
+              ) : null}
+            </div>
             <MiniFloorPlan
               s={s}
               L={L}
@@ -753,11 +730,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
             <div className={`muted sm mfp-sum${typeOver ? " tred" : ""}`}>
               {roomIds.length
                 ? `${roomSummary} · ${roomIds.length}실`
-                : walkInImmediate
-                  ? "배치도에서 호실을 골라 주세요"
-                  : typeIdsFromCounts.length
-                    ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
-                    : "타입을 고르거나 배치도에서 호실을 지정"}
+                : typeIdsFromCounts.length
+                  ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
+                  : "타입을 고르거나 배치도에서 호실을 지정"}
               {pickedTypes.length > 1 && roomIds.length
                 ? ` · ${pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ")}`
                 : null}
@@ -913,16 +888,21 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <button type="button" className="btn line" onClick={onClose}>
             취소
           </button>
-          <button type="submit" className="btn dark" disabled={busy}>
+          <button type="submit" className="btn line" disabled={busy}>
             {busy
               ? "저장 중…"
-              : walkInImmediate
-                ? roomIds.length > 1
-                  ? `바로 입실 ${roomIds.length}실 저장`
-                  : "바로 입실 저장"
-                : roomIds.length >= 1
-                  ? `${roomIds.length}실 저장`
-                  : "미배정으로 저장"}
+              : roomIds.length >= 1
+                ? `${roomIds.length}실 저장`
+                : "저장하기"}
+          </button>
+          <button
+            type="button"
+            className="btn dark"
+            disabled={busy}
+            onClick={() => void save({ walkInImmediate: true })}
+            title="저장 후 바로 숙박(입실) · 호실 필수 · 이름·연락처 비워도 됨"
+          >
+            {busy ? "저장 중…" : "바로입실"}
           </button>
         </div>
       </form>

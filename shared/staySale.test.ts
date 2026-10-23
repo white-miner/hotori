@@ -169,3 +169,64 @@ test("현장 회귀: 선금 검증 · 호실 고정 draft", () => {
   assert.equal(ok[0]!.roomId, "r1");
   assert.equal(ok[0]!.platformId, "walk");
 });
+
+test("바로입실: 현장·플랫폼 빈 이름·전화 OK · arrived", () => {
+  const onsite = buildStaySaleDrafts(s, {
+    roomIds: ["r1"],
+    checkIn: "2026-10-23",
+    nights: 1,
+    guestName: "",
+    guestPhone: "",
+    guests: 1,
+    price: 90000,
+    platformId: "walk",
+    payMode: "postpaid",
+    depAmt: "",
+    depMethod: "card",
+    bizDate: "2026-10-23",
+    walkInImmediate: true,
+  });
+  assert.ok(!("err" in onsite));
+  assert.equal(onsite[0]!.arrived, true);
+  assert.match(onsite[0]!.guestName, /바로입실/);
+  assert.equal(onsite[0]!.guestPhone, null);
+
+  const ota = buildStaySaleDrafts(s, {
+    roomIds: ["r1"],
+    checkIn: "2026-10-23",
+    nights: 1,
+    guestName: "",
+    guestPhone: "",
+    guests: 1,
+    price: 90000,
+    platformId: "yanol",
+    payMode: "postpaid",
+    depAmt: "",
+    depMethod: "card",
+    bizDate: "2026-10-23",
+    walkInImmediate: true,
+  });
+  assert.ok(!("err" in ota));
+  assert.equal(ota[0]!.arrived, true);
+  assert.equal(ota[0]!.platformId, "yanol");
+
+  // 저장하기(비바로입실): 현장 빈 전화 차단
+  assert.match(
+    validateStaySaleCreate(s, {
+      roomIds: ["r1"],
+      checkIn: "2026-10-23",
+      nights: 1,
+      guestName: "현장",
+      guestPhone: "",
+      guests: 1,
+      price: 90000,
+      platformId: "walk",
+      payMode: "postpaid",
+      depAmt: "",
+      depMethod: "card",
+      bizDate: "2026-10-23",
+      walkInImmediate: false,
+    }) ?? "",
+    /연락처/,
+  );
+});
