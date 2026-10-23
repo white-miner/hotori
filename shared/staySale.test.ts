@@ -4,6 +4,7 @@ import { normalizeSettings } from "./ledger";
 import { payState } from "./payment";
 import {
   buildStaySaleDrafts,
+  staySaleDraftSessionKey,
   staySaleNightsSummary,
   staySaleOtaPlatformId,
   staySaleOtaPlatforms,
@@ -33,6 +34,21 @@ test("staySalePlatformId prefers onsite · OTA helper prefers first non-onsite",
     staySaleOtaPlatforms(s).map((p) => p.abbr),
     ["야", "아"],
   );
+});
+
+test("staySaleDraftSessionKey: stable across settings object churn (poll wipe guard)", () => {
+  const a = staySaleDraftSessionKey(null, ["r1"]);
+  const b = staySaleDraftSessionKey(undefined, ["r1"]);
+  const c = staySaleDraftSessionKey(null, ["r1", "r2"]);
+  const d = staySaleDraftSessionKey("bk1", ["r1"]);
+  assert.equal(a, "new|r1");
+  assert.equal(a, b);
+  assert.notEqual(a, c);
+  assert.equal(d, "bk1|r1");
+  // same rooms+booking → same key even if two settings objects differ by reference
+  const s2 = normalizeSettings({ ...s, name: "other" } as never);
+  assert.notEqual(s, s2);
+  assert.equal(staySaleDraftSessionKey(null, ["r1"]), staySaleDraftSessionKey(null, ["r1"]));
 });
 
 test("staySaleNightsSummary: compact · 1박 / 같은달 연박 / 월넘김", () => {

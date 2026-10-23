@@ -28,6 +28,18 @@ import { clampHours } from "./extratime";
 export const STAY_SALE_TITLE = "숙박 판매";
 export const STAY_SALE_CTA = "숙박 판매";
 
+/**
+ * StaySaleModal draft reset key — occupied id + room ids only.
+ * Must NOT include HotelSettings identity: useHotelData poll/realtime
+ * replaces `settings` every ~10s and would wipe in-progress name/phone.
+ */
+export function staySaleDraftSessionKey(
+  occupiedId: string | null | undefined,
+  roomIds: readonly string[],
+): string {
+  return `${occupiedId ?? "new"}|${roomIds.join(",")}`;
+}
+
 /** 숙박 판매 채널 모드 · 바로입실⊂현장 · 상호 배타 */
 export type StaySaleChannelMode = "onsite" | "platform";
 /** 플랫폼 판매금: 총액 기본 · 박당 옵션 (OTA SoT) */
