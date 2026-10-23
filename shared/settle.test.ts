@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Booking } from "./ledger";
 import type { Payment } from "./payment";
-import { type GroupInfo, emptyGroupInfo, rateFormula, ratePrices, settle, settleBadge, validateExtra } from "./settle";
+import { type GroupInfo, emptyGroupInfo, groupSettleGlance, rateFormula, ratePrices, settle, settleBadge, validateExtra } from "./settle";
 import { groupDrafts } from "./group";
 import { normalizeSettings } from "./ledger";
 
@@ -86,4 +86,68 @@ test("추가 항목 검사", () => {
   assert.equal(validateExtra({ name: "매점 외상", amount: 45000 }), null);
   assert.match(validateExtra({ name: " ", amount: 1 })!, /이름/);
   assert.match(validateExtra({ name: "x", amount: 0 })!, /금액/);
+});
+
+test("P1 단체 글랜스: S1 방마다 · S2 대납 · 단체납 · 부분 단체만 K=N", () => {
+  const walk = { name: "현장·전화" };
+  const two = (): Booking[] => {
+    const m = members().slice(0, 2);
+    m[0] = { ...m[0], id: "a", price: 100000, payments: [] };
+    m[1] = { ...m[1], id: "b", price: 100000, payments: [], roomId: "r2" };
+    return m;
+  };
+  // 미수납: K=N · 뱃지 없음
+  {
+    const g = groupSettleGlance(two(), info({ payMode: "prepaid", payments: [] }), walk);
+    assert.equal(g?.n, 2);
+    assert.equal(g?.k, 2);
+    assert.equal(g?.paidRooms, 0);
+    assert.equal(g?.badge, null);
+    assert.equal(g?.strip, "단체 · 0실 완납 / 2실 잔금 · 남은 ₩200,000");
+    assert.equal(g?.compact, "0완/2잔");
+  }
+  // 단체만 일부: 전원 K=N · 단체납 (허위 완납 금지)
+  {
+    const g = groupSettleGlance(two(), info({ payMode: "prepaid", payments: [pay(50000)] }), walk);
+    assert.equal(g?.k, 2);
+    assert.equal(g?.badge, "단체납");
+    assert.match(g!.strip, /2실 잔금/);
+    assert.match(g!.strip, /남은 ₩150,000/);
+  }
+  // S1: 한 방만 완납 → K=1 · 뱃지 없음
+  {
+    const m = two();
+    m[0] = {
+      ...m[0],
+      payments: [{ id: "1", bookingId: "a", kind: "balance", method: "card", amount: 100000, bizDate: "2026-11-03", createdAt: "" }],
+    };
+    const g = groupSettleGlance(m, info({ payMode: "prepaid", payments: [] }), walk);
+    assert.equal(g?.k, 1);
+    assert.equal(g?.paidRooms, 1);
+    assert.equal(g?.badge, null);
+    assert.equal(g?.compact, "1완/1잔");
+  }
+  // S2 대납: 한 방이 합계 전액 → left=0 · 대납
+  {
+    const m = two();
+    m[0] = {
+      ...m[0],
+      payments: [{ id: "1", bookingId: "a", kind: "balance", method: "card", amount: 200000, bizDate: "2026-11-03", createdAt: "" }],
+    };
+    const g = groupSettleGlance(m, info({ payMode: "prepaid", payments: [] }), walk);
+    assert.equal(g?.k, 0);
+    assert.equal(g?.left, 0);
+    assert.equal(g?.badge, "대납");
+    assert.equal(g?.strip, "단체 · 2실 완납");
+    assert.equal(g?.compact, "2완");
+  }
+  // 단체 줄 완납 → K=0 · 단체납
+  {
+    const g = groupSettleGlance(two(), info({ payMode: "prepaid", payments: [pay(200000)] }), walk);
+    assert.equal(g?.k, 0);
+    assert.equal(g?.badge, "단체납");
+    assert.equal(g?.strip, "단체 · 2실 완납");
+  }
+  // OTA 비추적 → null
+  assert.equal(groupSettleGlance(two(), info({ payMode: "prepaid" }), OTA), null);
 });
