@@ -6,6 +6,7 @@ import {
   canEndDayuse,
   hotelWallClock,
   isDepartingStatus,
+  groupStayPeers,
   nowAmountGlance,
   nowAmountTone,
   nowByRoom,
@@ -124,7 +125,7 @@ import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
-import { emptyGroupInfo, settle, type GroupBadgeColor } from "../shared/settle";
+import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -605,10 +606,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (books.length < 2) return [];
     return sameGroupId(books) ? books : [];
   }, [selectedRoomIds, nowBoardMap]);
+  /** 선택 객실(단실·복수)의 단체 settle 멤버 — 칸/ops 정산 글랜스 SoT */
+  const selectedSettle = useMemo(() => {
+    if (selectedGroupBookings.length > 1) {
+      const gid = selectedGroupBookings[0]!.groupId!;
+      return { members: selectedGroupBookings, info: data.groups.get(gid) ?? null };
+    }
+    if (selectedRoomIds.length === 1) {
+      const bk = nowBoardMap.get(selectedRoomIds[0]!);
+      if (bk?.groupId && isActive(bk) && bk.kind === "stay") {
+        const peers = groupStayPeers(bookings, bk.groupId);
+        return { members: peers.length ? peers : [bk], info: data.groups.get(bk.groupId) ?? null };
+      }
+    }
+    return { members: [] as Booking[], info: null as GroupInfo | null };
+  }, [selectedGroupBookings, selectedRoomIds, nowBoardMap, bookings, data.groups]);
+  /** 단체 잔금은 addGroupPayment → 형제 전부 members로 열어 settle/칸 SoT 맞춤 */
+  const payDeskMembersFor = (bk: Booking): Booking[] => {
+    if (!bk.groupId) return [bk];
+    const peers = groupStayPeers(bookings, bk.groupId);
+    return peers.length ? peers : [bk];
+  };
   const openPaymentDesk = (b?: Booking) => {
     if (readOnly) return;
     if (b) {
-      setPayDesk({ members: [b], focusId: b.id });
+      setPayDesk({ members: payDeskMembersFor(b), focusId: b.id });
       return;
     }
     if (selectedGroupBookings.length > 1) {
@@ -617,7 +639,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     if (selectedRoomIds.length === 1) {
       const bk = nowBoardMap.get(selectedRoomIds[0]);
-      if (bk && isActive(bk) && bk.kind === "stay") setPayDesk({ members: [bk], focusId: bk.id });
+      if (bk && isActive(bk) && bk.kind === "stay") {
+        setPayDesk({ members: payDeskMembersFor(bk), focusId: bk.id });
+      }
     }
   };
   const nowDayuseByRoom = useMemo(() => dayuseByRoomMap(bookings, today), [bookings, today]);
@@ -2202,9 +2226,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     // 숙박예약(입실 전)은 진행 숨김 · 길이 `N박` · 연박 진행 `K/N박` (풀 라인 금지)
     const staySummary = nowStaySummary(b, today, f.kind !== "arriving");
     const plat = L.plats.get(b.platformId);
-    const amount = nowAmountGlance(b, plat);
-    const amountTone = nowAmountTone(b, plat);
-    const payMethod = nowPayMethodGlance(b);
+    const groupCtx =
+      b.groupId
+        ? {
+            members: groupStayPeers(bookings, b.groupId),
+            info: data.groups.get(b.groupId) ?? null,
+          }
+        : null;
+    const amount = nowAmountGlance(b, plat, groupCtx);
+    const amountTone = nowAmountTone(b, plat, groupCtx);
+    const payMethod = nowPayMethodGlance(b, groupCtx?.info?.payments);
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
     const coMark = coMarkLabel ? (
@@ -2510,6 +2541,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   ? (data.groups.get(selectedGroupBookings[0].groupId) ?? null)
                   : null
               }
+              settleMembers={selectedSettle.members}
+              settleGroupInfo={selectedSettle.info}
               mode={sideMode}
               onMode={setSideMode}
               glanceByRoom={glanceByRoom}

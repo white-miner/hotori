@@ -32,6 +32,7 @@ import {
   unassignedTypeCounts,
   type NowClock,
 } from "./nowboard";
+import { emptyGroupInfo } from "./settle";
 
 let n = 0;
 const bk = (p: Partial<Booking>): Booking => ({
@@ -375,6 +376,25 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     "due",
   );
   assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
+  // 단체: 방 payments 비어 있어도 단체 줄 완납 → 칸에 잔금 금지 · 판매가(검정)
+  {
+    const a = bk({ id: "ga", groupId: "g1", price: 80000, payments: [] });
+    const b = bk({ id: "gb", groupId: "g1", price: 70000, payments: [], roomId: "r302" });
+    const info = {
+      ...emptyGroupInfo("g1"),
+      payments: [{ id: "gp", bookingId: "", kind: "balance" as const, method: "card" as const, amount: 150000, bizDate: "2026-10-22", createdAt: "t" }],
+    };
+    const ctx = { members: [a, b], info };
+    assert.equal(nowAmountGlance(a, onsite, ctx), "₩80,000");
+    assert.equal(nowAmountTone(a, onsite, ctx), "paid");
+    assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
+    assert.equal(nowAmountTone(b, onsite, ctx), "paid");
+    assert.equal(nowPayMethodGlance(a, info.payments), "카드");
+    // 단체 수납 없으면 방만 볼 때와 같이 잔금(단체 합)
+    const unpaid = { members: [a, b], info: emptyGroupInfo("g1") };
+    assert.equal(nowAmountGlance(a, onsite, unpaid), "잔금 ₩150,000");
+    assert.equal(nowAmountTone(a, onsite, unpaid), "due");
+  }
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
   assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
   assert.equal(nowMetaLine({ memo: null, guests: null }), null);
