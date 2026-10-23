@@ -57,17 +57,63 @@ export function isWalkInPlaceholderName(name: string | null | undefined): boolea
   return t === WALKIN_IMMEDIATE_PREFIX || t.startsWith(`${WALKIN_IMMEDIATE_PREFIX} `);
 }
 
+/** 연락처 필수/선택 — `isGuestPhoneRequired` · `validateGuestPhone` · UI `phoneRequired` 공용 */
+export type GuestPhoneOpts = {
+  /** 푸터 「바로입실」생성 CTA */
+  walkInImmediate?: boolean;
+  /**
+   * 수정: 기존 예약 연락처가 비어 있으면 계속 선택.
+   * (바로입실로 null 저장한 뒤 메모·박수 등만 고칠 때). 신규 「저장하기」에는 쓰지 않음.
+   */
+  priorPhoneEmpty?: boolean;
+  /** 수정: 바로입실 표시명이면 연락처 선택 */
+  walkInPlaceholder?: boolean;
+};
+
 /**
- * 연락처 필수 = 현장·전화(`isOnsite`)만. 푸터 「바로입실」이면 현장·전화도 선택.
- * OTA 등 플랫폼은 빈 연락처로 저장 가능. 간단 예약·Entry·결제 저장이 이 함수만 써요.
+ * 연락처 필수 여부 (라벨 * · HTML required · validateGuestPhone SoT).
+ * 현장·전화만 필수. 바로입실 생성·이미 빈 연락처(또는 바로입실 표시명)인 예약 수정은 선택.
+ */
+export function isGuestPhoneRequired(
+  plat: OnsitePlat | null | undefined,
+  opts?: GuestPhoneOpts,
+): boolean {
+  if (opts?.walkInImmediate) return false;
+  if (opts?.priorPhoneEmpty) return false;
+  if (opts?.walkInPlaceholder) return false;
+  return isOnsite(plat);
+}
+
+/**
+ * Entry 수정용 opts. `existing`이 있을 때만 prior/placeholder 완화.
+ * 신규는 walkInImmediate만 넘기면 됨.
+ */
+export function guestPhoneOptsForBooking(input: {
+  walkInImmediate?: boolean;
+  existing?: { guestPhone?: string | null; guestName?: string | null } | null;
+  /** 폼 현재 이름 (placeholder 감지; 없으면 existing.guestName) */
+  guestName?: string | null;
+}): GuestPhoneOpts {
+  const existing = input.existing ?? null;
+  return {
+    walkInImmediate: !!input.walkInImmediate,
+    priorPhoneEmpty: existing ? !existing.guestPhone?.trim() : false,
+    walkInPlaceholder: existing
+      ? isWalkInPlaceholderName(input.guestName ?? existing.guestName)
+      : false,
+  };
+}
+
+/**
+ * 연락처 검증. OTA는 빈 번호 OK. 현장·전화는 `isGuestPhoneRequired`가 true일 때만 필수.
+ * 간단 예약·Entry·StaySale·결제 저장이 이 함수만 써요.
  */
 export function validateGuestPhone(
   plat: OnsitePlat | null | undefined,
   phone: string | null | undefined,
-  opts?: { walkInImmediate?: boolean },
+  opts?: GuestPhoneOpts,
 ): string | null {
-  if (opts?.walkInImmediate) return null;
-  if (!isOnsite(plat)) return null;
+  if (!isGuestPhoneRequired(plat, opts)) return null;
   if (phone?.trim()) return null;
   return "현장·전화 채널은 연락처가 필요해요.";
 }

@@ -36,7 +36,7 @@ type GuestNamePhoneProps = {
   phone: string;
   onName: (v: string) => void;
   onPhone: (v: string) => void;
-  /** 현장·전화만 true — HTML required와 클라이언트 validateGuestPhone을 같이 맞춤 */
+  /** isGuestPhoneRequired SoT — HTML required와 클라이언트 validateGuestPhone을 같이 맞춤 */
   phoneRequired?: boolean;
 };
 
