@@ -138,14 +138,15 @@ export function splitLine(p: Record<BookPayMethod, number>): string {
 }
 
 /**
- * 현장·전화 생성 progressive: 선불 / 후불 / 선금 (간단·Entry create stay 공유).
- * 후불 = 수납 줄 없음 · 선불 = 판매금 완납(balance) · 선금 = deposit 일부.
+ * 현장·전화 생성 progressive: 완납 / 후불 / 선금 (간단·Entry create stay 공유).
+ * 후불 = 수납 줄 없음 · 완납(prepaid) = 판매금 전액(balance) · 선금 = deposit 일부.
  * 판매금(총액)은 세 모드 모두 별도 필드 — 이 타입으로 숨기지 않음.
+ * UI 라벨 Option A — enum `prepaid|postpaid|deposit` 유지.
  */
 export type OnsitePayMode = "prepaid" | "postpaid" | "deposit";
 export const ONSITE_PAY_MODES = ["prepaid", "postpaid", "deposit"] as const;
 export const ONSITE_PAY_MODE_LABEL: Record<OnsitePayMode, string> = {
-  prepaid: "선불",
+  prepaid: "완납",
   postpaid: "후불",
   deposit: "선금",
 };
@@ -155,7 +156,7 @@ export type OnsiteCreatePayPlan =
   | { kind: "balance"; amount: number; method: BookPayMethod }
   | { kind: "deposit"; amount: number; method: BookPayMethod };
 
-/** 선금 모드일 때만 수납 액수 검증 · 선불/후불은 판매금 필드로 */
+/** 선금 모드일 때만 수납 액수 검증 · 완납/후불은 판매금 필드로 */
 export function validateOnsiteCreateDeposit(
   payMode: OnsitePayMode,
   opts: { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod; bizDate: string },
@@ -168,7 +169,7 @@ export function validateOnsiteCreateDeposit(
   return null;
 }
 
-/** 저장 직후 addPayment에 넣을 계획 (금액미정·후불·0원 선불 → none) */
+/** 저장 직후 addPayment에 넣을 계획 (금액미정·후불·0원 완납 → none) */
 export function planOnsiteCreatePay(
   payMode: OnsitePayMode,
   opts: { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod },
@@ -185,7 +186,7 @@ export function planOnsiteCreatePay(
 }
 
 export function onsiteCreatePayTail(plan: OnsiteCreatePayPlan): string {
-  if (plan.kind === "balance") return ` · 선불(완납) ${won(plan.amount)}원`;
+  if (plan.kind === "balance") return ` · 완납 ${won(plan.amount)}원`;
   if (plan.kind === "deposit") return ` · 선금 ${won(plan.amount)}원(${BOOK_PAY_LABEL[plan.method]})`;
   return "";
 }

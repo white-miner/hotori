@@ -351,7 +351,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   });
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
-  /** 신규 표준 숙박 · 현장: 간단과 같은 선불/후불/선금 progressive (Option D absorb #3) */
+  /** 신규 표준 숙박 · 현장: 간단과 같은 완납/후불/선금 progressive (Option D absorb #3) */
   const [createPayMode, setCreatePayMode] = useState<OnsitePayMode>("postpaid");
   const [createDepAmt, setCreateDepAmt] = useState("");
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
@@ -2942,7 +2942,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         )}
 
-        {/* 신규 현장: 선불/선금 수납만 · 후불은 숨김 · 수정·장기·대실·플랫폼은 Option A */}
+        {/* 신규 현장: 완납/선금 수납만 · 후불은 숨김 · 수정·장기·대실·플랫폼은 Option A */}
         {createOnsitePay ? (
           <OnsitePayModeFields
             part="take"

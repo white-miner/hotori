@@ -188,7 +188,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     Object.entries(rates).map(([k, v]) => [k, Number(v || 0)]),
   );
   /**
-   * 총액 모드: 플랫폼(#75) + 현장·전화 선불/후불/선금 — 총액 우선, 박·호실은 자동 분배
+   * 총액 모드: 플랫폼(#75) + 현장·전화 완납/후불/선금 — 총액 우선, 박·호실은 자동 분배
    * (나머지 원은 마지막 호실·마지막 박). 박당 강요 금지.
    */
   const totalMode = salesMode === "total";
@@ -388,7 +388,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       );
     if (n > GROUP_ROOMS_MAX) return setErr(`한 번에 ${GROUP_ROOMS_MAX}실까지예요.`);
 
-    // 선불·후불·선금 모두 판매금(총액) 필수 (금액미정 제외) — 선금 수납 칸과 별개
+    // 완납·후불·선금 모두 판매금(총액) 필수 (금액미정 제외) — 선금 수납 칸과 별개
     if (!priceUnset) {
       if (totalMode) {
         if (!(totalNum > 0)) return setErr("판매금(총액)을 적거나 금액미정을 켜 주세요.");
@@ -804,7 +804,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           />
         ) : null}
 
-        {/* 판매금: 선불·후불·선금·플랫폼 모두 표시 · 기본 총액(박·호실 자동 분배) */}
+        {/* 판매금: 완납·후불·선금·플랫폼 모두 표시 · 기본 총액(박·호실 자동 분배) */}
         <div className="fld">
           <label>판매금</label>
           <div className="simple-price">
@@ -939,7 +939,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </div>
         </div>
 
-        {/* 선금·선불 수납만 · 후불은 숨김 · shared */}
+        {/* 선금·완납 수납만 · 후불은 숨김 · shared */}
         {onsite ? (
           <OnsitePayModeFields
             part="take"

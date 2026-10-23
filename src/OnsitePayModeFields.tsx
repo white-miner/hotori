@@ -1,5 +1,5 @@
 /**
- * 현장·전화 생성 progressive 결제 UI (선불/후불/선금).
+ * 현장·전화 생성 progressive 결제 UI (완납/후불/선금).
  * 간단 예약 · Entry create stay 공유 — Option A 원장(수정)과 별개.
  */
 import type { ReactNode } from "react";
