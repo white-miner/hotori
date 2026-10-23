@@ -888,7 +888,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <button type="button" className="btn line" onClick={onClose}>
             취소
           </button>
-          <button type="submit" className="btn line" disabled={busy}>
+          <button type="submit" className="btn stop" disabled={busy}>
             {busy
               ? "저장 중…"
               : roomIds.length >= 1
@@ -897,7 +897,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </button>
           <button
             type="button"
-            className="btn dark"
+            className="btn green"
             disabled={busy}
             onClick={() => void save({ walkInImmediate: true })}
             title="저장 후 바로 숙박(입실) · 호실 필수 · 이름·연락처 비워도 됨"
