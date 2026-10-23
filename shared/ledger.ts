@@ -1144,12 +1144,17 @@ export function previewChange(
 }
 
 // ---------- 보드 (방 번호 칸) ----------
-/** 그 방·그 밤에 보여 줄 숙박: 살아 있는 예약이 우선, 없으면 취소된 예약을 줄 그어 보여 줘요. */
+/**
+ * 그 방·그 밤에 보여 줄 숙박: 물리 점유(`occupiesRoom`)가 우선, 없으면 취소된 예약을 줄 그어 보여 줘요.
+ * 퇴실처리(`checkedOutAt`)된 활성 예약은 공실 — 「현황」`nowByRoom`과 맞춤.
+ * (조기 퇴실 후 같은 날 재배정 시 예전 손님이 「배치」에 남는 버그 방지)
+ */
 export function boardEntryForRoom(bookings: Booking[], roomId: string, date: string): Booking | null {
   let cancelled: Booking | null = null;
   for (const b of bookings) {
     if (b.kind !== "stay" || roomOnNight(b, date) !== roomId) continue;
-    if (isActive(b)) return b;
+    if (occupiesRoom(b)) return b;
+    if (isActive(b)) continue; // 퇴실처리됨 · 칸 비움 (새 예약은 occupiesRoom으로 선택)
     if (!cancelled || (b.cancelledAt ?? "") > (cancelled.cancelledAt ?? "")) cancelled = b;
   }
   return cancelled;
