@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 import { supabase } from "./supabase";
 import {
   type Booking,
@@ -322,6 +322,12 @@ export function useHotelData(hotelId: string) {
   const [groups, setGroups] = useState<Map<string, GroupInfo>>(new Map());
   const busy = useRef(false);
   const again = useRef(false);
+  /** 로컬 저장이 in-flight refresh 결과를 덮어쓰지 않게 (판매 캘린더 굳음 방지) */
+  const mutateGen = useRef(0);
+  const setBookingsLocal = useCallback((update: SetStateAction<Booking[]>) => {
+    mutateGen.current += 1;
+    setBookings(update);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (busy.current) {
@@ -329,6 +335,7 @@ export function useHotelData(hotelId: string) {
       return;
     }
     busy.current = true;
+    const genAtStart = mutateGen.current;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
       const [h, b, g] = await Promise.all([
@@ -344,6 +351,11 @@ export function useHotelData(hotelId: string) {
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
+      // 저장 직후 폴링/실시간 refresh가 예전 스냅샷으로 로컬 목록을 지우지 않게
+      if (genAtStart !== mutateGen.current) {
+        again.current = true;
+        return;
+      }
       setHotel({
         id: h.data.id,
         name: h.data.name,
@@ -423,11 +435,11 @@ export function useHotelData(hotelId: string) {
       const { data, error } = await supabase.from("bookings").update({ price }).eq("id", b.id).select(COLS).single();
       if (error) throw error;
       const saved = fromRow(data as BookingRow);
-      setBookings((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+      setBookingsLocal((list) => list.map((x) => (x.id === saved.id ? saved : x)));
       return saved;
     }
     const saved = { ...b, charges: keep, price };
-    setBookings((list) => list.map((x) => (x.id === b.id ? saved : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === b.id ? saved : x)));
     return saved;
   }, []);
 
@@ -440,7 +452,7 @@ export function useHotelData(hotelId: string) {
       const { data, error } = await q;
       if (error) throw error;
       let saved = fromRow(data as BookingRow);
-      setBookings((list) => (isNew ? [...list, saved] : list.map((x) => (x.id === saved.id ? saved : x))));
+      setBookingsLocal((list) => (isNew ? [...list, saved] : list.map((x) => (x.id === saved.id ? saved : x))));
       if (saved.stayMode === "long_stay") saved = await syncNightCharges({ ...saved, longStayRate: b.longStayRate ?? saved.longStayRate });
       return saved;
     },
@@ -463,7 +475,7 @@ export function useHotelData(hotelId: string) {
         row.room_segments = patch.segments?.map((x) => ({ room: x.roomId, nights: x.nights })) ?? null;
       }
       // 방 지우면 임시도 끔 · 임시=true는 방이 있을 때만 (타입 홀드와 분리)
-      setBookings((list) => {
+      setBookingsLocal((list) => {
         const cur = list.find((x) => x.id === id);
         const nextRoom = patch.roomId !== undefined ? patch.roomId : cur?.roomId ?? null;
         let nextTent = patch.tentative !== undefined ? patch.tentative : !!cur?.tentative;
@@ -491,7 +503,7 @@ export function useHotelData(hotelId: string) {
       if (saved.stayMode === "long_stay" && (patch.nights !== undefined || patch.checkedOutAt !== undefined)) {
         saved = await syncNightCharges(saved);
       } else {
-        setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+        setBookingsLocal((list) => list.map((x) => (x.id === id ? saved : x)));
       }
       return saved;
     },
@@ -501,7 +513,7 @@ export function useHotelData(hotelId: string) {
   const confirmTentative = useCallback(
     async (ids: string[]): Promise<Booking[]> => {
       if (!ids.length) return [];
-      setBookings((list) => list.map((x) => (ids.includes(x.id) ? { ...x, tentative: false } : x)));
+      setBookingsLocal((list) => list.map((x) => (ids.includes(x.id) ? { ...x, tentative: false } : x)));
       const { data, error } = await supabase.from("bookings").update({ tentative: false }).in("id", ids).eq("hotel_id", hotelId).select(COLS);
       if (error) {
         void refresh();
@@ -509,7 +521,7 @@ export function useHotelData(hotelId: string) {
       }
       const saved = (data as BookingRow[]).map(fromRow);
       const m = new Map(saved.map((b) => [b.id, b]));
-      setBookings((list) => list.map((x) => m.get(x.id) ?? x));
+      setBookingsLocal((list) => list.map((x) => m.get(x.id) ?? x));
       return saved;
     },
     [hotelId, refresh],
@@ -524,18 +536,18 @@ export function useHotelData(hotelId: string) {
       .single();
     if (error) throw error;
     const saved = payFromRow(data as PaymentRow);
-    setBookings((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: [...(x.payments ?? []), saved] } : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: [...(x.payments ?? []), saved] } : x)));
     return saved;
   }, []);
   const deletePayment = useCallback(async (bookingId: string, id: string) => {
     const { error } = await supabase.from("booking_payments").delete().eq("id", id);
     if (error) throw error;
-    setBookings((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
   }, []);
   // 중도 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
   const setEarlyOut = useCallback(async (id: string, earlyOut: string | null, refund: number | null) => {
     const box: { prev?: Booking } = {};
-    setBookings((list) => list.map((x) => (x.id === id ? ((box.prev = x), { ...x, earlyOut, refund: earlyOut ? refund : null }) : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === id ? ((box.prev = x), { ...x, earlyOut, refund: earlyOut ? refund : null }) : x)));
     const { data, error } = await supabase
       .from("bookings")
       .update({ early_out_on: earlyOut, refund_amount: earlyOut && refund ? refund : null })
@@ -544,18 +556,18 @@ export function useHotelData(hotelId: string) {
       .single();
     if (error) {
       const prev = box.prev;
-      if (prev) setBookings((list) => list.map((x) => (x.id === id ? prev : x)));
+      if (prev) setBookingsLocal((list) => list.map((x) => (x.id === id ? prev : x)));
       void refresh();
       throw error;
     }
     const saved = fromRow(data as BookingRow);
-    setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === id ? saved : x)));
     return saved;
   }, [refresh]);
   // 객실 배치에서 옮기기·되돌리기: room_id와 구간을 함께 (구간이 null이면 한 방)
   const setPlacement = useCallback(async (id: string, p: Placement) => {
     const segs = normalizeSegments(p.segments);
-    setBookings((list) => list.map((x) => (x.id === id ? { ...x, roomId: p.roomId, segments: segs } : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === id ? { ...x, roomId: p.roomId, segments: segs } : x)));
     const { data, error } = await supabase
       .from("bookings")
       .update({ room_id: p.roomId, room_segments: segs ? segs.map((x) => ({ room: x.roomId, nights: x.nights })) : null })
@@ -567,7 +579,7 @@ export function useHotelData(hotelId: string) {
       throw error;
     }
     const saved = fromRow(data as BookingRow);
-    setBookings((list) => list.map((x) => (x.id === id ? saved : x)));
+    setBookingsLocal((list) => list.map((x) => (x.id === id ? saved : x)));
     return saved;
   }, [refresh]);
   // 단체 예약: 여러 줄을 한 번에 (한 문장이라 모두 되거나 모두 안 돼요)
@@ -595,7 +607,7 @@ export function useHotelData(hotelId: string) {
         throw error;
       }
       const saved = (data as BookingRow[]).map(fromRow);
-      setBookings((x) => [...x, ...saved]);
+      setBookingsLocal((x) => [...x, ...saved]);
       return saved;
     },
     [hotelId],
@@ -633,7 +645,7 @@ export function useHotelData(hotelId: string) {
         }
       }
       const m = new Map(saved.map((b) => [b.id, b]));
-      setBookings((x) => x.map((b) => m.get(b.id) ?? b));
+      setBookingsLocal((x) => x.map((b) => m.get(b.id) ?? b));
       return saved;
     },
     [hotelId, refresh],
@@ -687,7 +699,7 @@ export function useHotelData(hotelId: string) {
   const deleteBooking = useCallback(async (id: string) => {
     const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) throw error;
-    setBookings((list) => list.filter((x) => x.id !== id));
+    setBookingsLocal((list) => list.filter((x) => x.id !== id));
   }, []);
   const saveHotel = useCallback(
     async (patch: { name?: string; settings?: HotelSettings }) => {
