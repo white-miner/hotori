@@ -38,6 +38,7 @@ import StaySaleModal from "./StaySaleModal";
 import PaymentDeskModal from "./PaymentDeskModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
+import { askConfirm } from "./ConfirmDialog";
 import {
   type EarlyInPayMethod,
   type EarlyInPayPlan,
@@ -1612,13 +1613,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** 퇴실처리: 칸 하단 「퇴실예정」탭은 확인 필수 · 옆 패널도 동일 */
+  /** 퇴실처리: 칸 하단 「퇴실예정」탭은 확인 필수 · 옆 패널도 동일 · Hotori 모달 */
   const doCheckOut = async (b: Booking, needConfirm = false) => {
     if (readOnly || coBusy || !canCheckOut(b, today)) return;
     if (needConfirm) {
       const room = b.roomId ? L.roomLabel(b.roomId) ?? "" : "";
       const dates = nowNightRange(b).label;
-      if (!window.confirm(`퇴실처리할까요?\n${room ? `${room} · ` : ""}${b.guestName} · ${dates}`)) return;
+      const ok = await askConfirm({
+        title: "퇴실처리",
+        body: `퇴실처리할까요?\n${room ? `${room} · ` : ""}${b.guestName} · ${dates}`,
+        confirmLabel: "퇴실처리",
+        danger: true,
+      });
+      if (!ok) return;
     }
     setCoBusy(b.id);
     try {
@@ -1637,17 +1644,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** 대실 이용 종료: confirm → checkedOutAt · 숙박 칸/상태 불변 · 슬롯만 해제 */
+  /** 대실 이용 종료: Hotori 확인 → checkedOutAt · 숙박 칸/상태 불변 · 슬롯만 해제 */
   const doEndDayuse = async (b: Booking) => {
     if (readOnly || coBusy || !canEndDayuse(b)) return;
     const room = b.roomId ? L.roomLabel(b.roomId) ?? "" : "";
     const when = b.startTime && b.endTime ? `${b.startTime}~${b.endTime}` : "";
-    if (
-      !window.confirm(
-        `대실 이용을 종료할까요?\n${room ? `${room}호 · ` : ""}${b.guestName}${when ? ` · ${when}` : ""}`,
-      )
-    )
-      return;
+    const ok = await askConfirm({
+      title: "이용 종료",
+      body: `대실 이용을 종료할까요?\n${room ? `${room}호 · ` : ""}${b.guestName}${when ? ` · ${when}` : ""}`,
+      confirmLabel: "이용 종료",
+      danger: true,
+    });
+    if (!ok) return;
     setCoBusy(b.id);
     try {
       await data.patchBooking(b.id, { checkedOutAt: new Date().toISOString(), arrived: true });

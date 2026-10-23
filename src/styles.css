@@ -2622,6 +2622,10 @@ button.nowstatus { cursor: pointer; }
   align-items: center;
   padding: 24px;
 }
+/* FO 확인 모달: 다른 시트/모달(.dim z=50) 위에 */
+.dim.confirm-dim {
+  z-index: 80;
+}
 .modal.assign-type-modal {
   width: min(420px, 100%);
   padding: 22px 24px 18px;

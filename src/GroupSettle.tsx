@@ -6,6 +6,7 @@ import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledge
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
 import type { HotelData } from "./data";
+import { askConfirm } from "./ConfirmDialog";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 
 interface Props {
@@ -103,8 +104,16 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
     });
   };
   const delPay = (id: string) => {
-    if (!window.confirm("이 받은 돈 줄을 지울까요? 남은 금액이 다시 늘어나요.")) return;
-    void run(() => data.deleteGroupPayment(groupId, id));
+    void (async () => {
+      const ok = await askConfirm({
+        title: "받은 돈 삭제",
+        body: "이 받은 돈 줄을 지울까요? 남은 금액이 다시 늘어나요.",
+        confirmLabel: "지우기",
+        danger: true,
+      });
+      if (!ok) return;
+      void run(() => data.deleteGroupPayment(groupId, id));
+    })();
   };
   const memberPays = members.filter((b) => b.status !== "cancelled").flatMap((b) => (b.payments ?? []).map((p) => ({ ...p, room: L.roomLabel(b.roomId) })));
 

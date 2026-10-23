@@ -42,6 +42,7 @@ import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
 import { type Expense, EXPENSE_PAY_LABEL, expenseTotals, moneySummary } from "../shared/expense";
 import { ExpenseList, ExpenseModal } from "./Expenses";
+import { askConfirm } from "./ConfirmDialog";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
 
@@ -336,7 +337,15 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   }
   const groupAct = async (g: GroupSummary, what: "in" | "cancel") => {
     if (gBusy) return;
-    if (what === "cancel" && !window.confirm(`단체 ${g.name} ${g.rooms}실을 모두 취소할까요?\n전액 환불로 보고 매출에서 빠지고, 방과 남은 객실이 다시 비어요.`)) return;
+    if (what === "cancel") {
+      const ok = await askConfirm({
+        title: "단체 취소",
+        body: `단체 ${g.name} ${g.rooms}실을 모두 취소할까요?\n전액 환불로 보고 매출에서 빠지고, 방과 남은 객실이 다시 비어요.`,
+        confirmLabel: "취소 확정",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setGBusy(true);
     try {
       const r = await data.patchGroup(g.groupId, what === "in" ? { arrived: true } : { status: "cancelled" });
@@ -358,7 +367,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
       const block = groupDateBlock(data.hotel!.settings, data.bookings, g.members, gEdit.checkIn, gEdit.nights);
       if (block) return notify(block);
       // 박수↑만 경고(연장 유도). 박수↓는 단가×박수로 자동 맞춤.
-      if (nightsUp && !window.confirm(NIGHTS_PRICE_WARN)) return;
+      if (nightsUp) {
+        const nightsOk = await askConfirm({
+          title: "박수 변경",
+          body: NIGHTS_PRICE_WARN,
+          confirmLabel: "저장",
+        });
+        if (!nightsOk) return;
+      }
     }
     setGBusy(true);
     try {
