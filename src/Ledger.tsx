@@ -36,6 +36,8 @@ import {
 } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
+import { STAY_CREDIT_COPY, listOpenCredits } from "../shared/stayCredit";
+import StayCreditsModal from "./StayCreditsModal";
 import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
@@ -82,6 +84,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     }
   };
   const [exEdit, setExEdit] = useState<Expense | "new" | null>(null);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [creditsBusy, setCreditsBusy] = useState(false);
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const [from, setFrom] = useState(addDays(today, -7));
@@ -678,8 +682,22 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             </span>
           </div>
           {tab === "bookings" && paySum && paySum.total > 0 ? (
-            <div className="lsum-f muted paysum" title="받은 날 기준 예약 선금·잔금 (단체 정산 포함). 이체는 현금 시재에 안 들어가요">
+            <div className="lsum-f muted paysum" title="받은 날 기준 예약 선금·잔금 (단체 정산 포함). 이체·잔액 사용은 현금 시재에 안 들어가요">
               예약 받은 돈 {won(paySum.total)}원 · 카드 {won(paySum.card)} · 현금 {won(paySum.cash)} · 이체 {won(paySum.transfer)}
+              {paySum.credit > 0 ? ` · ${STAY_CREDIT_COPY.use} ${won(paySum.credit)}` : ""}
+            </div>
+          ) : null}
+          {tab === "bookings" && listOpenCredits(data.stayCredits).length > 0 ? (
+            <div className="lsum-f">
+              <button type="button" className="btn sm line" onClick={() => setCreditsOpen(true)}>
+                {STAY_CREDIT_COPY.list} {listOpenCredits(data.stayCredits).length}건
+              </button>
+            </div>
+          ) : tab === "bookings" ? (
+            <div className="lsum-f muted">
+              <button type="button" className="btn sm line" onClick={() => setCreditsOpen(true)}>
+                {STAY_CREDIT_COPY.list}
+              </button>
             </div>
           ) : null}
           {tab === "bookings" && poSum.count > 0 ? (
@@ -722,6 +740,26 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           </button>
         </div>
       </div>
+      {creditsOpen ? (
+        <StayCreditsModal
+          credits={data.stayCredits}
+          busy={creditsBusy}
+          onCancel={() => !creditsBusy && setCreditsOpen(false)}
+          onVoid={(c) => {
+            void (async () => {
+              setCreditsBusy(true);
+              try {
+                await data.voidStayCredit(c);
+                notify(`${c.guestName} 님 ${STAY_CREDIT_COPY.balance}을 무효로 했어요`);
+              } catch (e) {
+                notify(saveFailMessage(e, "무효 처리하지 못했어요"));
+              } finally {
+                setCreditsBusy(false);
+              }
+            })();
+          }}
+        />
+      ) : null}
       {exEdit ? (
         <ExpenseModal
           base={exEdit === "new" ? null : exEdit}

@@ -1,7 +1,7 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
-import { BOOK_PAY_LABEL, payState, type BookPayMethod, type Payment } from "./payment";
+import { PAYMENT_METHOD_LABEL, payState, type Payment, type PaymentMethod } from "./payment";
 import { type GroupInfo, settle } from "./settle";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
@@ -524,12 +524,12 @@ export function nowPayMethodGlance(
   const pays = [...(b.payments ?? []), ...(extraPays ?? [])];
   if (!pays.length) return null;
   const ordered = [...pays].sort((a, c) => (c.createdAt || "").localeCompare(a.createdAt || ""));
-  const seen = new Set<BookPayMethod>();
+  const seen = new Set<PaymentMethod>();
   const labels: string[] = [];
   for (const p of ordered) {
     if (seen.has(p.method)) continue;
     seen.add(p.method);
-    labels.push(BOOK_PAY_LABEL[p.method]);
+    labels.push(PAYMENT_METHOD_LABEL[p.method]);
   }
   return labels.length ? labels.join("·") : null;
 }

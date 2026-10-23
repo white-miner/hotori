@@ -96,6 +96,18 @@ import {
   unusedNightRefund,
   validateExtendRate,
 } from "../shared/extend";
+import {
+  STAY_CREDIT_COPY,
+  type EarlyOutDisposition,
+  defaultKeepAmount,
+  keepCreditNotifyLine,
+  applyCreditNotifyLine,
+  matchOpenCredits,
+  planApplyStayCredit,
+  planCreateStayCredit,
+  validateEarlyOutKeep,
+} from "../shared/stayCredit";
+import { paidOf } from "../shared/payment";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
   type StayNightRates,
@@ -357,8 +369,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [createPayMode, setCreatePayMode] = useState<OnsitePayMode>("postpaid");
   const [createDepAmt, setCreateDepAmt] = useState("");
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
-  // 중도 퇴실: 작은 확인 창 (날짜 · 환불 금액) → 바로 저장
-  const [eo, setEo] = useState<{ date: string; refund: string } | null>(null);
+  // 중도 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
+  const [eo, setEo] = useState<{
+    date: string;
+    disposition: EarlyOutDisposition;
+    refund: string;
+    keepAmount: string;
+    preferredDate: string;
+    note: string;
+  } | null>(null);
   const [eoBusy, setEoBusy] = useState(false);
   const [eoErr, setEoErr] = useState<string | null>(null);
   const live = base ? (data.bookings.find((x) => x.id === base.id) ?? base) : null;
@@ -423,7 +442,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setAs(null);
     const date = ds.includes(today) ? today : ds[ds.length - 1];
     const sug = unusedNightRefund(live, date, groupRates?.[live.typeId]);
-    setEo({ date, refund: sug > 0 ? String(sug) : "" });
+    const keep = defaultKeepAmount(live, date, groupRates?.[live.typeId]);
+    const onsite = isOnsite(L.plats.get(live.platformId));
+    setEo({
+      date,
+      disposition: onsite && keep > 0 ? "keep" : sug > 0 ? "refund" : "none",
+      refund: sug > 0 ? String(sug) : "",
+      keepAmount: keep > 0 ? String(keep) : "",
+      preferredDate: "",
+      note: "",
+    });
   };
   const openAs = () => {
     if (!live || !canAddSurcharge(live)) return;
@@ -745,18 +773,60 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   const confirmEo = async () => {
     if (!live || !eo || eoBusy) return;
-    const refund = eo.refund.trim() ? Number(eo.refund.replace(/\D/g, "")) : null;
-    const v = validateEarlyOut(live, eo.date, refund);
-    if (v) return setEoErr(v);
+    const onsite = isOnsite(L.plats.get(live.platformId));
+    const refund =
+      eo.disposition === "refund" && eo.refund.trim() ? Number(eo.refund.replace(/\D/g, "")) : null;
+    const keepAmount =
+      eo.disposition === "keep" && eo.keepAmount.trim() ? Number(eo.keepAmount.replace(/\D/g, "")) : 0;
+    if (eo.disposition === "keep") {
+      const kv = validateEarlyOutKeep(
+        live,
+        eo.date,
+        keepAmount,
+        eo.preferredDate || null,
+        today,
+        onsite,
+      );
+      if (kv) return setEoErr(kv);
+      const planned = planCreateStayCredit({
+        guestName: live.guestName,
+        guestPhone: live.guestPhone,
+        amount: keepAmount,
+        preferredRecheckinDate: eo.preferredDate || null,
+        sourceBookingId: live.id,
+        note: eo.note || null,
+        today,
+        onsite,
+      });
+      if ("err" in planned) return setEoErr(planned.err);
+    } else {
+      const v = validateEarlyOut(live, eo.date, refund);
+      if (v) return setEoErr(v);
+    }
     setEoBusy(true);
     setEoErr(null);
     try {
-      const saved = await data.setEarlyOut(live.id, eo.date, refund || null);
+      // 보관 경로: refund_amount는 항상 null (현금 환불과 분리)
+      const saved = await data.setEarlyOut(live.id, eo.date, eo.disposition === "refund" ? refund || null : null);
+      let keepTail = "";
+      if (eo.disposition === "keep") {
+        const created = await data.createStayCredit({
+          guestName: live.guestName,
+          guestPhone: live.guestPhone,
+          amount: keepAmount,
+          preferredRecheckinDate: eo.preferredDate || null,
+          sourceBookingId: live.id,
+          note: eo.note || null,
+        });
+        keepTail = ` · ${keepCreditNotifyLine(created.guestName, created.amountOriginal, created.preferredRecheckinDate)}`;
+      }
       const freed = (saved.nights ?? 0) - (usedNights(saved) ?? 0);
       const room = L.roomLabel(roomOnNight(live, eo.date) ?? null);
+      const refundTail =
+        eo.disposition === "refund" && refund ? ` · 환불 ${won(refund)}원` : eo.disposition === "none" ? " · 환불 없음" : "";
       onClose();
       notify(
-        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 중도 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refund ? ` · 환불 ${won(refund)}원` : ""}`,
+        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 중도 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refundTail}${keepTail}`,
         { action: { label: "되돌리기", run: () => void undoEarlyOut(saved.id) }, ms: 8000 },
       );
     } catch (e) {
@@ -1227,6 +1297,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
   const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
+  const entryOpenCredits = useMemo(
+    () => matchOpenCredits(data.stayCredits, guestName || live?.guestName, guestPhone || live?.guestPhone),
+    [data.stayCredits, guestName, guestPhone, live?.guestName, live?.guestPhone],
+  );
   // 현장 결제·장기만 잔금 UI. OTA는 결제 줄이 있어도 「플랫폼에서 결제 · 잔금 없음」.
   const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
@@ -1798,7 +1872,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <DoorOpen size={15} />
             <b>{dayLabel(live.earlyOut!)} 중도 퇴실</b>
             <span>
-              {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요{live.refund ? ` · 환불 ${won(live.refund)}원` : " · 환불 없음"}
+              {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요
+              {live.refund
+                ? ` · 환불 ${won(live.refund)}원`
+                : (() => {
+                    const kept = data.stayCredits.find(
+                      (c) => c.sourceBookingId === live.id && c.status !== "void",
+                    );
+                    return kept
+                      ? ` · ${STAY_CREDIT_COPY.keep} ${won(kept.amountOriginal)}원${kept.amountRemaining < kept.amountOriginal ? ` (남음 ${won(kept.amountRemaining)})` : ""}`
+                      : " · 환불 없음";
+                  })()}
             </span>
           </div>
         ) : null}
@@ -2067,7 +2151,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         className={`chip ${eo.date === d ? "on" : ""}`}
                         onClick={() => {
                           const sug = unusedNightRefund(live, d, groupRates?.[live.typeId]);
-                          setEo({ date: d, refund: sug > 0 ? String(sug) : "" });
+                          const keep = defaultKeepAmount(live, d, groupRates?.[live.typeId]);
+                          setEo({
+                            ...eo,
+                            date: d,
+                            refund: sug > 0 ? String(sug) : "",
+                            keepAmount: keep > 0 ? String(keep) : "",
+                          });
                         }}
                       >
                         {d === today ? `오늘 ${dayLabel(d)}` : dayLabel(d)}
@@ -2081,7 +2171,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     onChange={(e) => {
                       const d = e.target.value;
                       const sug = unusedNightRefund(live, d, groupRates?.[live.typeId]);
-                      setEo({ date: d, refund: sug > 0 ? String(sug) : "" });
+                      const keep = defaultKeepAmount(live, d, groupRates?.[live.typeId]);
+                      setEo({
+                        ...eo,
+                        date: d,
+                        refund: sug > 0 ? String(sug) : "",
+                        keepAmount: keep > 0 ? String(keep) : "",
+                      });
                     }}
                   >
                     {earlyOutDates(live).map((d) => (
@@ -2093,39 +2189,127 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 )}
               </div>
             ) : null}
-            <div className="eoc-r">
-              <label htmlFor="eo-refund">
-                환불 금액
-              </label>
-              <label className="inp price">
-                <input
-                  id="eo-refund"
-                  className="num"
-                  inputMode="numeric"
-                  placeholder="없으면 비워 두세요"
-                  value={eo.refund ? Number(eo.refund).toLocaleString("ko-KR") : ""}
-                  onChange={(e) => setEo({ ...eo, refund: e.target.value.replace(/\D/g, "").slice(0, 9) })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void confirmEo();
-                    }
-                  }}
-                />
-                원
-              </label>
-              <small>
-                미사용 {live.nights! - daysBetween(live.checkIn, eo.date)}박 × 단가 제안 · 결제 {won(live.price)}원 → 매출{" "}
-                {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원
-              </small>
+            <div className="eoc-d">
+              <label>남은 돈</label>
+              <div className="chips">
+                <button
+                  type="button"
+                  className={`chip ${eo.disposition === "keep" ? "on" : ""}`}
+                  disabled={!isOnsite(L.plats.get(live.platformId))}
+                  title={
+                    isOnsite(L.plats.get(live.platformId))
+                      ? undefined
+                      : "현장·전화 수납만 잔액 보관 (OTA는 채널 환불)"
+                  }
+                  onClick={() => setEo({ ...eo, disposition: "keep" })}
+                >
+                  {STAY_CREDIT_COPY.keep}
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${eo.disposition === "refund" ? "on" : ""}`}
+                  onClick={() => setEo({ ...eo, disposition: "refund" })}
+                >
+                  현금 환불
+                </button>
+                <button
+                  type="button"
+                  className={`chip ${eo.disposition === "none" ? "on" : ""}`}
+                  onClick={() => setEo({ ...eo, disposition: "none" })}
+                >
+                  없음
+                </button>
+              </div>
             </div>
+            {eo.disposition === "refund" ? (
+              <div className="eoc-r">
+                <label htmlFor="eo-refund">환불 금액</label>
+                <label className="inp price">
+                  <input
+                    id="eo-refund"
+                    className="num"
+                    inputMode="numeric"
+                    placeholder="없으면 비워 두세요"
+                    value={eo.refund ? Number(eo.refund).toLocaleString("ko-KR") : ""}
+                    onChange={(e) => setEo({ ...eo, refund: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void confirmEo();
+                      }
+                    }}
+                  />
+                  원
+                </label>
+                <small>
+                  미사용 {live.nights! - daysBetween(live.checkIn, eo.date)}박 × 단가 제안 · 결제 {won(live.price)}원 → 매출{" "}
+                  {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원
+                </small>
+              </div>
+            ) : null}
+            {eo.disposition === "keep" ? (
+              <>
+                <div className="eoc-r">
+                  <label htmlFor="eo-keep">{STAY_CREDIT_COPY.keep} 금액</label>
+                  <label className="inp price">
+                    <input
+                      id="eo-keep"
+                      className="num"
+                      inputMode="numeric"
+                      value={eo.keepAmount ? Number(eo.keepAmount).toLocaleString("ko-KR") : ""}
+                      onChange={(e) => setEo({ ...eo, keepAmount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void confirmEo();
+                        }
+                      }}
+                    />
+                    원
+                  </label>
+                  <small>
+                    기본 = 받은 돈 {won(paidOf(live))} − 이용분 · 수정 가능 · 현금 환불과 별개
+                  </small>
+                </div>
+                <div className="eoc-r">
+                  <label htmlFor="eo-pref">{STAY_CREDIT_COPY.preferredDate}</label>
+                  <input
+                    id="eo-pref"
+                    className="inp"
+                    type="date"
+                    value={eo.preferredDate}
+                    min={today}
+                    onChange={(e) => setEo({ ...eo, preferredDate: e.target.value })}
+                  />
+                  <small>재고 홀드 아님 · 다음에 오실 날짜 메모</small>
+                </div>
+                <div className="eoc-r">
+                  <label htmlFor="eo-keep-note">메모</label>
+                  <input
+                    id="eo-keep-note"
+                    className="inp"
+                    maxLength={200}
+                    placeholder="선택"
+                    value={eo.note}
+                    onChange={(e) => setEo({ ...eo, note: e.target.value })}
+                  />
+                </div>
+              </>
+            ) : null}
+            {eo.disposition === "none" ? (
+              <div className="muted sm">환불·보관 없이 중도 퇴실만 해요 · 방은 비워요</div>
+            ) : null}
             {eoErr ? <div className="ferr">{eoErr}</div> : null}
             <div className="eoc-a">
               <button type="button" className="btn" onClick={() => setEo(null)}>
                 닫기
               </button>
               <button type="button" className="btn dark" disabled={eoBusy} onClick={() => void confirmEo()}>
-                {eoBusy ? "저장 중…" : "중도 퇴실"}
+                {eoBusy
+                  ? "저장 중…"
+                  : eo.disposition === "keep"
+                    ? `${STAY_CREDIT_COPY.keep} · 중도 퇴실`
+                    : "중도 퇴실"}
               </button>
             </div>
           </div>
@@ -3063,6 +3247,56 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     </div>
                   </div>
                   {!base ? <div className="muted sm">아직 저장 전이에요 · 받기·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {base && entryOpenCredits.length > 0 ? (
+                    <div className="paytake" style={{ marginTop: 8 }}>
+                      <span className="muted sm">
+                        {STAY_CREDIT_COPY.balance} {entryOpenCredits.length}건 · 남음{" "}
+                        {won(entryOpenCredits.reduce((n, c) => n + c.amountRemaining, 0))}원
+                      </span>
+                      <button
+                        type="button"
+                        className="btn sm dark"
+                        disabled={payBusy || busy}
+                        onClick={() => {
+                          void (async () => {
+                            if (!base || payBusy || busy) return;
+                            const c = entryOpenCredits[0]!;
+                            const amount = Math.min(
+                              c.amountRemaining,
+                              Number(recv.amount || 0) || (payLeft > 0 ? payLeft : c.amountRemaining),
+                            );
+                            const planned = planApplyStayCredit({
+                              credit: c,
+                              bookingId: base.id,
+                              amount,
+                              bizDate: recv.date || today,
+                              kind: "balance",
+                            });
+                            if ("err" in planned) return setPayErr(planned.err);
+                            setPayBusy(true);
+                            setPayErr(null);
+                            try {
+                              const result = await data.applyStayCredit(
+                                c,
+                                base.id,
+                                planned.amount,
+                                planned.bizDate,
+                                planned.kind,
+                              );
+                              setRecv((r) => ({ ...r, amount: "" }));
+                              notify(applyCreditNotifyLine(c.guestName, result.plan.amount, result.plan.remainingAfter));
+                            } catch (e) {
+                              setPayErr(saveFailMessage(e));
+                            } finally {
+                              setPayBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {STAY_CREDIT_COPY.use}
+                      </button>
+                    </div>
+                  ) : null}
                   {payErr ? <div className="ferr">{payErr}</div> : null}
                 </>
               )}

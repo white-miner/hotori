@@ -3,7 +3,7 @@ import { hasExtraTime, isTimeService, timeTags } from "../shared/extratime";
 import { useState } from "react";
 import { Check, Plus, Printer, X } from "lucide-react";
 import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledger";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
+import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, PAYMENT_METHOD_LABEL, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
 import type { HotelData } from "./data";
 import { askConfirm } from "./ConfirmDialog";
@@ -280,7 +280,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               {info.payments.map((p) => (
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
-                    받은 돈 · {dayLabel(p.bizDate)} · {BOOK_PAY_LABEL[p.method]}
+                    받은 돈 · {dayLabel(p.bizDate)} · {PAYMENT_METHOD_LABEL[p.method]}
                     <button type="button" className="ic noprint" aria-label="받은 돈 지우기" disabled={busy} onClick={() => delPay(p.id)}>
                       <X size={13} />
                     </button>
@@ -292,7 +292,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
                     {p.kind === "deposit" ? "선금" : "받은 돈"} · {p.room ? `${p.room}호 · ` : ""}
-                    {dayLabel(p.bizDate)} · {BOOK_PAY_LABEL[p.method]}
+                    {dayLabel(p.bizDate)} · {PAYMENT_METHOD_LABEL[p.method]}
                   </td>
                   <td className="r num">−{won(p.amount)}</td>
                 </tr>
