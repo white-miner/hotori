@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CircleDollarSign, Clock, LogIn } from "lucide-react";
+import { ArrowRightLeft, Ban, CircleDollarSign, Clock, LogIn, Undo2 } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -11,6 +11,7 @@ import {
   simplePayGlance,
   type UaCheckInFilter,
 } from "../shared/nowboard";
+import { CHECKOUT_UNDO_CTA } from "../shared/checkoutUndo";
 import { isLongStay } from "../shared/longstay";
 import {
   type Booking,
@@ -78,6 +79,10 @@ interface Props {
   /** 단실 「대실 판매」→ DayuseSaleModal (Entry 금지 · MiniFloorPlan 금지) */
   onNewDayuse?: () => void;
   onCheckOut: (b: Booking, needConfirm?: boolean) => void;
+  /** 선택 공실 · 최근 퇴실처리 건 (되돌리기 CTA) · MiniFloorPlan 금지 */
+  recentCheckedOut?: Booking | null;
+  /** 퇴실처리 되돌리기 · askConfirm 후 checkedOutAt null */
+  onUndoCheckOut?: (b: Booking) => void;
   /** 당일 대실 「이용 종료」· confirm 후 checkedOutAt */
   onEndDayuse?: (b: Booking) => void;
   onMemo: (roomId: string) => void;
@@ -127,6 +132,8 @@ export default function NowSidePanel({
   dayuseForRoom = [],
   onNewDayuse,
   onCheckOut,
+  recentCheckedOut = null,
+  onUndoCheckOut,
   onEndDayuse,
   onMemo,
   onRoomMove,
@@ -596,6 +603,15 @@ export default function NowSidePanel({
               ) : (
                 <div className="nsel-body">
                   <div className="muted sm">{multiVacant ? "선택한 공실" : "비어 있음"}</div>
+                  {!multiVacant && recentCheckedOut ? (
+                    <div className="nsel-row" aria-label="최근 퇴실">
+                      <span className="nsel-k">최근 퇴실</span>
+                      <span className="nsel-v">
+                        <PlatBadge p={L.plats.get(recentCheckedOut.platformId)} /> {recentCheckedOut.guestName}
+                        {recentCheckedOut.nights ? ` · ${recentCheckedOut.nights}박` : ""}
+                      </span>
+                    </div>
+                  ) : null}
                   {!multiVacant && todayUaForType > 0 ? (
                     <p className="nsel-hint">
                       이 타입 오늘 입실 미배정 {todayUaForType}건 ·{" "}
@@ -606,20 +622,44 @@ export default function NowSidePanel({
                     </p>
                   ) : null}
                   {dayuseList}
-                  {!readOnly && (showStaySell || dayuseCtaLabel) ? (
+                  {!readOnly && (showStaySell || dayuseCtaLabel || (recentCheckedOut && onUndoCheckOut)) ? (
                     <div className="nsel-acts">
-                      <div className="nsel-act-sec" role="group" aria-label="판매">
-                        {showStaySell ? (
-                          <button type="button" className="btn sm stop" onClick={onStaySale}>
-                            {staySaleCta ?? STAY_SALE_CTA}
+                      {!multiVacant && recentCheckedOut && onUndoCheckOut ? (
+                        <div className="nsel-act-sec" role="group" aria-label="퇴실 되돌리기">
+                          <button
+                            type="button"
+                            className="btn sm dark"
+                            disabled={moving || coBusy === recentCheckedOut.id}
+                            onClick={() => void onUndoCheckOut(recentCheckedOut)}
+                            aria-label={CHECKOUT_UNDO_CTA}
+                          >
+                            <Undo2 size={14} strokeWidth={2.2} aria-hidden />
+                            {coBusy === recentCheckedOut.id ? "처리 중…" : CHECKOUT_UNDO_CTA}
                           </button>
-                        ) : null}
-                        {dayuseCtaLabel && onNewDayuse ? (
-                          <button type="button" className="btn sm info" onClick={onNewDayuse}>
-                            {dayuseCtaLabel}
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving}
+                            onClick={() => onOpen(recentCheckedOut, today)}
+                          >
+                            예약 기록 열기
                           </button>
-                        ) : null}
-                      </div>
+                        </div>
+                      ) : null}
+                      {showStaySell || dayuseCtaLabel ? (
+                        <div className="nsel-act-sec" role="group" aria-label="판매">
+                          {showStaySell ? (
+                            <button type="button" className="btn sm stop" onClick={onStaySale}>
+                              {staySaleCta ?? STAY_SALE_CTA}
+                            </button>
+                          ) : null}
+                          {dayuseCtaLabel && onNewDayuse ? (
+                            <button type="button" className="btn sm info" onClick={onNewDayuse}>
+                              {dayuseCtaLabel}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

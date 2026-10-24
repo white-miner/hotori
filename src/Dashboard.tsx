@@ -47,6 +47,14 @@ import {
   checkoutPayNotifyLine,
 } from "../shared/checkoutConfirm";
 import {
+  CHECKOUT_UNDO_CTA,
+  CHECKOUT_UNDO_TITLE,
+  checkoutUndoBlock,
+  checkoutUndoConfirmBody,
+  recentCheckedOutForRoom,
+  restoreCheckoutPatch,
+} from "../shared/checkoutUndo";
+import {
   type EarlyInPayMethod,
   type EarlyInPayPlan,
   earlyInPayNotifyLine,
@@ -1806,6 +1814,33 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 퇴실처리 되돌리기: checkedOutAt null · 결제 불변 · 충돌 시 차단 */
+  const doUndoCheckOut = async (b: Booking) => {
+    if (readOnly || coBusy) return;
+    const live = data.bookings.find((x) => x.id === b.id) ?? b;
+    const block = checkoutUndoBlock(data.bookings, live, today, (id) => L.roomLabel(id));
+    if (block) {
+      notify(block, { ms: 7000 });
+      return;
+    }
+    const roomLab = live.roomId ? L.roomLabel(live.roomId) ?? "" : "";
+    const ok = await askConfirm({
+      title: CHECKOUT_UNDO_TITLE,
+      body: checkoutUndoConfirmBody(live, roomLab),
+      confirmLabel: CHECKOUT_UNDO_CTA,
+    });
+    if (!ok) return;
+    setCoBusy(live.id);
+    try {
+      await data.patchBooking(live.id, restoreCheckoutPatch());
+      notify(`${live.guestName} 님 퇴실처리를 되돌렸어요`);
+    } catch {
+      notify("퇴실처리 되돌리기를 저장하지 못했어요. 다시 해 주세요");
+    } finally {
+      setCoBusy(null);
+    }
+  };
+
   /** 대실 이용 종료: Hotori 확인 → checkedOutAt · 숙박 칸/상태 불변 · 슬롯만 해제 */
   const doEndDayuse = async (b: Booking) => {
     if (readOnly || coBusy || !canEndDayuse(b)) return;
@@ -2750,6 +2785,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               dayuseForRoom={selectedDayuse}
               onNewDayuse={openNewDayuse}
               onCheckOut={(bk, need) => void doCheckOut(bk, need)}
+              recentCheckedOut={
+                selectedRoomIds.length === 1 && selectedRoomId && !nowBoardMap.get(selectedRoomId)
+                  ? recentCheckedOutForRoom(bookings, selectedRoomId, today)
+                  : null
+              }
+              onUndoCheckOut={(bk) => void doUndoCheckOut(bk)}
               onEndDayuse={(bk) => void doEndDayuse(bk)}
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}

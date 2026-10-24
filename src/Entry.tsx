@@ -134,6 +134,16 @@ import {
   surchargeNotifyLine,
 } from "../shared/addSurcharge";
 import { canCheckOut, canEndDayuse, groupStayPeers, isCheckedOut, hotelWallClock } from "../shared/nowboard";
+import {
+  CHECKOUT_UNDO_CTA,
+  CHECKOUT_UNDO_TITLE,
+  DAYUSE_UNDO_TITLE,
+  canUndoCheckout,
+  checkoutUndoBlock,
+  checkoutUndoConfirmBody,
+  dayuseUndoConfirmBody,
+  restoreCheckoutPatch,
+} from "../shared/checkoutUndo";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
 import {
   checkoutLeaveBalanceNotifyLine,
@@ -954,10 +964,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (!isDayuse && base.kind !== "stay") return;
     const done = isCheckedOut({ checkedOutAt });
     if (done) {
+      const liveUndo = data.bookings.find((x) => x.id === base.id) ?? { ...base, checkedOutAt };
+      if (!canUndoCheckout(liveUndo)) {
+        setInErr("퇴실처리된 예약만 되돌릴 수 있어요.");
+        return;
+      }
+      const block = checkoutUndoBlock(data.bookings, liveUndo, today, (id) => L.roomLabel(id));
+      if (block) {
+        setInErr(block);
+        return;
+      }
+      const roomLab = liveUndo.roomId ? L.roomLabel(liveUndo.roomId) ?? "" : "";
       const undoOk = await askConfirm({
-        title: isDayuse ? "이용 종료 취소" : "퇴실처리 취소",
-        body: isDayuse ? "이용 종료를 취소할까요? 대실이 다시 보여요." : "퇴실처리를 취소할까요? 칸에 다시 보여요.",
-        confirmLabel: "취소 확정",
+        title: isDayuse ? DAYUSE_UNDO_TITLE : CHECKOUT_UNDO_TITLE,
+        body: isDayuse ? dayuseUndoConfirmBody(liveUndo, roomLab) : checkoutUndoConfirmBody(liveUndo, roomLab),
+        confirmLabel: CHECKOUT_UNDO_CTA,
       });
       if (!undoOk) return;
       setCoBusy(true);
@@ -965,11 +986,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       const prev = checkedOutAt;
       setCheckedOutAt(null);
       try {
-        await data.patchBooking(base.id, { checkedOutAt: null });
-        notify(isDayuse ? `${base.guestName} 님 이용 종료를 취소했어요` : `${base.guestName} 님 퇴실처리를 취소했어요`);
+        await data.patchBooking(base.id, restoreCheckoutPatch());
+        notify(isDayuse ? `${base.guestName} 님 이용 종료를 되돌렸어요` : `${base.guestName} 님 퇴실처리를 되돌렸어요`);
       } catch {
         setCheckedOutAt(prev);
-        setInErr(isDayuse ? "이용 종료 취소를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리 취소를 저장하지 못했어요. 다시 눌러 주세요.");
+        setInErr(isDayuse ? "이용 종료 되돌리기를 저장하지 못했어요. 다시 눌러 주세요." : "퇴실처리 되돌리기를 저장하지 못했어요. 다시 눌러 주세요.");
       } finally {
         setCoBusy(false);
       }
@@ -1796,7 +1817,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 title="정상 퇴실 · 누르면 바로 저장 · 중도 퇴실과 다름"
               >
                 <DoorOpen size={17} />
-                <b>{checkedOutAt ? "퇴실처리됨 · 취소" : "퇴실처리"}</b>
+                <b>{checkedOutAt ? `퇴실처리됨 · ${CHECKOUT_UNDO_CTA}` : "퇴실처리"}</b>
               </button>
             ) : null}
             {base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? (
@@ -1809,7 +1830,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 title="대실 이용 종료 · 누르면 확인 후 저장 · 숙박 퇴실과 별축"
               >
                 <DoorOpen size={17} />
-                <b>{checkedOutAt ? "이용 종료됨 · 취소" : "이용 종료"}</b>
+                <b>{checkedOutAt ? `이용 종료됨 · ${CHECKOUT_UNDO_CTA}` : "이용 종료"}</b>
               </button>
             ) : null}
             {base.kind === "stay" && roomId ? (
