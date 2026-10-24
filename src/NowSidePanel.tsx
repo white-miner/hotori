@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CircleDollarSign, Clock, LogIn, Undo2 } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, LogIn, Undo2 } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -31,6 +31,7 @@ import { PAYMENT_DESK_CTA, canOpenPaymentDesk, paymentDeskGlance } from "../shar
 import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
+import { EXTEND_COPY, canExtend } from "../shared/extend";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import { PlatBadge, lookups } from "./ui";
@@ -97,6 +98,8 @@ interface Props {
   onPaymentDesk?: (b?: Booking) => void;
   /** 늦은 퇴실 (숙박 lateOut · 대실 종료 연장) · Entry 금지 */
   onLateOut?: (b: Booking) => void;
+  /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
+  onExtendNight?: (b: Booking) => void;
   /** 빠른 입실 (숙박예약 · 미입실) */
   onEarlyIn?: (b: Booking) => void;
   /** 동일 groupId 점유 복수 선택 시 멤버 (패널 글랜스) */
@@ -142,6 +145,7 @@ export default function NowSidePanel({
   ncxBusy = null,
   onPaymentDesk,
   onLateOut,
+  onExtendNight,
   onEarlyIn,
   selectedGroupBookings = [],
   selectedGroupInfo = null,
@@ -354,7 +358,17 @@ export default function NowSidePanel({
     !readOnly && !!onEarlyIn && !!b && b.kind === "stay" && !!f && f.kind === "arriving" && !b.arrived;
   /** 활성 숙박·대실 · 이미 늦은퇴실이어도 조정 시트 입구 유지 */
   const showLateOut = !readOnly && !!onLateOut && !!b && canAddTime(b);
-  const showInOutCtas = showEarlyIn || showLateOut;
+  /** 숙박·퇴실예정(lateOut 포함) · 숙박예약(미입실)·장기·공실 숨김 · StaySale 비경유 */
+  const showExtendNight =
+    !readOnly &&
+    !!onExtendNight &&
+    !!b &&
+    b.kind === "stay" &&
+    canExtend(b) &&
+    !isLongStay(b) &&
+    !!f &&
+    (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
+  const showInOutCtas = showEarlyIn || showLateOut || showExtendNight;
 
   return (
     <aside className="nowside" aria-label="운영">
@@ -478,9 +492,13 @@ export default function NowSidePanel({
                     ) : null}
                     {!readOnly && !multiGroup && showInOutCtas ? (
                       <div
-                        className={`nsel-act-sec${showEarlyIn && showLateOut ? " nsel-act-row" : ""}`}
+                        className={`nsel-act-sec${
+                          [showEarlyIn, showLateOut, showExtendNight].filter(Boolean).length > 1
+                            ? " nsel-act-row"
+                            : ""
+                        }`}
                         role="group"
-                        aria-label="빠른 입실 · 늦은 퇴실"
+                        aria-label="빠른 입실 · 늦은 퇴실 · 1박 연장"
                       >
                         {showEarlyIn ? (
                           <button
@@ -504,6 +522,18 @@ export default function NowSidePanel({
                           >
                             <Clock size={14} strokeWidth={2.2} aria-hidden />
                             {LATE_OUT_CTA}
+                          </button>
+                        ) : null}
+                        {showExtendNight ? (
+                          <button
+                            type="button"
+                            className="btn sm dark"
+                            disabled={moving}
+                            onClick={() => onExtendNight?.(b)}
+                            aria-label={EXTEND_COPY}
+                          >
+                            <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
+                            {EXTEND_COPY}
                           </button>
                         ) : null}
                       </div>

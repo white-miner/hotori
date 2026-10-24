@@ -15,7 +15,14 @@ import {
   roomLabel,
   won,
 } from "./ledger";
-import { type BookPayMethod, PAY_MAX } from "./payment";
+import {
+  type BookPayMethod,
+  BOOK_PAY_LABEL,
+  BOOK_PAY_METHODS,
+  isBookPayMethod,
+  PAY_MAX,
+  validatePayment,
+} from "./payment";
 import {
   type StayNightRates,
   appendNightAmount,
@@ -245,6 +252,62 @@ export interface ExtendPlan {
 export function planExtend(b: Booking, rate: number, collect: boolean): ExtendPlan {
   const draft = applyExtend(b, rate);
   return { draft, collectAmount: collect && draft.rate > 0 ? draft.rate : 0 };
+}
+
+/** 운영패널 「1박 연장」라이트 모달 · 카드/이체/현금/서비스/후불 */
+export type ExtendPayMethod = BookPayMethod | "service" | "deferred";
+export const EXTEND_PAY_METHODS: ExtendPayMethod[] = [...BOOK_PAY_METHODS, "service", "deferred"];
+export const EXTEND_PAY_LABEL: Record<ExtendPayMethod, string> = {
+  ...BOOK_PAY_LABEL,
+  service: "서비스",
+  deferred: "후불",
+};
+export const isExtendPayMethod = (v: unknown): v is ExtendPayMethod =>
+  v === "service" || v === "deferred" || isBookPayMethod(v);
+
+export interface OpsExtendInput {
+  /** 오늘 요금 (서비스면 무시·0) */
+  rate: number;
+  method: ExtendPayMethod;
+  bizDate: string;
+}
+
+export interface OpsExtendPlan {
+  draft: ExtendDraft;
+  method: ExtendPayMethod;
+  /** 판매가에 더하는 금액 (서비스=0) */
+  effectiveRate: number;
+  collectAmount: number;
+  payMethod: BookPayMethod | null;
+}
+
+/** 운영패널 1박 연장: planExtend + 결제수단. StaySale 비경유. */
+export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan | { err: string } {
+  if (!canExtend(b)) {
+    if (isEarlyOut(b)) return { err: "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 고쳐 주세요." };
+    if (b.status !== "active") return { err: "취소·노쇼 예약은 1박 연장할 수 없어요." };
+    if (b.kind !== "stay") return { err: "숙박만 1박 연장할 수 있어요." };
+    if ((b.nights ?? 0) >= 90) return { err: "박수가 너무 많아요 (90박까지)." };
+    return { err: "1박 연장할 수 없어요." };
+  }
+  if (!isExtendPayMethod(input.method)) return { err: "카드 · 이체 · 현금 · 서비스 · 후불 중에 골라 주세요." };
+  const effectiveRate = input.method === "service" ? 0 : Math.max(0, Math.round(input.rate));
+  const rv = validateExtendRate(effectiveRate);
+  if (rv) return { err: rv };
+  const collect =
+    effectiveRate > 0 && input.method !== "service" && input.method !== "deferred";
+  if (collect) {
+    const pv = validatePayment(effectiveRate, input.method, input.bizDate);
+    if (pv) return { err: pv };
+  }
+  const plan = planExtend(b, effectiveRate, collect);
+  return {
+    draft: plan.draft,
+    method: input.method,
+    effectiveRate,
+    collectAmount: plan.collectAmount,
+    payMethod: collect && isBookPayMethod(input.method) ? input.method : null,
+  };
 }
 
 /** 단체: 방마다 단가 (방별 flat → 단체 타입 요금) */

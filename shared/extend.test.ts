@@ -12,6 +12,7 @@ import {
   nightRate,
   nightsChangedWithoutPrice,
   planExtend,
+  planOpsExtend,
   planGroupExtend,
   repriceForNights,
   roomNightRate,
@@ -126,6 +127,33 @@ test("수납 제안: collect면 단가만큼, 아니면 0 (잔금)", () => {
   assert.equal(planExtend(b, 100000, true).collectAmount, 100000);
   assert.equal(planExtend(b, 100000, false).collectAmount, 0);
   assert.equal(planExtend(b, 100000, true).draft.price, 200000);
+});
+
+test("ops 1박 연장: 카드=받기 · 후불=잔금 · 서비스=0원", () => {
+  const b = bk({ price: 100000, nights: 1, checkIn: "2026-10-18" });
+  const card = planOpsExtend(b, { rate: 90000, method: "card", bizDate: "2026-10-19" });
+  assert.ok(!("err" in card));
+  if (!("err" in card)) {
+    assert.equal(card.draft.nights, 2);
+    assert.equal(card.draft.price, 190000);
+    assert.equal(card.collectAmount, 90000);
+    assert.equal(card.payMethod, "card");
+  }
+  const deferred = planOpsExtend(b, { rate: 90000, method: "deferred", bizDate: "2026-10-19" });
+  assert.ok(!("err" in deferred));
+  if (!("err" in deferred)) {
+    assert.equal(deferred.draft.price, 190000);
+    assert.equal(deferred.collectAmount, 0);
+    assert.equal(deferred.payMethod, null);
+  }
+  const service = planOpsExtend(b, { rate: 90000, method: "service", bizDate: "2026-10-19" });
+  assert.ok(!("err" in service));
+  if (!("err" in service)) {
+    assert.equal(service.effectiveRate, 0);
+    assert.equal(service.draft.price, 100000);
+    assert.equal(service.draft.nights, 2);
+    assert.equal(service.collectAmount, 0);
+  }
 });
 
 test("박수↑·가격 미변경만 경고 (박수↓는 자동 재계산)", () => {
