@@ -3203,8 +3203,8 @@ button.nowstatus { cursor: pointer; }
 /* Stick under .top (64px). top:10px put tabs under the header when the board scrolled.
    Typography tokens only — panel column width stays in .nowlayout (untouched). */
 .nowside {
-  --nowside-tab-fs: 13px;
-  --nowside-tab-pad-y: 9px;
+  --nowside-tab-fs: 12.5px;
+  --nowside-tab-pad-y: 10px;
   --nowside-chip-fs: 13.5px;
   --nowside-chip-h: 34px;
   --nowside-row-name-fs: 14.5px;
@@ -3240,24 +3240,26 @@ button.nowstatus { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  padding: var(--nowside-tab-pad-y) 6px;
+  padding: var(--nowside-tab-pad-y) 2px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   font-size: var(--nowside-tab-fs);
   font-weight: 750;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
   color: var(--ink3);
   cursor: pointer;
-  line-height: 1.2;
+  line-height: 1.15;
+  white-space: nowrap;
 }
 .nowside-mode small {
   font-family: var(--num);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   color: var(--ink2);
+  flex: none;
 }
 .nowside-mode.on {
   background: #fff;
