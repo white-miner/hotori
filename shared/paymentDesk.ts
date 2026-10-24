@@ -205,7 +205,7 @@ export type DeskPayLine =
   | { scope: "booking"; bookingId: string; pay: Payment; roomHint?: string }
   | { scope: "group"; groupId: string; pay: Payment };
 
-/** 데스크 내역: 방 결제 + (있으면) 단체 결제 */
+/** 데스크 내역: 방 결제 + (있으면) 단체 결제 · 오래된 순 */
 export function deskPaymentLines(
   members: Booking[],
   groupInfo?: GroupInfo | null,
@@ -221,5 +221,22 @@ export function deskPaymentLines(
       lines.push({ scope: "group", groupId: groupInfo.id, pay: p });
     }
   }
-  return lines.sort((a, b) => (a.pay.createdAt || a.pay.bizDate).localeCompare(b.pay.createdAt || b.pay.bizDate));
+  return lines.sort((a, b) => {
+    const byCreated = (a.pay.createdAt || "").localeCompare(b.pay.createdAt || "");
+    if (byCreated) return byCreated;
+    return (a.pay.bizDate || "").localeCompare(b.pay.bizDate || "");
+  });
+}
+
+/** 운영패널 이력 MVP: 최신 위 · 기본 5줄 (Desk 전체는 모달) */
+export const OPS_PAY_HISTORY_LIMIT = 5;
+
+export function opsPayHistoryLines(
+  members: Booking[],
+  groupInfo?: GroupInfo | null,
+  limit = OPS_PAY_HISTORY_LIMIT,
+): DeskPayLine[] {
+  const all = deskPaymentLines(members, groupInfo);
+  if (limit <= 0) return [];
+  return all.slice(-limit).reverse();
 }

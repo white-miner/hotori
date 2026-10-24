@@ -425,12 +425,31 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
 }
 
 /**
- * 칸 금액 글랜스.
- * 일반: left>0 → `잔금 ₩X` · left=0 → `₩price`(완납, 「잔금」 금지).
- * 단체: PaymentDesk 단체 수납을 settle로 반영(방 payments만 보면 오잔금).
+ * 최근 결제 1줄: 방 payments ∪ extra(단체 줄) · `createdAt` desc · 동률 `bizDate` desc.
+ * 「현황」완납 칸 · 운영 「최근」과 동일 시계열.
+ */
+export function latestPaymentOf(
+  b: Pick<Booking, "payments">,
+  extraPays?: readonly Payment[] | null,
+): Payment | null {
+  const pays = [...(b.payments ?? []), ...(extraPays ?? [])];
+  if (!pays.length) return null;
+  return [...pays].sort((a, c) => {
+    const byCreated = (c.createdAt || "").localeCompare(a.createdAt || "");
+    if (byCreated) return byCreated;
+    return (c.bizDate || "").localeCompare(a.bizDate || "");
+  })[0]!;
+}
+
+/**
+ * 칸 금액 글랜스 (하이브리드).
+ * tracked · left>0 → `잔금 ₩X` (1순위 · 잔금 숨기지 않음).
+ * tracked · left=0 · 결제 줄 있음 → 최근 1줄 금액 `₩amount`(판매가 대체 · 수단은 prefix).
+ * tracked · left=0 · 결제 없음 → `₩price` 폴백.
+ * OTA(tracked=false): 항상 `₩price` · 최근 현장수납 강조 금지.
+ * 단체: settle left + 최근 후보에 단체 줄 포함.
  * 장기: `미수 ₩X` (0이면 생략).
- * 색은 nowAmountTone — 숫자만 칠함.
- * 수단은 nowPayMethodPrefix — `이체 잔금` 합침 금지.
+ * 색은 nowAmountTone · 수단은 nowPayMethodPrefix (`이체 잔금` 합침 금지).
  */
 export function nowAmountGlance(
   b: Booking,
@@ -444,6 +463,12 @@ export function nowAmountGlance(
   }
   const ps = nowPaySnap(b, plat, group);
   if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
+  if (ps.tracked && ps.left === 0) {
+    const latest = latestPaymentOf(b, group?.info?.payments);
+    if (latest) return `₩${won(latest.amount)}`;
+    if (b.price > 0) return `₩${won(b.price)}`;
+    return null;
+  }
   if (b.price > 0) return `₩${won(b.price)}`;
   return null;
 }
@@ -451,13 +476,22 @@ export function nowAmountGlance(
 /**
  * 칸에서 결제수단을 금액 **앞**에 둘지.
  * left>0(`잔금`/`미수` 라벨)이면 수단 병기 금지 → `이체 잔금`/`카드 잔금` 합침 방지.
- * 완납(left=0)이면 `이체 ₩…` 형태 OK.
+ * 완납(left=0) 하이브리드: 최근 1줄 수단만 (`이체 ₩…`).
  */
 export function nowPayMethodPrefix(amount: string | null, method: string | null): string | null {
   if (!method) return null;
   // 한글에는 JS `\b`가 안 먹음 → startsWith
   if (amount && (amount.startsWith("잔금") || amount.startsWith("미수"))) return null;
   return method;
+}
+
+/** 칸 수단 prefix용: 최근 결제 1건 라벨 (하이브리드 완납 줄과 짝) */
+export function nowLatestPayMethodLabel(
+  b: Pick<Booking, "payments">,
+  extraPays?: readonly Payment[] | null,
+): string | null {
+  const p = latestPaymentOf(b, extraPays);
+  return p ? PAYMENT_METHOD_LABEL[p.method] : null;
 }
 
 /** 간단 예약 패널 · 입실일 필터 (영업일 기준) */
@@ -516,6 +550,7 @@ export function nowCheckoutMark(
 /**
  * 칸 결제수단 글랜스: 받은 결제 기준 · 최신→고유 라벨 · `카드` / `카드·이체`.
  * 단체 줄(`group.payments`)도 합쳐 완납 후 수단이 보이게.
+ * 시계열 = latestPaymentOf와 동일(createdAt · bizDate).
  */
 export function nowPayMethodGlance(
   b: Pick<Booking, "payments">,
@@ -523,7 +558,11 @@ export function nowPayMethodGlance(
 ): string | null {
   const pays = [...(b.payments ?? []), ...(extraPays ?? [])];
   if (!pays.length) return null;
-  const ordered = [...pays].sort((a, c) => (c.createdAt || "").localeCompare(a.createdAt || ""));
+  const ordered = [...pays].sort((a, c) => {
+    const byCreated = (c.createdAt || "").localeCompare(a.createdAt || "");
+    if (byCreated) return byCreated;
+    return (c.bizDate || "").localeCompare(a.bizDate || "");
+  });
   const seen = new Set<PaymentMethod>();
   const labels: string[] = [];
   for (const p of ordered) {
