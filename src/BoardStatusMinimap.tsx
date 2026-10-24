@@ -1,5 +1,5 @@
 /**
- * 「현황 한눈」상태 미니맵 — 건물 가로 밴드 · 층=서브행 · 호수 숫자 없음.
+ * 「미니맵」상태 밴드 — 건물 가로 · 층=서브행 · 호수 숫자 없음.
  * MiniFloorPlan(피커)과 파일·API·색 분리. 클릭 = 점프(+선택)만.
  */
 import type { GlanceMapKind } from "../shared/boardGlance";
