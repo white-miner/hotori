@@ -3406,15 +3406,18 @@ button.nowstatus { cursor: pointer; }
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  width: fit-content;
+  max-width: 100%;
 }
 @media (min-width: 960px) {
   .bmap-bands.multi {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: flex-start;
-    gap: var(--space-3);
+    gap: var(--space-2) var(--space-4);
   }
   .bmap-bands.multi .bmap-band {
-    flex: 0 1 auto;
+    flex: none;
     min-width: 0;
   }
 }
