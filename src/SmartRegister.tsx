@@ -3,7 +3,7 @@
  * Paste TSV → profile detect → wide preview → askConfirm → saveBooking × N (Path A 미배정).
  */
 import { useCallback, useMemo, useState, type ReactNode } from "react";
-import { ClipboardPaste, LoaderCircle } from "lucide-react";
+import { ClipboardPaste, Link2, LoaderCircle, BookmarkPlus } from "lucide-react";
 import {
   type Booking,
   type HotelSettings,
@@ -27,11 +27,12 @@ import {
   pathADraftFromPreview,
   profileById,
   recomputeRowStatus,
+  upsertTypeAlias,
 } from "../shared/smartRegister";
 import type { HotelData } from "./data";
 import { askConfirm } from "./ConfirmDialog";
 import { Chip, ChipGroup, Inp } from "./primitives";
-import { lookups } from "./ui";
+import { lookups, uid } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -138,6 +139,23 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         return next;
       }),
     );
+  };
+
+  /** Preview → persist alias for this platformTypeName (nice-to-have). */
+  const saveAliasFromRow = async (r: PreviewRow) => {
+    if (readOnly || busy || !platformId || !r.typeId || !r.typeRaw.trim()) return;
+    const name = r.typeRaw.trim();
+    const nextAliases = upsertTypeAlias(
+      s.typeAliases ?? [],
+      { platformId, platformTypeName: name, typeId: r.typeId },
+      () => uid("ta"),
+    );
+    try {
+      await data.saveHotel({ settings: { ...s, typeAliases: nextAliases } });
+      notify(`「${name}」 타입 매칭을 저장했어요`);
+    } catch (e) {
+      notify(e instanceof Error ? `저장 실패: ${e.message}` : "타입 매칭을 저장하지 못했어요");
+    }
   };
 
   const readyCount = rows.filter((r) => !r.skip && r.rowStatus === "ok").length;
@@ -284,6 +302,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         <header className="smart-reg-head">
           <h1>스마트 등록</h1>
           <p className="sub">파트너센터 예약목록을 붙여넣으면 미배정으로 올려요. 채널 API 없음.</p>
+          <a className="smart-reg-alias-link" href="#/settings/type-aliases">
+            <Link2 size={14} strokeWidth={2.2} aria-hidden />
+            설정 · 타입 매칭
+          </a>
         </header>
 
         <div className="smart-reg-panes">
@@ -455,7 +477,19 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                               </option>
                             ))}
                           </select>
-                          {r.typeRaw && !r.typeId ? <div className="sub">{r.typeRaw}</div> : null}
+                          {r.typeRaw ? <div className="sub">{r.typeRaw}</div> : null}
+                          {!readOnly && r.typeRaw.trim() && r.typeId && platformId && !r.skip ? (
+                            <button
+                              type="button"
+                              className="smart-reg-save-alias"
+                              disabled={busy}
+                              title="이 OTA 이름을 타입 매칭에 저장"
+                              onClick={() => void saveAliasFromRow(r)}
+                            >
+                              <BookmarkPlus size={12} strokeWidth={2.2} aria-hidden />
+                              이 이름으로 저장
+                            </button>
+                          ) : null}
                         </td>
                         <td>
                           <Inp

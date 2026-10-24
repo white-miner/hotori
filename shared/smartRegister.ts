@@ -2,7 +2,16 @@
  * 스마트 등록 — generic paste parser + platform profiles → Path A 미배정 fields.
  * No channel API · no OCR · profiles = data (alias tables), not per-channel forks.
  */
-import { addDays, daysBetween, type Booking, type HotelSettings, typeLabel, usableTypes } from "./ledger";
+import {
+  addDays,
+  daysBetween,
+  PLATFORM_TYPE_NAME_MAX,
+  type Booking,
+  type HotelSettings,
+  type TypeAlias,
+  typeLabel,
+  usableTypes,
+} from "./ledger";
 
 /** Canonical paste fields (shared across platforms). */
 export type PasteField =
@@ -392,20 +401,90 @@ export function normalizeRow(
   };
 }
 
-/** Fuzzy match OTA type string → hotel typeId. */
-export function matchTypeId(typeRaw: string, s: HotelSettings): string | null {
+/**
+ * Normalize OTA / platform type name for alias match.
+ * trim · collapse spaces · strip ZWSP/NBSP · casefold (KR-friendly via toLowerCase).
+ */
+export function normTypeName(raw: string): string {
+  return raw
+    .trim()
+    .replace(/[\u00a0\u202f]/g, " ") // NBSP / NNBSP → space
+    .replace(/[\u200b\u200c\u200d\ufeff]/g, "") // zero-width / BOM strip
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+/** Exact alias lookup: platformId + normalized name → typeId (if type still usable). */
+export function lookupTypeAlias(
+  aliases: TypeAlias[] | undefined,
+  platformId: string | null | undefined,
+  platformTypeName: string,
+  typeIds?: ReadonlySet<string>,
+): string | null {
+  if (!platformId || !aliases?.length) return null;
+  const key = normTypeName(platformTypeName);
+  if (!key) return null;
+  for (let i = aliases.length - 1; i >= 0; i--) {
+    const a = aliases[i]!;
+    if (a.platformId !== platformId) continue;
+    if (normTypeName(a.platformTypeName) !== key) continue;
+    if (typeIds && !typeIds.has(a.typeId)) return null;
+    return a.typeId;
+  }
+  return null;
+}
+
+/** Insert or replace alias for (platformId, normalized name). */
+export function upsertTypeAlias(
+  aliases: TypeAlias[],
+  entry: { id?: string; platformId: string; platformTypeName: string; typeId: string },
+  newId: () => string,
+): TypeAlias[] {
+  const name = entry.platformTypeName.trim().slice(0, PLATFORM_TYPE_NAME_MAX);
+  const key = normTypeName(name);
+  if (!key || !entry.platformId || !entry.typeId) return aliases;
+  const next = aliases.filter(
+    (a) => !(a.platformId === entry.platformId && normTypeName(a.platformTypeName) === key),
+  );
+  next.push({
+    id: entry.id ?? newId(),
+    platformId: entry.platformId,
+    platformTypeName: name,
+    typeId: entry.typeId,
+  });
+  return next;
+}
+
+export function removeTypeAlias(aliases: TypeAlias[], id: string): TypeAlias[] {
+  return aliases.filter((a) => a.id !== id);
+}
+
+/**
+ * Resolve OTA type string → hotel typeId.
+ * Order: **1) hotel type alias (platform)** → **2) fuzzy heuristics**.
+ */
+export function matchTypeId(
+  typeRaw: string,
+  s: HotelSettings,
+  platformId?: string | null,
+): string | null {
   const raw = typeRaw.trim();
   if (!raw) return null;
   const types = usableTypes(s.types).filter((t) => typeLabel(t));
-  const n = normHeader(raw);
-  // exact
+  const usableIds = new Set(types.map((t) => t.id));
+
+  const aliased = lookupTypeAlias(s.typeAliases, platformId, raw, usableIds);
+  if (aliased) return aliased;
+
+  const n = normTypeName(raw);
+  // exact label
   for (const t of types) {
-    if (normHeader(typeLabel(t)) === n) return t.id;
+    if (normTypeName(typeLabel(t)) === n) return t.id;
   }
   // includes either way
   let best: { id: string; score: number } | null = null;
   for (const t of types) {
-    const lab = normHeader(typeLabel(t));
+    const lab = normTypeName(typeLabel(t));
     if (!lab) continue;
     let score = 0;
     if (n.includes(lab) || lab.includes(n)) score = Math.min(n.length, lab.length);
@@ -490,7 +569,7 @@ export function buildPreviewRows(
   const colMap = mapColumns(table.headers, profile);
   return table.rows.map((row, i) => {
     const n = normalizeRow(row, colMap, profile);
-    const typeId = matchTypeId(n.typeRaw, s);
+    const typeId = matchTypeId(n.typeRaw, s, platformId);
     const dup =
       !!platformId && !!n.reservationId && isDuplicateReservation(existing, platformId, n.reservationId);
     const skip = n.skipSuggested || dup;
