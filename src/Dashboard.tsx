@@ -2687,33 +2687,36 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
-          <div className="board-chrome-sticky">
-            <div className="board-filter-sticky">
-              {buildingTabs}
-              {guestSearchBar}
-            </div>
-            {nowGlance}
-          </div>
           <div className="nowlayout">
-            <div className="nowgrid">
-              {groupsNow.map(({ bd, floors: fl }, gi) => (
-                <section key={bd.id} className="bblock">
-                  <div className="bname-row">
-                    <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
-                    {gi === 0 ? nowLegend : null}
-                  </div>
-                  {fl.map((f) => (
-                    <div className="floor" key={f.id}>
-                      <div className="fh">
-                        <span className="fn" style={floorPaint(f.color) ? { ["--fc" as string]: floorPaint(f.color)! } : undefined}>
-                          {f.name}
-                        </span>
-                      </div>
-                      <div className="rooms">{f.rooms.map((r) => nowCell(r, f.color))}</div>
+            {/* Chrome sticky lives in the board column only — full-width sticky covered .nowside (#128). */}
+            <div className="nowboard">
+              <div className="board-chrome-sticky">
+                <div className="board-filter-sticky">
+                  {buildingTabs}
+                  {guestSearchBar}
+                </div>
+                {nowGlance}
+              </div>
+              <div className="nowgrid">
+                {groupsNow.map(({ bd, floors: fl }, gi) => (
+                  <section key={bd.id} className="bblock">
+                    <div className="bname-row">
+                      <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
+                      {gi === 0 ? nowLegend : null}
                     </div>
-                  ))}
-                </section>
-              ))}
+                    {fl.map((f) => (
+                      <div className="floor" key={f.id}>
+                        <div className="fh">
+                          <span className="fn" style={floorPaint(f.color) ? { ["--fc" as string]: floorPaint(f.color)! } : undefined}>
+                            {f.name}
+                          </span>
+                        </div>
+                        <div className="rooms">{f.rooms.map((r) => nowCell(r, f.color))}</div>
+                      </div>
+                    ))}
+                  </section>
+                ))}
+              </div>
             </div>
             <NowSidePanel
               today={today}

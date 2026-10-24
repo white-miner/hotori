@@ -2329,6 +2329,8 @@ button.nowstatus { cursor: pointer; }
 /* board-page의 오른쪽 .side 칸(372px)은 「현황」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
 .now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
+/* Board column wrapper: sticky 미니맵 chrome stays here so it does not overlay .nowside */
+.now-page .nowboard { min-width: 0; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
 /* 미배정 행 — 우측 「운영」 간단 예약: dense stacked rows (no full-height 호실 drop zone)
    CRITICAL: rows must NOT flex-shrink. max-height + min-height:0 + flex-shrink:1
