@@ -2405,8 +2405,8 @@ button.nowstatus { cursor: pointer; }
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0;
-  padding: 5px 6px;
+  gap: 1px;
+  padding: 6px 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -2418,43 +2418,45 @@ button.nowstatus { cursor: pointer; }
 .side-ua-l1 {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   max-width: 100%;
 }
 .side-ua-l1 b {
-  font-size: 12.5px;
+  font-size: var(--nowside-row-name-fs, 14.5px);
   font-weight: 750;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  line-height: 1.2;
 }
 .side-ua-amt {
   flex: none;
   font-family: var(--num);
-  font-size: 11px;
+  font-size: var(--nowside-row-amt-fs, 13px);
   font-weight: 750;
   color: var(--ink2);
   white-space: nowrap;
+  line-height: 1.2;
 }
 .side-ua-l2 {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
 }
 .side-ua-assign {
   flex: none;
-  height: 24px;
-  padding: 0 8px;
+  height: var(--nowside-assign-h, 30px);
+  padding: 0 10px;
   margin: 0 4px 0 0;
-  border-radius: 6px;
+  border-radius: 7px;
   border: 1px solid var(--ink);
   background: #fff;
-  font-size: 11px;
+  font-size: var(--nowside-assign-fs, 13px);
   font-weight: 750;
   line-height: 1;
   cursor: pointer;
@@ -3198,8 +3200,17 @@ button.nowstatus { cursor: pointer; }
 .nklab.nk-departing { color: var(--badge-warn); }
 .nklab.nk-lateOut { color: var(--badge-danger); }
 .nkdot.nk-empty { border-style: dashed; border-color: var(--badge-empty); background: #fff; }
-/* Stick under .top (64px). top:10px put tabs under the header when the board scrolled. */
+/* Stick under .top (64px). top:10px put tabs under the header when the board scrolled.
+   Typography tokens only — panel column width stays in .nowlayout (untouched). */
 .nowside {
+  --nowside-tab-fs: 13px;
+  --nowside-tab-pad-y: 9px;
+  --nowside-chip-fs: 13.5px;
+  --nowside-chip-h: 34px;
+  --nowside-row-name-fs: 14.5px;
+  --nowside-row-amt-fs: 13px;
+  --nowside-assign-fs: 13px;
+  --nowside-assign-h: 30px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -3211,14 +3222,8 @@ button.nowstatus { cursor: pointer; }
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* body scrolls; 운영 + mode tabs stay pinned */
+  overflow: hidden; /* body scrolls; mode tabs stay pinned */
   box-sizing: border-box;
-}
-.nowside-h {
-  flex: none;
-  font-size: 13px;
-  font-weight: 800;
-  margin-bottom: 8px;
 }
 .nowside-modes {
   flex: none;
@@ -3235,13 +3240,13 @@ button.nowstatus { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
-  padding: 6px 4px;
+  padding: var(--nowside-tab-pad-y) 6px;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--nowside-tab-fs);
   font-weight: 750;
   letter-spacing: -0.03em;
   color: var(--ink3);
@@ -3250,7 +3255,7 @@ button.nowstatus { cursor: pointer; }
 }
 .nowside-mode small {
   font-family: var(--num);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   color: var(--ink2);
 }
@@ -3315,9 +3320,27 @@ button.nowstatus { cursor: pointer; }
 .nsel-du-n { font-size: 12.5px; font-weight: 650; color: var(--ink); min-width: 0; }
 .nsel-du-p { margin-left: auto; font-family: var(--num); font-size: 12px; font-weight: 750; color: var(--ink2); }
 .nsel-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.35; color: var(--ink2); }
-.nsel-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-.nsel-filters .chip { padding: 4px 8px; font-size: 11.5px; height: 28px; }
-.nsel-filters .chip small { margin-left: 3px; font-family: var(--num); font-weight: 800; }
+/* 오늘/일주일/한달 — equal-width chips fill row whitespace (type/pad only) */
+.nsel-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.nsel-filters .chip {
+  width: 100%;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: var(--nowside-chip-fs, 13.5px);
+  font-weight: 750;
+  height: var(--nowside-chip-h, 34px);
+}
+.nsel-filters .chip small {
+  margin-left: 4px;
+  font-family: var(--num);
+  font-size: 12px;
+  font-weight: 800;
+}
 .nsel-filters .chip.on small { color: rgba(255, 255, 255, 0.75); }
 .nsel-note { margin: 0 0 6px; }
 .linkish {

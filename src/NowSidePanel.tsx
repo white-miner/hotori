@@ -402,7 +402,6 @@ export default function NowSidePanel({
 
   return (
     <aside className="nowside" aria-label="운영">
-      <div className="nowside-h">운영</div>
       <div className="nowside-modes" role="tablist" aria-label="패널 모드">
         {(["room", "simple", "out"] as SideMode[]).map((m) => (
           <button
