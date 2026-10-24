@@ -96,6 +96,7 @@ import {
   unusedNightRefund,
   validateExtendRate,
 } from "../shared/extend";
+import { EDIT_COPY, commitEditStayDates, nightsUpOpensExtendPanel } from "../shared/bookingEdit";
 import {
   STAY_CREDIT_COPY,
   type EarlyOutDisposition,
@@ -492,14 +493,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         : nightRate(live, groupRates?.[live.typeId]);
     setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
   };
-  /** 박수↓이면 판매가 = 행렬 Σ 또는 1박 × 새박수 + 가산분. 박수↑(저장본 대비)는 연장 패널. */
+  /** 박수↓이면 판매가 = 행렬 Σ 또는 1박 × 새박수 + 가산분. 박수↑도 본문 반영 · 「1박 연장」은 별도 CTA. */
   const applyStayNights = (nextRaw: number, opts?: { checkIn?: string }) => {
-    const next = clampStayNights(nextRaw);
-    const saved = base?.nights ?? 0;
-    const nextCheckIn = opts?.checkIn ?? checkIn;
-    if (base && !long && kind === "stay" && live && canExtend(live) && next > saved) {
-      if (nights !== saved) setNights(saved);
-      if (opts?.checkIn != null && checkIn !== (base.checkIn ?? checkIn)) setCheckIn(base.checkIn);
+    const committed = commitEditStayDates({
+      nextNights: nextRaw,
+      nextCheckIn: opts?.checkIn ?? checkIn,
+    });
+    const next = committed.nights;
+    const nextCheckIn = committed.checkIn;
+    // P0: nights↑로 연장 패널 가로채기 금지 (ops 「1박 연장」 CTA만)
+    if (nightsUpOpensExtendPanel()) {
       openEx();
       return;
     }
@@ -1744,7 +1747,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       >
         <div className="grab" />
         <div className="mh">
-          <h2>{isNew ? "상세 예약" : "예약 수정"}</h2>
+          <h2>{isNew ? "상세 예약" : EDIT_COPY}</h2>
           {isNew && kind === "stay" ? (
             <BookingModeSeg
               mode="detail"
@@ -1886,6 +1889,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>중도 퇴실</b>
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {!isNew && kind === "stay" && !long ? (
+          <div className="edit-stay-sum" role="status">
+            <div className="edit-stay-sum-main">
+              <b>
+                {roomId ? `${L.roomLabel(roomId) ?? "?"}호` : "미배정"}
+                {guestName.trim() ? ` · ${guestName.trim()}` : base?.guestName ? ` · ${base.guestName}` : ""}
+              </b>
+              <span>
+                {md(checkIn)} → {md(checkOutDate)} · {nights}박
+              </span>
+            </div>
+            <p className="muted sm edit-stay-sum-hint">
+              날짜·박수는 아래에서 고친 뒤 저장해요
+              {canEx ? ` · 하룻밤만 더 = 「${EXTEND_COPY}」` : ""}
+            </p>
           </div>
         ) : null}
         {eoNow && live ? (
@@ -2461,13 +2481,20 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             </div>
             {stayDateUx === "period-tabs" ? (
               <div className="fld">
-                <div className="seg wide staytabs" role="tablist" aria-label="숙박 기간 입력 방식">
-                  <button type="button" role="tab" aria-selected={stayTab === "period"} className={stayTab === "period" ? "on" : ""} onClick={() => setStayTab("period")}>
-                    기간 입력
-                  </button>
-                  <button type="button" role="tab" aria-selected={stayTab === "paint"} className={stayTab === "paint" ? "on" : ""} onClick={() => setStayTab("paint")}>
-                    날짜 선택
-                  </button>
+                <label>기간 고치기</label>
+                <div>
+                  <div className="seg wide staytabs" role="tablist" aria-label="숙박 기간 입력 방식">
+                    <button type="button" role="tab" aria-selected={stayTab === "period"} className={stayTab === "period" ? "on" : ""} onClick={() => setStayTab("period")}>
+                      기간 입력
+                    </button>
+                    <button type="button" role="tab" aria-selected={stayTab === "paint"} className={stayTab === "paint" ? "on" : ""} onClick={() => setStayTab("paint")}>
+                      날짜 선택
+                    </button>
+                  </div>
+                  <div className="muted sm" style={{ marginTop: 6 }}>
+                    입실·퇴실·박수를 바꾸면 저장 시 반영돼요
+                    {canEx ? ` · 「${EXTEND_COPY}」과 다름` : ""}
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -2645,7 +2672,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <div className="nwarn" role="status">
                 <AlertTriangle size={16} />
                 <span>
-                  박수가 늘었는데 판매 가격은 그대로예요. 「{EXTEND_COPY}」으로 요금을 더하거나, 아래 총액을 고쳐 주세요.
+                  박수가 늘었는데 판매 가격은 그대로예요. 아래 총액을 고쳐 주세요
+                  {canEx ? ` · 하룻밤만 더하려면 「${EXTEND_COPY}」` : ""}.
                 </span>
               </div>
             ) : null}
@@ -3408,81 +3436,95 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
 
-        <div className="fld">
-          <label>{moved ? "첫 방" : "호실"}</label>
-          <div className="mfp-wrap">
-            {/* 숙박 수정: 미배정 칩 + MiniFloorPlan (칩 벽 제거 · P0) · 신규/대실은 타입 줄 포함 */}
-            {(isNew && kind === "stay") || kind === "dayuse" ? (
-              <div className="mfp-types">
-                <div className="muted sm">{kind === "stay" ? "타입 · 남은 수" : "타입"}</div>
-                <div className="chips scroll">
-                  {pickTypes.map((t, k) => {
-                    const r = minRemain(t.id);
-                    const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
-                    return (
-                      <button
-                        type="button"
-                        key={t.id}
-                        className={`tchip ${t.id === typeId ? "on" : ""}`}
-                        onClick={() => setTypeId(t.id)}
-                        title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}
-                      >
-                        <span className="t1">
-                          <TypeBadge t={t} />
-                        </span>
-                        {kind === "stay" ? (
-                          <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                            남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                            {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
-                          </span>
-                        ) : k < 9 ? (
-                          <span className="t2 kk">{TYPE_LABEL[k]}</span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-                {kind === "stay" && minRemain(typeId) <= 0 ? (
-                  <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
-                    {minRemain(typeId) < 0
-                      ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
-                      : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
-                  </div>
-                ) : null}
-              </div>
-            ) : kind === "stay" ? (
-              <button
-                type="button"
-                className={`rchip lt ${roomId === null ? "on" : ""}`}
-                onClick={() => pickRoom(null)}
-                title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
-              >
-                간단 예약
-              </button>
-            ) : null}
-            <MiniFloorPlan
-              s={s}
-              L={L}
-              free={free}
-              selectedIds={roomId ? [roomId] : []}
-              candidateTypeIds={typeId ? [typeId] : []}
-              buildingFilter={buildingFilter}
-              onBuildingFilter={setBuildingFilter}
-              onToggle={toggleFloorRoom}
-            />
-            <div className="muted sm mfp-sum">
-              {roomId
-                ? `${L.roomLabel(roomId) ?? "?"}호`
-                : kind === "dayuse"
-                  ? "배치도에서 호실을 골라 주세요"
-                  : !isNew && kind === "stay"
-                    ? "미배정 · 「현황」에서 호실 정하기"
-                    : typeId
-                      ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
-                      : "타입을 고르거나 배치도에서 호실을 지정"}
+        {/* selection-first: 선택 호실 수정 = 고정 표시 · MiniFloorPlan 금지 */}
+        {!isNew && kind === "stay" && roomId ? (
+          <div className="fld">
+            <label>{moved ? "첫 방" : "호실"}</label>
+            <div className="edit-room-fixed">
+              <b>{L.roomLabel(roomId) ?? "?"}호</b>
+              <span className="muted sm">
+                {typeLabel(L.types.get(typeId)) || "타입"}
+                {" · "}객실 이동은 위 버튼 또는 운영패널
+              </span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="fld">
+            <label>{moved ? "첫 방" : "호실"}</label>
+            <div className="mfp-wrap">
+              {/* 신규·대실·미배정 수정: MiniFloorPlan OK */}
+              {(isNew && kind === "stay") || kind === "dayuse" ? (
+                <div className="mfp-types">
+                  <div className="muted sm">{kind === "stay" ? "타입 · 남은 수" : "타입"}</div>
+                  <div className="chips scroll">
+                    {pickTypes.map((t, k) => {
+                      const r = minRemain(t.id);
+                      const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
+                      return (
+                        <button
+                          type="button"
+                          key={t.id}
+                          className={`tchip ${t.id === typeId ? "on" : ""}`}
+                          onClick={() => setTypeId(t.id)}
+                          title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}
+                        >
+                          <span className="t1">
+                            <TypeBadge t={t} />
+                          </span>
+                          {kind === "stay" ? (
+                            <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
+                              남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                              {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
+                            </span>
+                          ) : k < 9 ? (
+                            <span className="t2 kk">{TYPE_LABEL[k]}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {kind === "stay" && minRemain(typeId) <= 0 ? (
+                    <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
+                      {minRemain(typeId) < 0
+                        ? "이 타입은 이미 오버부킹이에요. 저장은 가능하지만 「재고」에 빨강으로 남아요."
+                        : "이 타입은 만실이에요. 저장하면 오버부킹 경고가 나와요."}
+                    </div>
+                  ) : null}
+                </div>
+              ) : kind === "stay" ? (
+                <button
+                  type="button"
+                  className={`rchip lt ${roomId === null ? "on" : ""}`}
+                  onClick={() => pickRoom(null)}
+                  title="간단 예약 · 호실 미정 · 타입×밤 재고만 차감 (임시 배치 아님)"
+                >
+                  간단 예약
+                </button>
+              ) : null}
+              <MiniFloorPlan
+                s={s}
+                L={L}
+                free={free}
+                selectedIds={roomId ? [roomId] : []}
+                candidateTypeIds={typeId ? [typeId] : []}
+                buildingFilter={buildingFilter}
+                onBuildingFilter={setBuildingFilter}
+                onToggle={toggleFloorRoom}
+              />
+              <div className="muted sm mfp-sum">
+                {roomId
+                  ? `${L.roomLabel(roomId) ?? "?"}호`
+                  : kind === "dayuse"
+                    ? "배치도에서 호실을 골라 주세요"
+                    : !isNew && kind === "stay"
+                      ? "미배정 · 「현황」에서 호실 정하기"
+                      : typeId
+                        ? "호실 없이 미배정 저장 가능 · 또는 하늘색 칸에서 지정"
+                        : "타입을 고르거나 배치도에서 호실을 지정"}
+              </div>
+            </div>
+          </div>
+        )}
 
         {!isNew && kind === "stay" && nights >= 2 && roomId ? (
           <div className="fld">

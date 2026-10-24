@@ -32,6 +32,7 @@ import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
+import { EDIT_COPY } from "../shared/bookingEdit";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import { PlatBadge, lookups } from "./ui";
@@ -582,7 +583,7 @@ export default function NowSidePanel({
                           </button>
                         ) : null}
                         <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
-                          예약 기록 열기
+                          {EDIT_COPY}
                         </button>
                         {f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
                           <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
@@ -672,7 +673,7 @@ export default function NowSidePanel({
                             disabled={moving}
                             onClick={() => onOpen(recentCheckedOut, today)}
                           >
-                            예약 기록 열기
+                            {EDIT_COPY}
                           </button>
                         </div>
                       ) : null}
