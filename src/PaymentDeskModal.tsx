@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { type Booking, type HotelSettings, won } from "../shared/ledger";
+import { type Booking, type HotelSettings, md, won } from "../shared/ledger";
 import type { GroupInfo } from "../shared/settle";
 import {
   PAYMENT_DESK_CTA,
@@ -21,11 +21,17 @@ import {
 } from "../shared/paymentDesk";
 import { type BookPayMethod, payLineMain } from "../shared/payment";
 import { payLineSub, type SurchargeReason } from "../shared/addSurcharge";
+import {
+  STAY_CREDIT_COPY,
+  type StayCredit,
+  matchOpenCredits,
+  planApplyStayCredit,
+} from "../shared/stayCredit";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
 import { askConfirm } from "./ConfirmDialog";
 import { lookups } from "./ui";
 
-type Mode = "pay" | "surcharge" | "ledger";
+type Mode = "pay" | "surcharge" | "ledger" | "credit";
 
 type SurchargeInput = {
   reason: SurchargeReason;
@@ -49,9 +55,11 @@ export default function PaymentDeskModal({
   members,
   groupInfo,
   roomLabels,
+  stayCredits,
   busy,
   onCancel,
   onPay,
+  onApplyCredit,
   onSurcharge,
   onDeletePayment,
   onDeleteGroupPayment,
@@ -62,9 +70,12 @@ export default function PaymentDeskModal({
   members: Booking[];
   groupInfo?: GroupInfo | null;
   roomLabels: string[];
+  /** 호텔 보관 잔액 — 손님 매칭용 */
+  stayCredits?: StayCredit[];
   busy?: boolean;
   onCancel: () => void;
   onPay: (plan: PaymentDeskPayPlan) => void;
+  onApplyCredit?: (credit: StayCredit, bookingId: string, amount: number) => void;
   onSurcharge?: (b: Booking, input: SurchargeInput) => void;
   onDeletePayment?: (bookingId: string, payId: string) => void;
   onDeleteGroupPayment?: (groupId: string, payId: string) => void;
@@ -76,6 +87,11 @@ export default function PaymentDeskModal({
   const glance = useMemo(() => paymentDeskGlance(members, plat, groupInfo), [members, plat, groupInfo]);
   const single = !glance.group && members.length === 1 ? members[0] : null;
   const canSurcharge = !!single && !!onSurcharge;
+  const matchedCredits = useMemo(
+    () => (single && stayCredits ? matchOpenCredits(stayCredits, single.guestName, single.guestPhone) : []),
+    [single, stayCredits],
+  );
+  const canCredit = !!single && !!onApplyCredit && matchedCredits.length > 0;
   const lines = useMemo(() => deskPaymentLines(members, groupInfo), [members, groupInfo]);
   const clearPlan = single && onClearResidual ? planClearResidualBalance(single, plat) : null;
   const clearOk = clearPlan && !("err" in clearPlan) ? clearPlan : null;
@@ -90,6 +106,7 @@ export default function PaymentDeskModal({
   const [hours, setHours] = useState("1");
   const [memo, setMemo] = useState("");
   const [collect, setCollect] = useState(true);
+  const [creditId, setCreditId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -97,8 +114,9 @@ export default function PaymentDeskModal({
     else setAmount("");
     setKind("balance");
     setMode("pay");
+    setCreditId(matchedCredits[0]?.id ?? null);
     setErr(null);
-  }, [glance.left, first?.id, members.length]);
+  }, [glance.left, first?.id, members.length, matchedCredits]);
 
   const submitPay = () => {
     if (busy) return;
@@ -114,6 +132,28 @@ export default function PaymentDeskModal({
     }
     setErr(null);
     onPay(planned);
+  };
+
+  const submitCredit = () => {
+    if (busy || !single || !onApplyCredit) return;
+    const c = matchedCredits.find((x) => x.id === creditId) ?? matchedCredits[0];
+    if (!c) {
+      setErr("쓸 수 있는 보관 잔액이 없어요.");
+      return;
+    }
+    const planned = planApplyStayCredit({
+      credit: c,
+      bookingId: single.id,
+      amount: Number(amount || 0),
+      bizDate: today,
+      kind: "balance",
+    });
+    if ("err" in planned) {
+      setErr(planned.err);
+      return;
+    }
+    setErr(null);
+    onApplyCredit(c, single.id, planned.amount);
   };
 
   const submitSurcharge = () => {
@@ -240,6 +280,23 @@ export default function PaymentDeskModal({
                 할증
               </Chip>
             ) : null}
+            {canCredit ? (
+              <Chip
+                sm
+                active={mode === "credit"}
+                disabled={busy}
+                onClick={() => {
+                  setMode("credit");
+                  const c = matchedCredits[0];
+                  const cap = c ? Math.min(c.amountRemaining, glance.left > 0 ? glance.left : c.amountRemaining) : 0;
+                  setAmount(cap > 0 ? String(cap) : "");
+                  setCreditId(c?.id ?? null);
+                  setErr(null);
+                }}
+              >
+                {STAY_CREDIT_COPY.use}
+              </Chip>
+            ) : null}
             <Chip sm active={mode === "ledger"} disabled={busy} onClick={() => { setMode("ledger"); setErr(null); }}>
               내역
             </Chip>
@@ -284,6 +341,56 @@ export default function PaymentDeskModal({
                     </Chip>
                   ))}
                 </ChipGroup>
+              </div>
+            </>
+          ) : null}
+
+          {mode === "credit" && canCredit ? (
+            <>
+              <p className="muted sm">
+                매칭된 {STAY_CREDIT_COPY.balance} {matchedCredits.length}건 · 부분 사용 OK · 현금 환불과 별개
+              </p>
+              <ChipGroup role="group" aria-label={STAY_CREDIT_COPY.balance}>
+                {matchedCredits.map((c) => (
+                  <Chip
+                    key={c.id}
+                    sm
+                    active={creditId === c.id}
+                    disabled={busy}
+                    onClick={() => {
+                      setCreditId(c.id);
+                      const cap = Math.min(c.amountRemaining, glance.left > 0 ? glance.left : c.amountRemaining);
+                      setAmount(String(cap));
+                      setErr(null);
+                    }}
+                  >
+                    {won(c.amountRemaining)}원
+                    {c.preferredRecheckinDate ? ` · ${md(c.preferredRecheckinDate)}` : ""}
+                  </Chip>
+                ))}
+              </ChipGroup>
+              <div className="paytake">
+                <PriceInp sm>
+                  <span className="pl">{STAY_CREDIT_COPY.use}</span>
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={STAY_CREDIT_COPY.use}
+                    disabled={busy}
+                    value={amount ? won(Number(amount)) : ""}
+                    onChange={(e) => {
+                      setAmount(e.target.value.replace(/\D/g, "").slice(0, 9));
+                      setErr(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        submitCredit();
+                      }
+                    }}
+                  />
+                </PriceInp>
               </div>
             </>
           ) : null}
@@ -410,11 +517,17 @@ export default function PaymentDeskModal({
             <button
               type="button"
               className="btn dark"
-              disabled={busy || glance.priceUnset}
-              onClick={mode === "pay" ? submitPay : submitSurcharge}
+              disabled={busy || (mode !== "credit" && glance.priceUnset)}
+              onClick={mode === "pay" ? submitPay : mode === "credit" ? submitCredit : submitSurcharge}
               autoFocus
             >
-              {busy ? "처리 중…" : mode === "pay" ? PAYMENT_DESK_CTA : "할증 확정"}
+              {busy
+                ? "처리 중…"
+                : mode === "pay"
+                  ? PAYMENT_DESK_CTA
+                  : mode === "credit"
+                    ? STAY_CREDIT_COPY.use
+                    : "할증 확정"}
             </button>
           )}
         </div>

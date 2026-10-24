@@ -37,6 +37,7 @@ import EarlyInPayModal from "./EarlyInPayModal";
 import AddTimeModal from "./AddTimeModal";
 import StaySaleModal from "./StaySaleModal";
 import PaymentDeskModal from "./PaymentDeskModal";
+import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import RoomMemoModal from "./RoomMemoModal";
@@ -1879,6 +1880,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  const commitDeskApplyCredit = async (credit: StayCredit, bookingId: string, amount: number) => {
+    if (readOnly || payDeskBusy) return;
+    setPayDeskBusy(true);
+    try {
+      const result = await data.applyStayCredit(credit, bookingId, amount, today, "balance");
+      notify(applyCreditNotifyLine(credit.guestName, result.plan.amount, result.plan.remainingAfter));
+      setPayDesk(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "잔액 사용을 저장하지 못했어요"));
+    } finally {
+      setPayDeskBusy(false);
+    }
+  };
+
   const commitStaySaleCreate = async (input: StaySaleCreateInput) => {
     if (readOnly || staySaleBusy || !staySale) return;
     const drafts = buildStaySaleDrafts(s, input);
@@ -2916,9 +2931,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           roomLabels={payDesk.members.map(
             (b) => L.roomLabel(b.roomId) ?? allRooms(s).find((r) => r.id === b.roomId)?.no ?? "?",
           )}
+          stayCredits={data.stayCredits}
           busy={payDeskBusy}
           onCancel={() => !payDeskBusy && setPayDesk(null)}
           onPay={(plan) => void commitPaymentDesk(plan)}
+          onApplyCredit={(c, bookingId, amount) => void commitDeskApplyCredit(c, bookingId, amount)}
           onSurcharge={(b, input) => void commitDeskSurcharge(b, input)}
           onDeletePayment={(bookingId, payId) => void commitDeskDeletePay(bookingId, payId)}
           onDeleteGroupPayment={(groupId, payId) => void commitDeskDeleteGroupPay(groupId, payId)}

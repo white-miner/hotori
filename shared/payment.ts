@@ -4,9 +4,19 @@ import { won } from "./ledger";
 
 /** 예약 결제 방법: 카드 · 현금 · 이체 (이체는 현금 시재에 안 들어가요). 매점은 카드·현금, 지출은 카드·현금·이체 */
 export type BookPayMethod = "card" | "cash" | "transfer";
+/** 보관 잔액 사용 — 시재 제외 · FO 칩(BOOK_PAY_METHODS)에는 안 넣음 */
+export type CreditPayMethod = "credit";
+export type PaymentMethod = BookPayMethod | CreditPayMethod;
 export const BOOK_PAY_METHODS: BookPayMethod[] = ["card", "cash", "transfer"];
 export const BOOK_PAY_LABEL: Record<BookPayMethod, string> = { card: "카드", cash: "현금", transfer: "이체" };
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  card: "카드",
+  cash: "현금",
+  transfer: "이체",
+  credit: "잔액 사용",
+};
 export const isBookPayMethod = (v: unknown): v is BookPayMethod => v === "card" || v === "cash" || v === "transfer";
+export const isPaymentMethod = (v: unknown): v is PaymentMethod => isBookPayMethod(v) || v === "credit";
 
 export type PayKind = "deposit" | "balance";
 export const PAY_KIND_LABEL: Record<PayKind, string> = { deposit: "선금", balance: "잔금" };
@@ -15,15 +25,15 @@ export function payKindLabel(kind: PayKind, long = false): string {
   if (long) return kind === "deposit" ? "선수" : "수납";
   return PAY_KIND_LABEL[kind];
 }
-/** Entry 내역 주 카피: `현금 80,000` */
-export function payLineMain(method: BookPayMethod, amount: number): string {
-  return `${BOOK_PAY_LABEL[method]} ${won(amount)}`;
+/** Entry 내역 주 카피: `현금 80,000` · `잔액 사용 80,000` */
+export function payLineMain(method: PaymentMethod, amount: number): string {
+  return `${PAYMENT_METHOD_LABEL[method]} ${won(amount)}`;
 }
 export interface Payment {
   id: string;
   bookingId: string;
   kind: PayKind;
-  method: BookPayMethod;
+  method: PaymentMethod;
   amount: number;
   bizDate: string;
   createdAt: string;
@@ -167,13 +177,15 @@ export function validatePayment(amount: number, method: string, bizDate: string)
   return null;
 }
 
-/** 받은 돈을 방법별로: 기간을 주면 그 영업일 안에 받은 것만 */
-export function paySplit(list: Pick<Payment, "method" | "amount" | "bizDate">[], from?: string, to?: string): Record<BookPayMethod, number> & { total: number } {
-  const r = { card: 0, cash: 0, transfer: 0, total: 0 };
+/** 받은 돈을 방법별로: 기간을 주면 그 영업일 안에 받은 것만. credit(잔액 사용)은 total만 합산 · 시재 칩 제외 */
+export function paySplit(list: Pick<Payment, "method" | "amount" | "bizDate">[], from?: string, to?: string): Record<BookPayMethod, number> & { total: number; credit: number } {
+  const r = { card: 0, cash: 0, transfer: 0, credit: 0, total: 0 };
   for (const x of list) {
     if (from && x.bizDate < from) continue;
     if (to && x.bizDate > to) continue;
-    r[x.method] += x.amount;
+    if (isBookPayMethod(x.method)) r[x.method] += x.amount;
+    else if (x.method === "credit") r.credit += x.amount;
+    else continue;
     r.total += x.amount;
   }
   return r;

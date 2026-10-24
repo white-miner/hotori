@@ -31,7 +31,14 @@ import {
   isHotelNoticeStatus,
   validateHotelNoticeDraft,
 } from "../shared/hotelNotice";
-import { type BookPayMethod, type PayKind, type Payment, isBookPayMethod } from "../shared/payment";
+import { type BookPayMethod, type PayKind, type Payment, type PaymentMethod, isBookPayMethod, isPaymentMethod } from "../shared/payment";
+import {
+  type StayCredit,
+  type ApplyStayCreditPlan,
+  STAY_CREDIT_PAY_METHOD,
+  planApplyStayCredit,
+  planVoidStayCredit,
+} from "../shared/stayCredit";
 import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { cleanCoupons } from "../shared/fee";
@@ -109,12 +116,44 @@ interface PaymentRow {
   id: string;
   booking_id?: string;
   kind: PayKind;
-  method: BookPayMethod;
+  method: PaymentMethod;
   amount: number;
   biz_date: string;
   created_at: string;
   note?: string | null;
 }
+interface StayCreditRow {
+  id: string;
+  hotel_id: string;
+  guest_name: string;
+  guest_phone: string | null;
+  amount_original: number;
+  amount_remaining: number;
+  preferred_recheckin_date: string | null;
+  source_booking_id: string | null;
+  status: string;
+  expires_on: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const CREDIT_COLS =
+  "id,hotel_id,guest_name,guest_phone,amount_original,amount_remaining,preferred_recheckin_date,source_booking_id,status,expires_on,note,created_at,updated_at";
+const creditFromRow = (r: StayCreditRow): StayCredit => ({
+  id: r.id,
+  hotelId: r.hotel_id,
+  guestName: r.guest_name,
+  guestPhone: r.guest_phone,
+  amountOriginal: r.amount_original,
+  amountRemaining: r.amount_remaining,
+  preferredRecheckinDate: r.preferred_recheckin_date,
+  sourceBookingId: r.source_booking_id,
+  status: r.status === "depleted" ? "depleted" : r.status === "void" ? "void" : "open",
+  expiresOn: r.expires_on,
+  note: r.note,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
 interface ChargeRow {
   id: string;
   booking_id?: string;
@@ -128,7 +167,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
   bookingId: r.booking_id ?? bookingId ?? "",
   kind: r.kind === "balance" ? "balance" : "deposit",
-  method: isBookPayMethod(r.method) ? r.method : "card",
+  method: isPaymentMethod(r.method) ? r.method : "card",
   amount: r.amount,
   bizDate: r.biz_date,
   createdAt: r.created_at,
@@ -320,6 +359,8 @@ export function useHotelData(hotelId: string) {
   const [syncedAt, setSyncedAt] = useState<number>(0);
   // 단체 정산 정보 (id = group_id)
   const [groups, setGroups] = useState<Map<string, GroupInfo>>(new Map());
+  /** 잔액 보관(Option A) — open/depleted/void 전부 로드(목록·매칭) */
+  const [stayCredits, setStayCredits] = useState<StayCredit[]>([]);
   const busy = useRef(false);
   const again = useRef(false);
   /** 로컬 저장이 in-flight refresh 결과를 덮어쓰지 않게 (판매 캘린더 굳음 방지) */
@@ -338,7 +379,7 @@ export function useHotelData(hotelId: string) {
     const genAtStart = mutateGen.current;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
-      const [h, b, g] = await Promise.all([
+      const [h, b, g, c] = await Promise.all([
         supabase.from("hotels").select("id,name,plan,is_demo,settings").eq("id", hotelId).single(),
         supabase
           .from("bookings")
@@ -348,6 +389,7 @@ export function useHotelData(hotelId: string) {
           .order("check_in")
           .limit(10000),
         supabase.from("booking_groups").select(GROUP_COLS).eq("hotel_id", hotelId).limit(5000),
+        supabase.from("stay_credits").select(CREDIT_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(2000),
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
@@ -366,6 +408,8 @@ export function useHotelData(hotelId: string) {
       setBookings((b.data as BookingRow[]).map(fromRow));
       // 정산 표를 못 읽어도 예약 화면은 그대로 (정산 정보만 비어요)
       if (!g.error) setGroups(new Map((g.data as unknown as GroupRow[]).map((r) => [r.id, groupFromRow(r)])));
+      // 마이그레이션 전이면 표가 없을 수 있음 → 빈 목록
+      if (!c.error) setStayCredits((c.data as StayCreditRow[]).map(creditFromRow));
       setError(null);
       setSyncedAt(Date.now());
     } catch (e) {
@@ -392,6 +436,7 @@ export function useHotelData(hotelId: string) {
       .on("postgres_changes", { event: "*", schema: "public", table: "bookings", filter: `hotel_id=eq.${hotelId}` }, soon)
       .on("postgres_changes", { event: "*", schema: "public", table: "hotels", filter: `id=eq.${hotelId}` }, soon)
       .on("postgres_changes", { event: "*", schema: "public", table: "booking_groups", filter: `hotel_id=eq.${hotelId}` }, soon)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stay_credits", filter: `hotel_id=eq.${hotelId}` }, soon)
       .subscribe();
     const poll = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
@@ -527,7 +572,7 @@ export function useHotelData(hotelId: string) {
     [hotelId, refresh],
   );
   // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
-  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: BookPayMethod; amount: number; bizDate: string; note?: string | null }) => {
+  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: PaymentMethod; amount: number; bizDate: string; note?: string | null }) => {
     const note = p.note?.trim() ? p.note.trim().slice(0, 80) : null;
     const { data, error } = await supabase
       .from("booking_payments")
@@ -543,6 +588,108 @@ export function useHotelData(hotelId: string) {
     const { error } = await supabase.from("booking_payments").delete().eq("id", id);
     if (error) throw error;
     setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
+  }, []);
+  /** 잔액 보관 생성 (중도퇴실 keep 경로 · refund_amount와 무관) */
+  const createStayCredit = useCallback(
+    async (input: {
+      guestName: string;
+      guestPhone?: string | null;
+      amount: number;
+      preferredRecheckinDate?: string | null;
+      sourceBookingId: string;
+      note?: string | null;
+    }) => {
+      const { data, error } = await supabase
+        .from("stay_credits")
+        .insert({
+          hotel_id: hotelId,
+          guest_name: input.guestName.trim().slice(0, 40),
+          guest_phone: input.guestPhone?.trim() ? input.guestPhone.trim().slice(0, 30) : null,
+          amount_original: Math.round(input.amount),
+          amount_remaining: Math.round(input.amount),
+          preferred_recheckin_date: input.preferredRecheckinDate || null,
+          source_booking_id: input.sourceBookingId,
+          status: "open",
+          note: input.note?.trim() ? input.note.trim().slice(0, 200) : null,
+        })
+        .select(CREDIT_COLS)
+        .single();
+      if (error) throw error;
+      const saved = creditFromRow(data as StayCreditRow);
+      setStayCredits((list) => [saved, ...list.filter((x) => x.id !== saved.id)]);
+      return saved;
+    },
+    [hotelId],
+  );
+  /**
+   * 잔액 사용: payment(method=credit) + application + remaining 차감.
+   * refund_amount는 건드리지 않음.
+   */
+  const applyStayCredit = useCallback(
+    async (credit: StayCredit, bookingId: string, amount: number, bizDate: string, kind: PayKind = "balance") => {
+      const planned = planApplyStayCredit({ credit, bookingId, amount, bizDate, kind });
+      if ("err" in planned) throw new Error(planned.err);
+      const note = planned.paymentNote;
+      const { data: payData, error: payErr } = await supabase
+        .from("booking_payments")
+        .insert({
+          booking_id: bookingId,
+          kind: planned.kind,
+          method: STAY_CREDIT_PAY_METHOD,
+          amount: planned.amount,
+          biz_date: planned.bizDate,
+          note,
+        })
+        .select(PAY_COLS)
+        .single();
+      if (payErr) throw payErr;
+      const savedPay = payFromRow(payData as PaymentRow);
+      const { error: appErr } = await supabase.from("stay_credit_applications").insert({
+        credit_id: planned.creditId,
+        booking_id: bookingId,
+        payment_id: savedPay.id,
+        amount: planned.amount,
+        biz_date: planned.bizDate,
+      });
+      if (appErr) {
+        await supabase.from("booking_payments").delete().eq("id", savedPay.id);
+        throw appErr;
+      }
+      const { data: credData, error: credErr } = await supabase
+        .from("stay_credits")
+        .update({
+          amount_remaining: planned.remainingAfter,
+          status: planned.statusAfter,
+        })
+        .eq("id", planned.creditId)
+        .select(CREDIT_COLS)
+        .single();
+      if (credErr) {
+        await supabase.from("booking_payments").delete().eq("id", savedPay.id);
+        throw credErr;
+      }
+      const savedCred = creditFromRow(credData as StayCreditRow);
+      setStayCredits((list) => list.map((x) => (x.id === savedCred.id ? savedCred : x)));
+      setBookingsLocal((list) =>
+        list.map((x) => (x.id === bookingId ? { ...x, payments: [...(x.payments ?? []), savedPay] } : x)),
+      );
+      return { payment: savedPay, credit: savedCred, plan: planned as ApplyStayCreditPlan };
+    },
+    [setBookingsLocal],
+  );
+  const voidStayCredit = useCallback(async (credit: StayCredit) => {
+    const planned = planVoidStayCredit(credit);
+    if ("err" in planned) throw new Error(planned.err);
+    const { data, error } = await supabase
+      .from("stay_credits")
+      .update({ status: "void" })
+      .eq("id", planned.creditId)
+      .select(CREDIT_COLS)
+      .single();
+    if (error) throw error;
+    const saved = creditFromRow(data as StayCreditRow);
+    setStayCredits((list) => list.map((x) => (x.id === saved.id ? saved : x)));
+    return saved;
   }, []);
   // 중도 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
   const setEarlyOut = useCallback(async (id: string, earlyOut: string | null, refund: number | null) => {
@@ -732,6 +879,10 @@ export function useHotelData(hotelId: string) {
     saveGroupInfo,
     addGroupPayment,
     deleteGroupPayment,
+    stayCredits,
+    createStayCredit,
+    applyStayCredit,
+    voidStayCredit,
   };
 }
 export type HotelData = ReturnType<typeof useHotelData>;

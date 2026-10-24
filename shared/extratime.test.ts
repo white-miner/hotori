@@ -62,7 +62,7 @@ test("이체: 결제 방법으로 받고, 현금 시재에는 안 들어가요",
     { method: "transfer" as const, amount: 7, bizDate: "2026-10-25" },
   ];
   assert.equal(bookingCash(list, "2026-10-19", "2026-10-19"), 50);
-  assert.deepEqual(paySplit(list, "2026-10-19", "2026-10-19"), { card: 100, cash: 50, transfer: 30, total: 180 });
+  assert.deepEqual(paySplit(list, "2026-10-19", "2026-10-19"), { card: 100, cash: 50, transfer: 30, credit: 0, total: 180 });
   assert.equal(splitLine(paySplit(list)), "카드 100 · 현금 50 · 이체 37");
 });
 
