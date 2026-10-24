@@ -35,6 +35,8 @@ import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import DayuseSaleModal from "./DayuseSaleModal";
 import EarlyInPayModal from "./EarlyInPayModal";
 import AddTimeModal from "./AddTimeModal";
+import ExtendNightModal from "./ExtendNightModal";
+import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import StaySaleModal from "./StaySaleModal";
 import PaymentDeskModal from "./PaymentDeskModal";
 import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
@@ -86,7 +88,16 @@ import {
   planAddTime,
   type AddTimeInput,
 } from "../shared/addTime";
-import { applyExtend, canExtend, extendOverlaps, nightRate } from "../shared/extend";
+import {
+  applyExtend,
+  canExtend,
+  extendNotifyLine,
+  extendOverlaps,
+  nightRate,
+  planOpsExtend,
+  type OpsExtendInput,
+} from "../shared/extend";
+import { saveFailMessage } from "../shared/errors";
 import { onsiteCreatePayTail } from "../shared/payment";
 import {
   type BoardTab,
@@ -135,7 +146,6 @@ import {
 } from "../shared/boardGlance";
 import NowGlancePanel from "./NowGlancePanel";
 import type { MinimapBuilding } from "./BoardStatusMinimap";
-import { saveFailMessage } from "../shared/errors";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
@@ -152,7 +162,6 @@ import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
@@ -428,6 +437,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [payDeskBusy, setPayDeskBusy] = useState(false);
   const [addTime, setAddTime] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [addTimeBusy, setAddTimeBusy] = useState(false);
+  /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
+  const [extendNight, setExtendNight] = useState<{ booking: Booking; roomLabel: string } | null>(null);
+  const [extendNightBusy, setExtendNightBusy] = useState(false);
   /** 숙박 판매 전용 (StaySaleModal · SimpleBooking 금지) */
   const [staySale, setStaySale] = useState<{
     roomIds: string[];
@@ -439,6 +451,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     booking: Booking;
     rate: number;
     hits: Booking[];
+    /** ops 연장 시 결제 입력 (없으면 StaySale occupied 경로) */
+    opsInput?: OpsExtendInput;
   } | null>(null);
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
@@ -2246,6 +2260,61 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 운영패널 1박 연장 · planOpsExtend SoT · 충돌 시 ExtendOverlapConfirm */
+  const commitOpsExtend = async (input: OpsExtendInput, opts?: { allowOverlap?: boolean }) => {
+    if (readOnly || extendNightBusy || !extendNight) return;
+    const live = data.bookings.find((x) => x.id === extendNight.booking.id) ?? extendNight.booking;
+    const planned = planOpsExtend(live, input);
+    if ("err" in planned) {
+      notify(planned.err);
+      return;
+    }
+    if (!opts?.allowOverlap) {
+      const hits = extendOverlaps(bookings, live, planned.effectiveRate);
+      if (hits.length) {
+        setExtendOverlap({ booking: live, rate: planned.effectiveRate, hits, opsInput: input });
+        return;
+      }
+    }
+    setExtendOverlap(null);
+    setExtendNightBusy(true);
+    try {
+      const next: Booking = {
+        ...live,
+        nights: planned.draft.nights,
+        price: planned.draft.price,
+        segments: planned.draft.segments,
+        nightRates: planned.draft.nightRates ?? live.nightRates ?? null,
+      };
+      const saved = await data.saveBooking(next, false);
+      let collected = false;
+      if (planned.collectAmount > 0 && planned.payMethod) {
+        try {
+          await data.addPayment(saved.id, {
+            kind: "balance",
+            method: planned.payMethod,
+            amount: planned.collectAmount,
+            bizDate: today,
+            note: "1박 연장",
+          });
+          collected = true;
+        } catch (e) {
+          notify(
+            `${extendNotifyLine(saved.guestName, planned.draft, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+          );
+          setExtendNight(null);
+          return;
+        }
+      }
+      notify(extendNotifyLine(saved.guestName, planned.draft, collected));
+      setExtendNight(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "1박 연장을 저장하지 못했어요"));
+    } finally {
+      setExtendNightBusy(false);
+    }
+  };
+
   const commitDeskDeletePay = async (bookingId: string, payId: string) => {
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
@@ -2809,6 +2878,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                     : "";
                 setAddTime({ booking: bk, roomLabel: lab || "호실" });
               }}
+              onExtendNight={(bk) => {
+                if (!canExtend(bk) || isLongStay(bk)) return;
+                const lab = bk.roomId
+                  ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`
+                  : "";
+                setExtendNight({ booking: bk, roomLabel: lab || "호실" });
+              }}
               onEarlyIn={(bk) => {
                 if (bk.arrived) return;
                 const lab = bk.roomId
@@ -2907,6 +2983,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onConfirm={(input) => void commitAddTime(input)}
         />
       ) : null}
+      {extendNight ? (
+        <ExtendNightModal
+          today={today}
+          booking={extendNight.booking}
+          roomLabel={extendNight.roomLabel}
+          busy={extendNightBusy}
+          onCancel={() => !extendNightBusy && setExtendNight(null)}
+          onConfirm={(input) => void commitOpsExtend(input)}
+        />
+      ) : null}
       {staySale ? (
         <StaySaleModal
           s={s}
@@ -2922,33 +3008,39 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
       {extendOverlap ? (
         <ExtendOverlapConfirm
-          extraNight={addDays(extendOverlap.booking.checkIn, (extendOverlap.booking.nights ?? 0))}
+          extraNight={addDays(extendOverlap.booking.checkIn, extendOverlap.booking.nights ?? 0)}
           others={extendOverlap.hits}
           roomLabel={
             extendOverlap.booking.roomId
               ? L.roomLabel(extendOverlap.booking.roomId) ?? null
               : null
           }
-          busy={staySaleBusy}
-          onCancel={() => setExtendOverlap(null)}
-          onApprove={() => {
-            const { booking, rate } = extendOverlap;
+          busy={staySaleBusy || extendNightBusy}
+          onCancel={() => {
             setExtendOverlap(null);
+          }}
+          onApprove={() => {
+            const pending = extendOverlap;
+            setExtendOverlap(null);
+            if (pending.opsInput) {
+              void commitOpsExtend(pending.opsInput, { allowOverlap: true });
+              return;
+            }
             void (async () => {
               setStaySaleBusy(true);
               try {
-                const d = applyExtend(booking, rate);
+                const d = applyExtend(pending.booking, pending.rate);
                 await data.saveBooking(
                   {
-                    ...booking,
+                    ...pending.booking,
                     nights: d.nights,
                     price: d.price,
                     segments: d.segments,
-                    nightRates: d.nightRates ?? booking.nightRates,
+                    nightRates: d.nightRates ?? pending.booking.nightRates,
                   },
                   false,
                 );
-                notify(`${booking.guestName} 님 1박 연장했어요`);
+                notify(`${pending.booking.guestName} 님 1박 연장했어요`);
                 setStaySale(null);
               } catch (e) {
                 notify(saveFailMessage(e, "연장을 저장하지 못했어요"));
