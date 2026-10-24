@@ -16,7 +16,7 @@ import {
   nowLists,
   nowMetaLine,
   nowNightRange,
-  nowPayMethodGlance,
+  nowLatestPayMethodLabel,
   nowPayMethodPrefix,
   nowStaySummary,
   shouldAutoArrive,
@@ -2524,7 +2524,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : null;
     const amount = nowAmountGlance(b, plat, groupCtx);
     const amountTone = nowAmountTone(b, plat, groupCtx);
-    const payMethod = nowPayMethodPrefix(amount, nowPayMethodGlance(b, groupCtx?.info?.payments));
+    // 하이브리드 완납: 최근 1줄 수단만 · 잔금 라벨이면 prefix null
+    const payMethod = nowPayMethodPrefix(amount, nowLatestPayMethodLabel(b, groupCtx?.info?.payments));
     const grpGlance =
       groupCtx && groupCtx.members.length > 0 ? groupSettleGlance(groupCtx.members, groupCtx.info, plat) : null;
     const coMarkLabel = nowCheckoutMark(s, b);

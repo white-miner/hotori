@@ -23,11 +23,17 @@ import {
   typeLabel,
   won,
 } from "../shared/ledger";
-import { isOnsite, payState } from "../shared/payment";
+import { isOnsite, payLineMain, payState } from "../shared/payment";
+import { payLineSub } from "../shared/addSurcharge";
 import { CLEAN_REQUEST_COPY } from "../shared/cleanRequest";
 import { DAYUSE_SALE_CTA } from "../shared/dayuseSale";
 import { STAY_SALE_CTA } from "../shared/staySale";
-import { PAYMENT_DESK_CTA, canOpenPaymentDesk, paymentDeskGlance } from "../shared/paymentDesk";
+import {
+  PAYMENT_DESK_CTA,
+  canOpenPaymentDesk,
+  opsPayHistoryLines,
+  paymentDeskGlance,
+} from "../shared/paymentDesk";
 import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
@@ -181,11 +187,6 @@ export default function NowSidePanel({
   const t = typeId ? L.types.get(typeId) : null;
   const f = b ? nowFlags(b, today, nowOpts) : null;
   const plat = b ? L.plats.get(b.platformId) : null;
-  const groupPayCtx =
-    b?.groupId && settleMembers.length
-      ? { members: settleMembers, info: settleGroupInfo }
-      : null;
-  const amount = b ? nowAmountGlance(b, plat, groupPayCtx) : null;
   const ps = b && !b.priceUnset ? payState(b, plat) : null;
   const balGlance = useMemo(() => {
     // 단체: 형제+GroupInfo settle (칸 nowAmountGlance와 동일 SoT · 단체 수납 반영)
@@ -216,6 +217,34 @@ export default function NowSidePanel({
     }
     return null;
   }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
+  /** 운영 = 통합 원장: 받을·받은·남은 + 이력(최신 위). 칸 하이브리드(최근액)와 분리 */
+  const payHistMembers =
+    settleMembers.length >= 1 && settleMembers[0]?.groupId
+      ? settleMembers
+      : multiGroup && selectedGroupBookings.length > 1
+        ? selectedGroupBookings
+        : b
+          ? [b]
+          : [];
+  const payHistInfo =
+    settleMembers.length >= 1 && settleMembers[0]?.groupId
+      ? settleGroupInfo
+      : multiGroup
+        ? selectedGroupInfo
+        : settleGroupInfo;
+  const payHist = useMemo(
+    () => (payHistMembers.length ? opsPayHistoryLines(payHistMembers, payHistInfo) : []),
+    [payHistMembers, payHistInfo],
+  );
+  /** 운영 요금 줄: 잔금 또는 판매가(통합) · 칸 최근 결제액 아님 */
+  const feeDisplay = (() => {
+    if (!b) return null;
+    if (b.priceUnset) return "금액미정";
+    if (balGlance?.tracked && balGlance.left > 0) return `잔금 ₩${won(balGlance.left)}`;
+    if (!balGlance && ps?.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
+    if (b.price > 0) return `₩${won(b.price)}`;
+    return "—";
+  })();
   const glance = selectedRoomId && !multiVacant && !multiGroup ? glanceByRoom.get(selectedRoomId) : undefined;
   const todayUaForType =
     typeId && !b && !multiVacant && !multiGroup
@@ -436,9 +465,7 @@ export default function NowSidePanel({
                           ? "잔금"
                           : "판매금"}
                     </span>
-                    <span className="nsel-v">
-                      {b.priceUnset ? "금액미정" : amount ? amount : b.price > 0 ? `₩${won(b.price)}` : "—"}
-                    </span>
+                    <span className="nsel-v">{feeDisplay}</span>
                   </div>
                   {balGlance?.tracked ? (
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
@@ -456,6 +483,27 @@ export default function NowSidePanel({
                         {grpGlance.strip.replace(/^단체 · /, "")}
                         {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
                       </span>
+                    </div>
+                  ) : null}
+                  {payHist.length > 0 ? (
+                    <div className="nsel-payhist" aria-label="결제 이력">
+                      <div className="nsel-payhist-h">결제 이력</div>
+                      <ul className="nsel-payhist-list">
+                        {payHist.map((line) => (
+                          <li key={`${line.scope}-${line.pay.id}`}>
+                            <b>{payLineMain(line.pay.method, line.pay.amount)}</b>
+                            <span className="muted">
+                              {line.scope === "group" ? "단체 · " : ""}
+                              {payLineSub(line.pay.kind, line.pay.bizDate, line.pay.note)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {showPaymentDesk ? (
+                        <button type="button" className="linkish nsel-payhist-more" disabled={moving} onClick={() => onPaymentDesk?.()}>
+                          더보기 · {PAYMENT_DESK_CTA}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="nsel-row nsel-memo">
@@ -619,6 +667,27 @@ export default function NowSidePanel({
                         {grpGlance.strip.replace(/^단체 · /, "")}
                         {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
                       </span>
+                    </div>
+                  ) : null}
+                  {payHist.length > 0 ? (
+                    <div className="nsel-payhist" aria-label="결제 이력">
+                      <div className="nsel-payhist-h">결제 이력</div>
+                      <ul className="nsel-payhist-list">
+                        {payHist.map((line) => (
+                          <li key={`${line.scope}-${line.pay.id}`}>
+                            <b>{payLineMain(line.pay.method, line.pay.amount)}</b>
+                            <span className="muted">
+                              {line.scope === "group" ? "단체 · " : ""}
+                              {payLineSub(line.pay.kind, line.pay.bizDate, line.pay.note)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {showPaymentDesk ? (
+                        <button type="button" className="linkish nsel-payhist-more" disabled={moving} onClick={() => onPaymentDesk?.()}>
+                          더보기 · {PAYMENT_DESK_CTA}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="nsel-acts">

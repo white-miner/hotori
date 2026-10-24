@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Booking } from "./ledger";
 import {
   deskPaymentLines,
+  opsPayHistoryLines,
   paymentDeskGlance,
   planClearResidualBalance,
   planPaymentDeskPay,
@@ -130,4 +131,21 @@ test("deskPaymentLines merges booking + group pays", () => {
   assert.equal(lines.length, 2);
   assert.equal(lines[0]!.scope, "booking");
   assert.equal(lines[1]!.scope, "group");
+});
+
+test("opsPayHistoryLines newest first · limit", () => {
+  const members = [
+    stay({
+      id: "a",
+      payments: [
+        { id: "p1", bookingId: "a", kind: "deposit", method: "cash", amount: 10000, bizDate: "2026-10-20", createdAt: "1" },
+        { id: "p2", bookingId: "a", kind: "balance", method: "card", amount: 20000, bizDate: "2026-10-21", createdAt: "2" },
+        { id: "p3", bookingId: "a", kind: "balance", method: "transfer", amount: 30000, bizDate: "2026-10-22", createdAt: "3" },
+      ],
+    }),
+  ];
+  const hist = opsPayHistoryLines(members, null, 2);
+  assert.equal(hist.length, 2);
+  assert.equal(hist[0]!.pay.id, "p3");
+  assert.equal(hist[1]!.pay.id, "p2");
 });

@@ -11,6 +11,7 @@ import {
   effectiveArrived,
   filterUnassignedByCheckIn,
   isDepartingStatus,
+  latestPaymentOf,
   nowAmountGlance,
   nowAmountTone,
   nowBoardVisible,
@@ -21,6 +22,7 @@ import {
   nowLists,
   nowMetaLine,
   nowNightRange,
+  nowLatestPayMethodLabel,
   nowPayMethodGlance,
   nowPayMethodPrefix,
   nowNightsDays,
@@ -386,7 +388,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     "due",
   );
   assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
-  // 단체: 방 payments 비어 있어도 단체 줄 완납 → 칸에 잔금 금지 · 판매가(검정)
+  // 단체: 방 payments 비어 있어도 단체 줄 완납 → 잔금 금지 · 최근=단체납 금액(판매가 대체)
   {
     const a = bk({ id: "ga", groupId: "g1", price: 80000, payments: [] });
     const b = bk({ id: "gb", groupId: "g1", price: 70000, payments: [], roomId: "r302" });
@@ -395,20 +397,20 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       payments: [{ id: "gp", bookingId: "", kind: "balance" as const, method: "card" as const, amount: 150000, bizDate: "2026-10-22", createdAt: "t" }],
     };
     const ctx = { members: [a, b], info };
-    assert.equal(nowAmountGlance(a, onsite, ctx), "₩80,000");
+    assert.equal(nowAmountGlance(a, onsite, ctx), "₩150,000");
     assert.equal(nowAmountTone(a, onsite, ctx), "paid");
-    assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
+    assert.equal(nowAmountGlance(b, onsite, ctx), "₩150,000");
     assert.equal(nowAmountTone(b, onsite, ctx), "paid");
     assert.equal(nowPayMethodGlance(a, info.payments), "카드");
-    // 완납: 수단+판매가 OK · 「잔금」 금지
-    assert.equal(nowPayMethodPrefix("₩80,000", "카드"), "카드");
+    // 완납: 수단+최근액 OK · 「잔금」 금지
+    assert.equal(nowPayMethodPrefix("₩150,000", "카드"), "카드");
     // 단체 수납 없으면 방만 볼 때와 같이 잔금(단체 합) · 수단+잔금 합침 금지
     const unpaid = { members: [a, b], info: emptyGroupInfo("g1") };
     assert.equal(nowAmountGlance(a, onsite, unpaid), "잔금 ₩150,000");
     assert.equal(nowAmountTone(a, onsite, unpaid), "due");
     assert.equal(nowPayMethodPrefix("잔금 ₩150,000", "카드"), null);
   }
-  // 수단+잔금 합침 금지 · 완납은 이체 ₩… OK
+  // 수단+잔금 합침 금지 · 완납은 최근 결제액(이체 ₩…) · 판매가 아님
   {
     const partial = bk({
       price: 180000,
@@ -420,13 +422,33 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     assert.equal(nowPayMethodPrefix(leftAmt, "이체"), null);
     const paid = bk({
       price: 180000,
-      payments: [{ id: "2", bookingId: "b", kind: "balance", method: "transfer", amount: 180000, bizDate: "2026-10-22", createdAt: "" }],
+      payments: [
+        { id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "2026-10-19T10:00:00Z" },
+        { id: "2", bookingId: "b", kind: "balance", method: "transfer", amount: 130000, bizDate: "2026-10-22", createdAt: "2026-10-22T12:00:00Z" },
+      ],
     });
     const paidAmt = nowAmountGlance(paid, onsite);
-    assert.equal(paidAmt, "₩180,000");
-    assert.equal(nowPayMethodPrefix(paidAmt, nowPayMethodGlance(paid)), "이체");
+    assert.equal(paidAmt, "₩130,000"); // 최근 줄 · 판매가 180k 아님
+    assert.equal(nowLatestPayMethodLabel(paid), "이체");
+    assert.equal(nowPayMethodGlance(paid), "이체·현금"); // 고유 수단(참고)
+    assert.equal(nowPayMethodPrefix(paidAmt, nowLatestPayMethodLabel(paid)), "이체");
     assert.equal(nowPayMethodPrefix("미수 ₩80,000", "현금"), null);
     assert.equal(nowPayMethodPrefix(null, "카드"), "카드");
+    // 대납: 형제 방만 수납 · 이 방·단체 줄 없음 → left=0이어도 최근 후보 없음 → 판매가 폴백
+    {
+      const a = bk({ id: "da", groupId: "gd", price: 80000, payments: [] });
+      const b = bk({
+        id: "db",
+        groupId: "gd",
+        price: 70000,
+        roomId: "r302",
+        payments: [{ id: "bp", bookingId: "db", kind: "balance", method: "cash", amount: 150000, bizDate: "2026-10-22", createdAt: "t" }],
+      });
+      const ctx = { members: [a, b], info: emptyGroupInfo("gd") };
+      assert.equal(nowAmountGlance(a, onsite, ctx), "₩80,000");
+      assert.equal(nowAmountTone(a, onsite, ctx), "paid");
+      assert.equal(nowAmountGlance(b, onsite, ctx), "₩150,000");
+    }
   }
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
   assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
@@ -451,4 +473,20 @@ test("칸 마크: 늦은 퇴실 → N시 퇴실 · 결제수단 글랜스", () =
     }),
     "현금·카드",
   );
+});
+
+test("latestPaymentOf: createdAt 최신 · 동률 bizDate · 단체 줄 포함", () => {
+  assert.equal(latestPaymentOf({ payments: [] }), null);
+  const older = { id: "1", bookingId: "b", kind: "deposit" as const, method: "cash" as const, amount: 10000, bizDate: "2026-10-20", createdAt: "2026-10-20T09:00:00Z" };
+  const newer = { id: "2", bookingId: "b", kind: "balance" as const, method: "card" as const, amount: 70000, bizDate: "2026-10-21", createdAt: "2026-10-21T11:00:00Z" };
+  assert.equal(latestPaymentOf({ payments: [older, newer] })?.id, "2");
+  // createdAt 동률 → bizDate desc
+  const a = { id: "a", bookingId: "b", kind: "deposit" as const, method: "cash" as const, amount: 1, bizDate: "2026-10-19", createdAt: "" };
+  const c = { id: "c", bookingId: "b", kind: "balance" as const, method: "card" as const, amount: 2, bizDate: "2026-10-22", createdAt: "" };
+  assert.equal(latestPaymentOf({ payments: [a, c] })?.id, "c");
+  const groupPay = { id: "gp", bookingId: "", kind: "balance" as const, method: "transfer" as const, amount: 90000, bizDate: "2026-10-23", createdAt: "2026-10-23T08:00:00Z" };
+  assert.equal(latestPaymentOf({ payments: [older] }, [groupPay])?.id, "gp");
+  // credit 포함
+  const credit = { id: "cr", bookingId: "b", kind: "balance" as const, method: "credit" as const, amount: 30000, bizDate: "2026-10-24", createdAt: "2026-10-24T01:00:00Z" };
+  assert.equal(latestPaymentOf({ payments: [newer, credit] })?.method, "credit");
 });
