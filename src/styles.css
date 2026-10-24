@@ -266,10 +266,11 @@ label.ck input[type="checkbox"] {
 /* ---------- 판매 캘린더 (날짜 우선 · 타입 카드) ---------- */
 .sales-hint { margin-top: var(--space-2); max-width: 36em; }
 .sales-glance { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: 0 0 var(--space-4); }
-.sales-gchip { display: inline-flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-4) 0 var(--space-3); border-radius: var(--radius-pill); background: var(--panel); font-weight: 650; }
+.sales-gchip { display: inline-flex; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-4) 0 var(--space-3); border-radius: var(--radius-pill); background: var(--panel); font-weight: 650; line-height: 1; }
 .sales-gchip:hover { background: var(--hover); }
-.sales-gchip b { font-family: var(--num); font-size: 16px; font-weight: 800; }
-.sales-gchip small { font-size: 11.5px; color: var(--ink3); font-weight: 500; }
+.sales-gchip .tb { align-self: center; }
+.sales-gchip b { font-family: var(--num); font-size: 16px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; font-feature-settings: "tnum" 1; display: inline-block; }
+.sales-gchip small { font-size: 11.5px; color: var(--ink3); font-weight: 500; line-height: 1; display: inline-block; }
 .sales-gchip.lv-ok b { color: var(--badge-sell); }
 .sales-gchip.lv-low { background: var(--badge-warn-s); color: var(--badge-warn); }
 .sales-gchip.lv-low small { color: var(--badge-warn); }
@@ -3397,11 +3398,22 @@ button.nowstatus { cursor: pointer; }
 .board-glance.collapsed {
   padding: var(--space-2) 0;
 }
-.board-glance-head {
+.board-glance-head,
+.board-glance-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: flex-start;
+  gap: var(--space-chip) var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+.board-glance-head {
   margin-bottom: var(--space-2);
+  min-height: 32px;
+}
+.board-glance-bar {
+  min-height: 36px;
 }
 .board-glance-toggle {
   display: inline-flex;
@@ -3417,44 +3429,19 @@ button.nowstatus { cursor: pointer; }
   color: var(--ink2);
   cursor: pointer;
   letter-spacing: -0.02em;
+  flex: none;
 }
 .board-glance-toggle:hover { background: var(--hover); color: var(--ink); }
-.board-glance-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-chip) var(--space-3);
-  width: 100%;
-  min-height: 36px;
-}
-/* Option C: 맵 밴드 + 총/사용/남음 같은 행 · 칩은 오른쪽 보이드 */
-.board-glance-maprow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-3) var(--space-4);
-  min-width: 0;
-}
-.board-glance-maprow .bmap {
-  flex: 0 1 auto;
-  margin-top: 0;
-  min-width: 0;
-  max-width: 100%;
-}
+/* 총/사용/남음 = 미니맵 토글 바로 옆 · 왼쪽 연속 한 줄 (보이드 우측 ❌) */
 .board-glance-occ {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-chip);
-  flex: 1 1 8rem;
-  justify-content: flex-end;
-  margin-left: auto;
-  min-width: 0;
-}
-.board-glance-bar .board-glance-occ {
   flex: 0 1 auto;
-  margin-left: 0;
   justify-content: flex-start;
+  margin-left: 0;
+  min-width: 0;
 }
 .board-glance-rooms {
   display: flex;
@@ -3473,7 +3460,7 @@ button.nowstatus { cursor: pointer; }
 }
 /* 상태 미니맵 — 건물 가로 밴드 · 층 서브행 · 호수 없음 · 흰 배경·밴드 박스 없음 */
 .bmap {
-  margin-top: var(--space-3);
+  margin-top: 0;
   min-width: 0;
   background: #fff;
 }
@@ -3580,15 +3567,15 @@ button.nowstatus { cursor: pointer; }
 }
 .now-vacancy-stat {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
+  justify-content: center;
   gap: var(--space-2);
   height: 32px;
-  padding: 0 var(--space-4);
+  padding: 7px var(--space-4) 8px; /* baseline group optically centered in pill */
+  box-sizing: border-box;
   border-radius: var(--radius-pill);
   background: var(--panel);
   border: 1px solid var(--line);
-  font-size: 14.5px;
-  font-weight: 650;
   color: var(--ink2);
   letter-spacing: -0.02em;
   white-space: nowrap;
@@ -3602,9 +3589,11 @@ button.nowstatus { cursor: pointer; }
 .now-vacancy-stat .num {
   font-family: var(--num);
   font-weight: 800;
-  font-size: 15.5px;
+  font-size: 14.5px;
+  line-height: 1;
   color: var(--ink);
   font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
 }
 .now-vacancy-stat.left {
   background: var(--badge-info-s);
@@ -3623,12 +3612,14 @@ button.nowstatus { cursor: pointer; }
   color: var(--badge-info);
   box-shadow: inset 0 0 0 1px var(--badge-info);
 }
+.board-glance-head .now-vacancy-stat,
 .board-glance-bar .now-vacancy-stat {
   height: 28px;
-  padding: 0 var(--space-3);
+  padding: 6px var(--space-3) 7px;
   font-size: 13px;
 }
-.board-glance-bar .now-vacancy-stat .num { font-size: 14px; }
+.board-glance-head .now-vacancy-stat .num,
+.board-glance-bar .now-vacancy-stat .num { font-size: 13px; }
 .now-vacancy-row {
   display: flex;
   align-items: center;

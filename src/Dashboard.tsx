@@ -485,7 +485,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [guestQueryLive, setGuestQueryLive] = useState("");
   const [guestComposing, setGuestComposing] = useState(false);
   const [gsFocusRoomId, setGsFocusRoomId] = useState<string | null>(null);
-  /** 미니맵 총/사용/남음 필터 (Option C · 사이드 목록 ❌) */
+  /** 미니맵 총/사용/남음 필터 (사이드 목록 ❌) */
   const [occFilter, setOccFilter] = useState<GlanceOccFilter>(null);
   const gsScrollKey = useRef("");
   const guestSearchRef = useRef<HTMLInputElement | null>(null);

@@ -1,6 +1,6 @@
 /**
  * 「미니맵」— 상태 밴드 · 공실 요약 · 타입 칩 단일 sticky 패널.
- * Option C: 총/사용/남음 = 맵 오른쪽 빈칸 · 탭=점유 필터(사이드 목록 ❌).
+ * 총/사용/남음 = 헤더「미니맵」토글 바로 옆(왼쪽 한 줄) · 탭=점유 필터(사이드 목록 ❌).
  */
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -137,10 +137,7 @@ export default function NowGlancePanel({
   if (open) {
     body = (
       <div className="board-glance-body">
-        <div className="board-glance-maprow">
-          <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} occFilter={occFilter} />
-          {occChips}
-        </div>
+        <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} occFilter={occFilter} />
 
         <div className="board-glance-rooms">{vacantRow}</div>
 
@@ -166,28 +163,21 @@ export default function NowGlancePanel({
         ) : null}
       </div>
     );
-  } else {
-    body = (
-      <div className="board-glance-bar" role="group" aria-label="미니맵 요약">
-        <button type="button" className="board-glance-toggle" onClick={toggle} aria-expanded={false}>
-          <ChevronRight size={14} strokeWidth={2.4} aria-hidden />
-          미니맵
-        </button>
-        {occChips}
-      </div>
-    );
   }
 
   return (
     <div className={`board-glance${open ? " open" : " collapsed"}`} role="region" aria-label="미니맵">
-      {open ? (
-        <div className="board-glance-head">
-          <button type="button" className="board-glance-toggle" onClick={toggle} aria-expanded>
+      <div className={open ? "board-glance-head" : "board-glance-bar"} role="group" aria-label="미니맵 요약">
+        <button type="button" className="board-glance-toggle" onClick={toggle} aria-expanded={open}>
+          {open ? (
             <ChevronDown size={14} strokeWidth={2.4} aria-hidden />
-            미니맵
-          </button>
-        </div>
-      ) : null}
+          ) : (
+            <ChevronRight size={14} strokeWidth={2.4} aria-hidden />
+          )}
+          미니맵
+        </button>
+        {occChips}
+      </div>
       {body}
     </div>
   );
