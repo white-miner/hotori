@@ -13,6 +13,7 @@ import {
   paintedNightsFromStay,
 } from "../shared/nightpick";
 import { nowNightRange } from "../shared/nowboard";
+import { EDIT_COPY } from "../shared/bookingEdit";
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -125,7 +126,7 @@ export default function NowNightPopover({ booking, bookings, today, roomLabel, o
         {!longStay ? <span className="muted sm">퇴 {md(end)}아침</span> : null}
       </div>
       <button type="button" className="btn sm dark nownight-open" onClick={onOpen}>
-        예약 열기
+        {EDIT_COPY}
       </button>
     </div>
   );

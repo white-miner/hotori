@@ -717,6 +717,41 @@ label.ck input[type="checkbox"] {
 .grab { display: none; }
 .mh { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
 .mh h2 { font-size: 21px; font-weight: 800; }
+/* 수정 셸: 현재 숙박 요약 · 선택 호실 고정 (MiniFloorPlan 없음) */
+.edit-stay-sum {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border-radius: 14px;
+}
+.edit-stay-sum-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  font-size: 14px;
+}
+.edit-stay-sum-main b { font-weight: 800; }
+.edit-stay-sum-main span { font-family: var(--num); font-weight: 650; color: var(--ink2); }
+.edit-stay-sum-hint { margin: 0; }
+.edit-room-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  min-height: 36px;
+}
+.edit-room-fixed b {
+  font-family: var(--num);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.fld:has(.edit-room-fixed) { align-items: start; }
+.fld:has(.edit-room-fixed) > label { padding-top: 8px; }
 .x { margin-left: auto; font-size: 12px; color: var(--ink3); display: flex; align-items: center; gap: 6px; }
 .fld { display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 12px; align-items: center; margin-bottom: 14px; }
 /* multi-line value · helpers live in value col only (never 3rd grid child / help-in-label) */
