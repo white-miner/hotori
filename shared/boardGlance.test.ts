@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  glanceKindMatchesOccFilter,
   glanceMapKindFromNow,
   glanceMapKindNow,
   glanceMapKindPlacement,
@@ -54,6 +55,19 @@ test("glanceMapKindNow: 공실·숙박예약·숙박", () => {
     glanceMapKindNow(bk({ id: "2", checkIn: night, nights: 2, roomId: "r1", arrived: true }), night, beforeIn),
     "inhouse",
   );
+});
+
+test("glanceKindMatchesOccFilter: 사용=점유 묶음 · 남음=empty", () => {
+  assert.equal(glanceKindMatchesOccFilter("empty", null), true);
+  assert.equal(glanceKindMatchesOccFilter("inhouse", null), true);
+  assert.equal(glanceKindMatchesOccFilter("empty", "left"), true);
+  assert.equal(glanceKindMatchesOccFilter("arriving", "left"), false);
+  assert.equal(glanceKindMatchesOccFilter("inhouse", "left"), false);
+  assert.equal(glanceKindMatchesOccFilter("departing", "left"), false);
+  assert.equal(glanceKindMatchesOccFilter("empty", "used"), false);
+  assert.equal(glanceKindMatchesOccFilter("arriving", "used"), true);
+  assert.equal(glanceKindMatchesOccFilter("inhouse", "used"), true);
+  assert.equal(glanceKindMatchesOccFilter("departing", "used"), true);
 });
 
 test("glanceMapKindPlacement: 퇴실처리면 공실 · 새 점유 우선", () => {

@@ -1,10 +1,10 @@
 /**
  * 「미니맵」— 상태 밴드 · 공실 요약 · 타입 칩 단일 sticky 패널.
- * 펼침·접힌 얇은 바 모두 sticky (부모에 .board-glance 적용).
+ * Option C: 총/사용/남음 = 맵 오른쪽 빈칸 · 탭=점유 필터(사이드 목록 ❌).
  */
 import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { GLANCE_ROOM_CHIP_CAP } from "../shared/boardGlance";
+import { GLANCE_ROOM_CHIP_CAP, type GlanceOccFilter } from "../shared/boardGlance";
 import type { RoomType } from "../shared/ledger";
 import { typeLabel } from "../shared/ledger";
 import BoardStatusMinimap, { type MinimapBuilding } from "./BoardStatusMinimap";
@@ -31,6 +31,9 @@ interface Props {
   onRoomBlock: (roomId: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** 점유 필터 (총=null · 사용 · 남음) — 보드 칸 dim과 동기 */
+  occFilter: GlanceOccFilter;
+  onOccFilterChange: (next: GlanceOccFilter) => void;
 }
 
 export default function NowGlancePanel({
@@ -46,6 +49,8 @@ export default function NowGlancePanel({
   onRoomBlock,
   open,
   onOpenChange,
+  occFilter,
+  onOccFilterChange,
 }: Props) {
   const [roomsExpand, setRoomsExpand] = useState(false);
 
@@ -57,50 +62,87 @@ export default function NowGlancePanel({
 
   const toggle = () => onOpenChange(!open);
 
+  /** 사용/남음 = 토글 · 총(또는 활성 재탭) = 해제 */
+  const tapOcc = (next: GlanceOccFilter) => {
+    if (next === null || occFilter === next) onOccFilterChange(null);
+    else onOccFilterChange(next);
+  };
+
+  const occChips = (
+    <div className="board-glance-occ" role="group" aria-label="점유 필터">
+      <button
+        type="button"
+        className={`now-vacancy-stat${occFilter === null ? " on" : ""}`}
+        aria-pressed={occFilter === null}
+        title="전체 보기"
+        onClick={() => tapOcc(null)}
+      >
+        총 <span className="num">{total}</span>
+      </button>
+      <button
+        type="button"
+        className={`now-vacancy-stat${occFilter === "used" ? " on" : ""}`}
+        aria-pressed={occFilter === "used"}
+        title="사용 중만 강조"
+        onClick={() => tapOcc("used")}
+      >
+        사용 <span className="num">{used}</span>
+      </button>
+      <button
+        type="button"
+        className={`now-vacancy-stat left${occFilter === "left" ? " on" : ""}`}
+        aria-pressed={occFilter === "left"}
+        title="남은 호수만 강조"
+        onClick={() => tapOcc("left")}
+      >
+        남음 <span className="num">{left}</span>
+      </button>
+    </div>
+  );
+
+  const vacantRow =
+    left > 0 ? (
+      <div
+        className={`now-vacancy-nos board-glance-nos${roomsExpand ? " open" : ""}${
+          occFilter === "left" ? " filter-on" : ""
+        }`}
+      >
+        {roomsShown.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            className="now-vacancy-no"
+            title={`${r.label}로 이동`}
+            onClick={() => onVacantChip(r.id)}
+          >
+            {r.label}
+          </button>
+        ))}
+        {roomHidden ? (
+          <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(true)}>
+            +{roomHidden}
+          </button>
+        ) : null}
+        {roomsExpand && vacantRooms.length > GLANCE_ROOM_CHIP_CAP ? (
+          <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(false)}>
+            접기
+          </button>
+        ) : null}
+      </div>
+    ) : (
+      <span className="now-vacancy-none">남은 호수 없음</span>
+    );
+
   let body: ReactNode = null;
   if (open) {
     body = (
       <div className="board-glance-body">
-        <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} />
-
-        <div className="now-vacancy-sum board-glance-sum" role="list">
-          <span className="now-vacancy-stat" role="listitem">
-            총 <span className="num">{total}</span>
-          </span>
-          <span className="now-vacancy-stat" role="listitem">
-            사용 <span className="num">{used}</span>
-          </span>
-          <span className="now-vacancy-stat left" role="listitem">
-            남음 <span className="num">{left}</span>
-          </span>
-          {left > 0 ? (
-            <div className={`now-vacancy-nos board-glance-nos ${roomsExpand ? "open" : ""}`}>
-              {roomsShown.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="now-vacancy-no"
-                  title={`${r.label}로 이동`}
-                  onClick={() => onVacantChip(r.id)}
-                >
-                  {r.label}
-                </button>
-              ))}
-              {roomHidden ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(true)}>
-                  +{roomHidden}
-                </button>
-              ) : null}
-              {roomsExpand && vacantRooms.length > GLANCE_ROOM_CHIP_CAP ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(false)}>
-                  접기
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <span className="now-vacancy-none">남은 호수 없음</span>
-          )}
+        <div className="board-glance-maprow">
+          <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} occFilter={occFilter} />
+          {occChips}
         </div>
+
+        <div className="board-glance-rooms">{vacantRow}</div>
 
         {typeStock.length ? (
           <div className="now-vacancy-row now-vacancy-types">
@@ -131,15 +173,7 @@ export default function NowGlancePanel({
           <ChevronRight size={14} strokeWidth={2.4} aria-hidden />
           미니맵
         </button>
-        <span className="now-vacancy-stat sm" role="status">
-          총 <span className="num">{total}</span>
-        </span>
-        <span className="now-vacancy-stat sm" role="status">
-          사용 <span className="num">{used}</span>
-        </span>
-        <span className="now-vacancy-stat left sm" role="status">
-          남음 <span className="num">{left}</span>
-        </span>
+        {occChips}
       </div>
     );
   }

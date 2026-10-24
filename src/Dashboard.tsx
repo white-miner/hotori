@@ -122,6 +122,7 @@ import {
   GLANCE_OPEN_KEY,
   glanceMapKindNow,
   glanceMapKindPlacement,
+  type GlanceOccFilter,
   type GlanceSurface,
 } from "../shared/boardGlance";
 import NowGlancePanel from "./NowGlancePanel";
@@ -462,6 +463,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [guestQueryLive, setGuestQueryLive] = useState("");
   const [guestComposing, setGuestComposing] = useState(false);
   const [gsFocusRoomId, setGsFocusRoomId] = useState<string | null>(null);
+  /** 미니맵 총/사용/남음 필터 (Option C · 사이드 목록 ❌) */
+  const [occFilter, setOccFilter] = useState<GlanceOccFilter>(null);
   const gsScrollKey = useRef("");
   const guestSearchRef = useRef<HTMLInputElement | null>(null);
   const memos = useRoomMemos(data.hotel!.id);
@@ -555,9 +558,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" }));
   }, [gsActive, gsChips, guestQuery, tab]);
   const gsCellClass = (roomId: string) => {
-    if (!gsActive || !gsHitRooms) return "";
-    if (gsHitRooms.has(roomId)) return gsFocusRoomId === roomId ? "gs-hit gs-focus" : "gs-hit";
-    return "gs-dim";
+    if (gsActive && gsHitRooms) {
+      if (gsHitRooms.has(roomId)) return gsFocusRoomId === roomId ? "gs-hit gs-focus" : "gs-hit";
+      return "gs-dim";
+    }
+    if (!occFilter) return "";
+    const vacant =
+      tab === "now"
+        ? roomIsVacant(roomId)
+        : (() => {
+            const bk = board.byRoom.get(roomId);
+            return !bk || !occupiesRoom(bk);
+          })();
+    if (occFilter === "left") return vacant ? "" : "gs-dim";
+    return vacant ? "gs-dim" : "";
   };
   /** 퇴실예정(미퇴실)이어도 오늘 입실 밤이 안 겹치면 당일 예약·배정 타깃 */
   const roomIsTurnoverBookable = (roomId: string) => {
@@ -2606,6 +2620,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onRoomBlock={jumpSelectNowRoom}
         open={glanceOpenNow}
         onOpenChange={(o) => rememberGlanceOpen("now", o)}
+        occFilter={occFilter}
+        onOccFilterChange={setOccFilter}
       />
     );
     /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
@@ -3114,6 +3130,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 onRoomBlock={jumpRoomsRoom}
                 open={glanceOpenRooms}
                 onOpenChange={(o) => rememberGlanceOpen("rooms", o)}
+                occFilter={occFilter}
+                onOccFilterChange={setOccFilter}
               />
             </div>
           );

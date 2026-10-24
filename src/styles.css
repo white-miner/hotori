@@ -3355,24 +3355,50 @@ button.nowstatus { cursor: pointer; }
   width: 100%;
   min-height: 36px;
 }
-.board-glance-sum {
-  gap: var(--space-chip);
-  align-items: center;
-  margin-top: var(--space-3);
+/* Option C: 맵 밴드 + 총/사용/남음 같은 행 · 칩은 오른쪽 보이드 */
+.board-glance-maprow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-4);
+  min-width: 0;
 }
-.board-glance-body > .bmap:first-child {
+.board-glance-maprow .bmap {
+  flex: 0 1 auto;
   margin-top: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+.board-glance-occ {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-chip);
+  flex: 1 1 8rem;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
+}
+.board-glance-bar .board-glance-occ {
+  flex: 0 1 auto;
+  margin-left: 0;
+  justify-content: flex-start;
+}
+.board-glance-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-chip);
+  margin-top: var(--space-3);
+  min-width: 0;
 }
 .board-glance-nos {
   flex: 1 1 auto;
-  margin-left: var(--space-2);
+  margin-left: 0;
 }
-.now-vacancy-stat.sm {
-  height: 28px;
-  padding: 0 var(--space-3);
-  font-size: 13px;
+.board-glance-nos.filter-on .now-vacancy-no {
+  border-color: var(--badge-info-border);
 }
-.now-vacancy-stat.sm .num { font-size: 14px; }
 /* 상태 미니맵 — 건물 가로 밴드 · 층 서브행 · 호수 없음 · 흰 배경·밴드 박스 없음 */
 .bmap {
   margin-top: var(--space-3);
@@ -3448,6 +3474,7 @@ button.nowstatus { cursor: pointer; }
   cursor: pointer;
 }
 .bmap-blk:hover { outline: 1px solid var(--ink); outline-offset: 1px; }
+.bmap-blk.bmap-dim { opacity: 0.28; }
 /* 공실=파랑 solid 테두리·흰 채움 · 점선 금지(미니맵 블럭만 · 칸 nowstatus 미터치) */
 .bmap-blk.nk-empty { border-style: solid; border-color: var(--badge-info-border); background: #fff; }
 .bmap-blk.nk-arriving { border-style: solid; border-color: var(--badge-info-border); background: var(--badge-info-s); }
@@ -3493,7 +3520,13 @@ button.nowstatus { cursor: pointer; }
   color: var(--ink2);
   letter-spacing: -0.02em;
   white-space: nowrap;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1;
 }
+.now-vacancy-stat:hover { background: var(--hover); color: var(--ink); }
 .now-vacancy-stat .num {
   font-family: var(--num);
   font-weight: 800;
@@ -3507,6 +3540,23 @@ button.nowstatus { cursor: pointer; }
   color: var(--badge-info);
 }
 .now-vacancy-stat.left .num { color: var(--badge-info); }
+.now-vacancy-stat.left:hover { background: var(--badge-info-s); color: var(--badge-info); }
+.now-vacancy-stat.on {
+  border-color: var(--ink);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+.now-vacancy-stat.left.on {
+  border-color: var(--badge-info);
+  color: var(--badge-info);
+  box-shadow: inset 0 0 0 1px var(--badge-info);
+}
+.board-glance-bar .now-vacancy-stat {
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+}
+.board-glance-bar .now-vacancy-stat .num { font-size: 14px; }
 .now-vacancy-row {
   display: flex;
   align-items: center;
