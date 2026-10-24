@@ -116,7 +116,16 @@ import {
   weekday,
   won,
   legsOf,
+  occupiesRoom,
 } from "../shared/ledger";
+import {
+  GLANCE_OPEN_KEY,
+  glanceMapKindNow,
+  glanceMapKindPlacement,
+  type GlanceSurface,
+} from "../shared/boardGlance";
+import NowGlancePanel from "./NowGlancePanel";
+import type { MinimapBuilding } from "./BoardStatusMinimap";
 import { saveFailMessage } from "../shared/errors";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
@@ -136,7 +145,6 @@ import SalesCalendar from "./SalesCalendar";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
-import { TypeStockChip } from "./primitives";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -178,6 +186,15 @@ const P_KEY = "hotori.stockPeriod";
 const R_KEY = "hotori.stockRange";
 /** 「배치」우측 패널 접기 — 기기별 기억 */
 const SIDE_COLLAPSE_KEY = "hotori.boardSideCollapsed";
+/** 「현황 한눈」펼침 — 표면별 */
+const glanceOpenDefault = (): boolean => {
+  if (typeof window === "undefined") return true;
+  try {
+    return !window.matchMedia("(max-width: 760px)").matches;
+  } catch {
+    return true;
+  }
+};
 const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "d14", label: "14일" },
   { id: "week", label: "주" },
@@ -417,12 +434,27 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
-  /** 공실 글랜스 호수 탭 → 칸 스크롤·하이라이트만 (선택·예약 아님) */
+  /** 글랜스/미니맵 → 칸 스크롤·하이라이트 */
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
-  const [glanceExpand, setGlanceExpand] = useState(false);
-  /** 타입 여유 칩 펼침 (+N) */
-  const [typeStockExpand, setTypeStockExpand] = useState(false);
+  /** 「현황 한눈」펼침 (localStorage · 표면별) */
+  const [glanceOpenNow, setGlanceOpenNow] = useState(() => {
+    const v = lsGet(GLANCE_OPEN_KEY.now);
+    if (v === "0") return false;
+    if (v === "1") return true;
+    return glanceOpenDefault();
+  });
+  const [glanceOpenRooms, setGlanceOpenRooms] = useState(() => {
+    const v = lsGet(GLANCE_OPEN_KEY.rooms);
+    if (v === "0") return false;
+    if (v === "1") return true;
+    return glanceOpenDefault();
+  });
+  const rememberGlanceOpen = (surface: GlanceSurface, open: boolean) => {
+    if (surface === "now") setGlanceOpenNow(open);
+    else setGlanceOpenRooms(open);
+    lsSet(GLANCE_OPEN_KEY[surface], open ? "1" : "0");
+  };
   /** 글랜스 칩 → 판매 캘린더 오늘·타입 포커스 */
   const [stockFocus, setStockFocus] = useState<{ typeId: string; date: string } | null>(null);
   /** 고객 이름·연락처 검색 (현황·배치 공통 · 칸 비율 무변경) */
@@ -438,22 +470,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const bk = nowBoardMap.get(roomId);
     return !bk || !isActive(bk);
   };
-  const jumpToVacantRoom = (roomId: string) => {
-    document.getElementById(`now-room-${roomId}`)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  const flashRoom = (roomId: string, elId: string) => {
+    document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     setFlashRoomId(roomId);
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
     flashTimer.current = window.setTimeout(() => setFlashRoomId(null), 1600);
   };
-  const jumpToTypeStock = (typeId: string) => {
-    goToday();
-    setSelDate(today);
-    setStockFocus({ typeId, date: today });
+  /** 남은 호수 칩 = 스크롤+flash만 (선택 Next · vacancy glance Q3) */
+  const jumpToVacantRoom = (roomId: string) => {
+    flashRoom(roomId, `now-room-${roomId}`);
+  };
+  /** 「배치」미니맵 = 스크롤+flash (칸 체크 배정은 유지 · 선택≠체크) */
+  const jumpRoomsRoom = (roomId: string) => {
+    flashRoom(roomId, `rooms-room-${roomId}`);
+  };
+  const jumpToTypeStock = (typeId: string, night: string = today) => {
+    if (night === today) goToday();
+    setSelDate(night);
+    setStockFocus({ typeId, date: night });
     setTab("stock");
   };
-  useEffect(() => {
-    setGlanceExpand(false);
-    setTypeStockExpand(false);
-  }, [bScope]);
   useEffect(
     () => () => {
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
@@ -571,6 +607,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (prev.includes(roomId)) return prev.filter((id) => id !== roomId);
       return [...prev, roomId];
     });
+  };
+  /** 미니맵 블럭 = 스크롤+flash+단실 선택 → 운영패널 */
+  const jumpSelectNowRoom = (roomId: string) => {
+    flashRoom(roomId, `now-room-${roomId}`);
+    if (!readOnly) selectRoom(roomId);
   };
   const focusGuestChip = (chip: GuestSearchChip) => {
     if (!chip.roomId) return;
@@ -1229,6 +1270,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : "assign-off"
       : "";
     const gs = gsCellClass(r.id);
+    const flash = flashRoomId === r.id;
     if (!b)
       return (
         <div
@@ -1236,7 +1278,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           id={`rooms-room-${r.id}`}
           data-room-id={r.id}
           {...mvAttr}
-          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
           onClick={
             mvClick ??
             (() => {
@@ -1301,7 +1343,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`rooms-room-${r.id}`}
         data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -2526,9 +2568,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const glanceTotal = glanceRooms.length;
     const glanceUsed = glanceTotal - glanceVacant.length;
     const glanceLeft = glanceVacant.length;
-    const GLANCE_CAP = 12;
-    const glanceHidden = !glanceExpand && glanceVacant.length > GLANCE_CAP ? glanceVacant.length - GLANCE_CAP : 0;
-    const glanceShown = glanceHidden ? glanceVacant.slice(0, GLANCE_CAP) : glanceVacant;
     /** 오늘 · 호텔 전체 stockTable remaining · 방 0개 타입 숨김 · 설정 타입 순서 */
     const typeStockAll = s.types
       .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
@@ -2537,91 +2576,37 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         rem: tableAll.get(t.id)?.get(today) ?? 0,
         total: totalsAll.get(t.id) ?? 0,
       }));
-    const typeStockHidden =
-      !typeStockExpand && typeStockAll.length > GLANCE_CAP ? typeStockAll.length - GLANCE_CAP : 0;
-    const typeStockShown = typeStockHidden ? typeStockAll.slice(0, GLANCE_CAP) : typeStockAll;
-    const vacancyGlance = (
-      <div className="now-vacancy" role="region" aria-label="공실 한눈 요약">
-        <div className="now-vacancy-eyebrow">공실</div>
-        <div className="now-vacancy-sum" role="list">
-          <span className="now-vacancy-stat" role="listitem">
-            총 <span className="num">{glanceTotal}</span>
-          </span>
-          <span className="now-vacancy-stat" role="listitem">
-            사용 <span className="num">{glanceUsed}</span>
-          </span>
-          <span className="now-vacancy-stat left" role="listitem">
-            남음 <span className="num">{glanceLeft}</span>
-          </span>
-        </div>
-        {glanceLeft > 0 ? (
-          <div className="now-vacancy-row">
-            <span className="now-vacancy-lab">남은 호수</span>
-            <div className={`now-vacancy-nos ${glanceExpand ? "open" : ""}`}>
-              {glanceShown.map((r) => {
-                const lab = multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no;
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className="now-vacancy-no"
-                    title={`${lab}로 이동`}
-                    onClick={() => jumpToVacantRoom(r.id)}
-                  >
-                    {lab}
-                  </button>
-                );
-              })}
-              {glanceHidden ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setGlanceExpand(true)}>
-                  +{glanceHidden}
-                </button>
-              ) : null}
-              {glanceExpand && glanceVacant.length > GLANCE_CAP ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setGlanceExpand(false)}>
-                  접기
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <div className="now-vacancy-row">
-            <span className="now-vacancy-lab">남은 호수</span>
-            <span className="now-vacancy-none">없음</span>
-          </div>
-        )}
-        {typeStockAll.length ? (
-          <div className="now-vacancy-row now-vacancy-types">
-            <span className="now-vacancy-lab">타입 여유</span>
-            <div className={`now-vacancy-typechips ${typeStockExpand ? "open" : ""}`} role="list">
-              {typeStockShown.map(({ t, rem, total }) => {
-                const remLab = rem < 0 ? `−${-rem}` : String(rem);
-                return (
-                  <TypeStockChip
-                    key={t.id}
-                    t={t}
-                    rem={rem}
-                    total={total}
-                    lowThreshold={s.lowThreshold}
-                    title={`${typeLabel(t)} 여유 ${remLab} · 판매 캘린더`}
-                    onClick={() => jumpToTypeStock(t.id)}
-                  />
-                );
-              })}
-              {typeStockHidden ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setTypeStockExpand(true)}>
-                  +{typeStockHidden}
-                </button>
-              ) : null}
-              {typeStockExpand && typeStockAll.length > GLANCE_CAP ? (
-                <button type="button" className="now-vacancy-more" onClick={() => setTypeStockExpand(false)}>
-                  접기
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </div>
+    const minimapNow: MinimapBuilding[] = groupsNow.map(({ bd, floors: fl }) => ({
+      id: bd.id,
+      name: L.buildings.get(bd.id)?.name ?? bd.name,
+      floors: fl.map((f) => ({
+        id: f.id,
+        name: f.name,
+        rooms: f.rooms.map((r) => ({
+          id: r.id,
+          kind: glanceMapKindNow(nowBoardMap.get(r.id) ?? null, today, nowOpts),
+        })),
+      })),
+    }));
+    const nowGlance = (
+      <NowGlancePanel
+        key={`now-glance-${bScope}`}
+        total={glanceTotal}
+        used={glanceUsed}
+        left={glanceLeft}
+        vacantRooms={glanceVacant.map((r) => ({
+          id: r.id,
+          label: multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no,
+        }))}
+        onVacantChip={jumpToVacantRoom}
+        typeStock={typeStockAll}
+        lowThreshold={s.lowThreshold}
+        onTypeStock={(typeId) => jumpToTypeStock(typeId, today)}
+        buildings={minimapNow}
+        onRoomBlock={jumpSelectNowRoom}
+        open={glanceOpenNow}
+        onOpenChange={(o) => rememberGlanceOpen("now", o)}
+      />
     );
     /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
     const nowLegend = (
@@ -2686,11 +2671,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
-          <div className="board-filter-sticky">
-            {buildingTabs}
-            {guestSearchBar}
+          <div className="board-chrome-sticky">
+            <div className="board-filter-sticky">
+              {buildingTabs}
+              {guestSearchBar}
+            </div>
+            {nowGlance}
           </div>
-          {vacancyGlance}
           <div className="nowlayout">
             <div className="nowgrid">
               {groupsNow.map(({ bd, floors: fl }, gi) => (
@@ -3072,10 +3059,65 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </button>
           </div>
         ) : null}
-        <div className="board-filter-sticky">
-          {buildingTabs}
-          {guestSearchBar}
-        </div>
+        {(() => {
+          const glanceFloors = floorTab === "dayuse" ? scopeFloors : floors;
+          const glanceGroups = (multi ? s.buildings : s.buildings.slice(0, 1))
+            .map((bd) => ({
+              bd,
+              floors: multi ? glanceFloors.filter((f) => f.buildingId === bd.id) : glanceFloors,
+            }))
+            .filter((g) => g.floors.length);
+          const gRooms = glanceFloors.flatMap((f) => f.rooms);
+          const gVacant = gRooms.filter((r) => {
+            const bk = board.byRoom.get(r.id);
+            return !bk || !occupiesRoom(bk);
+          });
+          const typeStockNight = s.types
+            .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
+            .map((t) => ({
+              t,
+              rem: tableAll.get(t.id)?.get(selDate) ?? 0,
+              total: totalsAll.get(t.id) ?? 0,
+            }));
+          const minimapRooms: MinimapBuilding[] = glanceGroups.map(({ bd, floors: fl }) => ({
+            id: bd.id,
+            name: L.buildings.get(bd.id)?.name ?? bd.name,
+            floors: fl.map((f) => ({
+              id: f.id,
+              name: f.name,
+              rooms: f.rooms.map((r) => ({
+                id: r.id,
+                kind: glanceMapKindPlacement(bookings, r.id, selDate, nowOpts),
+              })),
+            })),
+          }));
+          return (
+            <div className="board-chrome-sticky">
+              <div className="board-filter-sticky">
+                {buildingTabs}
+                {guestSearchBar}
+              </div>
+              <NowGlancePanel
+                key={`rooms-glance-${bScope}-${selDate}`}
+                total={gRooms.length}
+                used={gRooms.length - gVacant.length}
+                left={gVacant.length}
+                vacantRooms={gVacant.map((r) => ({
+                  id: r.id,
+                  label: multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no,
+                }))}
+                onVacantChip={jumpRoomsRoom}
+                typeStock={typeStockNight}
+                lowThreshold={s.lowThreshold}
+                onTypeStock={(typeId) => jumpToTypeStock(typeId, selDate)}
+                buildings={minimapRooms}
+                onRoomBlock={jumpRoomsRoom}
+                open={glanceOpenRooms}
+                onOpenChange={(o) => rememberGlanceOpen("rooms", o)}
+              />
+            </div>
+          );
+        })()}
         <div className="fchips">
           <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
             전체
