@@ -1,5 +1,5 @@
 /**
- * 「미니맵」— 공실 요약 · 타입 여유 · 상태 미니맵 단일 sticky 패널.
+ * 「미니맵」— 상태 밴드 · 공실 요약 · 타입 칩 단일 sticky 패널.
  * 펼침·접힌 얇은 바 모두 sticky (부모에 .board-glance 적용).
  */
 import { useState, type ReactNode } from "react";
@@ -55,17 +55,14 @@ export default function NowGlancePanel({
       : 0;
   const roomsShown = roomHidden ? vacantRooms.slice(0, GLANCE_ROOM_CHIP_CAP) : vacantRooms;
 
-  /** 접힌 바: 여유 최소 타입 1개 (Q-A) */
-  const tightType = typeStock.length
-    ? [...typeStock].sort((a, b) => a.rem - b.rem || a.t.name.localeCompare(b.t.name, "ko"))[0]
-    : null;
-
   const toggle = () => onOpenChange(!open);
 
   let body: ReactNode = null;
   if (open) {
     body = (
       <div className="board-glance-body">
+        <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} />
+
         <div className="now-vacancy-sum board-glance-sum" role="list">
           <span className="now-vacancy-stat" role="listitem">
             총 <span className="num">{total}</span>
@@ -107,7 +104,6 @@ export default function NowGlancePanel({
 
         {typeStock.length ? (
           <div className="now-vacancy-row now-vacancy-types">
-            <span className="now-vacancy-lab">타입 여유</span>
             <div className="now-vacancy-typechips open" role="list">
               {typeStock.map(({ t, rem, total: tot }) => {
                 const remLab = rem < 0 ? `−${-rem}` : String(rem);
@@ -126,26 +122,25 @@ export default function NowGlancePanel({
             </div>
           </div>
         ) : null}
-
-        <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} />
       </div>
     );
   } else {
     body = (
-      <button type="button" className="board-glance-bar" onClick={toggle} aria-expanded={false}>
-        <span className="board-glance-bar-lab">
+      <div className="board-glance-bar" role="group" aria-label="미니맵 요약">
+        <button type="button" className="board-glance-toggle" onClick={toggle} aria-expanded={false}>
           <ChevronRight size={14} strokeWidth={2.4} aria-hidden />
           미니맵
+        </button>
+        <span className="now-vacancy-stat sm" role="status">
+          총 <span className="num">{total}</span>
         </span>
-        <span className="now-vacancy-stat left sm">
+        <span className="now-vacancy-stat sm" role="status">
+          사용 <span className="num">{used}</span>
+        </span>
+        <span className="now-vacancy-stat left sm" role="status">
           남음 <span className="num">{left}</span>
         </span>
-        {tightType ? (
-          <span className="board-glance-bar-type" title={`${typeLabel(tightType.t)} 여유`}>
-            {typeLabel(tightType.t)} {tightType.rem < 0 ? `−${-tightType.rem}` : tightType.rem}
-          </span>
-        ) : null}
-      </button>
+      </div>
     );
   }
 
