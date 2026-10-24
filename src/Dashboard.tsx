@@ -161,6 +161,7 @@ import {
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
+import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
@@ -219,7 +220,7 @@ const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "month", label: "월" },
   { id: "range", label: "기간" },
 ];
-const TAB_OK = new Set<BoardTab>(["now", "stock", "rooms", "calendar", "parking"]);
+const TAB_OK = new Set<BoardTab>(["now", "stock", "smart", "rooms", "calendar", "parking"]);
 const lsGet = (k: string): string | null => {
   try {
     return localStorage.getItem(k);
@@ -1501,7 +1502,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
-  const tabCount = 4 + (s.parking.enabled ? 1 : 0); // 현황 · 판매 캘린더 · 배치 · 캘린더 (+주차)
+  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 판매 캘린더 · 스마트 등록 · 배치 · 캘린더 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
@@ -1519,6 +1520,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {(over ? overs : oversAll).length}
           </span>
         ) : null}
+      </button>
+      <button role="tab" aria-selected={tab === "smart"} className={tab === "smart" ? "on" : ""} onClick={() => setTab("smart")}>
+        스마트 등록
       </button>
       <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
         배치
@@ -3112,6 +3116,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onSimple={onSimple}
         focusCell={stockFocus}
         onFocusConsumed={() => setStockFocus(null)}
+      />
+    );
+
+  if (tab === "smart")
+    return (
+      <SmartRegister
+        data={data}
+        s={s}
+        today={today}
+        tabs={tabs}
+        banner={banner}
+        readOnly={readOnly}
+        notify={(m) => notify(m)}
       />
     );
 
