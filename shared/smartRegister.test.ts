@@ -1,26 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { HotelSettings } from "./ledger.ts";
+import { normalizeSettings } from "./ledger.ts";
 import {
   HYPOTHESIS_FIXTURES,
   PLATFORM_PROFILES,
   buildPreviewRows,
   detectProfile,
   isDuplicateReservation,
+  lookupTypeAlias,
   mapColumns,
   matchPlatformId,
   matchTypeId,
   normalizeRow,
+  normTypeName,
   parseAmount,
   parseLooseDate,
   parseNightsCell,
   parsePasteTable,
   profileById,
+  removeTypeAlias,
   reservationIdFromMemo,
   reservationMemo,
+  upsertTypeAlias,
 } from "./smartRegister.ts";
 
-const settings = {
+const settings = normalizeSettings({
   platforms: [
     { id: "p-ya", name: "야놀자", abbr: "야" },
     { id: "p-ye", name: "여기어때", abbr: "여" },
@@ -31,7 +35,7 @@ const settings = {
     { id: "dlx", name: "디럭스" },
     { id: "ondol", name: "온돌" },
   ],
-} as unknown as HotelSettings;
+});
 
 test("parsePasteTable: TSV header + body", () => {
   const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja);
@@ -117,6 +121,55 @@ test("matchPlatformId + type fuzzy", () => {
   assert.equal(matchPlatformId(profileById("yeogi")!, settings), "p-ye");
   assert.equal(matchTypeId("디럭스 더블", settings), "dlx");
   assert.equal(matchTypeId("없는타입", settings), null);
+});
+
+test("normTypeName: trim · collapse spaces · casefold", () => {
+  assert.equal(normTypeName("  스탠다드\u00a0더블  "), "스탠다드 더블");
+  assert.equal(normTypeName("Deluxe  Twin"), "deluxe twin");
+  assert.equal(normTypeName("A\u200bB"), "ab");
+});
+
+test("type alias: lookup + resolve before fuzzy", () => {
+  const withAlias = normalizeSettings({
+    ...settings,
+    typeAliases: [
+      {
+        id: "ta1",
+        platformId: "p-ya",
+        platformTypeName: "스탠다드 더블(넷플릭스)",
+        typeId: "ondol", // intentional: alias wins over fuzzy→std
+      },
+    ],
+  });
+  assert.equal(normTypeName("스탠다드  더블(넷플릭스)"), normTypeName("스탠다드 더블(넷플릭스)"));
+  assert.equal(lookupTypeAlias(withAlias.typeAliases, "p-ya", "  스탠다드 더블(넷플릭스) "), "ondol");
+  assert.equal(matchTypeId("스탠다드 더블(넷플릭스)", withAlias, "p-ya"), "ondol");
+  // other platform → no alias → fuzzy may hit 스탠다드
+  assert.equal(matchTypeId("스탠다드 더블(넷플릭스)", withAlias, "p-ye"), "std");
+  assert.equal(matchTypeId("완전없는이름XYZ", withAlias, "p-ya"), null);
+});
+
+test("upsertTypeAlias replaces same normalized name · removeTypeAlias", () => {
+  let list = upsertTypeAlias([], { platformId: "p-ya", platformTypeName: "디럭스룸", typeId: "dlx" }, () => "a1");
+  assert.equal(list.length, 1);
+  list = upsertTypeAlias(list, { platformId: "p-ya", platformTypeName: "  디럭스룸  ", typeId: "std" }, () => "a2");
+  assert.equal(list.length, 1);
+  assert.equal(list[0]!.typeId, "std");
+  assert.equal(list[0]!.platformTypeName, "디럭스룸");
+  list = removeTypeAlias(list, list[0]!.id);
+  assert.equal(list.length, 0);
+});
+
+test("buildPreviewRows uses alias when platformId set", () => {
+  const s2 = normalizeSettings({
+    ...settings,
+    typeAliases: [{ id: "ta", platformId: "p-ya", platformTypeName: "스탠다드", typeId: "dlx" }],
+  });
+  const profile = profileById("yanolja")!;
+  const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
+  const preview = buildPreviewRows(t, profile, s2, [], "p-ya");
+  // fixture row0 typeRaw=스탠다드 → alias forces dlx (not fuzzy std)
+  assert.equal(preview[0]!.typeId, "dlx");
 });
 
 test("memo dedupe by platform + 예약번호", () => {

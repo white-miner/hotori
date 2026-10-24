@@ -23,6 +23,7 @@ import { askConfirm } from "./ConfirmDialog";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
 import {
   FREE_SHOP_ITEM_LIMIT,
+  PLATFORM_TYPE_NAME_MAX,
   SHOP_CATEGORY_MAX,
   SHOP_NAME_MAX,
   TYPE_NAME_MAX,
@@ -40,6 +41,7 @@ import {
   typeTotals,
   usableTypes,
 } from "../shared/ledger";
+import { removeTypeAlias, upsertTypeAlias } from "../shared/smartRegister";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { canAddShopItem, makeShopItem } from "../shared/shop";
 import { FitText, PALETTE, PlatBadge, floorPaint, TypeBadge, TypeLine, uid } from "./ui";
@@ -151,7 +153,117 @@ function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | 
       {err ? <div className="share-err">{err}</div> : null}
     </section>
   );
-} // '타입 없음'으로 칠하기
+} /** 스마트 등록 · OTA 타입명 ↔ Hotori typeId (호텔×플랫폼) */
+function TypeAliasSettings({
+  s,
+  update,
+  notify,
+}: {
+  s: HotelSettings;
+  update: (fn: (x: HotelSettings) => HotelSettings) => void;
+  notify: (m: string) => void;
+}) {
+  const pool = useMemo(() => {
+    const nonOnsite = s.platforms.filter((p) => !isOnsite(p));
+    return nonOnsite.length ? nonOnsite : s.platforms;
+  }, [s.platforms]);
+  const types = useMemo(() => usableTypes(s.types).filter((t) => typeLabel(t)), [s.types]);
+  const [platformId, setPlatformId] = useState(() => pool[0]?.id ?? "");
+  const [draftName, setDraftName] = useState("");
+  const [draftTypeId, setDraftTypeId] = useState(() => types[0]?.id ?? "");
+  const activePlatformId = pool.some((p) => p.id === platformId) ? platformId : (pool[0]?.id ?? "");
+  const activeTypeId = types.some((t) => t.id === draftTypeId) ? draftTypeId : (types[0]?.id ?? "");
+  const rows = s.typeAliases.filter((a) => a.platformId === activePlatformId);
+  const add = () => {
+    const name = draftName.trim();
+    if (!name) return notify("OTA 타입 이름을 적어 주세요.");
+    if (!activePlatformId || !activeTypeId) return notify("플랫폼과 Hotori 타입을 골라 주세요.");
+    update((x) => ({
+      ...x,
+      typeAliases: upsertTypeAlias(
+        x.typeAliases,
+        { platformId: activePlatformId, platformTypeName: name, typeId: activeTypeId },
+        () => uid("ta"),
+      ),
+    }));
+    setDraftName("");
+    notify("타입 매칭을 저장했어요");
+  };
+  const del = (id: string, label: string) => {
+    void askConfirm({
+      title: "타입 매칭 삭제",
+      body: `「${label}」 매칭을 지울까요?`,
+      confirmLabel: "삭제",
+      danger: true,
+    }).then((ok) => {
+      if (!ok) return;
+      update((x) => ({ ...x, typeAliases: removeTypeAlias(x.typeAliases, id) }));
+      notify("지웠어요");
+    });
+  };
+  return (
+    <div className="type-alias-settings">
+      <div className="chips" role="tablist" aria-label="플랫폼">
+        {pool.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            role="tab"
+            aria-selected={activePlatformId === p.id}
+            className={`chip sm ${activePlatformId === p.id ? "on" : ""}`}
+            onClick={() => setPlatformId(p.id)}
+          >
+            {p.name || "이름 없음"}
+          </button>
+        ))}
+      </div>
+      {rows.map((a) => (
+        <div className="trow type-alias-row" key={a.id}>
+          <span className="type-alias-ota" title={a.platformTypeName}>
+            {a.platformTypeName}
+          </span>
+          <span className="muted sm" aria-hidden>
+            →
+          </span>
+          <span className="type-alias-hotori">{typeLabel(s.types.find((t) => t.id === a.typeId)) || "(없는 타입)"}</span>
+          <button type="button" className="ic" aria-label="매칭 지우기" onClick={() => del(a.id, a.platformTypeName)}>
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ))}
+      {!rows.length ? <div className="muted sm">이 플랫폼에 저장된 매칭이 없어요.</div> : null}
+      <div className="trow type-alias-add">
+        <input
+          className="nin inp"
+          value={draftName}
+          maxLength={PLATFORM_TYPE_NAME_MAX}
+          placeholder="OTA 타입 이름 (예: 스탠다드 더블)"
+          aria-label="OTA 타입 이름"
+          onChange={(e) => setDraftName(e.target.value.slice(0, PLATFORM_TYPE_NAME_MAX))}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <select
+          className="inp"
+          aria-label="Hotori 타입"
+          value={activeTypeId}
+          onChange={(e) => setDraftTypeId(e.target.value)}
+        >
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {typeLabel(t)}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="add" onClick={add}>
+          <Plus size={14} />
+          추가
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// '타입 없음'으로 칠하기
 const move = <T,>(a: T[], i: number, d: number): T[] => {
   const j = i + d;
   if (j < 0 || j >= a.length) return a;
@@ -843,6 +955,7 @@ export default function Settings({ data, email, notify }: Props) {
                     ...x,
                     types: x.types.filter((y) => y.id !== t.id),
                     floors: x.floors.map((f) => ({ ...f, rooms: f.rooms.map((r) => (r.typeId === t.id ? { ...r, typeId: null } : r)) })),
+                    typeAliases: x.typeAliases.filter((a) => a.typeId !== t.id),
                   }));
                 }}
               >
@@ -1064,7 +1177,11 @@ export default function Settings({ data, email, notify }: Props) {
                 aria-label="플랫폼 지우기"
                 onClick={() => {
                   if (used.p.has(p.id)) return notify("예약에 쓰인 플랫폼은 지울 수 없어요. 이름을 바꿔 주세요.");
-                  update((x) => ({ ...x, platforms: x.platforms.filter((y) => y.id !== p.id) }));
+                  update((x) => ({
+                    ...x,
+                    platforms: x.platforms.filter((y) => y.id !== p.id),
+                    typeAliases: x.typeAliases.filter((a) => a.platformId !== p.id),
+                  }));
                 }}
               >
                 <Trash2 size={14} />
@@ -1086,6 +1203,20 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="preview-row">
             미리 보기 {s.platforms.slice(0, 5).map((p) => <PlatBadge key={p.id} p={p} />)}
           </div>
+        </section>
+
+        <section className="card wide" id="set-type-aliases">
+          <h3>
+            타입 매칭 <span className="tag">{s.typeAliases.length}개</span>
+          </h3>
+          <div className="sub">
+            「스마트 등록」에서 OTA 객실타입명을 Hotori 타입에 미리 맞춰 둬요. 플랫폼마다 따로 저장돼요. 붙여넣기 전에 등록하면 미리보기에 자동으로 채워져요.
+          </div>
+          {!s.platforms.length || !usableTypes(s.types).length ? (
+            <div className="muted sm">플랫폼과 객실 타입을 먼저 추가해 주세요.</div>
+          ) : (
+            <TypeAliasSettings s={s} update={update} notify={notify} />
+          )}
         </section>
 
         <section className="card wide" id="set-fees">

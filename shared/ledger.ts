@@ -119,6 +119,41 @@ export interface HotelSettings {
   typeRateOverrides: TypeRateOverridesMap;
   /** 판매 캘린더: 타입×숙박일 판매 중지 */
   typeStopSell: TypeStopSellMap;
+  /**
+   * 스마트 등록: OTA 객실타입명 → Hotori typeId (호텔×플랫폼).
+   * See docs/smart-register-type-alias-plan.md
+   */
+  typeAliases: TypeAlias[];
+}
+
+/** OTA platformTypeName → Hotori typeId (per Settings platform). */
+export interface TypeAlias {
+  id: string;
+  platformId: string;
+  /** Staff-facing OTA/product name as typed (lookup uses normalized key). */
+  platformTypeName: string;
+  typeId: string;
+}
+
+export const PLATFORM_TYPE_NAME_MAX = 80;
+
+export function normalizeTypeAliases(raw: unknown): TypeAlias[] {
+  if (!Array.isArray(raw)) return [];
+  const byKey = new Map<string, TypeAlias>();
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : "";
+    const platformId = typeof o.platformId === "string" ? o.platformId : "";
+    const platformTypeName =
+      typeof o.platformTypeName === "string" ? o.platformTypeName.trim().slice(0, PLATFORM_TYPE_NAME_MAX) : "";
+    const typeId = typeof o.typeId === "string" ? o.typeId : "";
+    if (!id || !platformId || !platformTypeName || !typeId) continue;
+    // Dedupe by platform + normalized name (last wins)
+    const key = `${platformId}\0${platformTypeName.replace(/\s+/g, " ").toLowerCase()}`;
+    byKey.set(key, { id, platformId, platformTypeName, typeId });
+  }
+  return [...byKey.values()];
 }
 export interface ShopItem {
   id: string;
@@ -262,6 +297,7 @@ export function emptySettings(): HotelSettings {
     typeRates: {},
     typeRateOverrides: {},
     typeStopSell: {},
+    typeAliases: [],
   };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
@@ -315,6 +351,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeRates: normalizeTypeRates((s as { typeRates?: unknown }).typeRates),
     typeRateOverrides: normalizeTypeRateOverrides((s as { typeRateOverrides?: unknown }).typeRateOverrides),
     typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
+    typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
   };
 }
 
