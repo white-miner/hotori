@@ -4188,8 +4188,10 @@ body.bulking .toast { bottom: 96px; }
 .smart-reg-empty { text-align: center; color: var(--ink3); padding: 28px 12px !important; }
 .smart-reg-table tr.is-skip { opacity: 0.55; }
 .smart-reg-table tr.is-fix { background: color-mix(in srgb, var(--badge-warn-s, #fff4e5) 70%, transparent); }
+.smart-reg-table tr.is-cancel { background: color-mix(in srgb, var(--badge-danger-s, #fdecea) 55%, transparent); }
 .smart-reg-st { font-weight: 800; font-size: 11.5px; white-space: nowrap; }
 .smart-reg-st.ok { color: var(--badge-sell); }
+.smart-reg-st.cancel { color: var(--badge-danger, #c62828); }
 .smart-reg-st.fix { color: var(--badge-warn); }
 .smart-reg-st.dup, .smart-reg-st.skip { color: var(--ink3); }
 .smart-reg-rid { font-family: var(--num, ui-monospace, monospace); font-size: 12px; }

@@ -21,6 +21,7 @@ import {
   type PlatformProfileId,
   type PreviewRow,
   buildPreviewRows,
+  cancelDraftFromMatch,
   detectProfile,
   matchPlatformId,
   parsePasteTable,
@@ -46,14 +47,18 @@ interface Props {
 
 type MountSummary = {
   ok: number;
+  cancelled: number;
   skipped: number;
   failed: { reservationId: string; reason: string }[];
 };
 
-function statusLabel(st: PreviewRow["rowStatus"]): string {
-  if (st === "ok") return "OK";
-  if (st === "need_fix") return "수정필요";
-  if (st === "dup") return "중복";
+function statusLabel(r: PreviewRow): string {
+  if (r.rowStatus === "ok") return "신규";
+  if (r.rowStatus === "cancel") return "취소반영";
+  if (r.rowStatus === "need_fix") return "수정필요";
+  if (r.rowStatus === "dup") return "중복스킵";
+  if (r.rowStatus === "cancel_missing") return "Hotori에 없음";
+  if (r.cancelGuard) return "입실·퇴실 — 수동";
   return "건너뜀";
 }
 
@@ -132,8 +137,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       list.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
+        // dup / cancel_missing stay non-actionable even if skip toggled
         if (patch.skip === false && next.dup) {
-          /* keep dup flag; user can un-skip but status stays dup until remount */
+          next.skip = true;
+        }
+        if (patch.skip === false && next.pasteCancel && !next.matchBookingId) {
+          next.skip = true;
         }
         next.rowStatus = recomputeRowStatus(next);
         return next;
@@ -158,8 +167,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     }
   };
 
-  const readyCount = rows.filter((r) => !r.skip && r.rowStatus === "ok").length;
-  const skipCount = rows.filter((r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup").length;
+  const createTargets = rows.filter((r) => !r.skip && r.rowStatus === "ok");
+  const cancelTargets = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
+  const readyCount = createTargets.length + cancelTargets.length;
+  const skipCount = rows.filter(
+    (r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup" || r.rowStatus === "cancel_missing",
+  ).length;
   const fixCount = rows.filter((r) => !r.skip && r.rowStatus === "need_fix").length;
 
   const mount = async () => {
@@ -172,81 +185,130 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       notify(`수정필요 ${fixCount}건을 고치거나 건너뛴 뒤 올려 주세요.`);
       return;
     }
-    const targets = rows.filter((r) => !r.skip && r.rowStatus === "ok");
-    if (!targets.length) {
+    const creates = rows.filter((r) => !r.skip && r.rowStatus === "ok");
+    const cancels = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
+    if (!creates.length && !cancels.length) {
       notify("올릴 행이 없어요.");
       return;
     }
 
-    // type-hold overbook warn (aggregate)
-    const impact: { typeId: string; after: number }[] = [];
-    const byType = new Map<string, { checkIn: string; nights: number; n: number }[]>();
-    for (const r of targets) {
-      const tid = r.typeId!;
-      const list = byType.get(tid) ?? [];
-      list.push({ checkIn: r.checkIn!, nights: r.nights!, n: 1 });
-      byType.set(tid, list);
-    }
-    for (const [tid, stays] of byType) {
-      let sim = data.bookings.slice();
-      for (const st of stays) {
-        for (let k = 0; k < st.n; k++) {
-          const probe: Booking = {
-            id: `__sr_${tid}_${k}`,
-            kind: "stay",
-            status: "active",
-            platformId,
-            price: 0,
-            guestName: "_",
-            typeId: tid,
-            roomId: null,
-            checkIn: st.checkIn,
-            nights: st.nights,
-            startTime: null,
-            endTime: null,
-            arrived: false,
-            memo: null,
-            cancelledAt: null,
-            createdAt: today,
-            updatedAt: today,
-          };
-          sim = [...sim, probe];
-        }
-      }
-      const dates = new Set<string>();
-      for (const st of stays) {
-        for (let i = 0; i < st.nights; i++) dates.add(addDays(st.checkIn, i));
-      }
-      const table = stockTable(s, sim, [...dates]);
-      const minAfter = Math.min(...[...dates].map((d) => table.get(tid)?.get(d) ?? 0));
-      if (minAfter < 0) impact.push({ typeId: tid, after: minAfter });
-    }
-    if (impact.length) {
-      const overOk = await askConfirm({
-        title: "타입 재고 부족",
-        body: `${impact.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 올릴까요? · 물리 방 겹침은 미배정이라 해당 없어요.`,
-        confirmLabel: "올리기",
+    const guarded = cancels.filter((r) => r.cancelGuard);
+    if (guarded.length) {
+      const names = guarded
+        .map((r) => r.guestName || r.reservationId)
+        .slice(0, 8)
+        .join(", ");
+      const guardOk = await askConfirm({
+        title: "입실·퇴실 예약 취소",
+        body: `이미 입실했거나 퇴실 완료된 예약 ${guarded.length}건이 포함돼 있어요.\n${names}${guarded.length > 8 ? "…" : ""}\n정말 취소 반영할까요? · 재고·보드가 바뀝니다.`,
+        confirmLabel: "취소 반영",
+        danger: true,
       });
-      if (!overOk) return;
+      if (!guardOk) return;
+    }
+
+    // type-hold overbook warn (aggregate) — create rows only
+    if (creates.length) {
+      const impact: { typeId: string; after: number }[] = [];
+      const byType = new Map<string, { checkIn: string; nights: number; n: number }[]>();
+      for (const r of creates) {
+        const tid = r.typeId!;
+        const list = byType.get(tid) ?? [];
+        list.push({ checkIn: r.checkIn!, nights: r.nights!, n: 1 });
+        byType.set(tid, list);
+      }
+      for (const [tid, stays] of byType) {
+        let sim = data.bookings.slice();
+        for (const st of stays) {
+          for (let k = 0; k < st.n; k++) {
+            const probe: Booking = {
+              id: `__sr_${tid}_${k}`,
+              kind: "stay",
+              status: "active",
+              platformId,
+              price: 0,
+              guestName: "_",
+              typeId: tid,
+              roomId: null,
+              checkIn: st.checkIn,
+              nights: st.nights,
+              startTime: null,
+              endTime: null,
+              arrived: false,
+              memo: null,
+              cancelledAt: null,
+              createdAt: today,
+              updatedAt: today,
+            };
+            sim = [...sim, probe];
+          }
+        }
+        const dates = new Set<string>();
+        for (const st of stays) {
+          for (let i = 0; i < st.nights; i++) dates.add(addDays(st.checkIn, i));
+        }
+        const table = stockTable(s, sim, [...dates]);
+        const minAfter = Math.min(...[...dates].map((d) => table.get(tid)?.get(d) ?? 0));
+        if (minAfter < 0) impact.push({ typeId: tid, after: minAfter });
+      }
+      if (impact.length) {
+        const overOk = await askConfirm({
+          title: "타입 재고 부족",
+          body: `${impact.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 올릴까요? · 물리 방 겹침은 미배정이라 해당 없어요.`,
+          confirmLabel: "올리기",
+        });
+        if (!overOk) return;
+      }
     }
 
     const ok = await askConfirm({
       title: "스마트 등록",
-      body: `${targets.length}건을 미배정(간단 예약)으로 올릴까요?\n플랫폼 ${platformLabel} · 건너뜀 ${skipCount}건`,
+      body: [
+        creates.length ? `신규 ${creates.length}건` : null,
+        cancels.length ? `취소반영 ${cancels.length}건` : null,
+        `플랫폼 ${platformLabel}`,
+        skipCount ? `건너뜀 ${skipCount}건` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       confirmLabel: "확인 올리기",
+      danger: cancels.length > 0 && creates.length === 0,
     });
     if (!ok) return;
 
+    const total = cancels.length + creates.length;
     setBusy(true);
-    setProgress(`0 / ${targets.length}`);
+    setProgress(`0 / ${total}`);
     setSummary(null);
     const failed: MountSummary["failed"] = [];
     let saved = 0;
+    let cancelled = 0;
     const nowIso = new Date().toISOString();
+    let step = 0;
 
-    for (let i = 0; i < targets.length; i++) {
-      const row = targets[i]!;
-      setProgress(`${i + 1} / ${targets.length}`);
+    // Cancels first (free stock) then Path A creates — same paste rebook pattern
+    for (const row of cancels) {
+      step += 1;
+      setProgress(`${step} / ${total}`);
+      const live = data.bookings.find((b) => b.id === row.matchBookingId);
+      if (!live || live.status !== "active") {
+        failed.push({ reservationId: row.reservationId || row.guestName, reason: "Hotori에 없거나 이미 취소됨" });
+        continue;
+      }
+      try {
+        await data.saveBooking(cancelDraftFromMatch(live, nowIso), false);
+        cancelled += 1;
+      } catch (e) {
+        failed.push({
+          reservationId: row.reservationId || row.guestName,
+          reason: saveFailMessage(e),
+        });
+      }
+    }
+
+    for (const row of creates) {
+      step += 1;
+      setProgress(`${step} / ${total}`);
       const draft = pathADraftFromPreview(row, {
         platformId,
         platformLabel,
@@ -277,20 +339,21 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
     const result: MountSummary = {
       ok: saved,
-      skipped: skipCount + (targets.length - saved - failed.length),
+      cancelled,
+      skipped: skipCount,
       failed,
     };
-    // skipped = preview skips; adjust message
-    result.skipped = skipCount;
     setSummary(result);
     setBusy(false);
     setProgress(null);
     notify(
-      `스마트 등록 ${saved}건 완료` +
+      `스마트 등록` +
+        (saved ? ` 신규 ${saved}` : "") +
+        (cancelled ? ` · 취소반영 ${cancelled}` : "") +
+        (!saved && !cancelled ? " 0건" : "") +
         (skipCount ? ` · 건너뜀 ${skipCount}` : "") +
         (failed.length ? ` · 실패 ${failed.length}` : ""),
     );
-    // refresh preview dedupe against new bookings
     if (paste) rebuild(paste, profileId, profileForced);
   };
 
@@ -367,7 +430,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <span>
                 {rows.length ? (
                   <>
-                    {rows.length}행 · OK {readyCount}
+                    {rows.length}행
+                    {createTargets.length ? ` · 신규 ${createTargets.length}` : ""}
+                    {cancelTargets.length ? ` · 취소반영 ${cancelTargets.length}` : ""}
+                    {!createTargets.length && !cancelTargets.length && readyCount === 0 ? " · 적용 0" : ""}
                     {fixCount ? ` · 수정필요 ${fixCount}` : ""}
                     {skipCount ? ` · 건너뜀 ${skipCount}` : ""}
                   </>
@@ -394,7 +460,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
             {summary ? (
               <div className="smart-reg-summary" role="status">
-                완료 {summary.ok} · 건너뜀 {summary.skipped}
+                신규 {summary.ok}
+                {summary.cancelled ? ` · 취소반영 ${summary.cancelled}` : ""}
+                {` · 건너뜀 ${summary.skipped}`}
                 {summary.failed.length
                   ? ` · 실패 ${summary.failed.length} (${summary.failed
                       .slice(0, 5)
@@ -428,21 +496,34 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                     </tr>
                   ) : (
                     rows.map((r) => (
-                      <tr key={r.key} className={r.skip ? "is-skip" : r.rowStatus === "need_fix" ? "is-fix" : ""}>
+                      <tr
+                        key={r.key}
+                        className={
+                          r.skip
+                            ? "is-skip"
+                            : r.rowStatus === "need_fix"
+                              ? "is-fix"
+                              : r.rowStatus === "cancel"
+                                ? "is-cancel"
+                                : ""
+                        }
+                      >
                         <td>
                           <span
                             className={
                               "smart-reg-st" +
                               (r.rowStatus === "ok"
                                 ? " ok"
-                                : r.rowStatus === "need_fix"
-                                  ? " fix"
-                                  : r.rowStatus === "dup"
-                                    ? " dup"
-                                    : " skip")
+                                : r.rowStatus === "cancel"
+                                  ? " cancel"
+                                  : r.rowStatus === "need_fix"
+                                    ? " fix"
+                                    : r.rowStatus === "dup" || r.rowStatus === "cancel_missing"
+                                      ? " dup"
+                                      : " skip")
                             }
                           >
-                            {statusLabel(r.rowStatus)}
+                            {statusLabel(r)}
                             {r.nightsInclusiveSuspect ? " · 일→박" : ""}
                           </span>
                         </td>
@@ -541,7 +622,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             type="checkbox"
                             className="smart-reg-skip"
                             checked={r.skip}
-                            disabled={busy || r.dup}
+                            disabled={
+                              busy ||
+                              r.dup ||
+                              (r.pasteCancel && !r.matchBookingId) ||
+                              r.rowStatus === "cancel_missing"
+                            }
                             aria-label="건너뛰기"
                             onChange={(e) => patchRow(r.key, { skip: e.target.checked })}
                           />

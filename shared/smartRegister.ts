@@ -297,7 +297,12 @@ export interface NormalizedPasteRow {
   amount: number | null;
   reservationId: string;
   statusRaw: string;
-  /** Default skip from statusSkip */
+  /**
+   * Paste status matches profile.statusSkip (취소/노쇼/cancelled…).
+   * Formerly blind-skip; MVP routes to cancel sync when 예약번호 matches Hotori.
+   */
+  isCancelStatus: boolean;
+  /** @deprecated alias of isCancelStatus — kept for older call sites/tests */
   skipSuggested: boolean;
   /** Inclusive “N일” style nights that need preview highlight */
   nightsInclusiveSuspect: boolean;
@@ -382,9 +387,7 @@ export function normalizeRow(
   const amount = parseAmount(cellAt(row, colMap.amount));
   const reservationId = cellAt(row, colMap.reservationId);
   const statusRaw = cellAt(row, colMap.statusRaw);
-  const statusN = normHeader(statusRaw);
-  const skipSuggested =
-    !!statusN && profile.statusSkip.some((s) => statusN.includes(normHeader(s)) || normHeader(s) === statusN);
+  const cancel = isCancelStatus(statusRaw, profile);
 
   return {
     guestName,
@@ -396,9 +399,45 @@ export function normalizeRow(
     amount,
     reservationId,
     statusRaw,
-    skipSuggested,
+    isCancelStatus: cancel,
+    skipSuggested: cancel,
     nightsInclusiveSuspect,
   };
+}
+
+/** True when paste statusRaw hits profile.statusSkip tokens (취소/cancelled/노쇼…). */
+export function isCancelStatus(statusRaw: string, profile: PlatformProfile): boolean {
+  const statusN = normHeader(statusRaw);
+  if (!statusN) return false;
+  return profile.statusSkip.some((s) => statusN.includes(normHeader(s)) || normHeader(s) === statusN);
+}
+
+/** Arrived or already checked-out — never silent-cancel from paste. */
+export function isCancelGuardBlocked(b: Pick<Booking, "arrived" | "checkedOutAt">): boolean {
+  return !!b.arrived || !!b.checkedOutAt;
+}
+
+export type BookingReservationPick = Pick<
+  Booking,
+  "id" | "platformId" | "memo" | "status" | "arrived" | "checkedOutAt" | "guestName" | "checkIn" | "nights" | "typeId"
+>;
+
+/** Active Hotori booking for platform + 예약번호 (memo convention). */
+export function findActiveBookingByReservationId(
+  existing: BookingReservationPick[],
+  platformId: string,
+  reservationId: string,
+): BookingReservationPick | null {
+  const id = reservationId.trim();
+  if (!id || !platformId) return null;
+  return (
+    existing.find(
+      (b) =>
+        b.status === "active" &&
+        b.platformId === platformId &&
+        reservationIdFromMemo(b.memo) === id,
+    ) ?? null
+  );
 }
 
 /**
@@ -538,7 +577,12 @@ export function isDuplicateReservation(
   );
 }
 
-export type PreviewRowStatus = "ok" | "need_fix" | "skip" | "dup";
+/**
+ * Preview action labels (KR):
+ * ok → 신규 · cancel → 취소반영 · dup → 중복스킵 · need_fix → 수정필요
+ * cancel_missing → Hotori에 없음 · skip → 건너뜀 (입실/퇴실 가드 등)
+ */
+export type PreviewRowStatus = "ok" | "need_fix" | "skip" | "dup" | "cancel" | "cancel_missing";
 
 export interface PreviewRow {
   key: string;
@@ -556,6 +600,12 @@ export interface PreviewRow {
   skip: boolean;
   nightsInclusiveSuspect: boolean;
   dup: boolean;
+  /** Paste row is a cancel/noshow status */
+  pasteCancel: boolean;
+  /** Matched Hotori booking id for cancel sync */
+  matchBookingId: string | null;
+  /** Matched booking is arrived or checked-out — danger / default skip */
+  cancelGuard: boolean;
   rowStatus: PreviewRowStatus;
 }
 
@@ -563,24 +613,54 @@ export function buildPreviewRows(
   table: ParsedPasteTable,
   profile: PlatformProfile,
   s: HotelSettings,
-  existing: Pick<Booking, "platformId" | "memo" | "status">[],
+  existing: BookingReservationPick[] | Pick<Booking, "platformId" | "memo" | "status">[],
   platformId: string | null,
 ): PreviewRow[] {
   const colMap = mapColumns(table.headers, profile);
+  const list = existing as BookingReservationPick[];
   return table.rows.map((row, i) => {
     const n = normalizeRow(row, colMap, profile);
     const typeId = matchTypeId(n.typeRaw, s, platformId);
+    const pasteCancel = n.isCancelStatus;
+    const match =
+      pasteCancel && platformId && n.reservationId
+        ? findActiveBookingByReservationId(list, platformId, n.reservationId)
+        : null;
+    const cancelGuard = !!match && isCancelGuardBlocked(match);
     const dup =
-      !!platformId && !!n.reservationId && isDuplicateReservation(existing, platformId, n.reservationId);
-    const skip = n.skipSuggested || dup;
-    // amount missing → priceUnset OK (not need_fix solely for amount)
-    const need =
-      !skip &&
-      (!n.guestName.trim() || !n.checkIn || !n.nights || n.nights < 1 || !typeId);
+      !pasteCancel &&
+      !!platformId &&
+      !!n.reservationId &&
+      isDuplicateReservation(list, platformId, n.reservationId);
+
+    let skip = false;
     let rowStatus: PreviewRowStatus = "ok";
-    if (dup) rowStatus = "dup";
-    else if (skip) rowStatus = "skip";
-    else if (need) rowStatus = "need_fix";
+    let matchBookingId: string | null = null;
+
+    if (pasteCancel) {
+      if (!n.reservationId.trim() || !match) {
+        skip = true;
+        rowStatus = "cancel_missing";
+        matchBookingId = null;
+      } else if (cancelGuard) {
+        // Default block — FO must un-skip; mount still uses danger askConfirm
+        skip = true;
+        rowStatus = "skip";
+        matchBookingId = match.id;
+      } else {
+        skip = false;
+        rowStatus = "cancel";
+        matchBookingId = match.id;
+      }
+    } else if (dup) {
+      skip = true;
+      rowStatus = "dup";
+    } else {
+      const need = !n.guestName.trim() || !n.checkIn || !n.nights || n.nights < 1 || !typeId;
+      skip = false;
+      rowStatus = need ? "need_fix" : "ok";
+    }
+
     return {
       key: `r${i}`,
       sourceIndex: i,
@@ -597,16 +677,34 @@ export function buildPreviewRows(
       skip,
       nightsInclusiveSuspect: n.nightsInclusiveSuspect,
       dup,
+      pasteCancel,
+      matchBookingId,
+      cancelGuard,
       rowStatus,
     };
   });
 }
 
 export function recomputeRowStatus(row: Omit<PreviewRow, "rowStatus">): PreviewRowStatus {
+  if (row.pasteCancel) {
+    if (!row.reservationId.trim() || !row.matchBookingId) return "cancel_missing";
+    if (row.skip && row.cancelGuard) return "skip";
+    if (row.skip) return "skip";
+    return "cancel";
+  }
   if (row.dup) return "dup";
   if (row.skip) return "skip";
   if (!row.guestName.trim() || !row.checkIn || !row.nights || row.nights < 1 || !row.typeId) return "need_fix";
   return "ok";
+}
+
+/** Draft cancelled booking from matched Hotori row (Entry cancel semantics). */
+export function cancelDraftFromMatch(matched: Booking, nowIso: string): Booking {
+  return {
+    ...matched,
+    status: "cancelled",
+    updatedAt: nowIso,
+  };
 }
 
 /** Build Path A booking draft (roomId=null). Caller assigns id / timestamps. */
