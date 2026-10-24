@@ -56,7 +56,7 @@ export function glanceMapKindPlacement(
 /** 남은 호수 압축 칩 기본 노출 수 (펼침 전) */
 export const GLANCE_ROOM_CHIP_CAP = 6;
 
-/** 타입 여유 칩 기본 노출 (접힌 바는 별도 1개) */
+/** 타입 여유 칩 기본 노출 (펼침 시 전부 · 접힌 바에는 미표시) */
 export const GLANCE_TYPE_CHIP_CAP = 8;
 
 export const GLANCE_OPEN_KEY = {
