@@ -53,7 +53,7 @@ export function glanceMapKindPlacement(
   return glanceMapKindNow(b, night, opts);
 }
 
-/** 총/사용/남음 칩 필터 — null=전체 · used=점유 묶음 · left=공실 (Option C) */
+/** 총/사용/남음 칩 필터 — null=전체 · used=점유 묶음 · left=공실 */
 export type GlanceOccFilter = "used" | "left" | null;
 
 /** 미니맵 kind가 현재 점유 필터에 맞는지 (사용=empty 제외 · 남음=empty만) */
