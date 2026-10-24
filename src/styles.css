@@ -2423,7 +2423,7 @@ button.nowstatus { cursor: pointer; }
   max-width: 100%;
 }
 .side-ua-l1 b {
-  font-size: var(--nowside-row-name-fs, 14.5px);
+  font-size: var(--nowside-row-name-fs, 17.4px);
   font-weight: 750;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2434,7 +2434,7 @@ button.nowstatus { cursor: pointer; }
 .side-ua-amt {
   flex: none;
   font-family: var(--num);
-  font-size: var(--nowside-row-amt-fs, 13px);
+  font-size: var(--nowside-row-amt-fs, 15.6px);
   font-weight: 750;
   color: var(--ink2);
   white-space: nowrap;
@@ -3207,8 +3207,8 @@ button.nowstatus { cursor: pointer; }
   --nowside-tab-pad-y: 10px;
   --nowside-chip-fs: 13.5px;
   --nowside-chip-h: 34px;
-  --nowside-row-name-fs: 14.5px;
-  --nowside-row-amt-fs: 13px;
+  --nowside-row-name-fs: 17.4px; /* +20% vs #137 14.5 */
+  --nowside-row-amt-fs: 15.6px; /* +20% vs #137 13 */
   --nowside-assign-fs: 13px;
   --nowside-assign-h: 30px;
   background: #fff;
