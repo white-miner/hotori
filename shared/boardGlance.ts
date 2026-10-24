@@ -53,6 +53,16 @@ export function glanceMapKindPlacement(
   return glanceMapKindNow(b, night, opts);
 }
 
+/** 총/사용/남음 칩 필터 — null=전체 · used=점유 묶음 · left=공실 (Option C) */
+export type GlanceOccFilter = "used" | "left" | null;
+
+/** 미니맵 kind가 현재 점유 필터에 맞는지 (사용=empty 제외 · 남음=empty만) */
+export function glanceKindMatchesOccFilter(kind: GlanceMapKind, filter: GlanceOccFilter): boolean {
+  if (!filter) return true;
+  const vacant = kind === "empty";
+  return filter === "left" ? vacant : !vacant;
+}
+
 /** 남은 호수 압축 칩 기본 노출 수 (펼침 전) */
 export const GLANCE_ROOM_CHIP_CAP = 6;
 
