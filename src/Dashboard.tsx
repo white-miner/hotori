@@ -186,7 +186,7 @@ const P_KEY = "hotori.stockPeriod";
 const R_KEY = "hotori.stockRange";
 /** 「배치」우측 패널 접기 — 기기별 기억 */
 const SIDE_COLLAPSE_KEY = "hotori.boardSideCollapsed";
-/** 「현황 한눈」펼침 — 표면별 */
+/** 「미니맵」펼침 — 표면별 */
 const glanceOpenDefault = (): boolean => {
   if (typeof window === "undefined") return true;
   try {
@@ -437,7 +437,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 글랜스/미니맵 → 칸 스크롤·하이라이트 */
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
-  /** 「현황 한눈」펼침 (localStorage · 표면별) */
+  /** 「미니맵」펼침 (localStorage · 표면별) */
   const [glanceOpenNow, setGlanceOpenNow] = useState(() => {
     const v = lsGet(GLANCE_OPEN_KEY.now);
     if (v === "0") return false;

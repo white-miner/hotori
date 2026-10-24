@@ -1,5 +1,5 @@
 /**
- * 「현황 한눈」상태 미니맵 — 보드와 동일 occupancy 경로의 색 4종.
+ * 「미니맵」상태 색 — 보드와 동일 occupancy 경로의 색 4종.
  * MiniFloorPlan(피커)과 분리 · 새 점유 엔진 금지.
  */
 import type { Booking } from "./ledger";
