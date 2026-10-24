@@ -3291,7 +3291,190 @@ button.nowstatus { cursor: pointer; }
   outline-offset: 1px;
   z-index: 1;
 }
-/* 「현황」공실 글랜스 — 키워드 칩 · 카드 통계 금지 · 칸 그리드 미터치 */
+/* 「현황 한눈」+ 건물칩 sticky 스택 — 칸 그리드·min-height 미터치 · MiniFloorPlan 분리 */
+.board-chrome-sticky {
+  position: sticky;
+  top: 64px;
+  z-index: 8;
+  margin: 0 0 12px;
+  padding: 8px 0 0;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(8px);
+}
+.board-chrome-sticky .board-filter-sticky {
+  position: static;
+  top: auto;
+  z-index: auto;
+  margin: 0 0 8px;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+.board-glance {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) 0 var(--space-3);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line2);
+  color: var(--ink);
+  min-width: 0;
+}
+.board-chrome-sticky .board-glance {
+  margin-bottom: 0;
+}
+.board-glance.collapsed {
+  padding: var(--space-2) 0;
+}
+.board-glance-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.board-glance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--ink2);
+  cursor: pointer;
+  letter-spacing: -0.02em;
+}
+.board-glance-toggle:hover { background: var(--hover); color: var(--ink); }
+.board-glance-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-chip) var(--space-3);
+  width: 100%;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.board-glance-bar-lab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--ink2);
+}
+.board-glance-bar-type {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.board-glance-sum {
+  gap: var(--space-chip);
+  align-items: center;
+}
+.board-glance-nos {
+  flex: 1 1 auto;
+  margin-left: var(--space-2);
+}
+.now-vacancy-stat.sm {
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: 13px;
+}
+.now-vacancy-stat.sm .num { font-size: 14px; }
+/* 상태 미니맵 — 건물 가로 밴드 · 층 서브행 · 호수 없음 */
+.bmap { margin-top: var(--space-3); min-width: 0; }
+.bmap-bands {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+@media (min-width: 960px) {
+  .bmap-bands.multi {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .bmap-bands.multi .bmap-band {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+.bmap-band {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line2);
+  border-radius: var(--radius-inp-sm);
+  background: var(--panel);
+}
+.bmap-bname {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 750;
+  color: var(--ink3);
+  letter-spacing: -0.02em;
+}
+.bmap-floors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.bmap-floor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.bmap-flab {
+  flex: none;
+  width: 2.4em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink4);
+  text-align: right;
+  font-feature-settings: "tnum" 1;
+}
+.bmap-rooms {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 1px;
+}
+.bmap-blk {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  border-radius: 2px;
+  border: 1.5px solid #999;
+  background: #fff;
+  cursor: pointer;
+}
+.bmap-blk:hover { outline: 1px solid var(--ink); outline-offset: 1px; }
+.bmap-blk.nk-empty { border-style: dashed; border-color: var(--badge-empty); background: #fff; }
+.bmap-blk.nk-arriving { border-color: var(--badge-info-border); background: var(--badge-info-s); }
+.bmap-blk.nk-inhouse { border-color: var(--stay); background: #fff7f7; }
+.bmap-blk.nk-departing { border-color: var(--badge-warn-border); background: var(--badge-warn-s); }
+@media (max-width: 760px) {
+  .board-chrome-sticky { top: 0; padding-top: 6px; }
+}
+/* legacy vacancy chips (한눈 패널 내부 재사용) · 칸 그리드 미터치 */
 .now-vacancy {
   margin: 0 0 var(--space-4);
   padding: var(--space-3) 0 var(--space-4);
@@ -3422,6 +3605,7 @@ button.nowstatus { cursor: pointer; }
 }
 .now-vacancy-typechips.open { flex-wrap: wrap; overflow-x: visible; }
 .now-vacancy-typechips .sales-gchip { flex: none; }
+.board-page .cell.nowflash,
 .now-page .cell.nowflash {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
