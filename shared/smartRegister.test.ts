@@ -6,6 +6,9 @@ import {
   PLATFORM_PROFILES,
   buildPreviewRows,
   detectProfile,
+  findActiveBookingByReservationId,
+  isCancelGuardBlocked,
+  isCancelStatus,
   isDuplicateReservation,
   lookupTypeAlias,
   mapColumns,
@@ -74,7 +77,7 @@ test("inactive agoda never wins auto-detect without allowInactive", () => {
   assert.ok(withInactive.scores.find((s) => s.id === "agoda")!.score > 0);
 });
 
-test("yanolja normalize + preview: fields + cancel skip", () => {
+test("yanolja normalize + preview: fields + cancel missing without match", () => {
   const profile = profileById("yanolja")!;
   const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
   const col = mapColumns(t.headers, profile);
@@ -84,15 +87,117 @@ test("yanolja normalize + preview: fields + cancel skip", () => {
   assert.equal(r0.nights, 2);
   assert.equal(r0.amount, 120000);
   assert.equal(r0.reservationId, "YN-1001");
-  assert.equal(r0.skipSuggested, false);
+  assert.equal(r0.isCancelStatus, false);
 
   const r1 = normalizeRow(t.rows[1]!, col, profile);
+  assert.equal(r1.isCancelStatus, true);
   assert.equal(r1.skipSuggested, true);
 
   const preview = buildPreviewRows(t, profile, settings, [], "p-ya");
   assert.equal(preview[0]!.rowStatus, "ok");
   assert.equal(preview[0]!.typeId, "std");
+  // cancel row, no Hotori match → info skip
+  assert.equal(preview[1]!.rowStatus, "cancel_missing");
+  assert.equal(preview[1]!.skip, true);
+});
+
+test("isCancelStatus classify: KR/EN tokens", () => {
+  const ya = profileById("yanolja")!;
+  const ag = profileById("agoda")!;
+  assert.equal(isCancelStatus("취소", ya), true);
+  assert.equal(isCancelStatus("취소완료", ya), true);
+  assert.equal(isCancelStatus("예약확정", ya), false);
+  assert.equal(isCancelStatus("cancelled", ag), true);
+  assert.equal(isCancelStatus("Canceled", ag), true);
+  assert.equal(isCancelStatus("Confirmed", ag), false);
+});
+
+test("findActiveBookingByReservationId match + cancel preview", () => {
+  const profile = profileById("yanolja")!;
+  const memo = reservationMemo("야놀자", "YN-1002", "디럭스");
+  const existing = [
+    {
+      id: "b-cancel-me",
+      platformId: "p-ya",
+      memo,
+      status: "active" as const,
+      arrived: false,
+      checkedOutAt: null,
+      guestName: "이샘플",
+      checkIn: "2026-10-21",
+      nights: 1,
+      typeId: "dlx",
+    },
+  ];
+  assert.equal(findActiveBookingByReservationId(existing, "p-ya", "YN-1002")?.id, "b-cancel-me");
+  assert.equal(findActiveBookingByReservationId(existing, "p-ya", "YN-9999"), null);
+  assert.equal(findActiveBookingByReservationId(existing, "p-ye", "YN-1002"), null);
+
+  const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
+  const preview = buildPreviewRows(t, profile, settings, existing, "p-ya");
+  assert.equal(preview[1]!.rowStatus, "cancel");
+  assert.equal(preview[1]!.matchBookingId, "b-cancel-me");
+  assert.equal(preview[1]!.skip, false);
+  assert.equal(preview[1]!.cancelGuard, false);
+});
+
+test("cancel guard: arrived / checkedOut blocked by default", () => {
+  const profile = profileById("yanolja")!;
+  const memo = reservationMemo("야놀자", "YN-1002");
+  assert.equal(isCancelGuardBlocked({ arrived: true, checkedOutAt: null }), true);
+  assert.equal(isCancelGuardBlocked({ arrived: false, checkedOutAt: "2026-10-22T01:00:00Z" }), true);
+  assert.equal(isCancelGuardBlocked({ arrived: false, checkedOutAt: null }), false);
+
+  const arrived = [
+    {
+      id: "b-in",
+      platformId: "p-ya",
+      memo,
+      status: "active" as const,
+      arrived: true,
+      checkedOutAt: null,
+      guestName: "이샘플",
+      checkIn: "2026-10-21",
+      nights: 1,
+      typeId: "dlx",
+    },
+  ];
+  const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
+  const preview = buildPreviewRows(t, profile, settings, arrived, "p-ya");
   assert.equal(preview[1]!.rowStatus, "skip");
+  assert.equal(preview[1]!.cancelGuard, true);
+  assert.equal(preview[1]!.matchBookingId, "b-in");
+  assert.equal(preview[1]!.skip, true);
+});
+
+test("cancel + new id in same paste: cancel old + create new", () => {
+  const profile = profileById("yanolja")!;
+  const paste = [
+    "야놀자예약번호\t예약자\t연락처\t객실상품\t체크인\t체크아웃\t박수\t판매금액\t상태",
+    "YN-OLD\t김재예약\t010-1111-2222\t스탠다드\t2026-10-20\t2026-10-22\t2\t100000\t취소",
+    "YN-NEW\t김재예약\t010-1111-2222\t디럭스\t2026-10-25\t2026-10-27\t2\t180000\t예약확정",
+  ].join("\n");
+  const t = parsePasteTable(paste)!;
+  const existing = [
+    {
+      id: "b-old",
+      platformId: "p-ya",
+      memo: reservationMemo("야놀자", "YN-OLD"),
+      status: "active" as const,
+      arrived: false,
+      checkedOutAt: null,
+      guestName: "김재예약",
+      checkIn: "2026-10-20",
+      nights: 2,
+      typeId: "std",
+    },
+  ];
+  const preview = buildPreviewRows(t, profile, settings, existing, "p-ya");
+  assert.equal(preview[0]!.rowStatus, "cancel");
+  assert.equal(preview[0]!.matchBookingId, "b-old");
+  assert.equal(preview[1]!.rowStatus, "ok");
+  assert.equal(preview[1]!.reservationId, "YN-NEW");
+  assert.equal(preview[1]!.typeId, "dlx");
 });
 
 test("yeogi normalize: dotted dates + 박 unit", () => {
