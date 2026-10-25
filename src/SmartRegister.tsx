@@ -2,7 +2,7 @@
  * 스마트 등록 — dedicated board tab (full FO).
  * Paste TSV → profile detect → wide preview → askConfirm → saveBooking × N (Path A 미배정).
  */
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
 import { ClipboardPaste, Link2, LoaderCircle, BookmarkPlus } from "lucide-react";
 import {
   type Booking,
@@ -24,6 +24,7 @@ import {
   cancelDraftFromMatch,
   detectProfile,
   matchPlatformId,
+  htmlTableToPlain,
   parsePasteTable,
   pathADraftFromPreview,
   profileById,
@@ -86,7 +87,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       const table = parsePasteTable(text);
       if (!table) {
         setRows([]);
-        setParseErr(text.trim() ? "표 형식(헤더+행)을 붙여넣어 주세요." : null);
+        setParseErr(
+          text.trim()
+            ? "표(헤더+데이터 행)를 인식하지 못했어요. 파트너센터 목록을 드래그해 다시 붙여넣거나, 표 전체를 복사해 주세요."
+            : null,
+        );
         if (!forced) {
           setProfileId(null);
           setDetectWeak(false);
@@ -124,6 +129,16 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     setPaste(v);
     setProfileForced(false);
     rebuild(v, null, false);
+  };
+
+  /** Prefer clipboard HTML table when partner UI copies markup (야놀자 통합내역 등). */
+  const onPasteEvent = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const html = e.clipboardData.getData("text/html");
+    if (!html || !/<table[\s>]/i.test(html)) return;
+    const plain = htmlTableToPlain(html);
+    if (!plain) return;
+    e.preventDefault();
+    onPasteChange(plain);
   };
 
   const onPickProfile = (id: PlatformProfileId) => {
@@ -382,6 +397,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               className="inp smart-reg-ta"
               value={paste}
               onChange={(e) => onPasteChange(e.target.value)}
+              onPaste={onPasteEvent}
               placeholder={"예약번호\t예약자\t연락처\t객실타입\t체크인\t체크아웃\t박수\t판매금액\t상태\n…"}
               spellCheck={false}
               disabled={readOnly || busy}

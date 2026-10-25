@@ -164,65 +164,193 @@ export interface ParsedPasteTable {
   delimiter: "tab" | "comma" | "pipe" | "space";
 }
 
-/** Split clipboard text into header + body rows (TSV / CSV / pipe). */
-export function parsePasteTable(raw: string): ParsedPasteTable | null {
-  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-  if (!text) return null;
-  const lines = text.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim().length > 0);
+/** Partner UI chrome / toolbar lines that are not table rows (야놀자 통합내역 등). */
+const PASTE_JUNK_LINE =
+  /^(필터|조회|검색|합계|총\s*\d|엑셀|다운로드|인쇄|페이지|목록\s*\d|전체\s*선택|선택\s*삭제|초기화|더보기|닫기|확인|취소하기|정렬|기간|건수)/i;
+
+/** Flatten known header aliases for header-row scoring. */
+function allHeaderAliasNorms(): string[] {
+  const out = new Set<string>();
+  for (const f of CANONICAL_FIELDS) {
+    for (const a of COMMON[f]) out.add(normHeader(a));
+  }
+  for (const p of PLATFORM_PROFILES) {
+    for (const f of CANONICAL_FIELDS) {
+      for (const a of p.headerAliases[f]) out.add(normHeader(a));
+    }
+  }
+  return [...out];
+}
+
+function stripHtmlNoise(s: string): string {
+  return s
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Convert clipboard `text/html` table markup → TSV plain text.
+ * Works in Node (no DOM) so unit tests can cover partner HTML paste.
+ */
+export function htmlTableToPlain(html: string): string | null {
+  if (!html || !/<table[\s>]/i.test(html)) return null;
+  const tableMatch = html.match(/<table\b[\s\S]*?<\/table>/i);
+  if (!tableMatch) return null;
+  const table = tableMatch[0];
+  const rowMatches = [...table.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)];
+  if (rowMatches.length < 2) return null;
+  const lines: string[] = [];
+  for (const rm of rowMatches) {
+    const cells = [...rm[0].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)];
+    if (!cells.length) continue;
+    const parts = cells.map((c) => stripHtmlNoise(c[1] ?? "")).filter((c) => c.length > 0 || cells.length > 1);
+    if (!parts.some((p) => p.length > 0)) continue;
+    lines.push(parts.join("\t"));
+  }
   if (lines.length < 2) return null;
+  return lines.join("\n");
+}
 
-  const scoreDelim = (d: string) =>
-    lines.slice(0, Math.min(8, lines.length)).reduce((n, l) => n + (l.split(d).length > 1 ? 1 : 0), 0);
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      q = !q;
+      continue;
+    }
+    if (ch === "," && !q) {
+      cells.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
 
-  const tabScore = scoreDelim("\t");
-  const pipeScore = scoreDelim("|");
-  const commaScore = scoreDelim(",");
-  let delimiter: ParsedPasteTable["delimiter"] = "tab";
-  let sep = "\t";
-  if (tabScore >= Math.max(pipeScore, commaScore) && tabScore > 0) {
-    delimiter = "tab";
-    sep = "\t";
-  } else if (pipeScore > commaScore && pipeScore > 0) {
-    delimiter = "pipe";
-    sep = "|";
-  } else if (commaScore > 0) {
-    delimiter = "comma";
-    sep = ",";
-  } else {
-    // last resort: 2+ spaces
-    delimiter = "space";
-    sep = "";
+function splitByDelimiter(line: string, delimiter: ParsedPasteTable["delimiter"]): string[] {
+  if (delimiter === "space") return line.trim().split(/\s{2,}/).map((c) => c.trim()).filter((c) => c.length > 0);
+  if (delimiter === "comma") return splitCsvLine(line);
+  if (delimiter === "pipe") return line.split("|").map((c) => c.trim());
+  return line.split("\t").map((c) => c.trim());
+}
+
+function spaceColCount(line: string): number {
+  return line.trim().split(/\s{2,}/).filter((c) => c.trim().length > 0).length;
+}
+
+function pickDelimiter(lines: string[]): ParsedPasteTable["delimiter"] {
+  const sample = lines.slice(0, Math.min(12, lines.length));
+  const scoreDelim = (pred: (l: string) => number) =>
+    sample.reduce((n, l) => n + (pred(l) > 1 ? 1 : 0), 0);
+
+  const tabScore = scoreDelim((l) => l.split("\t").length);
+  const pipeScore = scoreDelim((l) => l.split("|").length);
+  const commaScore = scoreDelim((l) => splitCsvLine(l).length);
+  const spaceScore = scoreDelim(spaceColCount);
+
+  const ranked: { d: ParsedPasteTable["delimiter"]; n: number }[] = [
+    { d: "tab", n: tabScore },
+    { d: "pipe", n: pipeScore },
+    { d: "comma", n: commaScore },
+    { d: "space", n: spaceScore },
+  ];
+  ranked.sort((a, b) => b.n - a.n);
+  const best = ranked[0];
+  if (best && best.n > 0) return best.d;
+  return "space";
+}
+
+function headerAliasHits(cells: string[], aliasNorms: string[]): number {
+  let hits = 0;
+  for (const cell of cells) {
+    const h = normHeader(cell);
+    if (!h) continue;
+    if (aliasNorms.some((a) => a === h || h.includes(a) || a.includes(h))) hits += 1;
+  }
+  return hits;
+}
+
+function isJunkPasteLine(line: string): boolean {
+  const t = line.trim();
+  if (!t) return true;
+  if (PASTE_JUNK_LINE.test(t)) return true;
+  // lone toolbar / filter crumbs with no table shape
+  if (!/\t/.test(t) && spaceColCount(t) < 2 && !t.includes(",") && !t.includes("|")) {
+    // keep short single tokens that might still be weird — drop chrome-ish
+    if (/^(필터|합계|조회기간|검색조건|예약목록)$/i.test(t)) return true;
+  }
+  return false;
+}
+
+/**
+ * Split clipboard text into header + body rows.
+ * Accepts TSV / CSV / pipe / 2+ spaces, strips partner chrome lines,
+ * and locates the real header row (not always line 0).
+ * Prefer `htmlTableToPlain` first when paste has `text/html`.
+ */
+export function parsePasteTable(raw: string): ParsedPasteTable | null {
+  let text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return null;
+
+  // HTML table pasted into textarea (or fed from onPaste) → TSV
+  if (/<table[\s>]/i.test(text)) {
+    const fromHtml = htmlTableToPlain(text);
+    if (fromHtml) text = fromHtml;
   }
 
-  const splitLine = (line: string): string[] => {
-    if (sep === "") return line.trim().split(/\s{2,}/).map((c) => c.trim());
-    if (sep === ",") {
-      // light CSV: respect simple quotes
-      const cells: string[] = [];
-      let cur = "";
-      let q = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i]!;
-        if (ch === '"') {
-          q = !q;
-          continue;
-        }
-        if (ch === "," && !q) {
-          cells.push(cur.trim());
-          cur = "";
-          continue;
-        }
-        cur += ch;
-      }
-      cells.push(cur.trim());
-      return cells;
-    }
-    return line.split(sep).map((c) => c.trim());
-  };
+  const rawLines = text.split("\n").map((l) => l.trimEnd());
+  const lines = rawLines.filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
+  if (lines.length < 2) return null;
 
-  const headers = splitLine(lines[0]!);
+  const delimiter = pickDelimiter(lines);
+  const splitLine = (line: string) => splitByDelimiter(line, delimiter);
+  const aliasNorms = allHeaderAliasNorms();
+
+  // Prefer the line with the most header-alias hits (≥2 cells); else first multi-col line.
+  let headerIdx = -1;
+  let bestHits = -1;
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    const cells = splitLine(lines[i]!);
+    if (cells.length < 2) continue;
+    const hits = headerAliasHits(cells, aliasNorms);
+    if (hits > bestHits) {
+      bestHits = hits;
+      headerIdx = i;
+    }
+    // strong header: stop early
+    if (hits >= 3) break;
+  }
+  if (headerIdx < 0) {
+    for (let i = 0; i < lines.length; i++) {
+      if (splitLine(lines[i]!).length >= 2) {
+        headerIdx = i;
+        break;
+      }
+    }
+  }
+  if (headerIdx < 0) return null;
+
+  const headers = splitLine(lines[headerIdx]!);
   if (headers.length < 2) return null;
-  const rows = lines.slice(1).map(splitLine).filter((r) => r.some((c) => c.length > 0));
+
+  const rows = lines
+    .slice(headerIdx + 1)
+    .map(splitLine)
+    .filter((r) => r.some((c) => c.length > 0))
+    // drop trailing summary rows that collapse to 1–2 cells
+    .filter((r) => r.length >= Math.min(3, headers.length) || r.length === headers.length);
   if (!rows.length) return null;
   return { headers, rows, delimiter };
 }
@@ -761,6 +889,44 @@ export const HYPOTHESIS_FIXTURES: Record<"yanolja" | "yeogi", string> = {
     "GC-2002\t최픽스처\t010-0000-1111\t온돌\t2026.10.26\t2026.10.27\t1박\t65000\t예약확정",
   ].join("\n"),
 };
+
+/**
+ * Hypothesis: 야놀자 파트너센터 「통합내역」 drag-copy as `text/plain`
+ * (no tabs — multi-space / fixed-width columns + chrome lines above/below).
+ * Not a live capture; labeled for FO repro of 「표 형식…붙여넣어 주세요」.
+ */
+export const YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE = [
+  "필터",
+  "조회기간  2026-10-01 ~ 2026-10-31",
+  "합계  2건",
+  "엑셀다운로드  인쇄",
+  "야놀자예약번호  예약자  연락처  객실상품  체크인  체크아웃  박수  판매금액  상태",
+  "YN-1001  김테스트  010-1234-5678  스탠다드  2026-10-20  2026-10-22  2  120000  예약확정",
+  "YN-1002  이샘플  010****9999  디럭스  2026-10-21  2026-10-22  1  80000  취소",
+  "합계금액  200000",
+].join("\n");
+
+/**
+ * Hypothesis: same 통합내역 list as browser `text/html` clipboard (table markup).
+ */
+export const YANOLJA_DRAG_COPY_HTML_FIXTURE = `
+<div class="toolbar">필터 · 조회기간</div>
+<table class="list">
+  <tr>
+    <th>야놀자예약번호</th><th>예약자</th><th>연락처</th><th>객실상품</th>
+    <th>체크인</th><th>체크아웃</th><th>박수</th><th>판매금액</th><th>상태</th>
+  </tr>
+  <tr>
+    <td>YN-1001</td><td>김테스트</td><td>010-1234-5678</td><td>스탠다드</td>
+    <td>2026-10-20</td><td>2026-10-22</td><td>2</td><td>120000</td><td>예약확정</td>
+  </tr>
+  <tr>
+    <td>YN-1002</td><td>이샘플</td><td>010****9999</td><td>디럭스</td>
+    <td>2026-10-21</td><td>2026-10-22</td><td>1</td><td>80000</td><td>취소</td>
+  </tr>
+</table>
+<button>엑셀다운로드</button>
+`.trim();
 
 /** Soft warn key when no reservation id (name+phone+checkIn+type). */
 export function softDedupeKey(row: Pick<PreviewRow, "guestName" | "guestPhone" | "checkIn" | "typeId">): string {
