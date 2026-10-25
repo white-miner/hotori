@@ -26,6 +26,7 @@ import {
   matchPlatformId,
   htmlTableToPlain,
   parsePasteTable,
+  pathACancelDraftFromPreview,
   pathADraftFromPreview,
   profileById,
   recomputeRowStatus,
@@ -55,10 +56,9 @@ type MountSummary = {
 
 function statusLabel(r: PreviewRow): string {
   if (r.rowStatus === "ok") return "신규";
-  if (r.rowStatus === "cancel") return "취소반영";
+  if (r.rowStatus === "cancel") return "예약취소";
   if (r.rowStatus === "need_fix") return "수정필요";
   if (r.rowStatus === "dup") return "중복스킵";
-  if (r.rowStatus === "cancel_missing") return "Hotori에 없음";
   if (r.cancelGuard) return "입실·퇴실 — 수동";
   return "건너뜀";
 }
@@ -152,11 +152,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       list.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
-        // dup / cancel_missing stay non-actionable even if skip toggled
+        // dup stay non-actionable even if skip toggled
         if (patch.skip === false && next.dup) {
-          next.skip = true;
-        }
-        if (patch.skip === false && next.pasteCancel && !next.matchBookingId) {
           next.skip = true;
         }
         next.rowStatus = recomputeRowStatus(next);
@@ -186,7 +183,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const cancelTargets = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
   const readyCount = createTargets.length + cancelTargets.length;
   const skipCount = rows.filter(
-    (r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup" || r.rowStatus === "cancel_missing",
+    (r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup",
   ).length;
   const fixCount = rows.filter((r) => !r.skip && r.rowStatus === "need_fix").length;
 
@@ -215,8 +212,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         .join(", ");
       const guardOk = await askConfirm({
         title: "입실·퇴실 예약 취소",
-        body: `이미 입실했거나 퇴실 완료된 예약 ${guarded.length}건이 포함돼 있어요.\n${names}${guarded.length > 8 ? "…" : ""}\n정말 취소 반영할까요? · 재고·보드가 바뀝니다.`,
-        confirmLabel: "취소 반영",
+        body: `이미 입실했거나 퇴실 완료된 예약 ${guarded.length}건이 포함돼 있어요.\n${names}${guarded.length > 8 ? "…" : ""}\n정말 예약취소할까요? · 재고·보드가 바뀝니다.`,
+        confirmLabel: "예약취소",
         danger: true,
       });
       if (!guardOk) return;
@@ -280,7 +277,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       title: "스마트 등록",
       body: [
         creates.length ? `신규 ${creates.length}건` : null,
-        cancels.length ? `취소반영 ${cancels.length}건` : null,
+        cancels.length ? `예약취소 ${cancels.length}건` : null,
         `플랫폼 ${platformLabel}`,
         skipCount ? `건너뜀 ${skipCount}건` : null,
       ]
@@ -301,17 +298,47 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     const nowIso = new Date().toISOString();
     let step = 0;
 
-    // Cancels first (free stock) then Path A creates — same paste rebook pattern
+    // Cancels first (free stock / record missing cancels) then Path A creates
     for (const row of cancels) {
       step += 1;
       setProgress(`${step} / ${total}`);
-      const live = data.bookings.find((b) => b.id === row.matchBookingId);
-      if (!live || live.status !== "active") {
-        failed.push({ reservationId: row.reservationId || row.guestName, reason: "Hotori에 없거나 이미 취소됨" });
+      if (row.matchBookingId) {
+        const live = data.bookings.find((b) => b.id === row.matchBookingId);
+        if (!live || live.status !== "active") {
+          failed.push({ reservationId: row.reservationId || row.guestName, reason: "Hotori에 없거나 이미 취소됨" });
+          continue;
+        }
+        try {
+          await data.saveBooking(cancelDraftFromMatch(live, nowIso), false);
+          cancelled += 1;
+        } catch (e) {
+          failed.push({
+            reservationId: row.reservationId || row.guestName,
+            reason: saveFailMessage(e),
+          });
+        }
+        continue;
+      }
+      // No match → Path A 미배정 create-as-cancelled (isActive/stock exclude cancelled)
+      const draft = pathACancelDraftFromPreview(row, {
+        platformId,
+        platformLabel,
+        id: crypto.randomUUID(),
+        nowIso,
+      });
+      const platCancel = s.platforms.find((p) => p.id === platformId);
+      const phoneErrCancel = validateGuestPhone(platCancel, draft.guestPhone);
+      if (phoneErrCancel) {
+        failed.push({ reservationId: row.reservationId || row.guestName, reason: phoneErrCancel });
+        continue;
+      }
+      const vCancel = validateBooking(draft, s);
+      if (vCancel) {
+        failed.push({ reservationId: row.reservationId || row.guestName, reason: vCancel });
         continue;
       }
       try {
-        await data.saveBooking(cancelDraftFromMatch(live, nowIso), false);
+        await data.saveBooking(draft, true);
         cancelled += 1;
       } catch (e) {
         failed.push({
@@ -364,7 +391,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     notify(
       `스마트 등록` +
         (saved ? ` 신규 ${saved}` : "") +
-        (cancelled ? ` · 취소반영 ${cancelled}` : "") +
+        (cancelled ? ` · 예약취소 ${cancelled}` : "") +
         (!saved && !cancelled ? " 0건" : "") +
         (skipCount ? ` · 건너뜀 ${skipCount}` : "") +
         (failed.length ? ` · 실패 ${failed.length}` : ""),
@@ -448,7 +475,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   <>
                     {rows.length}행
                     {createTargets.length ? ` · 신규 ${createTargets.length}` : ""}
-                    {cancelTargets.length ? ` · 취소반영 ${cancelTargets.length}` : ""}
+                    {cancelTargets.length ? ` · 예약취소 ${cancelTargets.length}` : ""}
                     {!createTargets.length && !cancelTargets.length && readyCount === 0 ? " · 적용 0" : ""}
                     {fixCount ? ` · 수정필요 ${fixCount}` : ""}
                     {skipCount ? ` · 건너뜀 ${skipCount}` : ""}
@@ -477,7 +504,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
             {summary ? (
               <div className="smart-reg-summary" role="status">
                 신규 {summary.ok}
-                {summary.cancelled ? ` · 취소반영 ${summary.cancelled}` : ""}
+                {summary.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
                 {` · 건너뜀 ${summary.skipped}`}
                 {summary.failed.length
                   ? ` · 실패 ${summary.failed.length} (${summary.failed
@@ -534,7 +561,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                                   ? " cancel"
                                   : r.rowStatus === "need_fix"
                                     ? " fix"
-                                    : r.rowStatus === "dup" || r.rowStatus === "cancel_missing"
+                                    : r.rowStatus === "dup"
                                       ? " dup"
                                       : " skip")
                             }
@@ -638,12 +665,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             type="checkbox"
                             className="smart-reg-skip"
                             checked={r.skip}
-                            disabled={
-                              busy ||
-                              r.dup ||
-                              (r.pasteCancel && !r.matchBookingId) ||
-                              r.rowStatus === "cancel_missing"
-                            }
+                            disabled={busy || r.dup}
                             aria-label="건너뛰기"
                             onChange={(e) => patchRow(r.key, { skip: e.target.checked })}
                           />
