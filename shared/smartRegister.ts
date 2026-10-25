@@ -88,7 +88,7 @@ export const PLATFORM_PROFILES: PlatformProfile[] = [
       typeRaw: ["객실상품"],
     }),
     detectHints: ["야놀자", "yanolja"],
-    statusSkip: ["취소", "취소완료", "노쇼", "no-show", "noshow", "환불"],
+    statusSkip: ["예약취소", "고객취소", "취소", "취소완료", "노쇼", "no-show", "noshow", "환불"],
     version: 1,
     active: true,
   },
@@ -101,7 +101,7 @@ export const PLATFORM_PROFILES: PlatformProfile[] = [
       typeRaw: ["룸네임", "룸 타입"],
     }),
     detectHints: ["여기어때", "goodchoice", "yeogi"],
-    statusSkip: ["취소", "취소완료", "노쇼", "no-show", "noshow", "환불"],
+    statusSkip: ["예약취소", "고객취소", "취소", "취소완료", "노쇼", "no-show", "noshow", "환불"],
     version: 1,
     active: true,
   },
@@ -597,7 +597,7 @@ function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
     break;
   }
 
-  // created datetime · 미리예약 · optional cancel date fragments
+  // created datetime · 미리예약 (stay dates already taken above)
   while (i < lines.length) {
     const l = lines[i]!;
     if (l === "미리예약" || /^\d{4}[./-]/.test(l) || /^\d{1,2}:\d{2}/.test(l)) {
@@ -607,18 +607,28 @@ function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
     break;
   }
 
+  /**
+   * Status scan until 판매가 / next reservation id.
+   * Cancel wins over 예약완료 and over trailing chrome (입실완료 · 입실 호수 · 실제 입실).
+   * Recognize 예약취소 · 고객취소 · same-line / combined forms.
+   */
   let statusRaw = "";
-  if (i < lines.length && /^(예약완료|예약취소)$/.test(lines[i]!)) {
-    statusRaw = lines[i]!;
-    i += 1;
-    while (i < lines.length) {
-      const l = lines[i]!;
-      if (/^판매가/.test(l) || YANOLJA_CARD_RES_ID.test(l)) break;
-      if (/^(입실완료|입실\s*호수|실제\s*입실)/.test(l)) break;
-      // 고객취소 · cancel date/time lines
+  let sawCancel = false;
+  let sawComplete = false;
+  while (i < lines.length) {
+    const l = lines[i]!;
+    if (/^판매가/.test(l) || YANOLJA_CARD_RES_ID.test(l)) break;
+    if (/예약취소|고객취소/.test(l)) sawCancel = true;
+    else if (/예약완료/.test(l)) sawComplete = true;
+    // chrome footer is never a stay/status — skip past, keep scanning for cancel/sale
+    if (/^(입실완료|입실\s*호수|실제\s*입실)/.test(l)) {
       i += 1;
+      continue;
     }
+    i += 1;
   }
+  if (sawCancel) statusRaw = "예약취소";
+  else if (sawComplete) statusRaw = "예약완료";
 
   let amount = "";
   while (i < lines.length) {
@@ -905,10 +915,12 @@ export function normalizeRow(
   };
 }
 
-/** True when paste statusRaw hits profile.statusSkip tokens (취소/cancelled/노쇼…). */
+/** True when paste statusRaw hits profile.statusSkip tokens (예약취소/고객취소/cancelled/노쇼…). */
 export function isCancelStatus(statusRaw: string, profile: PlatformProfile): boolean {
   const statusN = normHeader(statusRaw);
   if (!statusN) return false;
+  // Trailing partner chrome must never count as active stay / non-cancel
+  if (/^입실완료$|^입실\s*호수$|^실제\s*입실/.test(statusN)) return false;
   return profile.statusSkip.some((s) => statusN.includes(normHeader(s)) || normHeader(s) === statusN);
 }
 
@@ -1426,6 +1438,15 @@ export const YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE =
  */
 export const YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-unified-card-paste.txt",
+  import.meta.url,
+);
+
+/**
+ * Owner cancel-miss SoT (anonymized): 예약취소+고객취소 with trailing 입실완료 chrome.
+ * Must classify as cancel / 「예약취소」 — never 신규·수정필요 from footer.
+ */
+export const YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-cancel-miss-card.txt",
   import.meta.url,
 );
 

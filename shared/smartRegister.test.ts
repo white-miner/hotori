@@ -11,6 +11,7 @@ import {
   YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE,
   YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE,
   YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
+  YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
@@ -225,6 +226,82 @@ test("parseYanoljaCardPaste: live owner sample if present", () => {
   assert.equal(t!.rows[1]![2], ""); // 안심번호 만료
   assert.equal(t!.rows[1]![8], "예약취소");
   assert.equal(detectProfile(t!.headers, raw).profileId, "yanolja");
+});
+
+test("yanolja cancel-miss: 예약취소+고객취소 + 입실완료 chrome → 예약취소", () => {
+  const profile = profileById("yanolja")!;
+  const raw = readFileSync(fileURLToPath(YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH), "utf8");
+  const t = parsePasteTable(raw);
+  assert.ok(t);
+  assert.equal(t!.rows.length, 1);
+  assert.equal(t!.rows[0]![8], "예약취소");
+  assert.equal(isCancelStatus(t!.rows[0]![8]!, profile), true);
+
+  const preview = buildPreviewRows(t!, profile, settings, [], "p-ya");
+  assert.equal(preview[0]!.pasteCancel, true);
+  assert.equal(preview[0]!.rowStatus, "cancel");
+  assert.equal(preview[0]!.matchBookingId, null);
+  assert.equal(preview[0]!.statusRaw, "예약취소");
+
+  // Exact owner miss sample (PII) when present on disk
+  const ownerMiss =
+    "/cursor/stores/bc-fc855f4a-4cd7-41f6-8016-26e7dc29c864/internal/yanolja-cancel-miss-sample.txt";
+  if (existsSync(ownerMiss)) {
+    const live = parsePasteTable(readFileSync(ownerMiss, "utf8"))!;
+    assert.equal(live.rows[0]![8], "예약취소");
+    const livePreview = buildPreviewRows(live, profile, settings, [], "p-ya");
+    assert.equal(livePreview[0]!.rowStatus, "cancel");
+    assert.equal(livePreview[0]!.pasteCancel, true);
+  }
+});
+
+test("yanolja card status: cancel wins over 예약완료 / 고객취소-only / chrome", () => {
+  const profile = profileById("yanolja")!;
+  const base = (statusBlock: string) =>
+    [
+      "2610152133600141",
+      "이샘플",
+      "안심번호 만료",
+      "차량",
+      "온돌ㅣVIP",
+      "(객실 타입 ID: 14810)",
+      "숙박",
+      "/ 1박",
+      "2026.10.26(월) 17:00",
+      "2026.10.27(화) 12:00",
+      "2026.10.15(목) 21:33:45",
+      "미리예약",
+      statusBlock,
+      "판매가 90,000원",
+      "입금예정가 81,000원",
+      "입실완료",
+      "입실 호수",
+      "실제 입실 인원",
+    ].join("\n");
+
+  const cases: { name: string; block: string }[] = [
+    { name: "고객취소 only", block: "고객취소\n2026.10.16(금)\n10:01:05" },
+    { name: "고객취소 before 예약취소", block: "고객취소\n예약취소" },
+    { name: "예약완료 then 예약취소", block: "예약완료\n예약취소\n고객취소" },
+    { name: "same line", block: "예약취소 고객취소" },
+    { name: "chrome before sale still cancel", block: "예약취소\n고객취소\n입실완료\n입실 호수" },
+  ];
+
+  for (const c of cases) {
+    const t = parseYanoljaCardPaste(base(c.block));
+    assert.ok(t, c.name);
+    assert.equal(t!.rows[0]![8], "예약취소", c.name);
+    const preview = buildPreviewRows(t!, profile, settings, [], "p-ya");
+    assert.equal(preview[0]!.rowStatus, "cancel", c.name);
+    assert.equal(preview[0]!.pasteCancel, true, c.name);
+  }
+
+  // Active stay: 예약완료 + trailing 입실완료 chrome must stay non-cancel
+  const active = parseYanoljaCardPaste(base("예약완료"));
+  assert.equal(active!.rows[0]![8], "예약완료");
+  assert.equal(isCancelStatus("예약완료", profile), false);
+  assert.equal(isCancelStatus("입실완료", profile), false);
+  assert.equal(isCancelStatus("고객취소", profile), true);
 });
 
 test("detectProfile: yanolja hypothesis fixture confident", () => {
