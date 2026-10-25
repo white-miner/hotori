@@ -81,10 +81,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const platformId = profile ? matchPlatformId(profile, s) : null;
   const platformLabel = profile?.label ?? "플랫폼";
 
+  const channelLabels = useMemo(
+    () =>
+      (s.platforms ?? []).flatMap((p) =>
+        [p.name, p.abbr].filter((x): x is string => typeof x === "string" && x.trim().length > 0),
+      ),
+    [s.platforms],
+  );
+
   const rebuild = useCallback(
     (text: string, forcedId: PlatformProfileId | null, forced: boolean) => {
       setSummary(null);
-      const table = parsePasteTable(text);
+      const table = parsePasteTable(text, { channelLabels });
       if (!table) {
         setRows([]);
         setParseErr(
@@ -122,7 +130,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       setRows(preview);
       setParseErr(null);
     },
-    [s, data.bookings],
+    [s, data.bookings, channelLabels],
   );
 
   const onPasteChange = (v: string) => {
@@ -164,11 +172,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
   /** Preview → persist alias for this platformTypeName (nice-to-have). */
   const saveAliasFromRow = async (r: PreviewRow) => {
-    if (readOnly || busy || !platformId || !r.typeId || !r.typeRaw.trim()) return;
+    const aliasPlat = r.platformId ?? platformId;
+    if (readOnly || busy || !aliasPlat || !r.typeId || !r.typeRaw.trim()) return;
     const name = r.typeRaw.trim();
     const nextAliases = upsertTypeAlias(
       s.typeAliases ?? [],
-      { platformId, platformTypeName: name, typeId: r.typeId },
+      { platformId: aliasPlat, platformTypeName: name, typeId: r.typeId },
       () => uid("ta"),
     );
     try {
@@ -186,10 +195,16 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     (r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup",
   ).length;
   const fixCount = rows.filter((r) => !r.skip && r.rowStatus === "need_fix").length;
+  const actionableMissingPlatform = [...createTargets, ...cancelTargets].some((r) => !r.platformId);
 
   const mount = async () => {
     if (readOnly || busy) return;
-    if (!profile || !platformId) {
+    if (!profile) {
+      notify("설정에 맞는 플랫폼이 없어요. 설정에서 채널을 추가해 주세요.");
+      return;
+    }
+    const actionable = rows.filter((r) => !r.skip && (r.rowStatus === "ok" || r.rowStatus === "cancel"));
+    if (actionable.some((r) => !r.platformId)) {
       notify("설정에 맞는 플랫폼이 없어요. 설정에서 채널을 추가해 주세요.");
       return;
     }
@@ -237,7 +252,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               id: `__sr_${tid}_${k}`,
               kind: "stay",
               status: "active",
-              platformId,
+              platformId: creates[0]?.platformId ?? platformId ?? "p",
               price: 0,
               guestName: "_",
               typeId: tid,
@@ -273,12 +288,17 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       }
     }
 
+    const platNames = [
+      ...new Set(
+        [...creates, ...cancels].map((r) => r.platformLabel).filter((x) => x.trim().length > 0),
+      ),
+    ];
     const ok = await askConfirm({
       title: "스마트 등록",
       body: [
         creates.length ? `신규 ${creates.length}건` : null,
         cancels.length ? `예약취소 ${cancels.length}건` : null,
-        `플랫폼 ${platformLabel}`,
+        platNames.length ? `플랫폼 ${platNames.join("·")}` : `플랫폼 ${platformLabel}`,
         skipCount ? `건너뜀 ${skipCount}건` : null,
       ]
         .filter(Boolean)
@@ -320,13 +340,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         continue;
       }
       // No match → Path A 미배정 create-as-cancelled (isActive/stock exclude cancelled)
+      const rowPlatId = row.platformId!;
+      const rowPlatLabel = row.platformLabel || platformLabel;
       const draft = pathACancelDraftFromPreview(row, {
-        platformId,
-        platformLabel,
+        platformId: rowPlatId,
+        platformLabel: rowPlatLabel,
         id: crypto.randomUUID(),
         nowIso,
       });
-      const platCancel = s.platforms.find((p) => p.id === platformId);
+      const platCancel = s.platforms.find((p) => p.id === rowPlatId);
       const phoneErrCancel = validateGuestPhone(platCancel, draft.guestPhone);
       if (phoneErrCancel) {
         failed.push({ reservationId: row.reservationId || row.guestName, reason: phoneErrCancel });
@@ -351,13 +373,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     for (const row of creates) {
       step += 1;
       setProgress(`${step} / ${total}`);
+      const rowPlatId = row.platformId!;
+      const rowPlatLabel = row.platformLabel || platformLabel;
       const draft = pathADraftFromPreview(row, {
-        platformId,
-        platformLabel,
+        platformId: rowPlatId,
+        platformLabel: rowPlatLabel,
         id: crypto.randomUUID(),
         nowIso,
       });
-      const plat = s.platforms.find((p) => p.id === platformId);
+      const plat = s.platforms.find((p) => p.id === rowPlatId);
       const phoneErr = validateGuestPhone(plat, draft.guestPhone);
       if (phoneErr) {
         failed.push({ reservationId: row.reservationId || row.guestName, reason: phoneErr });
@@ -463,8 +487,13 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               </div>
             ) : null}
             {parseErr ? <div className="err">{parseErr}</div> : null}
-            {!platformId && profile ? (
+            {!platformId && profile && !rows.some((r) => r.platformId) ? (
               <div className="err">설정 → 플랫폼에 「{profile.label}」을 추가해 주세요.</div>
+            ) : null}
+            {rows.some((r) => r.nestedChannelUnmatched) ? (
+              <div className="sub">
+                중첩 채널 라벨이 설정 플랫폼과 안 맞아요 → 붙여넣기 프로필({profile?.label})로 올려요.
+              </div>
             ) : null}
           </aside>
 
@@ -487,7 +516,13 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <button
                 type="button"
                 className="btn stop"
-                disabled={readOnly || busy || !readyCount || !!fixCount || !platformId}
+                disabled={
+                  readOnly ||
+                  busy ||
+                  !readyCount ||
+                  !!fixCount ||
+                  actionableMissingPlatform
+                }
                 onClick={() => void mount()}
               >
                 {busy ? (
@@ -577,6 +612,20 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             onChange={(e) => patchRow(r.key, { guestName: e.target.value })}
                             aria-label="이름"
                           />
+                          {r.nestedChannelRaw ? (
+                            <div
+                              className="sub"
+                              title={
+                                r.nestedChannelUnmatched
+                                  ? `설정에 「${r.nestedChannelRaw}」 없음 · ${r.platformLabel}로 유지`
+                                  : undefined
+                              }
+                            >
+                              {r.nestedChannelUnmatched
+                                ? `${r.nestedChannelRaw} · 미연결`
+                                : r.platformLabel}
+                            </div>
+                          ) : null}
                         </td>
                         <td>
                           <Inp
@@ -602,7 +651,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             ))}
                           </select>
                           {r.typeRaw ? <div className="sub">{r.typeRaw}</div> : null}
-                          {!readOnly && r.typeRaw.trim() && r.typeId && platformId && !r.skip ? (
+                          {!readOnly && r.typeRaw.trim() && r.typeId && (r.platformId ?? platformId) && !r.skip ? (
                             <button
                               type="button"
                               className="smart-reg-save-alias"
