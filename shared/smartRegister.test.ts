@@ -30,6 +30,7 @@ import {
   matchTypeId,
   normalizeRow,
   normTypeName,
+  typeRawForAliasMatch,
   parseAmount,
   parseLooseDate,
   parseNightsCell,
@@ -604,10 +605,24 @@ test("matchPlatformId + type fuzzy", () => {
   assert.equal(matchTypeId("없는타입", settings), null);
 });
 
-test("normTypeName: trim · collapse spaces · casefold", () => {
+test("normTypeName: trim · collapse spaces · casefold · unify ㅣ/|", () => {
   assert.equal(normTypeName("  스탠다드\u00a0더블  "), "스탠다드 더블");
   assert.equal(normTypeName("Deluxe  Twin"), "deluxe twin");
   assert.equal(normTypeName("A\u200bB"), "ab");
+  assert.equal(normTypeName("Family RoomㅣVIP"), "family room|vip");
+  assert.equal(normTypeName("Family Room|VIP"), "family room|vip");
+});
+
+test("typeRawForAliasMatch: strip 객실 타입 ID + trailing amenity (...)", () => {
+  assert.equal(
+    typeRawForAliasMatch("Family RoomㅣVIP(퀸베드1+이층침대1ㅣ스타일러ㅣ공기청정기ㅣ욕조)"),
+    "Family RoomㅣVIP",
+  );
+  assert.equal(
+    typeRawForAliasMatch("Family RoomㅣVIP(퀸베드1+이층침대1ㅣ스타일러ㅣ공기청정기ㅣ욕조)\n(객실 타입 ID: 51833)"),
+    "Family RoomㅣVIP",
+  );
+  assert.equal(typeRawForAliasMatch("온돌ㅣVIP"), "온돌ㅣVIP");
 });
 
 test("type alias: lookup + resolve before fuzzy", () => {
@@ -628,6 +643,48 @@ test("type alias: lookup + resolve before fuzzy", () => {
   // other platform → no alias → fuzzy may hit 스탠다드
   assert.equal(matchTypeId("스탠다드 더블(넷플릭스)", withAlias, "p-ye"), "std");
   assert.equal(matchTypeId("완전없는이름XYZ", withAlias, "p-ya"), null);
+});
+
+test("type alias: Family RoomㅣVIP + amenity paste → 패밀리룸 (not 수정필요)", () => {
+  const withFamily = normalizeSettings({
+    ...settings,
+    types: [
+      ...settings.types,
+      { id: "family", name: "패밀리룸" },
+    ],
+    typeAliases: [
+      {
+        id: "ta-fam",
+        platformId: "p-ya",
+        platformTypeName: "Family RoomㅣVIP",
+        typeId: "family",
+      },
+      // shorter prefix must lose to longest
+      {
+        id: "ta-short",
+        platformId: "p-ya",
+        platformTypeName: "Family Room",
+        typeId: "std",
+      },
+    ],
+  });
+  const pasteType =
+    "Family RoomㅣVIP(퀸베드1+이층침대1ㅣ스타일러ㅣ공기청정기ㅣ욕조)\n(객실 타입 ID: 51833)";
+  assert.equal(lookupTypeAlias(withFamily.typeAliases, "p-ya", pasteType), "family");
+  assert.equal(matchTypeId(pasteType, withFamily, "p-ya"), "family");
+
+  // live sample card → preview row not need_fix from type alone
+  const samplePath =
+    "/cursor/stores/bc-fc855f4a-4cd7-41f6-8016-26e7dc29c864/internal/yanolja-family-room-type-match-sample.txt";
+  if (existsSync(samplePath)) {
+    const profile = profileById("yanolja")!;
+    const t = parsePasteTable(readFileSync(samplePath, "utf8"));
+    assert.ok(t);
+    assert.match(t!.rows[0]![3]!, /^Family Room/);
+    const preview = buildPreviewRows(t!, profile, withFamily, [], "p-ya");
+    assert.equal(preview[0]!.typeId, "family");
+    assert.notEqual(preview[0]!.rowStatus, "need_fix");
+  }
 });
 
 test("upsertTypeAlias replaces same normalized name · removeTypeAlias", () => {
