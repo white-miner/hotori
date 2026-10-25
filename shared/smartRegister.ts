@@ -609,7 +609,8 @@ function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
 
   /**
    * Status scan until 판매가 / next reservation id.
-   * Cancel wins over 예약완료 and over trailing chrome (입실완료 · 입실 호수 · 실제 입실).
+   * Cancel wins over any 예약완료 (incl. checkbox / 특·직접관리 UI chrome) and over
+   * trailing footer (입실완료 · 입실 호수 · 실제 입실).
    * Recognize 예약취소 · 고객취소 · same-line / combined forms.
    */
   let statusRaw = "";
@@ -1447,6 +1448,15 @@ export const YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH = new URL(
  */
 export const YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-cancel-miss-card.txt",
+  import.meta.url,
+);
+
+/**
+ * Owner chrome SoT (anonymized): cancel card that also drags checkbox / 특·직접관리 UI
+ * and a partner-center 「예약완료」 box. Cancel must win — chrome 예약완료 is not stay status.
+ */
+export const YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-cancel-chrome-complete-card.txt",
   import.meta.url,
 );
 
