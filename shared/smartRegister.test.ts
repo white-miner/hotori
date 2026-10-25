@@ -13,6 +13,7 @@ import {
   YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
   YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH,
   YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH,
+  YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
@@ -23,11 +24,14 @@ import {
   isCancelGuardBlocked,
   isCancelStatus,
   isDuplicateReservation,
+  isKnownNestedChannelLabel,
   looksLikeYanoljaCardPaste,
   lookupTypeAlias,
   mapColumns,
+  matchPlatformByLabel,
   matchPlatformId,
   matchTypeId,
+  matchTypeIdNested,
   normalizeRow,
   normTypeName,
   typeRawForAliasMatch,
@@ -49,12 +53,14 @@ const settings = normalizeSettings({
   platforms: [
     { id: "p-ya", name: "야놀자", abbr: "야" },
     { id: "p-ye", name: "여기어때", abbr: "여" },
+    { id: "p-ag", name: "아고다", abbr: "아" },
     { id: "p-walk", name: "현장·전화", abbr: "현", onsite: true },
   ],
   types: [
     { id: "std", name: "스탠다드" },
     { id: "dlx", name: "디럭스" },
     { id: "ondol", name: "온돌" },
+    { id: "twin", name: "트윈" },
   ],
 });
 
@@ -731,4 +737,178 @@ test("memo dedupe by platform + 예약번호", () => {
 test("seed profiles: active = yanolja+yeogi only (hypothesis fixtures)", () => {
   const active = PLATFORM_PROFILES.filter((p) => p.active).map((p) => p.id).sort();
   assert.deepEqual(active, ["yanolja", "yeogi"]);
+});
+
+test("isKnownNestedChannelLabel: allowlist only — never eat guest names", () => {
+  assert.equal(isKnownNestedChannelLabel("아고다"), true);
+  assert.equal(isKnownNestedChannelLabel("Agoda"), true);
+  assert.equal(isKnownNestedChannelLabel("여기어때"), true);
+  assert.equal(isKnownNestedChannelLabel("야놀자"), true);
+  assert.equal(isKnownNestedChannelLabel("Sumi Lee"), false);
+  assert.equal(isKnownNestedChannelLabel("김한나"), false);
+  assert.equal(isKnownNestedChannelLabel("도보"), false);
+  assert.equal(isKnownNestedChannelLabel("Twinㅣ트윈"), false);
+  assert.equal(isKnownNestedChannelLabel("0507-0418-4303"), false);
+  // hotel platform name beyond seed allowlist
+  assert.equal(isKnownNestedChannelLabel("호텔타임", ["호텔타임", "호"]), true);
+  assert.equal(isKnownNestedChannelLabel("완전모르는채널XYZ"), false);
+});
+
+test("yanolja nested 아고다 card: shift fields + platform=아고다 + Twin alias", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH), "utf8");
+  assert.equal(looksLikeYanoljaCardPaste(raw), true);
+
+  const card = parseYanoljaCardPaste(raw);
+  assert.ok(card);
+  assert.equal(card!.rows.length, 1);
+  const row = card!.rows[0]!;
+  assert.equal(row[0], "2610211864975519");
+  assert.equal(row[1], "Sumi Lee"); // NOT 아고다
+  assert.equal(row[2], "0507-0418-4303");
+  assert.match(row[3]!, /^Twin/);
+  assert.match(row[4]!, /^2026\.10\.28/);
+  assert.equal(row[6], "1");
+  assert.equal(row[7], "70000");
+  assert.equal(row[8], "예약완료");
+  assert.equal(row[9], "아고다");
+
+  const viaPaste = parsePasteTable(raw);
+  assert.ok(viaPaste);
+  assert.equal(detectProfile(viaPaste!.headers, raw).profileId, "yanolja");
+
+  const withTwinAlias = normalizeSettings({
+    ...settings,
+    typeAliases: [
+      {
+        id: "ta-ag-twin",
+        platformId: "p-ag",
+        platformTypeName: "Twinㅣ트윈",
+        typeId: "twin",
+      },
+      // source (야놀자) alias would wrongly map if nested skipped
+      {
+        id: "ta-ya-twin",
+        platformId: "p-ya",
+        platformTypeName: "Twinㅣ트윈",
+        typeId: "std",
+      },
+    ],
+  });
+  assert.equal(matchPlatformByLabel("아고다", withTwinAlias)?.id, "p-ag");
+  assert.equal(
+    matchTypeIdNested("Twinㅣ트윈(더블1+싱글1ㅣ공기청정기)", withTwinAlias, "p-ag", "p-ya"),
+    "twin",
+  );
+
+  const profile = profileById("yanolja")!;
+  const preview = buildPreviewRows(viaPaste!, profile, withTwinAlias, [], "p-ya");
+  assert.equal(preview.length, 1);
+  assert.equal(preview[0]!.guestName, "Sumi Lee");
+  assert.equal(preview[0]!.guestPhone, "0507-0418-4303");
+  assert.equal(preview[0]!.nestedChannelRaw, "아고다");
+  assert.equal(preview[0]!.platformId, "p-ag");
+  assert.equal(preview[0]!.platformLabel, "아고다");
+  assert.equal(preview[0]!.nestedChannelUnmatched, false);
+  assert.equal(preview[0]!.typeId, "twin");
+  assert.equal(preview[0]!.checkIn, "2026-10-28");
+  assert.equal(preview[0]!.nights, 1);
+  assert.equal(preview[0]!.amount, 70000);
+  assert.equal(preview[0]!.rowStatus, "ok");
+
+  const draft = pathADraftFromPreview(preview[0]!, {
+    platformId: preview[0]!.platformId!,
+    platformLabel: preview[0]!.platformLabel,
+    id: "b-nested",
+    nowIso: "2026-10-25T00:00:00.000Z",
+  });
+  assert.equal(draft.platformId, "p-ag");
+  assert.match(draft.memo ?? "", /아고다 예약번호 2610211864975519/);
+
+  // live owner sample path (same bytes) when present
+  const live =
+    "/cursor/stores/bc-fc855f4a-4cd7-41f6-8016-26e7dc29c864/internal/yanolja-nested-agoda-sample.txt";
+  if (existsSync(live)) {
+    const liveCard = parseYanoljaCardPaste(readFileSync(live, "utf8"))!;
+    assert.equal(liveCard.rows[0]![1], "Sumi Lee");
+    assert.equal(liveCard.rows[0]![9], "아고다");
+  }
+});
+
+test("yanolja nested unknown channel: do not eat guest · keep source platform", () => {
+  const block = [
+    "2610211864975519",
+    "완전모르는채널XYZ",
+    "Sumi Lee",
+    "0507-0418-4303",
+    "도보",
+    "Twinㅣ트윈",
+    "(객실 타입 ID: 318106)",
+    "숙박",
+    "/ 1박",
+    "2026.10.28(수) 16:00",
+    "2026.10.29(목) 12:00",
+    "미리예약",
+    "예약완료",
+    "판매가 70,000원",
+  ].join("\n");
+  // unknown → treated as guestName (confident allowlist only)
+  const card = parseYanoljaCardPaste(block)!;
+  assert.equal(card.rows[0]![1], "완전모르는채널XYZ");
+  assert.equal(card.rows[0]![9], "");
+
+  // allowlist Agoda without Settings platform → nested kept, source platform
+  const noAgoda = normalizeSettings({
+    platforms: [
+      { id: "p-ya", name: "야놀자", abbr: "야" },
+      { id: "p-walk", name: "현장·전화", abbr: "현", onsite: true },
+    ],
+    types: settings.types,
+  });
+  const agodaBlock = [
+    "2610211864975519",
+    "아고다",
+    "Sumi Lee",
+    "0507-0418-4303",
+    "도보",
+    "Twinㅣ트윈",
+    "(객실 타입 ID: 318106)",
+    "숙박",
+    "/ 1박",
+    "2026.10.28(수) 16:00",
+    "2026.10.29(목) 12:00",
+    "미리예약",
+    "예약완료",
+    "판매가 70,000원",
+  ].join("\n");
+  const t = parsePasteTable(agodaBlock)!;
+  const preview = buildPreviewRows(t, profileById("yanolja")!, noAgoda, [], "p-ya");
+  assert.equal(preview[0]!.guestName, "Sumi Lee");
+  assert.equal(preview[0]!.nestedChannelRaw, "아고다");
+  assert.equal(preview[0]!.nestedChannelUnmatched, true);
+  assert.equal(preview[0]!.platformId, "p-ya");
+  assert.equal(preview[0]!.platformLabel, "야놀자");
+});
+
+test("normal yanolja card unchanged when no nested channel line", () => {
+  const block = [
+    "2610151829300184",
+    "김한나",
+    "0503-7330-6938",
+    "차량",
+    "Family RoomㅣVIP(퀸베드1)",
+    "(객실 타입 ID: 51833)",
+    "숙박",
+    "/ 2박",
+    "2026.10.26(월) 17:00",
+    "2026.10.28(수) 12:00",
+    "미리예약",
+    "예약완료",
+    "판매가 200,000원",
+  ].join("\n");
+  const card = parseYanoljaCardPaste(block)!;
+  assert.equal(card.rows[0]![1], "김한나");
+  assert.equal(card.rows[0]![9], "");
+  const preview = buildPreviewRows(card, profileById("yanolja")!, settings, [], "p-ya");
+  assert.equal(preview[0]!.platformId, "p-ya");
+  assert.equal(preview[0]!.nestedChannelRaw, "");
 });

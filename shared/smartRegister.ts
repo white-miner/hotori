@@ -507,10 +507,114 @@ const YANOLJA_CARD_HEADERS = [
   "박수",
   "판매금액",
   "상태",
+  /** Nested OTA when hub resells (야놀자→아고다 등). Empty on normal cards. */
+  "판매채널",
 ] as const;
+
+/** Extra OTA names seen in hub partner UIs (inventory share / resale). */
+const EXTRA_NESTED_CHANNEL_ALIASES = [
+  "아고다",
+  "agoda",
+  "야놀자",
+  "yanolja",
+  "여기어때",
+  "goodchoice",
+  "yeogi",
+  "네이버",
+  "naver",
+  "부킹닷컴",
+  "booking.com",
+  "booking",
+  "익스피디아",
+  "expedia",
+  "호텔스닷컴",
+  "hotels.com",
+  "에어비앤비",
+  "airbnb",
+  "트립닷컴",
+  "trip.com",
+  "씨트립",
+  "호텔타임",
+];
 
 function normalizePasteLine(line: string): string {
   return line.replace(/[\u200b\u200c\u200d\ufeff\u00a0]/g, "").trim();
+}
+
+/**
+ * True when a card line after reservation id is a **known** nested OTA/channel label
+ * (not a guest name). Allowlist + optional hotel platform names — never guess.
+ */
+export function isKnownNestedChannelLabel(
+  line: string,
+  extraLabels?: readonly string[] | null,
+): boolean {
+  const raw = normalizePasteLine(line);
+  if (!raw || raw.length > 32) return false;
+  // Never eat phone / date / type / visit / amenity lines
+  if (YANOLJA_CARD_RES_ID.test(raw)) return false;
+  if (/^[\d+\-]+$/.test(raw) || /^0\d/.test(raw)) return false;
+  if (/^\d{4}[./-]/.test(raw)) return false;
+  if (/[ㅣ|]/.test(raw)) return false;
+  if (/객실|타입\s*ID|판매가|입금|숙박|연박|차량|도보|안심번호|미리예약|예약완료|예약취소|고객취소/.test(raw)) {
+    return false;
+  }
+  const n = normHeader(raw);
+  if (!n) return false;
+
+  for (const p of PLATFORM_PROFILES) {
+    if (normHeader(p.label) === n) return true;
+    for (const kw of [...p.hotoriPlatformMatch, ...p.detectHints]) {
+      if (normHeader(kw) === n) return true;
+    }
+  }
+  for (const a of EXTRA_NESTED_CHANNEL_ALIASES) {
+    if (normHeader(a) === n) return true;
+  }
+  if (extraLabels?.length) {
+    for (const lab of extraLabels) {
+      const b = normHeader(lab);
+      if (!b) continue;
+      // Exact name/abbr only (confident). Short abbr (1 grapheme) must equal whole line.
+      if (b === n) return true;
+    }
+  }
+  return false;
+}
+
+/** Resolve nested channel label → Hotori Settings platform (name/abbr / profile keywords). */
+export function matchPlatformByLabel(
+  label: string,
+  s: HotelSettings,
+): { id: string; name: string } | null {
+  const raw = label.trim();
+  if (!raw) return null;
+  const n = normHeader(raw);
+  const plats = s.platforms ?? [];
+  // 1) Exact / includes on hotel platform name or abbr
+  for (const p of plats) {
+    const name = normHeader(p.name ?? "");
+    const abbr = normHeader(p.abbr ?? "");
+    if (!name && !abbr) continue;
+    if (name === n || abbr === n) return { id: p.id, name: p.name };
+    if (name && n.length >= 2 && (name.includes(n) || n.includes(name))) {
+      return { id: p.id, name: p.name };
+    }
+  }
+  // 2) Label hits a seed profile → that profile's hotoriPlatformMatch against settings
+  for (const prof of PLATFORM_PROFILES) {
+    const hit =
+      normHeader(prof.label) === n ||
+      prof.hotoriPlatformMatch.some((k) => normHeader(k) === n) ||
+      prof.detectHints.some((k) => normHeader(k) === n);
+    if (!hit) continue;
+    const id = matchPlatformId(prof, s);
+    if (id) {
+      const p = plats.find((x) => x.id === id);
+      if (p) return { id: p.id, name: p.name };
+    }
+  }
+  return null;
 }
 
 /**
@@ -535,13 +639,29 @@ export function looksLikeYanoljaCardPaste(text: string): boolean {
   return (hasNights || hasSale) && (hasStatus || hasTypeId);
 }
 
+export type ParsePasteOpts = {
+  /** Hotel platforms[].name/abbr — confident nested-channel detection beyond seed allowlist. */
+  channelLabels?: readonly string[] | null;
+};
+
 /** Parse one card block (starts with reservation id) → synthetic table row. */
-function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
+function parseYanoljaCardBlock(
+  blockLines: string[],
+  channelLabels?: readonly string[] | null,
+): string[] | null {
   const lines = blockLines.map(normalizePasteLine).filter((l) => l.length > 0);
   if (!lines.length || !YANOLJA_CARD_RES_ID.test(lines[0]!)) return null;
 
   const reservationId = lines[0]!;
   let i = 1;
+
+  /** Hub resale line (아고다 등) — not guestName. Shift remaining fields. */
+  let nestedChannel = "";
+  if (i < lines.length && isKnownNestedChannelLabel(lines[i]!, channelLabels)) {
+    nestedChannel = lines[i]!;
+    i += 1;
+  }
+
   const guestName = lines[i++] ?? "";
 
   let guestPhone = "";
@@ -653,6 +773,7 @@ function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
     nights,
     amount,
     statusRaw,
+    nestedChannel,
   ];
 }
 
@@ -660,7 +781,7 @@ function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
  * 야놀자 통합내역 vertical card paste → synthetic TSV table
  * (headers match yanolja profile aliases so detect/map reuse Path A).
  */
-export function parseYanoljaCardPaste(raw: string): ParsedPasteTable | null {
+export function parseYanoljaCardPaste(raw: string, opts?: ParsePasteOpts): ParsedPasteTable | null {
   if (!looksLikeYanoljaCardPaste(raw)) return null;
   const lines = raw
     .replace(/^\uFEFF/, "")
@@ -679,7 +800,7 @@ export function parseYanoljaCardPaste(raw: string): ParsedPasteTable | null {
   for (let s = 0; s < starts.length; s++) {
     const from = starts[s]!;
     const to = s + 1 < starts.length ? starts[s + 1]! : lines.length;
-    const row = parseYanoljaCardBlock(lines.slice(from, to));
+    const row = parseYanoljaCardBlock(lines.slice(from, to), opts?.channelLabels);
     if (row) rows.push(row);
   }
   if (!rows.length) return null;
@@ -692,7 +813,7 @@ export function parseYanoljaCardPaste(raw: string): ParsedPasteTable | null {
  * vertical/collapsed reassembly → tab/pipe/comma/2+ spaces → single-space
  * fallback when column count matches header aliases.
  */
-export function parsePasteTable(raw: string): ParsedPasteTable | null {
+export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPasteTable | null {
   let text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!text) return null;
 
@@ -703,7 +824,7 @@ export function parsePasteTable(raw: string): ParsedPasteTable | null {
   }
 
   // 야놀자 통합내역 drag-copy SoT: vertical card stack (not TSV)
-  const card = parseYanoljaCardPaste(text);
+  const card = parseYanoljaCardPaste(text, opts);
   if (card) return card;
 
   const aliasNorms = allHeaderAliasNorms();
@@ -1080,21 +1201,69 @@ export function removeTypeAlias(aliases: TypeAlias[], id: string): TypeAlias[] {
 }
 
 /**
+ * Alias match ignoring platformId (any hotel×platform alias that fits typeRaw).
+ * Same amenity/prefix / longest rules as lookupTypeAlias.
+ */
+export function lookupTypeAliasAnyPlatform(
+  aliases: TypeAlias[] | undefined,
+  platformTypeName: string,
+  typeIds?: ReadonlySet<string>,
+): string | null {
+  if (!aliases?.length) return null;
+  const fullKey = normTypeName(platformTypeName);
+  const strippedKey = normTypeName(typeRawForAliasMatch(platformTypeName));
+  if (!fullKey && !strippedKey) return null;
+
+  let best: { typeId: string; len: number; idx: number } | null = null;
+  for (let i = 0; i < aliases.length; i++) {
+    const a = aliases[i]!;
+    const aliasKey = normTypeName(a.platformTypeName);
+    if (!aliasKey) continue;
+    const hit =
+      aliasMatchesTypeKey(fullKey, aliasKey) ||
+      (strippedKey !== fullKey && aliasMatchesTypeKey(strippedKey, aliasKey));
+    if (!hit) continue;
+    if (typeIds && !typeIds.has(a.typeId)) continue;
+    if (!best || aliasKey.length > best.len || (aliasKey.length === best.len && i >= best.idx)) {
+      best = { typeId: a.typeId, len: aliasKey.length, idx: i };
+    }
+  }
+  return best?.typeId ?? null;
+}
+
+/**
  * Resolve OTA type string → hotel typeId.
  * Order: **1) hotel type alias (platform)** → **2) fuzzy heuristics**.
+ * Optional `alsoPlatformIds` / nested cascade: nested → source → any-platform → fuzzy.
  */
 export function matchTypeId(
   typeRaw: string,
   s: HotelSettings,
   platformId?: string | null,
+  opts?: { alsoPlatformIds?: readonly (string | null | undefined)[]; anyPlatformAlias?: boolean },
 ): string | null {
   const raw = typeRaw.trim();
   if (!raw) return null;
   const types = usableTypes(s.types).filter((t) => typeLabel(t));
   const usableIds = new Set(types.map((t) => t.id));
 
-  const aliased = lookupTypeAlias(s.typeAliases, platformId, raw, usableIds);
-  if (aliased) return aliased;
+  const tried = new Set<string>();
+  const order: string[] = [];
+  if (platformId) order.push(platformId);
+  for (const id of opts?.alsoPlatformIds ?? []) {
+    if (id) order.push(id);
+  }
+  for (const pid of order) {
+    if (tried.has(pid)) continue;
+    tried.add(pid);
+    const aliased = lookupTypeAlias(s.typeAliases, pid, raw, usableIds);
+    if (aliased) return aliased;
+  }
+
+  if (opts?.anyPlatformAlias) {
+    const anyHit = lookupTypeAliasAnyPlatform(s.typeAliases, raw, usableIds);
+    if (anyHit) return anyHit;
+  }
 
   const n = normTypeName(raw);
   // exact label
@@ -1111,6 +1280,22 @@ export function matchTypeId(
     if (score > 0 && (!best || score > best.score)) best = { id: t.id, score };
   }
   return best?.id ?? null;
+}
+
+/**
+ * Nested hub paste type resolve: nested platform aliases → paste-source platform →
+ * any-platform alias → fuzzy.
+ */
+export function matchTypeIdNested(
+  typeRaw: string,
+  s: HotelSettings,
+  nestedPlatformId: string | null,
+  sourcePlatformId: string | null,
+): string | null {
+  return matchTypeId(typeRaw, s, nestedPlatformId, {
+    alsoPlatformIds: [sourcePlatformId],
+    anyPlatformAlias: true,
+  });
 }
 
 /** Match profile → Settings platform id. */
@@ -1189,6 +1374,25 @@ export interface PreviewRow {
   /** Matched booking is arrived or checked-out — danger / default skip */
   cancelGuard: boolean;
   rowStatus: PreviewRowStatus;
+  /**
+   * Nested OTA label from hub paste (e.g. 아고다 on 야놀자 통합내역).
+   * Empty when card has no channel line.
+   */
+  nestedChannelRaw: string;
+  /**
+   * Effective Hotori platform for this row (nested match wins; else paste-source).
+   * Mount / type alias / cancel match use this — not always the profile chip.
+   */
+  platformId: string | null;
+  /** Display label for effective platform (nested name or profile label). */
+  platformLabel: string;
+  /** Nested label present but no Settings platform match — show optional chip. */
+  nestedChannelUnmatched: boolean;
+}
+
+function nestedChannelFromRow(table: ParsedPasteTable, row: string[]): string {
+  const idx = table.headers.findIndex((h) => normHeader(h) === normHeader("판매채널"));
+  return idx >= 0 ? cellAt(row, idx) : "";
 }
 
 export function buildPreviewRows(
@@ -1200,27 +1404,35 @@ export function buildPreviewRows(
 ): PreviewRow[] {
   const colMap = mapColumns(table.headers, profile);
   const list = existing as BookingReservationPick[];
+  const sourceLabel = profile.label;
   return table.rows.map((row, i) => {
     const n = normalizeRow(row, colMap, profile);
-    const typeId = matchTypeId(n.typeRaw, s, platformId);
+    const nestedRaw = nestedChannelFromRow(table, row);
+    const nestedHit = nestedRaw ? matchPlatformByLabel(nestedRaw, s) : null;
+    // Matched nested → that Hotori platform; unknown nested chip only → keep paste-source platform
+    const rowPlatformId = nestedHit?.id ?? platformId;
+    const rowPlatformLabel = nestedHit?.name ?? sourceLabel;
+    const nestedChannelUnmatched = !!nestedRaw && !nestedHit;
+
+    const typeId = matchTypeIdNested(n.typeRaw, s, nestedHit?.id ?? null, platformId);
     const pasteCancel = n.isCancelStatus;
     const match =
-      pasteCancel && platformId && n.reservationId
-        ? findActiveBookingByReservationId(list, platformId, n.reservationId)
+      pasteCancel && rowPlatformId && n.reservationId
+        ? findActiveBookingByReservationId(list, rowPlatformId, n.reservationId)
         : null;
     const cancelGuard = !!match && isCancelGuardBlocked(match);
     const alreadyCancelled =
       pasteCancel &&
       !match &&
-      !!platformId &&
+      !!rowPlatformId &&
       !!n.reservationId.trim() &&
-      isAlreadyCancelledReservation(list, platformId, n.reservationId);
+      isAlreadyCancelledReservation(list, rowPlatformId, n.reservationId);
     const dup =
       alreadyCancelled ||
       (!pasteCancel &&
-        !!platformId &&
+        !!rowPlatformId &&
         !!n.reservationId &&
-        isDuplicateReservation(list, platformId, n.reservationId));
+        isDuplicateReservation(list, rowPlatformId, n.reservationId));
 
     let skip = false;
     let rowStatus: PreviewRowStatus = "ok";
@@ -1282,6 +1494,10 @@ export function buildPreviewRows(
       matchBookingId,
       cancelGuard,
       rowStatus,
+      nestedChannelRaw: nestedRaw,
+      platformId: rowPlatformId,
+      platformLabel: rowPlatformLabel,
+      nestedChannelUnmatched,
     };
   });
 }
@@ -1499,6 +1715,15 @@ export const YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH = new URL(
  */
 export const YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-cancel-chrome-complete-card.txt",
+  import.meta.url,
+);
+
+/**
+ * Owner nested-channel SoT: 야놀자 통합내역 card with 아고다 line after reservation id
+ * (hub inventory resale). Guest/phone/type must shift; platform = 아고다 when in Settings.
+ */
+export const YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-nested-agoda-card.txt",
   import.meta.url,
 );
 
