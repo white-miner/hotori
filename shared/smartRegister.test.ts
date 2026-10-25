@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { normalizeSettings } from "./ledger.ts";
 import {
   HYPOTHESIS_FIXTURES,
   PLATFORM_PROFILES,
+  YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE,
   YANOLJA_DRAG_COPY_HTML_FIXTURE,
   YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE,
+  YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE,
+  YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
+  YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   detectProfile,
   findActiveBookingByReservationId,
@@ -13,6 +19,7 @@ import {
   isCancelGuardBlocked,
   isCancelStatus,
   isDuplicateReservation,
+  looksLikeYanoljaCardPaste,
   lookupTypeAlias,
   mapColumns,
   matchPlatformId,
@@ -23,6 +30,7 @@ import {
   parseLooseDate,
   parseNightsCell,
   parsePasteTable,
+  parseYanoljaCardPaste,
   profileById,
   removeTypeAlias,
   reservationIdFromMemo,
@@ -93,6 +101,122 @@ test("yanolja multi-space fixture → preview Path A fields", () => {
   assert.equal(preview[0]!.amount, 120000);
   assert.equal(preview[0]!.rowStatus, "ok");
   assert.equal(preview[1]!.rowStatus, "cancel_missing");
+});
+
+/** Hypothesis shapes that returned null under #143 (2+ space / HTML only). */
+test("parsePasteTable: YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE (#143 miss → harden)", () => {
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE);
+  assert.ok(t, "must accept single-space 통합내역 drag-copy");
+  assert.equal(t!.delimiter, "space");
+  assert.equal(t!.headers[0], "야놀자예약번호");
+  assert.equal(t!.rows.length, 2);
+  assert.equal(t!.rows[0]![0], "YN-1001");
+  assert.equal(t!.rows[0]![1], "김테스트");
+  assert.equal(t!.rows[1]![0], "YN-1002");
+});
+
+test("parsePasteTable: YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE (#143 miss → harden)", () => {
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE);
+  assert.ok(t, "must reassemble one-cell-per-line paste");
+  assert.equal(t!.delimiter, "tab");
+  assert.equal(t!.headers[0], "야놀자예약번호");
+  assert.equal(t!.headers.length, 9);
+  assert.equal(t!.rows.length, 2);
+  assert.equal(t!.rows[0]![0], "YN-1001");
+  assert.equal(t!.rows[0]![3], "스탠다드");
+  assert.equal(t!.rows[1]![0], "YN-1002");
+});
+
+test("parsePasteTable: YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE (#143 miss → harden)", () => {
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE);
+  assert.ok(t, "must reassemble collapsed single-line paste");
+  assert.equal(t!.headers[0], "야놀자예약번호");
+  assert.equal(t!.rows.length, 2);
+  assert.equal(t!.rows[0]![0], "YN-1001");
+  assert.equal(t!.rows[1]![8], "취소");
+});
+
+test("yanolja single-space / vertical / collapsed → preview Path A", () => {
+  const profile = profileById("yanolja")!;
+  for (const raw of [
+    YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE,
+    YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
+    YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE,
+  ]) {
+    const t = parsePasteTable(raw)!;
+    const d = detectProfile(t.headers, raw);
+    assert.equal(d.confident, true);
+    assert.equal(d.profileId, "yanolja");
+    const preview = buildPreviewRows(t, profile, settings, [], "p-ya");
+    assert.equal(preview.length, 2);
+    assert.equal(preview[0]!.guestName, "김테스트");
+    assert.equal(preview[0]!.reservationId, "YN-1001");
+    assert.equal(preview[0]!.amount, 120000);
+    assert.equal(preview[0]!.rowStatus, "ok");
+    assert.equal(preview[1]!.rowStatus, "cancel_missing");
+  }
+});
+
+test("parseYanoljaCardPaste: anonymized unified card SoT fixture", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH), "utf8");
+  assert.equal(looksLikeYanoljaCardPaste(raw), true);
+  const card = parseYanoljaCardPaste(raw);
+  assert.ok(card);
+  assert.equal(card!.rows.length, 12);
+  assert.equal(card!.headers[0], "야놀자예약번호");
+  assert.equal(card!.rows[0]![0], "2610151829300184");
+  assert.equal(card!.rows[0]![1], "김테스트");
+  assert.equal(card!.rows[0]![2], "0503-0000-0001");
+  assert.match(card!.rows[0]![3]!, /Family Room/);
+  assert.match(card!.rows[0]![4]!, /^2026\.10\.26/);
+  assert.equal(card!.rows[0]![6], "2");
+  assert.equal(card!.rows[0]![7], "200000");
+  assert.equal(card!.rows[0]![8], "예약완료");
+  // 안심번호 만료 → empty phone; 예약취소
+  assert.equal(card!.rows[1]![0], "2610152133600141");
+  assert.equal(card!.rows[1]![2], "");
+  assert.equal(card!.rows[1]![8], "예약취소");
+  assert.match(card!.rows[1]![3]!, /온돌/);
+  // 도보 · 연박 4박
+  assert.equal(card!.rows[5]![6], "4");
+  assert.equal(card!.rows[5]![7], "250000");
+
+  const viaPaste = parsePasteTable(raw);
+  assert.ok(viaPaste);
+  assert.equal(viaPaste!.rows.length, 12);
+  const d = detectProfile(viaPaste!.headers, raw);
+  assert.equal(d.confident, true);
+  assert.equal(d.profileId, "yanolja");
+
+  const profile = profileById("yanolja")!;
+  const preview = buildPreviewRows(viaPaste!, profile, settings, [], "p-ya");
+  assert.equal(preview.length, 12);
+  assert.equal(preview[0]!.guestName, "김테스트");
+  assert.equal(preview[0]!.checkIn, "2026-10-26");
+  assert.equal(preview[0]!.nights, 2);
+  assert.equal(preview[0]!.amount, 200000);
+  assert.equal(preview[0]!.reservationId, "2610151829300184");
+  assert.equal(preview[1]!.pasteCancel, true);
+  assert.equal(preview[1]!.rowStatus, "cancel_missing");
+  assert.equal(preview[1]!.guestPhone, "");
+  assert.equal(preview[2]!.typeId, "ondol");
+  assert.equal(preview[4]!.typeId, "std"); // Standardㅣ스탠다드…
+  assert.equal(preview[5]!.nights, 4);
+  assert.equal(preview[7]!.typeId, "dlx"); // Deluxe Twinㅣ디럭스…
+});
+
+test("parseYanoljaCardPaste: live owner sample if present", () => {
+  const live = "/cursor/stores/bc-fc855f4a-4cd7-41f6-8016-26e7dc29c864/internal/yanolja-unified-drag-paste-sample.txt";
+  if (!existsSync(live)) return;
+  const raw = readFileSync(live, "utf8");
+  assert.equal(looksLikeYanoljaCardPaste(raw), true);
+  const t = parsePasteTable(raw);
+  assert.ok(t, "must recognize live 통합내역 drag-copy");
+  assert.equal(t!.rows.length, 12);
+  assert.equal(t!.rows[0]![0], "2610151829300184");
+  assert.equal(t!.rows[1]![2], ""); // 안심번호 만료
+  assert.equal(t!.rows[1]![8], "예약취소");
+  assert.equal(detectProfile(t!.headers, raw).profileId, "yanolja");
 });
 
 test("detectProfile: yanolja hypothesis fixture confident", () => {
