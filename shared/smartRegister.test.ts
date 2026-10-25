@@ -12,6 +12,7 @@ import {
   YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE,
   YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
   YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH,
+  YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
@@ -285,6 +286,11 @@ test("yanolja card status: cancel wins over 예약완료 / 고객취소-only / c
     { name: "예약완료 then 예약취소", block: "예약완료\n예약취소\n고객취소" },
     { name: "same line", block: "예약취소 고객취소" },
     { name: "chrome before sale still cancel", block: "예약취소\n고객취소\n입실완료\n입실 호수" },
+    // Owner: drag-copy checkbox / 특·직접관리 UI can inject 「예약완료」 after real cancel
+    {
+      name: "cancel then chrome 예약완료 + 특",
+      block: "특\n직접관리\n예약취소\n고객취소\n예약완료",
+    },
   ];
 
   for (const c of cases) {
@@ -302,6 +308,21 @@ test("yanolja card status: cancel wins over 예약완료 / 고객취소-only / c
   assert.equal(isCancelStatus("예약완료", profile), false);
   assert.equal(isCancelStatus("입실완료", profile), false);
   assert.equal(isCancelStatus("고객취소", profile), true);
+});
+
+test("yanolja cancel+chrome 예약완료 (특/직접관리): stays cancel", () => {
+  const profile = profileById("yanolja")!;
+  const raw = readFileSync(fileURLToPath(YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH), "utf8");
+  const t = parsePasteTable(raw);
+  assert.ok(t);
+  assert.equal(t!.rows.length, 1);
+  assert.equal(t!.rows[0]![8], "예약취소");
+  assert.equal(isCancelStatus(t!.rows[0]![8]!, profile), true);
+
+  const preview = buildPreviewRows(t!, profile, settings, [], "p-ya");
+  assert.equal(preview[0]!.pasteCancel, true);
+  assert.equal(preview[0]!.rowStatus, "cancel");
+  assert.equal(preview[0]!.statusRaw, "예약취소");
 });
 
 test("detectProfile: yanolja hypothesis fixture confident", () => {
