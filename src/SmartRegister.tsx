@@ -2,8 +2,24 @@
  * 스마트 등록 — dedicated board tab (full FO).
  * Paste TSV → profile detect → wide preview → askConfirm → saveBooking × N (Path A 미배정).
  */
-import { useCallback, useMemo, useState, type ClipboardEvent, type ReactNode } from "react";
-import { ClipboardPaste, Link2, LoaderCircle, BookmarkPlus } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type ReactNode,
+} from "react";
+import {
+  Check,
+  ClipboardPaste,
+  Eraser,
+  Link2,
+  LoaderCircle,
+  BookmarkPlus,
+  X,
+} from "lucide-react";
 import {
   type Booking,
   type HotelSettings,
@@ -54,6 +70,15 @@ type MountSummary = {
   failed: { reservationId: string; reason: string }[];
 };
 
+type UploadPhase = "idle" | "uploading" | "done";
+
+const UPLOAD_MIN_MS = 500;
+const SUMMARY_AUTO_MS = 1800;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function statusLabel(r: PreviewRow): string {
   if (r.rowStatus === "ok") return "신규";
   if (r.rowStatus === "cancel") return "예약취소";
@@ -74,8 +99,25 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [parseErr, setParseErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<string | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase>("idle");
+  const [progressStep, setProgressStep] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
   const [summary, setSummary] = useState<MountSummary | null>(null);
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismissSummary = useCallback(() => {
+    if (summaryTimer.current) {
+      clearTimeout(summaryTimer.current);
+      summaryTimer.current = null;
+    }
+    setUploadPhase("idle");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (summaryTimer.current) clearTimeout(summaryTimer.current);
+    };
+  }, []);
 
   const profile = profileId ? profileById(profileId) : undefined;
   const platformId = profile ? matchPlatformId(profile, s) : null;
@@ -138,6 +180,17 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     setProfileForced(false);
     rebuild(v, null, false);
   };
+
+  /** Empty paste + preview for next batch (does not upload). */
+  const clearWorkspace = useCallback((opts?: { keepSummary?: boolean }) => {
+    setPaste("");
+    setRows([]);
+    setParseErr(null);
+    setProfileId(null);
+    setProfileForced(false);
+    setDetectWeak(false);
+    if (!opts?.keepSummary) setSummary(null);
+  }, []);
 
   /** Prefer clipboard HTML table when partner UI copies markup (야놀자 통합내역 등). */
   const onPasteEvent = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -282,7 +335,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         const overOk = await askConfirm({
           title: "타입 재고 부족",
           body: `${impact.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 올릴까요? · 물리 방 겹침은 미배정이라 해당 없어요.`,
-          confirmLabel: "올리기",
+          confirmLabel: "업로드",
         });
         if (!overOk) return;
       }
@@ -303,14 +356,21 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       ]
         .filter(Boolean)
         .join(" · "),
-      confirmLabel: "확인 올리기",
+      confirmLabel: "확인 업로드",
       danger: cancels.length > 0 && creates.length === 0,
     });
     if (!ok) return;
 
     const total = cancels.length + creates.length;
+    if (summaryTimer.current) {
+      clearTimeout(summaryTimer.current);
+      summaryTimer.current = null;
+    }
+    const startedAt = Date.now();
     setBusy(true);
-    setProgress(`0 / ${total}`);
+    setUploadPhase("uploading");
+    setProgressStep(0);
+    setProgressTotal(total);
     setSummary(null);
     const failed: MountSummary["failed"] = [];
     let saved = 0;
@@ -321,7 +381,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     // Cancels first (free stock / record missing cancels) then Path A creates
     for (const row of cancels) {
       step += 1;
-      setProgress(`${step} / ${total}`);
+      setProgressStep(step);
       if (row.matchBookingId) {
         const live = data.bookings.find((b) => b.id === row.matchBookingId);
         if (!live || live.status !== "active") {
@@ -372,7 +432,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
     for (const row of creates) {
       step += 1;
-      setProgress(`${step} / ${total}`);
+      setProgressStep(step);
       const rowPlatId = row.platformId!;
       const rowPlatLabel = row.platformLabel || platformLabel;
       const draft = pathADraftFromPreview(row, {
@@ -409,9 +469,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       skipped: skipCount,
       failed,
     };
-    setSummary(result);
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < UPLOAD_MIN_MS) await sleep(UPLOAD_MIN_MS - elapsed);
     setBusy(false);
-    setProgress(null);
+    setUploadPhase("done");
     notify(
       `스마트 등록` +
         (saved ? ` 신규 ${saved}` : "") +
@@ -420,8 +481,23 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         (skipCount ? ` · 건너뜀 ${skipCount}` : "") +
         (failed.length ? ` · 실패 ${failed.length}` : ""),
     );
-    if (paste) rebuild(paste, profileId, profileForced);
+    // Full success → clear paste/preview for next date batch; keep summary for overlay.
+    // Any failure → keep paste so FO can fix (rebuild refreshes dup/status).
+    if (failed.length === 0) {
+      clearWorkspace({ keepSummary: true });
+      setSummary(result);
+    } else {
+      if (paste) rebuild(paste, profileId, profileForced);
+      setSummary(result);
+    }
+    summaryTimer.current = setTimeout(() => {
+      summaryTimer.current = null;
+      setUploadPhase("idle");
+    }, SUMMARY_AUTO_MS);
   };
+
+  const progressPct =
+    progressTotal > 0 ? Math.min(100, Math.round((progressStep / progressTotal) * 100)) : 0;
 
   return (
     <main className="page board-page one">
@@ -439,10 +515,22 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
         <div className="smart-reg-panes">
           <aside className="smart-reg-paste">
-            <label className="smart-reg-paste-label" htmlFor="smart-reg-ta">
-              <ClipboardPaste size={16} strokeWidth={2.2} aria-hidden />
-              붙여넣기
-            </label>
+            <div className="smart-reg-paste-head">
+              <label className="smart-reg-paste-label" htmlFor="smart-reg-ta">
+                <ClipboardPaste size={16} strokeWidth={2.2} aria-hidden />
+                붙여넣기
+              </label>
+              <button
+                type="button"
+                className="smart-reg-clear"
+                disabled={readOnly || busy || uploadPhase !== "idle" || (!paste.trim() && !rows.length)}
+                onClick={() => clearWorkspace()}
+                title="붙여넣기와 미리보기를 비워요"
+              >
+                <Eraser size={14} strokeWidth={2.2} aria-hidden />
+                새 작성
+              </button>
+            </div>
             <textarea
               id="smart-reg-ta"
               className="inp smart-reg-ta"
@@ -519,6 +607,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                 disabled={
                   readOnly ||
                   busy ||
+                  uploadPhase !== "idle" ||
                   !readyCount ||
                   !!fixCount ||
                   actionableMissingPlatform
@@ -528,15 +617,17 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                 {busy ? (
                   <>
                     <LoaderCircle size={16} strokeWidth={2.2} className="spin" aria-hidden />
-                    {progress ?? "올리는 중"}
+                    {progressTotal
+                      ? `${progressStep} / ${progressTotal} 업로드 중…`
+                      : "업로드 중…"}
                   </>
                 ) : (
-                  "확인 올리기"
+                  "확인 업로드"
                 )}
               </button>
             </div>
 
-            {summary ? (
+            {summary && uploadPhase === "idle" ? (
               <div className="smart-reg-summary" role="status">
                 신규 {summary.ok}
                 {summary.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
@@ -728,6 +819,77 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
           </section>
         </div>
       </div>
+
+      {uploadPhase !== "idle" ? (
+        <div
+          className="dim assign-type-dim smart-reg-upload-dim"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="smart-reg-upload-title"
+          aria-busy={uploadPhase === "uploading"}
+        >
+          <div className="modal assign-type-modal smart-reg-upload-modal">
+            {uploadPhase === "uploading" ? (
+              <>
+                <div className="mh">
+                  <h2 id="smart-reg-upload-title">업로드 중</h2>
+                </div>
+                <div className="mb">
+                  <p className="smart-reg-upload-status">
+                    <LoaderCircle size={18} strokeWidth={2.2} className="spin" aria-hidden />
+                    {progressTotal
+                      ? `${progressStep} / ${progressTotal} 업로드 중…`
+                      : "업로드 중…"}
+                  </p>
+                  <div
+                    className="smart-reg-progress"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={progressTotal || 100}
+                    aria-valuenow={progressStep}
+                  >
+                    <div className="smart-reg-progress-fill" style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mh">
+                  <h2 id="smart-reg-upload-title">
+                    <Check size={18} strokeWidth={2.6} aria-hidden />
+                    업로드 완료
+                  </h2>
+                  <button type="button" className="x" aria-label="닫기" onClick={dismissSummary}>
+                    <X size={16} strokeWidth={2.2} aria-hidden />
+                  </button>
+                </div>
+                <div className="mb">
+                  <p className="smart-reg-upload-done">
+                    신규 {summary?.ok ?? 0}
+                    {summary?.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
+                    {summary ? ` · 건너뜀 ${summary.skipped}` : ""}
+                    {summary?.failed.length ? ` · 실패 ${summary.failed.length}` : ""}
+                  </p>
+                  {summary?.failed.length ? (
+                    <p className="sub smart-reg-upload-fail">
+                      {summary.failed
+                        .slice(0, 5)
+                        .map((f) => f.reservationId)
+                        .join(", ")}
+                      {summary.failed.length > 5 ? "…" : ""}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mf assign-type-acts">
+                  <button type="button" className="btn dark" onClick={dismissSummary}>
+                    확인
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
