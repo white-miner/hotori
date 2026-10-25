@@ -4,9 +4,12 @@ import { normalizeSettings } from "./ledger.ts";
 import {
   HYPOTHESIS_FIXTURES,
   PLATFORM_PROFILES,
+  YANOLJA_DRAG_COPY_HTML_FIXTURE,
+  YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE,
   buildPreviewRows,
   detectProfile,
   findActiveBookingByReservationId,
+  htmlTableToPlain,
   isCancelGuardBlocked,
   isCancelStatus,
   isDuplicateReservation,
@@ -47,6 +50,49 @@ test("parsePasteTable: TSV header + body", () => {
   assert.equal(t!.headers[0], "야놀자예약번호");
   assert.equal(t!.rows.length, 2);
   assert.equal(t!.rows[0]![0], "YN-1001");
+});
+
+test("parsePasteTable: YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE (chrome + 2+ spaces)", () => {
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE);
+  assert.ok(t, "must accept multi-space 통합내역 drag-copy");
+  assert.equal(t!.delimiter, "space");
+  assert.equal(t!.headers[0], "야놀자예약번호");
+  assert.equal(t!.headers.includes("객실상품"), true);
+  assert.equal(t!.rows.length, 2);
+  assert.equal(t!.rows[0]![0], "YN-1001");
+  assert.equal(t!.rows[0]![1], "김테스트");
+  assert.equal(t!.rows[1]![0], "YN-1002");
+});
+
+test("htmlTableToPlain + parsePasteTable: YANOLJA_DRAG_COPY_HTML_FIXTURE", () => {
+  const plain = htmlTableToPlain(YANOLJA_DRAG_COPY_HTML_FIXTURE);
+  assert.ok(plain);
+  assert.match(plain!, /\t/);
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_HTML_FIXTURE);
+  assert.ok(t);
+  assert.equal(t!.delimiter, "tab");
+  assert.equal(t!.headers[0], "야놀자예약번호");
+  assert.equal(t!.rows.length, 2);
+  assert.equal(t!.rows[0]![3], "스탠다드");
+});
+
+test("detectProfile: multi-space yanolja drag-copy confident", () => {
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE)!;
+  const d = detectProfile(t.headers, YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE);
+  assert.equal(d.confident, true);
+  assert.equal(d.profileId, "yanolja");
+});
+
+test("yanolja multi-space fixture → preview Path A fields", () => {
+  const profile = profileById("yanolja")!;
+  const t = parsePasteTable(YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE)!;
+  const preview = buildPreviewRows(t, profile, settings, [], "p-ya");
+  assert.equal(preview.length, 2);
+  assert.equal(preview[0]!.guestName, "김테스트");
+  assert.equal(preview[0]!.reservationId, "YN-1001");
+  assert.equal(preview[0]!.amount, 120000);
+  assert.equal(preview[0]!.rowStatus, "ok");
+  assert.equal(preview[1]!.rowStatus, "cancel_missing");
 });
 
 test("detectProfile: yanolja hypothesis fixture confident", () => {
