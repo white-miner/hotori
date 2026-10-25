@@ -1704,12 +1704,11 @@ label.ck input[type="checkbox"] {
 .bmove span { font-size: 12px; color: rgba(255, 255, 255, 0.72); font-weight: 550; margin-left: auto; text-align: right; }
 .bmove:hover { background: #333; }
 
-/* 수정 창 위 '입실 완료' 단추: 누르면 바로 저장 (켜지면 빨강으로 꽉 차요) */
+/* 수정 창 위 액션 단추 (퇴실·청소X·연장 등) */
 .mtop { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 0 0 12px; }
 .mtop.n2 { grid-template-columns: 1fr 1fr; }
 .mtop.n3 { grid-template-columns: 1.2fr 1fr 1fr; }
-.mtop.n3 .bin span, .mtop.n3 .bmove span { display: none; }
-/* 중도 퇴실 단추: 흰 바탕 회색 테두리 (빨강은 입실 완료만) */
+.mtop.n3 .bmove span { display: none; }
 .beo { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 12px 12px; border-radius: 14px; background: #fff; color: var(--ink); border: 1.5px solid #cfcfcf; }
 .beo b { font-size: 15px; font-weight: 800; white-space: nowrap; }
 .beo:hover, .beo.on { border-color: var(--ink); background: #f6f6f6; }
@@ -1732,13 +1731,6 @@ label.ck input[type="checkbox"] {
 .eoc-a { display: flex; justify-content: flex-end; gap: 8px; }
 .eoc-a .btn.dark { padding: 0 22px; font-weight: 800; }
 .mtop .bmove { margin: 0; }
-.bin { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border-radius: 14px; background: #fff; color: var(--red); border: 1.5px solid var(--red); text-align: left; }
-.bin b { font-size: 15px; font-weight: 800; white-space: nowrap; }
-.bin span { font-size: 12px; color: var(--ink3); font-weight: 550; margin-left: auto; text-align: right; }
-.bin:hover { background: var(--red-s); }
-.bin.on { background: var(--red); color: #fff; }
-.bin.on:hover { background: var(--red-d); }
-.bin:disabled { opacity: 0.6; cursor: default; }
 .mtop-err { margin: -4px 0 12px; }
 /* 대실 목록·장부의 입실 완료 표시 (글자만) */
 .intag { flex: none; font-size: 11.5px; font-weight: 750; color: var(--red-d); background: var(--red-s); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
@@ -1776,11 +1768,10 @@ label.ck input[type="checkbox"] {
   .mvbar .btn .kbdh { display: none; }
   .mvbar .btn.green { padding: 0 16px; }
   .bmove span { display: none; }
-  .mtop .bin span { display: none; }
-  .mtop.n2 .bin, .mtop.n2 .bmove, .mtop.n3 .bin, .mtop.n3 .bmove { padding: 12px 8px; justify-content: center; }
+  .mtop.n2 .bmove, .mtop.n3 .bmove { padding: 12px 8px; justify-content: center; }
   .mtop.n3 { grid-template-columns: 1fr 1fr; }
   .mtop.n3 > :first-child { grid-column: 1 / -1; }
-  .mtop .bin b, .mtop .beo b { font-size: 14px; }
+  .mtop .beo b { font-size: 14px; }
   .eoc-d, .eoc-r { grid-template-columns: 1fr; }
   .eoc-r small { grid-column: 1; }
   .eoc-a .btn { flex: 1; }
@@ -2112,7 +2103,7 @@ label.ck input[type="checkbox"] {
 .nowdue { margin-top: 4px; font-size: 12px; font-weight: 800; color: var(--red); letter-spacing: -0.02em; }
 .longacc .payrow { align-items: baseline; }
 .longledger { margin-top: 6px; max-height: 160px; overflow: auto; border-top: 1px solid var(--line); padding-top: 6px; }
-.beo.tent.on { border-style: dashed; border-color: var(--badge-warn-border); background: var(--badge-tent-s); color: var(--badge-tent); }
+/* tentative board badge still uses --badge-tent*; Entry 임시 배치 CTA removed */
 /* 청소X: 현장 한눈에 보이도록 강한 대비 */
 .ncxtag { flex: none; font-size: 11px; font-weight: 900; color: #7a180c; background: #ffe3dc; border: 1.5px solid #c43c28; border-radius: 5px; padding: 0 5px; line-height: 16px; letter-spacing: -0.02em; }
 .cell.bk.ncx { box-shadow: inset 3px 0 0 #c43c28; }
@@ -2790,6 +2781,84 @@ button.nowstatus { cursor: pointer; }
 .modal.simple-book .fld.simple-nights { align-items: start; }
 .modal.simple-book .fld.simple-nights > label { padding-top: var(--space-3); }
 .simple-price { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* 상세 예약 2-pane (option 1) · desktop side-by-side · mobile stacked same model */
+.modal.book-shell.book-two-pane {
+  width: min(980px, 100%);
+  max-width: 100%;
+}
+.book-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4) var(--space-5);
+  align-items: start;
+  min-width: 0;
+}
+.book-pane-left,
+.book-pane-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.book-pane-left {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  max-height: min(78vh, calc(92vh - 100px));
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.book-pane-left-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+.book-pane-toggle {
+  display: none;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  border-radius: var(--radius-inp-sm, 12px);
+  border: 1.5px solid #cfcfcf;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.book-pane-toggle-sum {
+  font-size: 13.5px;
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.book-pane-toggle-act {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 750;
+  color: var(--ink3);
+}
+@media (max-width: 760px) {
+  .modal.book-shell.book-two-pane { width: 100%; }
+  .book-panes {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
+  .book-pane-left {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+  .book-pane-toggle { display: flex; }
+  .book-pane-left.is-collapsed .book-pane-left-body { display: none; }
+}
 
 /* 간단 예약 미니 배치도 — 보드 그리드 CSS 손대지 않음 */
 .mfp-wrap { display: flex; flex-direction: column; gap: var(--space-chip); min-width: 0; width: 100%; }

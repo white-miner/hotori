@@ -71,7 +71,7 @@ export default function StaySaleModal({
   const [salesMode, setSalesMode] = useState<StaySaleSalesMode>("total");
   const [perNight, setPerNight] = useState("");
   const [priceUnset, setPriceUnset] = useState(false);
-  const [payMode, setPayMode] = useState<OnsitePayMode>("postpaid");
+  const [payMode, setPayMode] = useState<OnsitePayMode>("prepaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
   const [extend, setExtend] = useState(false);
@@ -100,7 +100,7 @@ export default function StaySaleModal({
     setSalesMode("total");
     setPerNight("");
     setPriceUnset(false);
-    setPayMode("postpaid");
+    setPayMode("prepaid");
     setDepAmt("");
     setDepMethod("card");
     setExtend(false);
@@ -135,7 +135,7 @@ export default function StaySaleModal({
     setSalesMode("total");
     setPerNight("");
     setPriceUnset(false);
-    setPayMode("postpaid");
+    setPayMode("prepaid");
     setDepAmt("");
     setErr(null);
   };

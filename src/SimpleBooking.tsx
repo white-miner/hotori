@@ -132,7 +132,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   /** Path B · #71 roomIds / 단실 roomId prefill → 배치도에 선택 상태 */
   const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
-  const [payMode, setPayMode] = useState<OnsitePayMode>("postpaid");
+  const [payMode, setPayMode] = useState<OnsitePayMode>("prepaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
   const [err, setErr] = useState<string | null>(null);
