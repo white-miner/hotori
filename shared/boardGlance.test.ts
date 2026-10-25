@@ -84,7 +84,7 @@ test("glanceMapKindPlacement: 퇴실처리면 공실 · 새 점유 우선", () =
     arrived: true,
     checkedOutAt: "2026-10-22T03:00:00.000Z",
   });
-  assert.equal(glanceMapKindPlacement([checkedOut], "r1", night, beforeIn), "empty");
+  assert.equal(glanceMapKindPlacement([checkedOut], "r1", night, beforeIn, night), "empty");
 
   const next = bk({
     id: "new",
@@ -93,5 +93,19 @@ test("glanceMapKindPlacement: 퇴실처리면 공실 · 새 점유 우선", () =
     roomId: "r1",
     arrived: false,
   });
-  assert.equal(glanceMapKindPlacement([checkedOut, next], "r1", night, beforeIn), "arriving");
+  assert.equal(glanceMapKindPlacement([checkedOut, next], "r1", night, beforeIn, night), "arriving");
+});
+
+test("glanceMapKindPlacement: 과거 밤은 퇴실 완료도 역사 inhouse", () => {
+  const night = "2026-10-20";
+  const today = "2026-10-25";
+  const checkedOut = bk({
+    id: "old",
+    checkIn: night,
+    nights: 1,
+    roomId: "r1",
+    arrived: true,
+    checkedOutAt: "2026-10-21T03:00:00.000Z",
+  });
+  assert.equal(glanceMapKindPlacement([checkedOut], "r1", night, undefined, today), "inhouse");
 });

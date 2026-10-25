@@ -1182,18 +1182,33 @@ export function previewChange(
 
 // ---------- 보드 (방 번호 칸) ----------
 /**
- * 그 방·그 밤에 보여 줄 숙박: 물리 점유(`occupiesRoom`)가 우선, 없으면 취소된 예약을 줄 그어 보여 줘요.
- * 퇴실처리(`checkedOutAt`)된 활성 예약은 공실 — 「현황」`nowByRoom`과 맞춤.
- * (조기 퇴실 후 같은 날 재배정 시 예전 손님이 「배치」에 남는 버그 방지)
+ * 그 방·그 밤에 보여 줄 숙박.
+ * - 오늘/미래: 물리 점유(`occupiesRoom`) 우선 · 퇴실처리(`checkedOutAt`)면 공실 (#125 · 조기 퇴실+재배정)
+ * - 과거(`date < today`): 그날 점유했던 퇴실 완료 숙박도 역사로 표시 (배치 past-history)
+ * - 없으면 취소된 예약을 줄 그어 표시
  */
-export function boardEntryForRoom(bookings: Booking[], roomId: string, date: string): Booking | null {
+export function boardEntryForRoom(
+  bookings: Booking[],
+  roomId: string,
+  date: string,
+  today?: string,
+): Booking | null {
   let cancelled: Booking | null = null;
+  let historical: Booking | null = null;
+  const past = !!today && date < today;
   for (const b of bookings) {
     if (b.kind !== "stay" || roomOnNight(b, date) !== roomId) continue;
     if (occupiesRoom(b)) return b;
-    if (isActive(b)) continue; // 퇴실처리됨 · 칸 비움 (새 예약은 occupiesRoom으로 선택)
+    if (isActive(b)) {
+      // 퇴실처리됨 · 오늘/미래는 칸 비움 · 과거는 역사 점유
+      if (past && occupiesNight(b, date)) {
+        if (!historical || (b.checkedOutAt ?? "") > (historical.checkedOutAt ?? "")) historical = b;
+      }
+      continue;
+    }
     if (!cancelled || (b.cancelledAt ?? "") > (cancelled.cancelledAt ?? "")) cancelled = b;
   }
+  if (historical) return historical;
   return cancelled;
 }
 
@@ -1246,11 +1261,11 @@ export interface NightBoard {
   nightCount: number; // 그날 밤 살아 있는 숙박 수
 }
 const legOn = (b: Booking, date: string) => legsOf(b).find((l) => l.checkIn <= date && date < addDays(l.checkIn, l.nights));
-export function nightBoard(s: HotelSettings, bookings: Booking[], date: string): NightBoard {
+export function nightBoard(s: HotelSettings, bookings: Booking[], date: string, today?: string): NightBoard {
   const rooms = roomMap(s);
   const byRoom = new Map<string, Booking>();
   for (const r of rooms.values()) {
-    const b = boardEntryForRoom(bookings, r.id, date);
+    const b = boardEntryForRoom(bookings, r.id, date, today);
     if (b && (isActive(b) || !isCancelledRefilled(b, bookings, rooms, legOn(b, date)))) byRoom.set(r.id, b);
   }
   const visible = (b: Booking) => isActive(b) || !isCancelledRefilled(b, bookings, rooms, legOn(b, date));
