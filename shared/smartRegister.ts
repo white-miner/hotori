@@ -511,7 +511,7 @@ const YANOLJA_CARD_HEADERS = [
   "판매채널",
 ] as const;
 
-/** Extra OTA names seen in hub partner UIs (inventory share / resale). */
+/** Extra OTA names seen in hub partner UIs (inventory share / resale) — boost, not sole gate. */
 const EXTRA_NESTED_CHANNEL_ALIASES = [
   "아고다",
   "agoda",
@@ -535,54 +535,129 @@ const EXTRA_NESTED_CHANNEL_ALIASES = [
   "trip.com",
   "씨트립",
   "호텔타임",
+  "타이드스퀘어",
+  "프리비아",
+  "g마켓",
+  "지마켓",
+  "이베이",
+  "ebay",
 ];
 
 function normalizePasteLine(line: string): string {
   return line.replace(/[\u200b\u200c\u200d\ufeff\u00a0]/g, "").trim();
 }
 
+/** Collapse space / `_` / `-` for fuzzy channel↔platform match. */
+export function normChannelKey(s: string): string {
+  return s
+    .trim()
+    .replace(/[\u200b\u200c\u200d\ufeff\u00a0]/g, "")
+    .replace(/[_\-\s.]+/g, "")
+    .toLowerCase();
+}
+
+function hardRejectNestedChannelLine(raw: string): boolean {
+  if (!raw || raw.length > 40) return true;
+  if (YANOLJA_CARD_RES_ID.test(raw)) return true;
+  if (/^[\d+\-]+$/.test(raw) || /^0\d/.test(raw)) return true;
+  if (/^\d{4}[./-]/.test(raw)) return true;
+  if (/[ㅣ|]/.test(raw)) return true;
+  if (/^\/\s*\d+\s*박/.test(raw)) return true;
+  if (/객실|타입\s*ID|판매가|입금|숙박|연박|차량|도보|안심번호|미리예약|예약완료|예약취소|고객취소/.test(raw)) {
+    return true;
+  }
+  return false;
+}
+
+/** Latin "Sumi Lee" / short Hangul person names — never treat as channel. */
+function looksLikeGuestNameLine(raw: string): boolean {
+  if (/^[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)+$/.test(raw)) return true;
+  // Pure Hangul 2–4 (김한나) without marketplace markers
+  if (/^[\uac00-\ud7a3]{2,4}$/.test(raw)) return true;
+  return false;
+}
+
+/** `Brand_Subbrand` / `Brand-Subbrand` marketplace slugs (야놀자 hub resale). */
+function looksLikeMarketplaceSlug(raw: string): boolean {
+  if (raw.includes("_")) return true;
+  // hyphenated brand tokens (not phone): letters/digits both sides
+  if (/^[\p{L}\p{N}]{2,}(?:-[\p{L}\p{N}]{2,})+$/u.test(raw) && /[A-Za-z\uac00-\ud7a3]/.test(raw)) {
+    return true;
+  }
+  return false;
+}
+
+function channelKeyHitsLabel(key: string, label: string): boolean {
+  const b = normChannelKey(label);
+  if (!b || !key) return false;
+  if (b === key) return true;
+  // Fuzzy: either side contains the other when both meaningful (≥2)
+  if (b.length >= 2 && key.length >= 2 && (b.includes(key) || key.includes(b))) return true;
+  return false;
+}
+
+function hitsSeedOrExtraChannel(raw: string): boolean {
+  const key = normChannelKey(raw);
+  if (!key) return false;
+  for (const p of PLATFORM_PROFILES) {
+    if (channelKeyHitsLabel(key, p.label)) return true;
+    for (const kw of [...p.hotoriPlatformMatch, ...p.detectHints]) {
+      if (channelKeyHitsLabel(key, kw)) return true;
+    }
+  }
+  for (const a of EXTRA_NESTED_CHANNEL_ALIASES) {
+    if (channelKeyHitsLabel(key, a)) return true;
+  }
+  return false;
+}
+
+function hitsHotelChannelLabels(raw: string, extraLabels?: readonly string[] | null): boolean {
+  if (!extraLabels?.length) return false;
+  const key = normChannelKey(raw);
+  if (!key) return false;
+  for (const lab of extraLabels) {
+    const b = normChannelKey(lab);
+    if (!b) continue;
+    // 1-grapheme abbr: exact key only (avoid eating short Hangul names)
+    if (b.length <= 1) {
+      if (b === key) return true;
+      continue;
+    }
+    if (channelKeyHitsLabel(key, lab)) return true;
+  }
+  return false;
+}
+
 /**
- * True when a card line after reservation id is a **known** nested OTA/channel label
- * (not a guest name). Allowlist + optional hotel platform names — never guess.
+ * True when the line after reservation id looks like a **channel/brand label**, not a guest.
+ * Heuristic (hotel platforms + marketplace slug + short brand) — not allowlist-only.
+ * Unknown partner labels still parse as nestedChannelRaw; guest names must not be eaten.
  */
 export function isKnownNestedChannelLabel(
   line: string,
   extraLabels?: readonly string[] | null,
 ): boolean {
   const raw = normalizePasteLine(line);
-  if (!raw || raw.length > 32) return false;
-  // Never eat phone / date / type / visit / amenity lines
-  if (YANOLJA_CARD_RES_ID.test(raw)) return false;
-  if (/^[\d+\-]+$/.test(raw) || /^0\d/.test(raw)) return false;
-  if (/^\d{4}[./-]/.test(raw)) return false;
-  if (/[ㅣ|]/.test(raw)) return false;
-  if (/객실|타입\s*ID|판매가|입금|숙박|연박|차량|도보|안심번호|미리예약|예약완료|예약취소|고객취소/.test(raw)) {
-    return false;
-  }
-  const n = normHeader(raw);
-  if (!n) return false;
+  if (hardRejectNestedChannelLine(raw)) return false;
 
-  for (const p of PLATFORM_PROFILES) {
-    if (normHeader(p.label) === n) return true;
-    for (const kw of [...p.hotoriPlatformMatch, ...p.detectHints]) {
-      if (normHeader(kw) === n) return true;
-    }
-  }
-  for (const a of EXTRA_NESTED_CHANNEL_ALIASES) {
-    if (normHeader(a) === n) return true;
-  }
-  if (extraLabels?.length) {
-    for (const lab of extraLabels) {
-      const b = normHeader(lab);
-      if (!b) continue;
-      // Exact name/abbr only (confident). Short abbr (1 grapheme) must equal whole line.
-      if (b === n) return true;
-    }
-  }
+  // 1) Hotel platforms / seed / aliases (fuzzy · `_`/`-`/space normalize)
+  if (hitsHotelChannelLabels(raw, extraLabels)) return true;
+  if (hitsSeedOrExtraChannel(raw)) return true;
+
+  // 2) Marketplace slug: Brand_Subbrand / Brand-Subbrand
+  if (looksLikeMarketplaceSlug(raw)) return true;
+
+  // 3) Short single-line brand — never pure Hangul person names / Latin full names
+  if (looksLikeGuestNameLine(raw)) return false;
+  if (/\s/.test(raw)) return false;
+  if (raw.length > 28) return false;
+  // Latin/digit token (이베이, G마켓-style fragments, XYZ brands) or longer Hangul brand
+  if (/[A-Za-z0-9]/.test(raw)) return true;
+  if (raw.length >= 5 && /^[\uac00-\ud7a3]+$/.test(raw)) return true;
   return false;
 }
 
-/** Resolve nested channel label → Hotori Settings platform (name/abbr / profile keywords). */
+/** Resolve nested channel label → Hotori Settings platform (fuzzy name/abbr / profile keywords). */
 export function matchPlatformByLabel(
   label: string,
   s: HotelSettings,
@@ -590,8 +665,9 @@ export function matchPlatformByLabel(
   const raw = label.trim();
   if (!raw) return null;
   const n = normHeader(raw);
+  const key = normChannelKey(raw);
   const plats = s.platforms ?? [];
-  // 1) Exact / includes on hotel platform name or abbr
+  // 1) Exact / fuzzy on hotel platform name or abbr (underscore/space/- normalize)
   for (const p of plats) {
     const name = normHeader(p.name ?? "");
     const abbr = normHeader(p.abbr ?? "");
@@ -600,13 +676,16 @@ export function matchPlatformByLabel(
     if (name && n.length >= 2 && (name.includes(n) || n.includes(name))) {
       return { id: p.id, name: p.name };
     }
+    if (channelKeyHitsLabel(key, p.name ?? "") || (abbr.length > 1 && channelKeyHitsLabel(key, p.abbr ?? ""))) {
+      return { id: p.id, name: p.name };
+    }
   }
   // 2) Label hits a seed profile → that profile's hotoriPlatformMatch against settings
   for (const prof of PLATFORM_PROFILES) {
     const hit =
-      normHeader(prof.label) === n ||
-      prof.hotoriPlatformMatch.some((k) => normHeader(k) === n) ||
-      prof.detectHints.some((k) => normHeader(k) === n);
+      channelKeyHitsLabel(key, prof.label) ||
+      prof.hotoriPlatformMatch.some((k) => channelKeyHitsLabel(key, k)) ||
+      prof.detectHints.some((k) => channelKeyHitsLabel(key, k));
     if (!hit) continue;
     const id = matchPlatformId(prof, s);
     if (id) {
@@ -1313,10 +1392,18 @@ export function matchPlatformId(profile: PlatformProfile, s: HotelSettings): str
   return null;
 }
 
-/** Memo format for Path A mount + dedupe. */
-export function reservationMemo(platformLabel: string, reservationId: string, typeRaw?: string): string {
+/** Memo format for Path A mount + dedupe. Nested raw kept when unmatched so FO sees partner label. */
+export function reservationMemo(
+  platformLabel: string,
+  reservationId: string,
+  typeRaw?: string,
+  nestedChannelRaw?: string,
+): string {
   const id = reservationId.trim();
-  const base = id ? `${platformLabel} 예약번호 ${id}` : `${platformLabel} 붙여넣기`;
+  const nested = nestedChannelRaw?.trim() ?? "";
+  const plat =
+    nested && nested !== platformLabel.trim() ? `${platformLabel}(${nested})` : platformLabel;
+  const base = id ? `${plat} 예약번호 ${id}` : `${plat} 붙여넣기`;
   const extra = typeRaw?.trim() ? ` · ${typeRaw.trim()}` : "";
   return base + extra;
 }
@@ -1561,7 +1648,12 @@ export function pathADraftFromPreview(
     endTime: null,
     arrived: false,
     tentative: false,
-    memo: reservationMemo(opts.platformLabel, row.reservationId, row.typeRaw),
+    memo: reservationMemo(
+      opts.platformLabel,
+      row.reservationId,
+      row.typeRaw,
+      row.nestedChannelRaw || undefined,
+    ),
     guests: null,
     nightRates: null,
     cancelledAt: null,
@@ -1724,6 +1816,18 @@ export const YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH = new URL(
  */
 export const YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-nested-agoda-card.txt",
+  import.meta.url,
+);
+
+/** Hub resale: `타이드스퀘어_프리비아` after reservation id (marketplace slug). */
+export const YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-nested-tidesquare-card.txt",
+  import.meta.url,
+);
+
+/** Hub resale: `이베이_G마켓` after reservation id (marketplace slug). */
+export const YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-nested-gmarket-card.txt",
   import.meta.url,
 );
 
