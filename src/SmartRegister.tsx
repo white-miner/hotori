@@ -85,7 +85,8 @@ function statusLabel(r: PreviewRow): string {
   if (r.rowStatus === "need_fix") return "수정필요";
   if (r.rowStatus === "dup") return "중복스킵";
   if (r.cancelGuard) return "입실·퇴실 — 수동";
-  return "건너뜀";
+  // skip (and need_fix above) share FO label 「수정필요」 — enum stays skip
+  return "수정필요";
 }
 
 export default function SmartRegister({ data, s, today, tabs, banner, readOnly = false, notify }: Props) {
@@ -352,7 +353,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         creates.length ? `신규 ${creates.length}건` : null,
         cancels.length ? `예약취소 ${cancels.length}건` : null,
         platNames.length ? `플랫폼 ${platNames.join("·")}` : `플랫폼 ${platformLabel}`,
-        skipCount ? `건너뜀 ${skipCount}건` : null,
+        skipCount ? `수정필요 ${skipCount}건` : null,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -478,7 +479,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         (saved ? ` 신규 ${saved}` : "") +
         (cancelled ? ` · 예약취소 ${cancelled}` : "") +
         (!saved && !cancelled ? " 0건" : "") +
-        (skipCount ? ` · 건너뜀 ${skipCount}` : "") +
+        (skipCount ? ` · 수정필요 ${skipCount}` : "") +
         (failed.length ? ` · 실패 ${failed.length}` : ""),
     );
     // Full success → clear paste/preview for next date batch; keep summary for overlay.
@@ -594,8 +595,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                     {createTargets.length ? ` · 신규 ${createTargets.length}` : ""}
                     {cancelTargets.length ? ` · 예약취소 ${cancelTargets.length}` : ""}
                     {!createTargets.length && !cancelTargets.length && readyCount === 0 ? " · 적용 0" : ""}
-                    {fixCount ? ` · 수정필요 ${fixCount}` : ""}
-                    {skipCount ? ` · 건너뜀 ${skipCount}` : ""}
+                    {fixCount + skipCount ? ` · 수정필요 ${fixCount + skipCount}` : ""}
                   </>
                 ) : (
                   "미리보기"
@@ -631,7 +631,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <div className="smart-reg-summary" role="status">
                 신규 {summary.ok}
                 {summary.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
-                {` · 건너뜀 ${summary.skipped}`}
+                {` · 수정필요 ${summary.skipped}`}
                 {summary.failed.length
                   ? ` · 실패 ${summary.failed.length} (${summary.failed
                       .slice(0, 5)
@@ -867,7 +867,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   <p className="smart-reg-upload-done">
                     신규 {summary?.ok ?? 0}
                     {summary?.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
-                    {summary ? ` · 건너뜀 ${summary.skipped}` : ""}
+                    {summary ? ` · 수정필요 ${summary.skipped}` : ""}
                     {summary?.failed.length ? ` · 실패 ${summary.failed.length}` : ""}
                   </p>
                   {summary?.failed.length ? (
