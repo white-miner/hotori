@@ -940,6 +940,32 @@ export function findActiveBookingByReservationId(
   );
 }
 
+/** True when same platform+예약번호 already exists as cancelled (no-op 중복스킵). */
+export function isAlreadyCancelledReservation(
+  existing: Pick<Booking, "platformId" | "memo" | "status">[],
+  platformId: string,
+  reservationId: string,
+): boolean {
+  const id = reservationId.trim();
+  if (!id || !platformId) return false;
+  return existing.some(
+    (b) =>
+      b.status === "cancelled" &&
+      b.platformId === platformId &&
+      reservationIdFromMemo(b.memo) === id,
+  );
+}
+
+/** Fields required to create Path A (미배정) cancel or 신규 row. */
+export function previewNeedsFix(row: {
+  guestName: string;
+  checkIn: string | null;
+  nights: number | null;
+  typeId: string | null;
+}): boolean {
+  return !row.guestName.trim() || !row.checkIn || !row.nights || row.nights < 1 || !row.typeId;
+}
+
 /**
  * Normalize OTA / platform type name for alias match.
  * trim · collapse spaces · strip ZWSP/NBSP · casefold (KR-friendly via toLowerCase).
@@ -1079,8 +1105,9 @@ export function isDuplicateReservation(
 
 /**
  * Preview action labels (KR):
- * ok → 신규 · cancel → 취소반영 · dup → 중복스킵 · need_fix → 수정필요
- * cancel_missing → Hotori에 없음 · skip → 건너뜀 (입실/퇴실 가드 등)
+ * ok → 신규 · cancel → 예약취소 · dup → 중복스킵 · need_fix → 수정필요
+ * skip → 건너뜀 (입실/퇴실 가드 등)
+ * cancel_missing — legacy unused (no-match now creates cancelled Path A)
  */
 export type PreviewRowStatus = "ok" | "need_fix" | "skip" | "dup" | "cancel" | "cancel_missing";
 
@@ -1127,38 +1154,57 @@ export function buildPreviewRows(
         ? findActiveBookingByReservationId(list, platformId, n.reservationId)
         : null;
     const cancelGuard = !!match && isCancelGuardBlocked(match);
-    const dup =
-      !pasteCancel &&
+    const alreadyCancelled =
+      pasteCancel &&
+      !match &&
       !!platformId &&
-      !!n.reservationId &&
-      isDuplicateReservation(list, platformId, n.reservationId);
+      !!n.reservationId.trim() &&
+      isAlreadyCancelledReservation(list, platformId, n.reservationId);
+    const dup =
+      alreadyCancelled ||
+      (!pasteCancel &&
+        !!platformId &&
+        !!n.reservationId &&
+        isDuplicateReservation(list, platformId, n.reservationId));
 
     let skip = false;
     let rowStatus: PreviewRowStatus = "ok";
     let matchBookingId: string | null = null;
 
     if (pasteCancel) {
-      if (!n.reservationId.trim() || !match) {
+      if (match) {
+        if (cancelGuard) {
+          // Default block — FO must un-skip; mount still uses danger askConfirm
+          skip = true;
+          rowStatus = "skip";
+          matchBookingId = match.id;
+        } else {
+          skip = false;
+          rowStatus = "cancel";
+          matchBookingId = match.id;
+        }
+      } else if (alreadyCancelled) {
         skip = true;
-        rowStatus = "cancel_missing";
+        rowStatus = "dup";
         matchBookingId = null;
-      } else if (cancelGuard) {
-        // Default block — FO must un-skip; mount still uses danger askConfirm
-        skip = true;
-        rowStatus = "skip";
-        matchBookingId = match.id;
+      } else if (previewNeedsFix({ guestName: n.guestName, checkIn: n.checkIn, nights: n.nights, typeId })) {
+        // No Hotori match → create Path A cancelled once fields OK
+        skip = false;
+        rowStatus = "need_fix";
+        matchBookingId = null;
       } else {
         skip = false;
         rowStatus = "cancel";
-        matchBookingId = match.id;
+        matchBookingId = null;
       }
     } else if (dup) {
       skip = true;
       rowStatus = "dup";
     } else {
-      const need = !n.guestName.trim() || !n.checkIn || !n.nights || n.nights < 1 || !typeId;
       skip = false;
-      rowStatus = need ? "need_fix" : "ok";
+      rowStatus = previewNeedsFix({ guestName: n.guestName, checkIn: n.checkIn, nights: n.nights, typeId })
+        ? "need_fix"
+        : "ok";
     }
 
     return {
@@ -1187,14 +1233,19 @@ export function buildPreviewRows(
 
 export function recomputeRowStatus(row: Omit<PreviewRow, "rowStatus">): PreviewRowStatus {
   if (row.pasteCancel) {
-    if (!row.reservationId.trim() || !row.matchBookingId) return "cancel_missing";
-    if (row.skip && row.cancelGuard) return "skip";
+    if (row.matchBookingId) {
+      if (row.skip && row.cancelGuard) return "skip";
+      if (row.skip) return "skip";
+      return "cancel";
+    }
+    if (row.dup) return "dup";
     if (row.skip) return "skip";
+    if (previewNeedsFix(row)) return "need_fix";
     return "cancel";
   }
   if (row.dup) return "dup";
   if (row.skip) return "skip";
-  if (!row.guestName.trim() || !row.checkIn || !row.nights || row.nights < 1 || !row.typeId) return "need_fix";
+  if (previewNeedsFix(row)) return "need_fix";
   return "ok";
 }
 
@@ -1215,13 +1266,16 @@ export function pathADraftFromPreview(
     platformLabel: string;
     id: string;
     nowIso: string;
+    /** Create-as-cancelled (no prior Hotori match). DB trigger sets cancelled_at. */
+    status?: "active" | "cancelled";
   },
 ): Booking {
   const priceUnset = row.priceUnset || row.amount == null;
+  const status = opts.status ?? "active";
   return {
     id: opts.id,
     kind: "stay",
-    status: "active",
+    status,
     platformId: opts.platformId,
     price: priceUnset ? 0 : (row.amount ?? 0),
     priceUnset,
@@ -1243,6 +1297,19 @@ export function pathADraftFromPreview(
     createdAt: opts.nowIso,
     updatedAt: opts.nowIso,
   };
+}
+
+/** Path A 미배정 + status cancelled (no Hotori match cancel paste). */
+export function pathACancelDraftFromPreview(
+  row: PreviewRow,
+  opts: {
+    platformId: string;
+    platformLabel: string;
+    id: string;
+    nowIso: string;
+  },
+): Booking {
+  return pathADraftFromPreview(row, { ...opts, status: "cancelled" });
 }
 
 /**

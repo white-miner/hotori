@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { normalizeSettings } from "./ledger.ts";
+import { isActive, normalizeSettings, stockTable, type Booking } from "./ledger.ts";
 import {
   HYPOTHESIS_FIXTURES,
   PLATFORM_PROFILES,
@@ -13,9 +13,11 @@ import {
   YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
+  cancelDraftFromMatch,
   detectProfile,
   findActiveBookingByReservationId,
   htmlTableToPlain,
+  isAlreadyCancelledReservation,
   isCancelGuardBlocked,
   isCancelStatus,
   isDuplicateReservation,
@@ -31,6 +33,8 @@ import {
   parseNightsCell,
   parsePasteTable,
   parseYanoljaCardPaste,
+  pathACancelDraftFromPreview,
+  pathADraftFromPreview,
   profileById,
   removeTypeAlias,
   reservationIdFromMemo,
@@ -100,7 +104,9 @@ test("yanolja multi-space fixture → preview Path A fields", () => {
   assert.equal(preview[0]!.reservationId, "YN-1001");
   assert.equal(preview[0]!.amount, 120000);
   assert.equal(preview[0]!.rowStatus, "ok");
-  assert.equal(preview[1]!.rowStatus, "cancel_missing");
+  assert.equal(preview[1]!.rowStatus, "cancel");
+  assert.equal(preview[1]!.matchBookingId, null);
+  assert.equal(preview[1]!.skip, false);
 });
 
 /** Hypothesis shapes that returned null under #143 (2+ space / HTML only). */
@@ -153,7 +159,8 @@ test("yanolja single-space / vertical / collapsed → preview Path A", () => {
     assert.equal(preview[0]!.reservationId, "YN-1001");
     assert.equal(preview[0]!.amount, 120000);
     assert.equal(preview[0]!.rowStatus, "ok");
-    assert.equal(preview[1]!.rowStatus, "cancel_missing");
+    assert.equal(preview[1]!.rowStatus, "cancel");
+    assert.equal(preview[1]!.matchBookingId, null);
   }
 });
 
@@ -197,7 +204,8 @@ test("parseYanoljaCardPaste: anonymized unified card SoT fixture", () => {
   assert.equal(preview[0]!.amount, 200000);
   assert.equal(preview[0]!.reservationId, "2610151829300184");
   assert.equal(preview[1]!.pasteCancel, true);
-  assert.equal(preview[1]!.rowStatus, "cancel_missing");
+  assert.equal(preview[1]!.rowStatus, "cancel");
+  assert.equal(preview[1]!.matchBookingId, null);
   assert.equal(preview[1]!.guestPhone, "");
   assert.equal(preview[2]!.typeId, "ondol");
   assert.equal(preview[4]!.typeId, "std"); // Standardㅣ스탠다드…
@@ -247,7 +255,7 @@ test("inactive agoda never wins auto-detect without allowInactive", () => {
   assert.ok(withInactive.scores.find((s) => s.id === "agoda")!.score > 0);
 });
 
-test("yanolja normalize + preview: fields + cancel missing without match", () => {
+test("yanolja normalize + preview: cancel without match → create-as-cancelled", () => {
   const profile = profileById("yanolja")!;
   const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
   const col = mapColumns(t.headers, profile);
@@ -266,9 +274,109 @@ test("yanolja normalize + preview: fields + cancel missing without match", () =>
   const preview = buildPreviewRows(t, profile, settings, [], "p-ya");
   assert.equal(preview[0]!.rowStatus, "ok");
   assert.equal(preview[0]!.typeId, "std");
-  // cancel row, no Hotori match → info skip
-  assert.equal(preview[1]!.rowStatus, "cancel_missing");
-  assert.equal(preview[1]!.skip, true);
+  // cancel row, no Hotori match → 예약취소 (Path A create-as-cancelled)
+  assert.equal(preview[1]!.rowStatus, "cancel");
+  assert.equal(preview[1]!.matchBookingId, null);
+  assert.equal(preview[1]!.skip, false);
+  assert.equal(preview[1]!.typeId, "dlx");
+});
+
+test("cancel+match → cancel existing draft; cancel+no match → Path A cancelled; stock not deducted", () => {
+  const profile = profileById("yanolja")!;
+  const t = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
+  const memo = reservationMemo("야놀자", "YN-1002", "디럭스");
+  const existing = [
+    {
+      id: "b-cancel-me",
+      platformId: "p-ya",
+      memo,
+      status: "active" as const,
+      arrived: false,
+      checkedOutAt: null,
+      guestName: "이샘플",
+      checkIn: "2026-10-21",
+      nights: 1,
+      typeId: "dlx",
+    },
+  ];
+  const matchedPreview = buildPreviewRows(t, profile, settings, existing, "p-ya");
+  assert.equal(matchedPreview[1]!.rowStatus, "cancel");
+  assert.equal(matchedPreview[1]!.matchBookingId, "b-cancel-me");
+  const nowIso = "2026-10-25T12:00:00.000Z";
+  const live: Booking = {
+    id: "b-cancel-me",
+    kind: "stay",
+    status: "active",
+    platformId: "p-ya",
+    price: 80000,
+    guestName: "이샘플",
+    typeId: "dlx",
+    roomId: null,
+    checkIn: "2026-10-21",
+    nights: 1,
+    startTime: null,
+    endTime: null,
+    arrived: false,
+    memo,
+    cancelledAt: null,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+  const cancelledMatch = cancelDraftFromMatch(live, nowIso);
+  assert.equal(cancelledMatch.status, "cancelled");
+  assert.equal(isActive(cancelledMatch), false);
+
+  const noMatchPreview = buildPreviewRows(t, profile, settings, [], "p-ya");
+  assert.equal(noMatchPreview[1]!.rowStatus, "cancel");
+  assert.equal(noMatchPreview[1]!.matchBookingId, null);
+  const created = pathACancelDraftFromPreview(noMatchPreview[1]!, {
+    platformId: "p-ya",
+    platformLabel: "야놀자",
+    id: "b-new-cx",
+    nowIso,
+  });
+  assert.equal(created.status, "cancelled");
+  assert.equal(created.roomId, null);
+  assert.equal(isActive(created), false);
+  assert.equal(pathADraftFromPreview(noMatchPreview[1]!, {
+    platformId: "p-ya",
+    platformLabel: "야놀자",
+    id: "b-active",
+    nowIso,
+  }).status, "active");
+
+  // stockTable skips !isActive — cancelled Path A must not deduct type-hold
+  const dates = ["2026-10-21"];
+  const withActive = stockTable(settings, [{ ...created, status: "active", id: "probe-active" }], dates);
+  const withCancelled = stockTable(settings, [created], dates);
+  const base = stockTable(settings, [], dates);
+  assert.equal(withCancelled.get("dlx")?.get("2026-10-21"), base.get("dlx")?.get("2026-10-21"));
+  assert.ok((withActive.get("dlx")?.get("2026-10-21") ?? 0) < (base.get("dlx")?.get("2026-10-21") ?? 0));
+});
+
+test("cancel no-match missing type → 수정필요; already cancelled → 중복스킵", () => {
+  const profile = profileById("yanolja")!;
+  const paste = [
+    "야놀자예약번호\t예약자\t연락처\t객실상품\t체크인\t체크아웃\t박수\t판매금액\t상태",
+    "YN-NO-TYPE\t이없음\t010-0000-0000\t없는타입XYZ\t2026-10-21\t2026-10-22\t1\t80000\t취소",
+  ].join("\n");
+  const t = parsePasteTable(paste)!;
+  const preview = buildPreviewRows(t, profile, settings, [], "p-ya");
+  assert.equal(preview[0]!.rowStatus, "need_fix");
+  assert.equal(preview[0]!.pasteCancel, true);
+  assert.equal(preview[0]!.typeId, null);
+
+  const memo = reservationMemo("야놀자", "YN-NO-TYPE");
+  assert.equal(isAlreadyCancelledReservation([{ platformId: "p-ya", memo, status: "cancelled" }], "p-ya", "YN-NO-TYPE"), true);
+  const again = buildPreviewRows(
+    t,
+    profile,
+    settings,
+    [{ id: "b-cx", platformId: "p-ya", memo, status: "cancelled" as const, arrived: false, checkedOutAt: null, guestName: "이없음", checkIn: "2026-10-21", nights: 1, typeId: "dlx" }],
+    "p-ya",
+  );
+  assert.equal(again[0]!.rowStatus, "dup");
+  assert.equal(again[0]!.skip, true);
 });
 
 test("isCancelStatus classify: KR/EN tokens", () => {
