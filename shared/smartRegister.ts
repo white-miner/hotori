@@ -1346,7 +1346,7 @@ export function isDuplicateReservation(
 /**
  * Preview action labels (KR):
  * ok → 신규 · cancel → 예약취소 · dup → 중복스킵 · need_fix → 수정필요
- * skip → 건너뜀 (입실/퇴실 가드 등)
+ * skip → 수정필요 (FO same label as need_fix; enum stays skip)
  * cancel_missing — legacy unused (no-match now creates cancelled Path A)
  */
 export type PreviewRowStatus = "ok" | "need_fix" | "skip" | "dup" | "cancel" | "cancel_missing";
