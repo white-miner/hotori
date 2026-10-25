@@ -581,7 +581,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
             ) : null}
             {rows.some((r) => r.nestedChannelUnmatched) ? (
               <div className="sub">
-                중첩 채널 라벨이 설정 플랫폼과 안 맞아요 → 붙여넣기 프로필({profile?.label})로 올려요.
+                중첩 채널 미등록 → 붙여넣기 프로필({profile?.label})로 올려요. 미리보기에 원문 채널이 보여요.{" "}
+                <a className="smart-reg-alias-link" href="#/settings/plats">
+                  설정에서 플랫폼 추가
+                </a>
               </div>
             ) : null}
           </aside>
@@ -708,13 +711,20 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                               className="sub"
                               title={
                                 r.nestedChannelUnmatched
-                                  ? `설정에 「${r.nestedChannelRaw}」 없음 · ${r.platformLabel}로 유지`
+                                  ? `설정에 「${r.nestedChannelRaw}」 없음 · ${r.platformLabel}로 유지 · 메모에 원문 보관`
                                   : undefined
                               }
                             >
-                              {r.nestedChannelUnmatched
-                                ? `${r.nestedChannelRaw} · 미연결`
-                                : r.platformLabel}
+                              {r.nestedChannelUnmatched ? (
+                                <>
+                                  {r.nestedChannelRaw} ·{" "}
+                                  <a className="smart-reg-alias-link" href="#/settings/plats">
+                                    플랫폼 미등록
+                                  </a>
+                                </>
+                              ) : (
+                                r.platformLabel
+                              )}
                             </div>
                           ) : null}
                         </td>

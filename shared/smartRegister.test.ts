@@ -14,6 +14,8 @@ import {
   YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH,
   YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH,
+  YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH,
+  YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
@@ -739,19 +741,24 @@ test("seed profiles: active = yanolja+yeogi only (hypothesis fixtures)", () => {
   assert.deepEqual(active, ["yanolja", "yeogi"]);
 });
 
-test("isKnownNestedChannelLabel: allowlist only — never eat guest names", () => {
+test("isKnownNestedChannelLabel: heuristic — never eat guest names", () => {
   assert.equal(isKnownNestedChannelLabel("아고다"), true);
   assert.equal(isKnownNestedChannelLabel("Agoda"), true);
   assert.equal(isKnownNestedChannelLabel("여기어때"), true);
   assert.equal(isKnownNestedChannelLabel("야놀자"), true);
+  assert.equal(isKnownNestedChannelLabel("타이드스퀘어_프리비아"), true);
+  assert.equal(isKnownNestedChannelLabel("이베이_G마켓"), true);
   assert.equal(isKnownNestedChannelLabel("Sumi Lee"), false);
   assert.equal(isKnownNestedChannelLabel("김한나"), false);
   assert.equal(isKnownNestedChannelLabel("도보"), false);
   assert.equal(isKnownNestedChannelLabel("Twinㅣ트윈"), false);
   assert.equal(isKnownNestedChannelLabel("0507-0418-4303"), false);
-  // hotel platform name beyond seed allowlist
+  assert.equal(isKnownNestedChannelLabel("/ 1박"), false);
+  // hotel platform name beyond seed
   assert.equal(isKnownNestedChannelLabel("호텔타임", ["호텔타임", "호"]), true);
-  assert.equal(isKnownNestedChannelLabel("완전모르는채널XYZ"), false);
+  assert.equal(isKnownNestedChannelLabel("타이드스퀘어", ["타이드스퀘어", "타"]), true);
+  // unknown brand-like (Latin) → nested, not guest
+  assert.equal(isKnownNestedChannelLabel("완전모르는채널XYZ"), true);
 });
 
 test("yanolja nested 아고다 card: shift fields + platform=아고다 + Twin alias", () => {
@@ -834,7 +841,7 @@ test("yanolja nested 아고다 card: shift fields + platform=아고다 + Twin al
   }
 });
 
-test("yanolja nested unknown channel: do not eat guest · keep source platform", () => {
+test("yanolja nested unknown channel: still shift · keep source platform · raw in memo", () => {
   const block = [
     "2610211864975519",
     "완전모르는채널XYZ",
@@ -851,12 +858,11 @@ test("yanolja nested unknown channel: do not eat guest · keep source platform",
     "예약완료",
     "판매가 70,000원",
   ].join("\n");
-  // unknown → treated as guestName (confident allowlist only)
+  // unknown brand-like → nestedChannelRaw (do not eat guest)
   const card = parseYanoljaCardPaste(block)!;
-  assert.equal(card.rows[0]![1], "완전모르는채널XYZ");
-  assert.equal(card.rows[0]![9], "");
+  assert.equal(card.rows[0]![1], "Sumi Lee");
+  assert.equal(card.rows[0]![9], "완전모르는채널XYZ");
 
-  // allowlist Agoda without Settings platform → nested kept, source platform
   const noAgoda = normalizeSettings({
     platforms: [
       { id: "p-ya", name: "야놀자", abbr: "야" },
@@ -887,6 +893,61 @@ test("yanolja nested unknown channel: do not eat guest · keep source platform",
   assert.equal(preview[0]!.nestedChannelUnmatched, true);
   assert.equal(preview[0]!.platformId, "p-ya");
   assert.equal(preview[0]!.platformLabel, "야놀자");
+  const draft = pathADraftFromPreview(preview[0]!, {
+    platformId: "p-ya",
+    platformLabel: "야놀자",
+    id: "b-unk",
+    nowIso: "2026-10-25T00:00:00.000Z",
+  });
+  assert.match(draft.memo ?? "", /야놀자\(아고다\) 예약번호/);
+});
+
+test("yanolja nested 타이드스퀘어_프리비아 + 이베이_G마켓 fixtures", () => {
+  const tideRaw = readFileSync(fileURLToPath(YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH), "utf8");
+  const tide = parseYanoljaCardPaste(tideRaw)!;
+  assert.equal(tide.rows[0]![1], "김민수");
+  assert.equal(tide.rows[0]![9], "타이드스퀘어_프리비아");
+
+  const gmRaw = readFileSync(fileURLToPath(YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH), "utf8");
+  const gm = parseYanoljaCardPaste(gmRaw)!;
+  assert.equal(gm.rows[0]![1], "이수진");
+  assert.equal(gm.rows[0]![2], "0507-2222-3333");
+  assert.equal(gm.rows[0]![9], "이베이_G마켓");
+
+  // fuzzy: Settings has 프리비아 → match; G마켓 unmatched → source 야놀자 + raw
+  const withPrevia = normalizeSettings({
+    ...settings,
+    platforms: [
+      ...settings.platforms,
+      { id: "p-pv", name: "프리비아", abbr: "프" },
+    ],
+  });
+  assert.equal(matchPlatformByLabel("타이드스퀘어_프리비아", withPrevia)?.id, "p-pv");
+  assert.equal(matchPlatformByLabel("이베이_G마켓", withPrevia), null);
+
+  const tidePreview = buildPreviewRows(
+    parsePasteTable(tideRaw)!,
+    profileById("yanolja")!,
+    withPrevia,
+    [],
+    "p-ya",
+  );
+  assert.equal(tidePreview[0]!.guestName, "김민수");
+  assert.equal(tidePreview[0]!.platformId, "p-pv");
+  assert.equal(tidePreview[0]!.nestedChannelRaw, "타이드스퀘어_프리비아");
+  assert.equal(tidePreview[0]!.nestedChannelUnmatched, false);
+
+  const gmPreview = buildPreviewRows(
+    parsePasteTable(gmRaw)!,
+    profileById("yanolja")!,
+    withPrevia,
+    [],
+    "p-ya",
+  );
+  assert.equal(gmPreview[0]!.guestName, "이수진");
+  assert.equal(gmPreview[0]!.platformId, "p-ya");
+  assert.equal(gmPreview[0]!.nestedChannelUnmatched, true);
+  assert.equal(gmPreview[0]!.nestedChannelRaw, "이베이_G마켓");
 });
 
 test("normal yanolja card unchanged when no nested channel line", () => {
