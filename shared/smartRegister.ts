@@ -981,18 +981,49 @@ export function previewNeedsFix(row: {
 
 /**
  * Normalize OTA / platform type name for alias match.
- * trim · collapse spaces · strip ZWSP/NBSP · casefold (KR-friendly via toLowerCase).
+ * trim · collapse spaces · unify `ㅣ`/`|` · strip ZWSP/NBSP · casefold (KR-friendly via toLowerCase).
  */
 export function normTypeName(raw: string): string {
   return raw
     .trim()
     .replace(/[\u00a0\u202f]/g, " ") // NBSP / NNBSP → space
     .replace(/[\u200b\u200c\u200d\ufeff]/g, "") // zero-width / BOM strip
+    .replace(/ㅣ/g, "|") // Yanolja vertical bar ↔ ASCII pipe
     .replace(/\s+/g, " ")
     .toLowerCase();
 }
 
-/** Exact alias lookup: platformId + normalized name → typeId (if type still usable). */
+/**
+ * Prepare paste typeRaw for alias match: drop `(객실 타입 ID: N)` tokens,
+ * then strip a trailing amenity parenthetical `(…)` so short aliases still hit.
+ */
+export function typeRawForAliasMatch(raw: string): string {
+  let s = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    // standalone or inline partner type-id footnotes
+    .replace(/\(?\s*객실\s*타입\s*ID\s*[:：]?\s*\d+\s*\)?/gi, " ")
+    .replace(/\n+/g, " ")
+    .trim();
+  // trailing amenity block e.g. Family Room|VIP(퀸베드1+…)
+  s = s.replace(/\([^()]*\)\s*$/u, "").trim();
+  return s;
+}
+
+/** True when paste key equals alias, or alias is a prefix before amenity `(`. */
+function aliasMatchesTypeKey(key: string, aliasKey: string): boolean {
+  if (!aliasKey || !key) return false;
+  if (key === aliasKey) return true;
+  if (!key.startsWith(aliasKey)) return false;
+  const next = key.charAt(aliasKey.length);
+  // prefix before amenity `(`, or already-stripped key that still starts with alias + sep
+  return next === "(" || next === "" || next === " " || next === "|";
+}
+
+/**
+ * Alias lookup: platformId + normalized name → typeId (if type still usable).
+ * Exact, strip amenity/`객실 타입 ID`, or longest alias prefix before `(`.
+ */
 export function lookupTypeAlias(
   aliases: TypeAlias[] | undefined,
   platformId: string | null | undefined,
@@ -1000,16 +1031,27 @@ export function lookupTypeAlias(
   typeIds?: ReadonlySet<string>,
 ): string | null {
   if (!platformId || !aliases?.length) return null;
-  const key = normTypeName(platformTypeName);
-  if (!key) return null;
-  for (let i = aliases.length - 1; i >= 0; i--) {
+  const fullKey = normTypeName(platformTypeName);
+  const strippedKey = normTypeName(typeRawForAliasMatch(platformTypeName));
+  if (!fullKey && !strippedKey) return null;
+
+  let best: { typeId: string; len: number; idx: number } | null = null;
+  for (let i = 0; i < aliases.length; i++) {
     const a = aliases[i]!;
     if (a.platformId !== platformId) continue;
-    if (normTypeName(a.platformTypeName) !== key) continue;
-    if (typeIds && !typeIds.has(a.typeId)) return null;
-    return a.typeId;
+    const aliasKey = normTypeName(a.platformTypeName);
+    if (!aliasKey) continue;
+    const hit =
+      aliasMatchesTypeKey(fullKey, aliasKey) ||
+      (strippedKey !== fullKey && aliasMatchesTypeKey(strippedKey, aliasKey));
+    if (!hit) continue;
+    if (typeIds && !typeIds.has(a.typeId)) continue;
+    // longest alias wins; same length → later entry (overwrite semantics)
+    if (!best || aliasKey.length > best.len || (aliasKey.length === best.len && i >= best.idx)) {
+      best = { typeId: a.typeId, len: aliasKey.length, idx: i };
+    }
   }
-  return null;
+  return best?.typeId ?? null;
 }
 
 /** Insert or replace alias for (platformId, normalized name). */
