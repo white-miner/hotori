@@ -239,8 +239,11 @@ function splitCsvLine(line: string): string[] {
   return cells;
 }
 
-function splitByDelimiter(line: string, delimiter: ParsedPasteTable["delimiter"]): string[] {
-  if (delimiter === "space") return line.trim().split(/\s{2,}/).map((c) => c.trim()).filter((c) => c.length > 0);
+function splitByDelimiter(line: string, delimiter: ParsedPasteTable["delimiter"], singleSpace = false): string[] {
+  if (delimiter === "space") {
+    const re = singleSpace ? /\s+/ : /\s{2,}/;
+    return line.trim().split(re).map((c) => c.trim()).filter((c) => c.length > 0);
+  }
   if (delimiter === "comma") return splitCsvLine(line);
   if (delimiter === "pipe") return line.split("|").map((c) => c.trim());
   return line.split("\t").map((c) => c.trim());
@@ -248,6 +251,10 @@ function splitByDelimiter(line: string, delimiter: ParsedPasteTable["delimiter"]
 
 function spaceColCount(line: string): number {
   return line.trim().split(/\s{2,}/).filter((c) => c.trim().length > 0).length;
+}
+
+function singleSpaceCells(line: string): string[] {
+  return line.trim().split(/\s+/).filter((c) => c.length > 0);
 }
 
 function pickDelimiter(lines: string[]): ParsedPasteTable["delimiter"] {
@@ -272,14 +279,27 @@ function pickDelimiter(lines: string[]): ParsedPasteTable["delimiter"] {
   return "space";
 }
 
+function isAliasCell(cell: string, aliasNorms: string[]): boolean {
+  const h = normHeader(cell);
+  if (!h) return false;
+  return aliasNorms.some((a) => a === h || h.includes(a) || a.includes(h));
+}
+
 function headerAliasHits(cells: string[], aliasNorms: string[]): number {
   let hits = 0;
   for (const cell of cells) {
-    const h = normHeader(cell);
-    if (!h) continue;
-    if (aliasNorms.some((a) => a === h || h.includes(a) || a.includes(h))) hits += 1;
+    if (isAliasCell(cell, aliasNorms)) hits += 1;
   }
   return hits;
+}
+
+/** Yanolja/OTA reservation-id-ish tokens used as row start anchors. */
+const RESERVATION_ID_ANCHOR = /^(?:[A-Za-z]{1,8}-)?\d{4,}[A-Za-z0-9-]*$/;
+
+function isReservationAnchor(cell: string): boolean {
+  const t = cell.trim();
+  if (!t || t.length > 32) return false;
+  return RESERVATION_ID_ANCHOR.test(t);
 }
 
 function isJunkPasteLine(line: string): boolean {
@@ -294,31 +314,152 @@ function isJunkPasteLine(line: string): boolean {
   return false;
 }
 
-/**
- * Split clipboard text into header + body rows.
- * Accepts TSV / CSV / pipe / 2+ spaces, strips partner chrome lines,
- * and locates the real header row (not always line 0).
- * Prefer `htmlTableToPlain` first when paste has `text/html`.
- */
-export function parsePasteTable(raw: string): ParsedPasteTable | null {
-  let text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
-  if (!text) return null;
-
-  // HTML table pasted into textarea (or fed from onPaste) → TSV
-  if (/<table[\s>]/i.test(text)) {
-    const fromHtml = htmlTableToPlain(text);
-    if (fromHtml) text = fromHtml;
+/** True when drag-copy yielded one cell per line (few/no multi-col rows). */
+function looksVerticalCellPaste(lines: string[]): boolean {
+  if (lines.length < 6) return false;
+  let multi = 0;
+  let single = 0;
+  for (const l of lines) {
+    if (/\t/.test(l) || l.includes("|") || spaceColCount(l) >= 2 || splitCsvLine(l).length >= 3) multi += 1;
+    else if (singleSpaceCells(l).length === 1) single += 1;
   }
+  return multi <= 1 && single >= Math.max(6, Math.floor(lines.length * 0.7));
+}
 
-  const rawLines = text.split("\n").map((l) => l.trimEnd());
-  const lines = rawLines.filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
-  if (lines.length < 2) return null;
+/**
+ * Reassemble vertical (one-cell-per-line) paste into TSV lines.
+ * Header = longest consecutive alias run (≥3); body chunked by that width,
+ * preferring 예약번호-style anchors when present.
+ */
+function reassembleVerticalToTsv(lines: string[], aliasNorms: string[]): string[] | null {
+  const tokens = lines.map((l) => l.trim()).filter((t) => t.length > 0);
+  if (tokens.length < 6) return null;
 
-  const delimiter = pickDelimiter(lines);
-  const splitLine = (line: string) => splitByDelimiter(line, delimiter);
-  const aliasNorms = allHeaderAliasNorms();
+  let bestStart = -1;
+  let bestLen = 0;
+  let i = 0;
+  while (i < tokens.length) {
+    if (!isAliasCell(tokens[i]!, aliasNorms)) {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < tokens.length && isAliasCell(tokens[j]!, aliasNorms)) j += 1;
+    const len = j - i;
+    if (len > bestLen) {
+      bestLen = len;
+      bestStart = i;
+    }
+    i = j;
+  }
+  if (bestStart < 0 || bestLen < 3) return null;
 
-  // Prefer the line with the most header-alias hits (≥2 cells); else first multi-col line.
+  const headers = tokens.slice(bestStart, bestStart + bestLen);
+  const body = tokens.slice(bestStart + bestLen);
+  if (body.length < bestLen) return null;
+
+  const width = headers.length;
+  const rows: string[][] = [];
+  const anchors = body
+    .map((t, idx) => (isReservationAnchor(t) ? idx : -1))
+    .filter((idx) => idx >= 0);
+
+  if (anchors.length >= 1 && anchors.every((a, k) => k === 0 || a - anchors[k - 1]! === width)) {
+    for (const a of anchors) {
+      const chunk = body.slice(a, a + width);
+      if (chunk.length === width) rows.push(chunk);
+    }
+  } else {
+    for (let k = 0; k + width <= body.length; k += width) {
+      rows.push(body.slice(k, k + width));
+    }
+  }
+  if (!rows.length) return null;
+  return [headers.join("\t"), ...rows.map((r) => r.join("\t"))];
+}
+
+/**
+ * Collapse a single giant line into TSV when header aliases form a contiguous token run.
+ */
+function reassembleCollapsedToTsv(line: string, aliasNorms: string[]): string[] | null {
+  const tokens = singleSpaceCells(line);
+  if (tokens.length < 8) return null;
+
+  let bestStart = -1;
+  let bestLen = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (!isAliasCell(tokens[i]!, aliasNorms)) continue;
+    let j = i;
+    while (j < tokens.length && isAliasCell(tokens[j]!, aliasNorms)) j += 1;
+    const len = j - i;
+    if (len > bestLen) {
+      bestLen = len;
+      bestStart = i;
+    }
+    i = j - 1;
+  }
+  if (bestStart < 0 || bestLen < 3) return null;
+
+  const headers = tokens.slice(bestStart, bestStart + bestLen);
+  const body = tokens.slice(bestStart + bestLen);
+  const width = headers.length;
+  if (body.length < width) return null;
+
+  const rows: string[][] = [];
+  const anchors = body
+    .map((t, idx) => (isReservationAnchor(t) ? idx : -1))
+    .filter((idx) => idx >= 0);
+  if (anchors.length >= 1 && anchors.every((a, k) => k === 0 || a - anchors[k - 1]! === width)) {
+    for (const a of anchors) {
+      const chunk = body.slice(a, a + width);
+      if (chunk.length === width) rows.push(chunk);
+    }
+  } else if (body.length % width === 0) {
+    for (let k = 0; k < body.length; k += width) rows.push(body.slice(k, k + width));
+  }
+  if (!rows.length) return null;
+  return [headers.join("\t"), ...rows.map((r) => r.join("\t"))];
+}
+
+/**
+ * Single-space columns when 2+ space delim fails but token count matches a strong header alias set.
+ * Hypothesis: partner drag-copy often uses one space between cells (names without spaces).
+ */
+function trySingleSpaceParse(lines: string[], aliasNorms: string[]): ParsedPasteTable | null {
+  let headerIdx = -1;
+  let bestHits = -1;
+  let headerCells: string[] = [];
+  for (let i = 0; i < Math.min(lines.length, 20); i++) {
+    const cells = singleSpaceCells(lines[i]!);
+    if (cells.length < 3) continue;
+    const hits = headerAliasHits(cells, aliasNorms);
+    if (hits >= 3 && hits > bestHits) {
+      bestHits = hits;
+      headerIdx = i;
+      headerCells = cells;
+    }
+  }
+  if (headerIdx < 0 || headerCells.length < 3) return null;
+
+  const width = headerCells.length;
+  const rows = lines
+    .slice(headerIdx + 1)
+    .map(singleSpaceCells)
+    .filter((r) => r.length === width || (r.length >= Math.min(3, width) && Math.abs(r.length - width) <= 1))
+    .map((r) => (r.length === width ? r : r.length > width ? r.slice(0, width) : r));
+  const exact = rows.filter((r) => r.length === width);
+  if (!exact.length) return null;
+  return { headers: headerCells, rows: exact, delimiter: "space" };
+}
+
+function finishTable(
+  lines: string[],
+  delimiter: ParsedPasteTable["delimiter"],
+  aliasNorms: string[],
+  singleSpace = false,
+): ParsedPasteTable | null {
+  const splitLine = (line: string) => splitByDelimiter(line, delimiter, singleSpace);
+
   let headerIdx = -1;
   let bestHits = -1;
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
@@ -329,7 +470,6 @@ export function parsePasteTable(raw: string): ParsedPasteTable | null {
       bestHits = hits;
       headerIdx = i;
     }
-    // strong header: stop early
     if (hits >= 3) break;
   }
   if (headerIdx < 0) {
@@ -349,10 +489,242 @@ export function parsePasteTable(raw: string): ParsedPasteTable | null {
     .slice(headerIdx + 1)
     .map(splitLine)
     .filter((r) => r.some((c) => c.length > 0))
-    // drop trailing summary rows that collapse to 1–2 cells
     .filter((r) => r.length >= Math.min(3, headers.length) || r.length === headers.length);
   if (!rows.length) return null;
   return { headers, rows, delimiter };
+}
+
+/** 야놀자 통합내역 card: reservation id = long digit-only line. */
+const YANOLJA_CARD_RES_ID = /^\d{10,}$/;
+
+const YANOLJA_CARD_HEADERS = [
+  "야놀자예약번호",
+  "예약자",
+  "연락처",
+  "객실상품",
+  "체크인",
+  "체크아웃",
+  "박수",
+  "판매금액",
+  "상태",
+] as const;
+
+function normalizePasteLine(line: string): string {
+  return line.replace(/[\u200b\u200c\u200d\ufeff\u00a0]/g, "").trim();
+}
+
+/**
+ * True for 야놀자 파트너 「통합내역」 drag-copy: vertical card stack
+ * (one field per line, blocks split by long digit reservation ids) — not TSV.
+ */
+export function looksLikeYanoljaCardPaste(text: string): boolean {
+  const lines = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map(normalizePasteLine);
+  const ids = lines.filter((l) => YANOLJA_CARD_RES_ID.test(l));
+  if (ids.length < 1) return false;
+  // Real TSV/multi-col table wins over card heuristics
+  if (lines.some((l) => l.split("\t").length >= 4)) return false;
+  const blob = lines.join("\n");
+  const hasNights = /\/\s*\d+\s*박/.test(blob);
+  const hasSale = /판매가/.test(blob);
+  const hasStatus = /예약완료|예약취소|미리예약/.test(blob);
+  const hasTypeId = /객실\s*타입\s*ID/.test(blob);
+  return (hasNights || hasSale) && (hasStatus || hasTypeId);
+}
+
+/** Parse one card block (starts with reservation id) → synthetic table row. */
+function parseYanoljaCardBlock(blockLines: string[]): string[] | null {
+  const lines = blockLines.map(normalizePasteLine).filter((l) => l.length > 0);
+  if (!lines.length || !YANOLJA_CARD_RES_ID.test(lines[0]!)) return null;
+
+  const reservationId = lines[0]!;
+  let i = 1;
+  const guestName = lines[i++] ?? "";
+
+  let guestPhone = "";
+  if (i < lines.length) {
+    const phoneOrSafe = lines[i]!;
+    if (/안심번호/.test(phoneOrSafe)) {
+      guestPhone = "";
+      i += 1;
+    } else if (/^[\d+\-]+$/.test(phoneOrSafe) || /^0\d/.test(phoneOrSafe)) {
+      guestPhone = phoneOrSafe;
+      i += 1;
+    }
+  }
+
+  if (i < lines.length && /^(차량|도보)$/.test(lines[i]!)) i += 1;
+
+  let typeRaw = "";
+  while (i < lines.length) {
+    const l = lines[i]!;
+    if (/객실\s*타입\s*ID/.test(l)) {
+      i += 1;
+      break;
+    }
+    if (/^숙박$/.test(l) || /^\/\s*\d+\s*박/.test(l) || /^\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(l)) break;
+    if (!typeRaw) typeRaw = l;
+    i += 1;
+  }
+
+  let nights = "";
+  while (i < lines.length) {
+    const l = lines[i]!;
+    const nm = l.match(/\/\s*(\d+)\s*박/);
+    if (nm) {
+      nights = nm[1]!;
+      i += 1;
+      continue;
+    }
+    if (/^(숙박|연박)$/.test(l)) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+
+  const dates: string[] = [];
+  while (i < lines.length && dates.length < 2) {
+    const l = lines[i]!;
+    if (/^\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(l)) {
+      dates.push(l);
+      i += 1;
+      continue;
+    }
+    break;
+  }
+
+  // created datetime · 미리예약 · optional cancel date fragments
+  while (i < lines.length) {
+    const l = lines[i]!;
+    if (l === "미리예약" || /^\d{4}[./-]/.test(l) || /^\d{1,2}:\d{2}/.test(l)) {
+      i += 1;
+      continue;
+    }
+    break;
+  }
+
+  let statusRaw = "";
+  if (i < lines.length && /^(예약완료|예약취소)$/.test(lines[i]!)) {
+    statusRaw = lines[i]!;
+    i += 1;
+    while (i < lines.length) {
+      const l = lines[i]!;
+      if (/^판매가/.test(l) || YANOLJA_CARD_RES_ID.test(l)) break;
+      if (/^(입실완료|입실\s*호수|실제\s*입실)/.test(l)) break;
+      // 고객취소 · cancel date/time lines
+      i += 1;
+    }
+  }
+
+  let amount = "";
+  while (i < lines.length) {
+    const l = lines[i]!;
+    const am = l.match(/판매가\s*([\d,]+)\s*원/);
+    if (am) {
+      amount = am[1]!.replace(/,/g, "");
+      break;
+    }
+    if (YANOLJA_CARD_RES_ID.test(l)) break;
+    i += 1;
+  }
+
+  return [
+    reservationId,
+    guestName,
+    guestPhone,
+    typeRaw,
+    dates[0] ?? "",
+    dates[1] ?? "",
+    nights,
+    amount,
+    statusRaw,
+  ];
+}
+
+/**
+ * 야놀자 통합내역 vertical card paste → synthetic TSV table
+ * (headers match yanolja profile aliases so detect/map reuse Path A).
+ */
+export function parseYanoljaCardPaste(raw: string): ParsedPasteTable | null {
+  if (!looksLikeYanoljaCardPaste(raw)) return null;
+  const lines = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map(normalizePasteLine);
+
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (YANOLJA_CARD_RES_ID.test(lines[i]!)) starts.push(i);
+  }
+  if (!starts.length) return null;
+
+  const rows: string[][] = [];
+  for (let s = 0; s < starts.length; s++) {
+    const from = starts[s]!;
+    const to = s + 1 < starts.length ? starts[s + 1]! : lines.length;
+    const row = parseYanoljaCardBlock(lines.slice(from, to));
+    if (row) rows.push(row);
+  }
+  if (!rows.length) return null;
+  return { headers: [...YANOLJA_CARD_HEADERS], rows, delimiter: "tab" };
+}
+
+/**
+ * Split clipboard text into header + body rows.
+ * Intake pipeline: prefer HTML table → **야놀자 card stack** → normalize lines →
+ * vertical/collapsed reassembly → tab/pipe/comma/2+ spaces → single-space
+ * fallback when column count matches header aliases.
+ */
+export function parsePasteTable(raw: string): ParsedPasteTable | null {
+  let text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return null;
+
+  // HTML table pasted into textarea (or fed from onPaste) → TSV
+  if (/<table[\s>]/i.test(text)) {
+    const fromHtml = htmlTableToPlain(text);
+    if (fromHtml) text = fromHtml;
+  }
+
+  // 야놀자 통합내역 drag-copy SoT: vertical card stack (not TSV)
+  const card = parseYanoljaCardPaste(text);
+  if (card) return card;
+
+  const aliasNorms = allHeaderAliasNorms();
+  let rawLines = text.split("\n").map((l) => l.trimEnd());
+  let lines = rawLines.filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
+  if (!lines.length) return null;
+
+  // One giant line (newlines collapsed) → tokenize + reassemble
+  if (lines.length === 1) {
+    const rebuilt = reassembleCollapsedToTsv(lines[0]!, aliasNorms);
+    if (rebuilt) lines = rebuilt;
+  } else if (looksVerticalCellPaste(lines)) {
+    const rebuilt = reassembleVerticalToTsv(lines, aliasNorms);
+    if (rebuilt) lines = rebuilt;
+  }
+
+  if (lines.length < 2) return null;
+
+  const delimiter = pickDelimiter(lines);
+  const primary = finishTable(lines, delimiter, aliasNorms, false);
+  if (primary) return primary;
+
+  // Fallback: single-space columns when 2+ space / other delims yield no table
+  const single = trySingleSpaceParse(lines, aliasNorms);
+  if (single) return single;
+
+  // Last try: force single-space split through finishTable
+  if (delimiter === "space") {
+    const forced = finishTable(lines, "space", aliasNorms, true);
+    if (forced) return forced;
+  }
+  return null;
 }
 
 export interface DetectResult {
@@ -927,6 +1299,68 @@ export const YANOLJA_DRAG_COPY_HTML_FIXTURE = `
 </table>
 <button>엑셀다운로드</button>
 `.trim();
+
+/**
+ * Hypothesis (#143 miss): 통합내역 drag-copy with **single** spaces between cells
+ * (not 2+). Fails under #143 multi-space rules; passes after line-split harden.
+ */
+export const YANOLJA_DRAG_COPY_SINGLE_SPACE_FIXTURE = [
+  "필터",
+  "조회기간 2026-10-01 ~ 2026-10-31",
+  "야놀자예약번호 예약자 연락처 객실상품 체크인 체크아웃 박수 판매금액 상태",
+  "YN-1001 김테스트 010-1234-5678 스탠다드 2026-10-20 2026-10-22 2 120000 예약확정",
+  "YN-1002 이샘플 010****9999 디럭스 2026-10-21 2026-10-22 1 80000 취소",
+].join("\n");
+
+/**
+ * Hypothesis (#143 miss): each cell on its own line (DOM textContent / column walk).
+ * Needs row reassembly via header-alias cycle + 예약번호 anchors.
+ */
+export const YANOLJA_DRAG_COPY_VERTICAL_CELLS_FIXTURE = [
+  "필터",
+  "야놀자예약번호",
+  "예약자",
+  "연락처",
+  "객실상품",
+  "체크인",
+  "체크아웃",
+  "박수",
+  "판매금액",
+  "상태",
+  "YN-1001",
+  "김테스트",
+  "010-1234-5678",
+  "스탠다드",
+  "2026-10-20",
+  "2026-10-22",
+  "2",
+  "120000",
+  "예약확정",
+  "YN-1002",
+  "이샘플",
+  "010****9999",
+  "디럭스",
+  "2026-10-21",
+  "2026-10-22",
+  "1",
+  "80000",
+  "취소",
+].join("\n");
+
+/**
+ * Hypothesis (#143 miss): all cells collapsed onto one line (newline stripped).
+ */
+export const YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE =
+  "야놀자예약번호 예약자 연락처 객실상품 체크인 체크아웃 박수 판매금액 상태 YN-1001 김테스트 010-1234-5678 스탠다드 2026-10-20 2026-10-22 2 120000 예약확정 YN-1002 이샘플 010****9999 디럭스 2026-10-21 2026-10-22 1 80000 취소";
+
+/**
+ * Live SoT (anonymized): 야놀자 통합내역 vertical card stack.
+ * Full copy: `shared/fixtures/yanolja-unified-card-paste.txt`.
+ */
+export const YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-unified-card-paste.txt",
+  import.meta.url,
+);
 
 /** Soft warn key when no reservation id (name+phone+checkIn+type). */
 export function softDedupeKey(row: Pick<PreviewRow, "guestName" | "guestPhone" | "checkIn" | "typeId">): string {

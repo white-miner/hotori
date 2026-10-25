@@ -89,7 +89,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setRows([]);
         setParseErr(
           text.trim()
-            ? "표(헤더+데이터 행)를 인식하지 못했어요. 파트너센터 목록을 드래그해 다시 붙여넣거나, 표 전체를 복사해 주세요."
+            ? "표(헤더+데이터 행)를 인식하지 못했어요. 목록 표에서 Ctrl+A로 전체 선택 후 복사하거나, 엑셀로보낸 뒤 붙여넣어 보세요."
             : null,
         );
         if (!forced) {
