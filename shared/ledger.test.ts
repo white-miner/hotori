@@ -195,6 +195,7 @@ test("취소한 숙박은 줄 그어 보이다가, 새 예약이 그 방을 채�
 
 test("퇴실처리 후 같은 날 재배정: 「배치」는 새 손님 · 퇴실만이면 공실 (현황과 동일)", () => {
   // 23일 입실·24일 퇴실 예정이던 손님 → 23일 낮 퇴실처리 · 같은 방·같은 밤 새 예약
+  const today = "2026-10-23";
   const old = bk({
     roomId: "r201",
     checkIn: "2026-10-23",
@@ -204,7 +205,7 @@ test("퇴실처리 후 같은 날 재배정: 「배치」는 새 손님 · 퇴�
     guestName: "이전손님",
     createdAt: "2026-10-20T00:00:00Z",
   });
-  assert.equal(nightBoard(S, [old], "2026-10-23").byRoom.has("r201"), false, "퇴실처리만 있으면 배치 칸 비움");
+  assert.equal(nightBoard(S, [old], "2026-10-23", today).byRoom.has("r201"), false, "퇴실처리만 있으면 배치 칸 비움");
   const neu = bk({
     roomId: "r201",
     checkIn: "2026-10-23",
@@ -213,8 +214,24 @@ test("퇴실처리 후 같은 날 재배정: 「배치」는 새 손님 · 퇴�
     createdAt: "2026-10-23T05:00:00Z",
   });
   // 예전 예약이 배열 앞에 있어도 배치는 새 손님
-  assert.equal(nightBoard(S, [old, neu], "2026-10-23").byRoom.get("r201")?.id, neu.id);
-  assert.equal(nightBoard(S, [neu, old], "2026-10-23").byRoom.get("r201")?.id, neu.id);
+  assert.equal(nightBoard(S, [old, neu], "2026-10-23", today).byRoom.get("r201")?.id, neu.id);
+  assert.equal(nightBoard(S, [neu, old], "2026-10-23", today).byRoom.get("r201")?.id, neu.id);
+});
+
+test("과거 숙박일: 퇴실처리된 숙박도 「배치」역사 점유로 보임", () => {
+  const today = "2026-10-25";
+  const past = bk({
+    roomId: "r201",
+    checkIn: "2026-10-20",
+    nights: 2,
+    arrived: true,
+    checkedOutAt: "2026-10-22T03:00:00Z",
+    guestName: "과거손님",
+  });
+  assert.equal(nightBoard(S, [past], "2026-10-20", today).byRoom.get("r201")?.id, past.id);
+  assert.equal(nightBoard(S, [past], "2026-10-21", today).byRoom.get("r201")?.id, past.id);
+  // today 당일·미래 규칙: 퇴실만이면 공실
+  assert.equal(nightBoard(S, [past], "2026-10-20", "2026-10-20").byRoom.has("r201"), false);
 });
 
 test("방 없는 취소 숙박은 같은 타입 새 예약이 들어오면 사라져요", () => {

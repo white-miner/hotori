@@ -3,7 +3,7 @@
  * MiniFloorPlan(피커)과 분리 · 새 점유 엔진 금지.
  */
 import type { Booking } from "./ledger";
-import { boardEntryForRoom, occupiesRoom } from "./ledger";
+import { boardEntryForRoom, isActive, occupiesRoom } from "./ledger";
 import { type NowFlags, type NowKind, type NowOpts, nowFlags } from "./nowboard";
 
 /** 미니맵 MVP 4색 (lateOut → 퇴실예정 묶음) */
@@ -40,17 +40,21 @@ export function glanceMapKindNow(
 
 /**
  * 「배치」: boardEntryForRoom + occupiesRoom → nowFlags.
- * 퇴실처리된 활성 예약은 공실 (placement-stale SoT).
+ * 오늘/미래: 퇴실처리된 활성 예약은 공실 (placement-stale SoT · #125).
+ * 과거(`night < today`): 역사 점유 → arrived면 inhouse / 아니면 arriving.
  */
 export function glanceMapKindPlacement(
   bookings: Booking[],
   roomId: string,
   night: string,
   opts?: NowOpts,
+  today?: string,
 ): GlanceMapKind {
-  const b = boardEntryForRoom(bookings, roomId, night);
-  if (!b || !occupiesRoom(b)) return "empty";
-  return glanceMapKindNow(b, night, opts);
+  const b = boardEntryForRoom(bookings, roomId, night, today);
+  if (!b) return "empty";
+  if (occupiesRoom(b)) return glanceMapKindNow(b, night, opts);
+  if (today && night < today && isActive(b)) return b.arrived ? "inhouse" : "arriving";
+  return "empty";
 }
 
 /** 총/사용/남음 칩 필터 — null=전체 · used=점유 묶음 · left=공실 */

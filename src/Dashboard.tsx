@@ -408,7 +408,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const x = th.getBoundingClientRect().left - w.getBoundingClientRect().left + w.scrollLeft - (lab?.offsetWidth ?? 0) - 8;
     w.scrollLeft = Math.max(0, x - 3 * th.offsetWidth); // 오늘 앞 사흘도 보이게
   }, [view.from, view.to, tab]);
-  const board = useMemo(() => nightBoard(s, bookings, selDate), [s, bookings, selDate]);
+  const board = useMemo(() => nightBoard(s, bookings, selDate, today), [s, bookings, selDate, today]);
+  /** 배치 선택 숙박일 재고 — 과거 selDate도 포함 (tableAll은 today..+13만) */
+  const stockSelNight = useMemo(() => stockTable(s, bookings, [selDate]), [s, bookings, selDate]);
   // 분 단위로 벽시계를 갱신 → 체크인 시각 자동 숙박 · 퇴실예정 윈도우가 보드에 반영
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
@@ -591,7 +593,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ? roomIsVacant(roomId)
         : (() => {
             const bk = board.byRoom.get(roomId);
-            return !bk || !occupiesRoom(bk);
+            if (!bk) return true;
+            if (selDate < today) return !isActive(bk);
+            return !occupiesRoom(bk);
           })();
     if (occFilter === "left") return vacant ? "" : "gs-dim";
     return vacant ? "gs-dim" : "";
@@ -3238,15 +3242,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             }))
             .filter((g) => g.floors.length);
           const gRooms = glanceFloors.flatMap((f) => f.rooms);
+          const pastNight = selDate < today;
           const gVacant = gRooms.filter((r) => {
             const bk = board.byRoom.get(r.id);
-            return !bk || !occupiesRoom(bk);
+            if (!bk) return true;
+            // 과거 = 역사 점유(퇴실 포함)를 「사용」 · 오늘/미래 = 물리 점유만
+            if (pastNight) return !isActive(bk);
+            return !occupiesRoom(bk);
           });
           const typeStockNight = s.types
             .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
             .map((t) => ({
               t,
-              rem: tableAll.get(t.id)?.get(selDate) ?? 0,
+              rem: stockSelNight.get(t.id)?.get(selDate) ?? 0,
               total: totalsAll.get(t.id) ?? 0,
             }));
           const minimapRooms: MinimapBuilding[] = glanceGroups.map(({ bd, floors: fl }) => ({
@@ -3257,7 +3265,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               name: f.name,
               rooms: f.rooms.map((r) => ({
                 id: r.id,
-                kind: glanceMapKindPlacement(bookings, r.id, selDate, nowOpts),
+                kind: glanceMapKindPlacement(bookings, r.id, selDate, nowOpts, today),
               })),
             })),
           }));
