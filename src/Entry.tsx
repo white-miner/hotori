@@ -1089,7 +1089,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setNcxBusy(false);
     }
   };
-  const [status, setStatus] = useState<Status>(base?.status ?? "active");
+  const [status] = useState<Status>(base?.status ?? "active");
   /** 미니 배치도 건물 칩 (간단 예약 · Entry 숙박/대실 공용 MiniFloorPlan) */
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
   const [err, setErr] = useState<string | null>(null);
@@ -1499,6 +1499,13 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         arrived: true,
       };
     }
+    // 되살리기: 로컬 status가 아직 cancelled/noshow여도 저장 draft 기준으로 재고 미리보기
+    const savePreview =
+      kind === "stay" && isActive(draft)
+        ? status === "active" && !override
+          ? preview
+          : previewChange(s, data.bookings, draft)
+        : [];
     setDayuseWarn(null);
     // 현장·전화만 연락처 필수 · 바로입실·이미 빈 연락처 수정·OTA는 선택 (SoT)
     {
@@ -1560,8 +1567,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         return setErr(`판매중지된 숙박일이 있어요 (${stopped.map(md).join(", ")}). 판매 캘린더에서 중지를 풀어 주세요.`);
     }
     // 타입 오버부킹: 경고만 · 저장 허용 (물리 방 겹침은 위에서 차단)
-    const typeOver = kind === "stay" && isActive(draft) && preview.some((r) => r.after < 0);
-    if (typeOver && !override) {
+    // 되살리기(override active)도 재고 경고 — 취소 때와 대칭
+    const typeOver = kind === "stay" && isActive(draft) && savePreview.some((r) => r.after < 0);
+    if (typeOver && (!override || override === "active")) {
       const overOk = await askConfirm({
         title: "타입 재고 부족",
         body: "타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.",
@@ -1614,16 +1622,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           ? ` · ${t?.name ?? "타입"} ${saved.nights}박 · 재고 반영 · 호실 미정`
           : "";
       const stockTail =
-        !hold && kind === "stay" && isActive(saved) && preview[0]
-          ? ` · ${L.types.get(preview[0].typeId)?.name} 남은 객실 ${preview[0].after}`
+        !hold && kind === "stay" && isActive(saved) && savePreview[0]
+          ? ` · ${L.types.get(savePreview[0].typeId)?.name} 남은 객실 ${savePreview[0].after}`
           : hold;
       const tail = `${stockTail}${payTail}`;
+      const revived = override === "active" && !!base && !isActive(base);
       onSaved(
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
           : override === "noshow"
             ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 금액은 매출에 남고 남은 객실이 늘었어요`
-            : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
+            : revived
+              ? `${saved.guestName} 님 예약을 되살렸어요${tail}`
+              : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
       );
     } catch (e) {
@@ -3749,8 +3760,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   중도 퇴실 적기
                 </button>
               ) : (
-                <button type="button" className="btn line sm" onClick={() => setStatus("active")}>
-                  예약 되살리기
+                <button
+                  type="button"
+                  className="btn line sm"
+                  disabled={busy}
+                  title="취소·노쇼를 정상 예약으로 되돌리고 바로 저장해요"
+                  onClick={() => void save(false, "active")}
+                >
+                  {busy ? "저장 중…" : "예약 되살리기"}
                 </button>
               )}
             </div>
