@@ -163,9 +163,9 @@ import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import { groupLeadBooking, groupLeadChipLabel, hashGroupBadgeColor } from "../shared/group";
+import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
-import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
+import { DateChip, FitText, GroupBadge, GroupRoomNoHit, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -432,6 +432,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [nowFilter, setNowFilter] = useState<"all" | "tentative">("all");
   const [tentBusy, setTentBusy] = useState(false);
   const [nightPopId, setNightPopId] = useState<string | null>(null);
+  /** 다실 단체: 호수 탭 말풍선(클릭 고정) · hover는 CSS */
+  const [groupPopRoomId, setGroupPopRoomId] = useState<string | null>(null);
   const [earlyBusy, setEarlyBusy] = useState<string | null>(null);
   /** 빠른 입실: 추가금 팝업 대상 (확정 전엔 arrived 안 바꿈) */
   const [earlyPay, setEarlyPay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
@@ -1347,15 +1349,33 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return { color, label, stripe: color ? ` ${color}` : "" };
   };
 
+  const groupRoomsFor = (b: Booking | null | undefined) => {
+    if (!b?.groupId) return [];
+    return groupPeerRoomItems(groupStayPeers(bookings, b.groupId), (id) => L.rooms.get(id)?.no ?? null);
+  };
+
+  const toggleGroupPop = (roomId: string) => {
+    setNightPopId(null);
+    setGroupPopRoomId((cur) => (cur === roomId ? null : roomId));
+  };
+
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
     const du = dayuseByRoom.get(r.id) ?? [];
     const strip = pastelColor(r.color ?? fColor ?? null);
     const k = /^\d+$/.test(r.no) ? "" : "k";
+    const peerRooms = b && isActive(b) ? groupRoomsFor(b) : [];
     const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
-        <FitText className={`no ${k}`} text={r.no} />
+        <GroupRoomNoHit
+          rooms={peerRooms}
+          open={groupPopRoomId === r.id}
+          onToggle={() => toggleGroupPop(r.id)}
+          groupName={b?.groupName}
+        >
+          <FitText className={`no ${k}`} text={r.no} />
+        </GroupRoomNoHit>
       </div>
     );
     const typeRow = (guests?: number | null) => <TypeRow t={t} guests={guests} />;
@@ -2544,12 +2564,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           ) : null}
         </button>
       ) : null;
+    const peerRooms = b && isActive(b) ? groupRoomsFor(b) : [];
     const head = (
       <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
         {/* FitText+말풍선 flex/cqw로 호수가 사라지던 회귀 → 평문 고정 표시 */}
-        <span className={`no ${k}`} title={r.no}>
-          {r.no}
-        </span>
+        <GroupRoomNoHit
+          rooms={peerRooms}
+          open={groupPopRoomId === r.id}
+          onToggle={() => toggleGroupPop(r.id)}
+          groupName={b?.groupName}
+        >
+          <span className={`no ${k}`} title={r.no}>
+            {r.no}
+          </span>
+        </GroupRoomNoHit>
         {memoBubble}
       </div>
     );
@@ -2653,6 +2681,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               aria-expanded={popOpen}
               onClick={(e) => {
                 e.stopPropagation();
+                setGroupPopRoomId(null);
                 setNightPopId(popOpen ? null : b.id);
               }}
             >
