@@ -5,6 +5,7 @@ import {
   freezeQuoteSnapshot,
   lineAmount,
   quoteLinePrintLabel,
+  quotePrintStrings,
   quoteTotal,
   validateQuoteDraft,
 } from "./quoteDoc";
@@ -84,5 +85,13 @@ test("quoteLinePrintLabel: default type only · opt-in room nos", () => {
   const noOf = (id: string) => (id === "r1" ? "301" : id === "r2" ? "302" : null);
   assert.equal(quoteLinePrintLabel(line, false, noOf), "스탠다드");
   assert.equal(quoteLinePrintLabel(line, true, noOf), "스탠다드 · 301·302호");
+  assert.equal(quoteLinePrintLabel(line, true, noOf, "en"), "스탠다드 · 301, 302");
   assert.equal(quoteLinePrintLabel({ ...line, roomIds: [] }, true, noOf), "스탠다드");
+});
+
+test("quotePrintStrings: ko/en titles", () => {
+  assert.equal(quotePrintStrings("ko").title, "견적서");
+  assert.equal(quotePrintStrings("en").title, "Quote");
+  assert.match(quotePrintStrings("en").attest, /quote/i);
+  assert.equal(quotePrintStrings("en").nights(2), "2 nights");
 });

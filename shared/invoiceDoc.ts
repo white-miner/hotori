@@ -1,7 +1,8 @@
 /** 청구서 (P1.2a) — 실이용 정산 스냅샷. See docs/group-invoice-plan.md */
 import { groupLeadBooking } from "./group";
+import type { PrintLang } from "./hotelBiz";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
-import { paidOf } from "./payment";
+import { PAYMENT_METHOD_LABEL, paidOf, type PaymentMethod } from "./payment";
 import { type GroupInfo, settle, type Settlement } from "./settle";
 import type { QuoteCompare } from "./quoteVariance";
 
@@ -70,7 +71,7 @@ export type InvoiceDoc = {
 export const INVOICE_PAYER_MAX = 80;
 export const INVOICE_PHONE_MAX = 30;
 
-/** UI copy keys (64-lang roadmap — KR values now) */
+/** FO chrome (KR). Print body uses invoicePrintStrings(lang). */
 export const INVOICE_COPY = {
   title: "청구서",
   hint: "실이용 정산 · 단체/예약에서 발급",
@@ -114,6 +115,169 @@ export const INVOICE_COPY = {
   invoiceTotal: "청구 합계",
   quoteDiff: "차이",
 } as const;
+
+export const INVOICE_COPY_EN_TITLE = "Invoice" as const;
+
+export type InvoicePrintStrings = {
+  title: string;
+  bizNumber: string;
+  phone: string;
+  representativeShort: string;
+  representative: string;
+  seal: string;
+  payer: string;
+  issueNo: string;
+  midWatermark: string;
+  group: string;
+  room: string;
+  period: string;
+  amount: string;
+  paid: string;
+  left: string;
+  total: string;
+  extras: string;
+  payments: string;
+  footnotes: string;
+  quoteCompare: string;
+  quoteTotal: string;
+  invoiceTotal: string;
+  quoteDiff: string;
+  quoteSame: string;
+  quoteOver: string;
+  quoteUnder: string;
+  attest: string;
+  issueDate: string;
+  print: string;
+  pdf: string;
+  pdfHint: string;
+  close: string;
+  langAria: string;
+  langKo: string;
+  langEn: string;
+  roomSuffix: string;
+  unassigned: string;
+  nights: (n: number) => string;
+};
+
+const INVOICE_PRINT_KO: InvoicePrintStrings = {
+  title: INVOICE_COPY.title,
+  bizNumber: "사업자번호",
+  phone: "전화",
+  representativeShort: "대표",
+  representative: "대표자",
+  seal: "(인)",
+  payer: INVOICE_COPY.payer,
+  issueNo: INVOICE_COPY.issueNo,
+  midWatermark: INVOICE_COPY.midWatermark,
+  group: "단체",
+  room: INVOICE_COPY.room,
+  period: INVOICE_COPY.period,
+  amount: INVOICE_COPY.amount,
+  paid: INVOICE_COPY.paid,
+  left: INVOICE_COPY.left,
+  total: INVOICE_COPY.total,
+  extras: INVOICE_COPY.extras,
+  payments: INVOICE_COPY.payments,
+  footnotes: INVOICE_COPY.footnotes,
+  quoteCompare: INVOICE_COPY.quoteCompare,
+  quoteTotal: INVOICE_COPY.quoteTotal,
+  invoiceTotal: INVOICE_COPY.invoiceTotal,
+  quoteDiff: INVOICE_COPY.quoteDiff,
+  quoteSame: "동일",
+  quoteOver: "초과",
+  quoteUnder: "미만",
+  attest: INVOICE_COPY.attest,
+  issueDate: INVOICE_COPY.issueDate,
+  print: INVOICE_COPY.print,
+  pdf: INVOICE_COPY.pdf,
+  pdfHint: INVOICE_COPY.pdfHint,
+  close: INVOICE_COPY.close,
+  langAria: "청구서 언어",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "호",
+  unassigned: "미배정",
+  nights: (n) => `${n}박`,
+};
+
+const INVOICE_PRINT_EN: InvoicePrintStrings = {
+  title: INVOICE_COPY_EN_TITLE,
+  bizNumber: "Business Reg. No.",
+  phone: "Tel",
+  representativeShort: "Rep.",
+  representative: "Representative",
+  seal: "(Seal)",
+  payer: "Bill to",
+  issueNo: "Invoice No.",
+  midWatermark: "Interim invoice",
+  group: "Group",
+  room: "Room",
+  period: "Stay",
+  amount: "Sale",
+  paid: "Paid",
+  left: "Balance",
+  total: "Total",
+  extras: "Extras",
+  payments: "Payments",
+  footnotes: "Notes",
+  quoteCompare: "Vs. quote",
+  quoteTotal: "Quote total",
+  invoiceTotal: "Invoice total",
+  quoteDiff: "Difference",
+  quoteSame: "Same",
+  quoteOver: "Over",
+  quoteUnder: "Under",
+  attest: "Please remit the charges above.",
+  issueDate: "Issued",
+  print: "Print",
+  pdf: "PDF",
+  pdfHint: "In the print dialog, choose “Save as PDF”",
+  close: "Close",
+  langAria: "Invoice language",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "",
+  unassigned: "Unassigned",
+  nights: (n) => (n === 1 ? "1 night" : `${n} nights`),
+};
+
+export function invoicePrintStrings(lang: PrintLang): InvoicePrintStrings {
+  return lang === "en" ? INVOICE_PRINT_EN : INVOICE_PRINT_KO;
+}
+
+const PAY_LABEL_EN: Record<PaymentMethod, string> = {
+  card: "Card",
+  cash: "Cash",
+  transfer: "Transfer",
+  credit: "Credit",
+};
+
+const SURCHARGE_LABEL_EN: Record<string, string> = {
+  "추가 인원": "Extra guests",
+  "빠른 입실·늦은 퇴실": "Early check-in / late check-out",
+  "주차/도보": "Parking / walk-in",
+};
+
+/** Print-time label for payment method (snapshot stores method code). */
+export function invoicePayLabel(method: string, lang: PrintLang): string {
+  if (lang === "en" && (method === "card" || method === "cash" || method === "transfer" || method === "credit")) {
+    return PAY_LABEL_EN[method];
+  }
+  return PAYMENT_METHOD_LABEL[method as PaymentMethod] ?? method;
+}
+
+/** Translate known settle surcharge labels for EN print; leave custom as-is. */
+export function invoiceSurchargeLabel(label: string, lang: PrintLang): string {
+  if (lang !== "en") return label;
+  return SURCHARGE_LABEL_EN[label] ?? label;
+}
+
+/** Room no cell: KR `301호` · EN `301` · 미배정 → Unassigned */
+export function invoiceRoomDisplay(roomNo: string, lang: PrintLang, suffix: string): string {
+  const raw = roomNo.trim() || (lang === "en" ? "Unassigned" : "미배정");
+  if (raw === "미배정" || raw === "Unassigned") return lang === "en" ? "Unassigned" : "미배정";
+  return suffix ? `${raw}${suffix}` : raw;
+}
 
 /** 호텔·연도별 일련번호 YYYY-NNN */
 export function formatInvoiceNumber(year: number, seq: number): string {

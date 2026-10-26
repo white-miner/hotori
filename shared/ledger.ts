@@ -39,10 +39,11 @@ export {
   hotelBizHasAny,
   stayConfirmStrings,
   stayConfirmDateRange,
+  printDateLabel,
   STAY_CONFIRM_COPY,
   STAY_CONFIRM_COPY_EN,
 } from "./hotelBiz";
-export type { StayConfirmLang, StayConfirmStrings } from "./hotelBiz";
+export type { PrintLang, StayConfirmLang, StayConfirmStrings } from "./hotelBiz";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.

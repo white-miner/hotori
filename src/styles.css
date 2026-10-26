@@ -2419,20 +2419,32 @@ label.ck input[type="checkbox"] {
 }
 /* 숙박확인서 (화면 미리보기) */
 .modal.stay-confirm { width: min(560px, 96vw); max-height: min(92vh, 820px); }
-.modal.stay-confirm .mh .sc-lang { flex-shrink: 0; }
+.modal.stay-confirm .mh .sc-lang,
+.modal.quote-letter .mh .sc-lang,
+.modal.invoice-letter .mh .sc-lang,
+.modal.damage-letter .mh .sc-lang { flex-shrink: 0; }
 .stay-confirm-print { color: var(--ink); padding: 8px 4px 16px; }
 .sc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; border-bottom: 1.5px solid var(--ink); padding-bottom: 12px; }
 .sc-hotel { font-size: 12.5px; line-height: 1.5; color: var(--ink2); flex: 1; min-width: 0; }
 .sc-trade { font-size: 16px; font-weight: 850; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 4px; }
 .sc-title { font-size: 22px; font-weight: 850; letter-spacing: -0.03em; margin: 0; white-space: nowrap; }
-.stay-confirm-print.en .sc-title { font-size: 18px; letter-spacing: -0.02em; white-space: normal; text-align: right; max-width: 11em; }
+.stay-confirm-print.en .sc-title,
+.quote-print.en .sc-title,
+.invoice-print.en .sc-title,
+.damage-print.en .sc-title { font-size: 18px; letter-spacing: -0.02em; white-space: normal; text-align: right; max-width: 11em; }
 .sc-body { margin: 0; display: grid; gap: 10px; }
 .sc-body > div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
-.stay-confirm-print.en .sc-body > div { grid-template-columns: 88px 1fr; }
+.stay-confirm-print.en .sc-body > div,
+.quote-print.en .sc-body > div,
+.invoice-print.en .sc-body > div,
+.damage-print.en .sc-body > div { grid-template-columns: 88px 1fr; }
 .sc-body dt { margin: 0; font-size: 12px; font-weight: 700; color: var(--ink3); }
 .sc-body dd { margin: 0; font-weight: 650; }
 .sc-attest { margin: 28px 0 18px; font-size: 15px; font-weight: 700; text-align: center; letter-spacing: -0.01em; }
-.stay-confirm-print.en .sc-attest { font-size: 14px; letter-spacing: 0; line-height: 1.45; }
+.stay-confirm-print.en .sc-attest,
+.quote-print.en .sc-attest,
+.invoice-print.en .sc-attest,
+.damage-print.en .sc-attest { font-size: 14px; letter-spacing: 0; line-height: 1.45; }
 .sc-issue { font-size: 13px; color: var(--ink2); margin-bottom: 28px; }
 .sc-sign { text-align: right; margin-top: 8px; }
 .sc-sign-trade { font-size: 15px; font-weight: 800; margin-bottom: 10px; }
