@@ -1,9 +1,10 @@
 import type { Booking, Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
 import { CalendarDays } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FLOOR_PALETTE, onStrong, strongColor } from "../shared/floorColor";
 import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
 import { platformAbbr } from "../shared/platform";
+import { type GroupPeerRoomItem, groupPeerRoomsLine } from "../shared/group";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "../shared/settle";
 
 // 층·방 색 고르기 (진한 색). 예전 파스텔 값은 strongColor로 같은 계열 진한 색이 돼요.
@@ -167,6 +168,76 @@ export function GroupBadge({
           ))}
         </span>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * 현황·배치 호수(.no) 히트 · 다실 단체 형제 말풍선.
+ * hover(CSS) + click/tap 토글(`.open`). 칸 박스 크기 불변(absolute).
+ */
+export function GroupRoomNoHit({
+  rooms,
+  open,
+  onToggle,
+  groupName,
+  children,
+}: {
+  rooms: readonly GroupPeerRoomItem[];
+  open: boolean;
+  onToggle: () => void;
+  groupName?: string | null;
+  children: ReactNode;
+}) {
+  const root = useRef<HTMLSpanElement>(null);
+  const line = groupPeerRoomsLine(rooms);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) onToggle();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onToggle();
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onToggle]);
+  if (rooms.length < 2) return <>{children}</>;
+  const title = groupName ? `같은 단체 · ${groupName}` : `같은 단체 · ${rooms.length}실`;
+  return (
+    <span className={`grp-no-hit${open ? " open" : ""}`} ref={root}>
+      <button
+        type="button"
+        className="grp-no-btn"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`${title}: ${line}`}
+        title={title}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        {children}
+      </button>
+      <span className="grp-rooms-pop" role="tooltip">
+        <span className="grp-rooms-pop-k">{title}</span>
+        <span className="grp-rooms-pop-line">
+          {rooms.map((x, i) => (
+            <span key={`${x.no}-${i}`}>
+              {i > 0 ? <span className="grp-rooms-sep"> · </span> : null}
+              <span className={x.lead ? "grp-rooms-lead" : undefined} title={x.lead ? "대장객실" : undefined}>
+                {x.no}
+                {x.lead ? <em className="grp-rooms-lead-mark">대장</em> : null}
+              </span>
+            </span>
+          ))}
+        </span>
+      </span>
     </span>
   );
 }

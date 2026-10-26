@@ -2075,6 +2075,88 @@ label.ck input[type="checkbox"] {
 .cell.grp.g5 { box-shadow: inset 3px 0 0 var(--grp-g5); }
 .cell.grp.g6 { box-shadow: inset 3px 0 0 var(--grp-g6); }
 .grptag.lead { letter-spacing: -0.02em; }
+/* 호수 히트 → 같은 단체 호수 말풍선 (absolute · 칸 크기 불변) */
+.grp-no-hit {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-width: 0;
+  z-index: 2;
+}
+.grp-no-btn {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  max-width: 100%;
+  min-width: 0;
+}
+.grp-no-btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.grp-rooms-pop {
+  display: none;
+  position: absolute;
+  z-index: 55;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 7.5rem;
+  max-width: min(220px, 70vw);
+  padding: 8px 10px 9px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+  white-space: normal;
+  pointer-events: none;
+}
+.grp-rooms-pop::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 12px;
+  border: 6px solid transparent;
+  border-bottom-color: #fff;
+  filter: drop-shadow(0 -1px 0 var(--line));
+}
+.grp-no-hit:hover .grp-rooms-pop,
+.grp-no-hit.open .grp-rooms-pop {
+  display: block;
+}
+.grp-rooms-pop-k {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink3);
+  margin-bottom: 3px;
+  letter-spacing: -0.02em;
+}
+.grp-rooms-pop-line {
+  display: block;
+  font-family: var(--num);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.grp-rooms-sep { font-weight: 600; color: var(--ink3); }
+.grp-rooms-lead { color: var(--ink); }
+.grp-rooms-lead-mark {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+  margin-left: 2px;
+  color: var(--ink3);
+  vertical-align: super;
+}
 .grptag-wrap { position: relative; flex: none; display: inline-flex; }
 .grp-palette {
   position: absolute;

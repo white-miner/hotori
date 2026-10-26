@@ -10,6 +10,8 @@ import {
   groupDrafts,
   groupLeadBooking,
   groupLeadChipLabel,
+  groupPeerRoomItems,
+  groupPeerRoomsLine,
   groupStockImpact,
   groupStockImpactByTypes,
   groupSummaries,
@@ -69,6 +71,28 @@ test("groupLeadBooking: 수납 최대 = 대장 · 칩 라벨", () => {
   assert.equal(lead?.id, "b");
   assert.equal(groupLeadChipLabel("b", lead, (id) => (id === "r303" ? "303" : null)), "대장");
   assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "대장 303호");
+});
+
+test("groupPeerRoomItems: 호수 정렬 · 대장 마크 · 말풍선 줄", () => {
+  const members = [
+    bk({ id: "a", roomId: "r305", payments: [] }),
+    bk({
+      id: "b",
+      roomId: "r201",
+      payments: [{ id: "p", bookingId: "b", kind: "balance", method: "card", amount: 100000, bizDate: "2026-10-19", createdAt: "" }],
+    }),
+    bk({ id: "c", roomId: "r203", payments: [] }),
+    bk({ id: "d", roomId: null, payments: [] }),
+  ];
+  const nos = (id: string) => ({ r305: "305", r201: "201", r203: "203" }[id] ?? null);
+  const items = groupPeerRoomItems(members, nos);
+  assert.deepEqual(
+    items.map((x) => x.no),
+    ["201", "203", "305"],
+  );
+  assert.equal(items.find((x) => x.no === "201")?.lead, true);
+  assert.equal(items.find((x) => x.no === "305")?.lead, false);
+  assert.equal(groupPeerRoomsLine(items), "201 · 203 · 305");
 });
 
 test("그 기간 내내 빈 방만 (하루라도 겹치면 빠져요)", () => {

@@ -64,6 +64,31 @@ export function groupLeadChipLabel(
   return no ? `대장 ${no}호` : "대장";
 }
 
+/** 다실 보드 호수 말풍선: 배정된 형제 호수 (숫자 정렬 · 대장 표시) */
+export type GroupPeerRoomItem = { no: string; lead: boolean };
+
+export function groupPeerRoomItems(
+  members: readonly Pick<Booking, "id" | "roomId" | "payments" | "createdAt">[],
+  roomLabel: (roomId: string) => string | null | undefined,
+): GroupPeerRoomItem[] {
+  const lead = groupLeadBooking(members);
+  const leadId = lead?.id ?? null;
+  const items: GroupPeerRoomItem[] = [];
+  for (const m of members) {
+    if (!m.roomId) continue;
+    const no = roomLabel(m.roomId)?.trim();
+    if (!no) continue;
+    items.push({ no, lead: m.id === leadId });
+  }
+  items.sort((a, b) => a.no.localeCompare(b.no, "ko", { numeric: true }));
+  return items;
+}
+
+/** 말풍선 한 줄: `201 · 203 · 205 · 305` (대장은 UI에서 강조) */
+export function groupPeerRoomsLine(items: readonly GroupPeerRoomItem[]): string {
+  return items.map((x) => x.no).join(" · ");
+}
+
 /** 그 기간 내내 비어 있는 방 (방 번호 순서 = 설정 순서) */
 export function freeForStay(s: HotelSettings, bookings: Booking[], checkIn: string, nights: number): Set<string> {
   return freeRooms(s, bookings, { id: "__group__", kind: "stay", checkIn, nights, startTime: null, endTime: null });
