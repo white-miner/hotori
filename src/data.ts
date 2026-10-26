@@ -115,6 +115,7 @@ interface BookingRow {
 interface PaymentRow {
   id: string;
   booking_id?: string;
+  group_id?: string | null;
   kind: PayKind;
   method: PaymentMethod;
   amount: number;
@@ -161,11 +162,12 @@ interface ChargeRow {
   amount: number;
   created_at: string;
 }
-const PAY_COLS = "id,booking_id,kind,method,amount,biz_date,created_at,note";
+const PAY_COLS = "id,booking_id,group_id,kind,method,amount,biz_date,created_at,note";
 const CHARGE_COLS = "id,booking_id,night_date,amount,created_at";
 const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
   bookingId: r.booking_id ?? bookingId ?? "",
+  groupId: r.group_id ?? null,
   kind: r.kind === "balance" ? "balance" : "deposit",
   method: isPaymentMethod(r.method) ? r.method : "card",
   amount: r.amount,

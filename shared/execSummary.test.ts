@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Booking } from "./ledger";
-import { methodSales, typeSalesByType } from "./execSummary";
+import { methodSales, platformPayMatrix, resolvePlatformForPay, typeSalesByType } from "./execSummary";
 
 let n = 0;
 const bk = (p: Partial<Booking> & Pick<Booking, "typeId" | "checkIn" | "price">): Booking =>
@@ -90,4 +90,49 @@ test("결제수단 합산: 예약 + 매점 카드·현금", () => {
   assert.equal(m.total, 190000);
   assert.equal(m.shop.total, 10500);
   assert.equal(m.booking.credit, 10000);
+});
+
+test("플랫폼×결제수단 매트릭스: 행·열 합계 · 매점 · credit 제외", () => {
+  const plats = [
+    { id: "ya", name: "야놀자" },
+    { id: "on", name: "현장" },
+  ];
+  const byBooking = new Map([
+    ["b1", { platformId: "ya", groupId: null }],
+    ["b2", { platformId: "on", groupId: null }],
+    ["b3", { platformId: "on", groupId: "g1" }],
+  ]);
+  const byGroup = new Map([["g1", "on"]]);
+  const resolve = (p: { bookingId: string; groupId?: string | null }) =>
+    resolvePlatformForPay(p, byBooking, new Map(plats.map((x) => [x.id, x])), byGroup);
+  const pays = [
+    { bookingId: "b1", method: "card" as const, amount: 100000, bizDate: "2026-10-20" },
+    { bookingId: "b1", method: "transfer" as const, amount: 20000, bizDate: "2026-10-20" },
+    { bookingId: "b2", method: "cash" as const, amount: 50000, bizDate: "2026-10-21" },
+    { bookingId: "b2", method: "credit" as const, amount: 10000, bizDate: "2026-10-21" },
+    { bookingId: "", groupId: "g1", method: "card" as const, amount: 30000, bizDate: "2026-10-20" },
+    { bookingId: "b9", method: "cash" as const, amount: 1000, bizDate: "2026-10-19" }, // 기간 밖
+  ];
+  const { rows, total } = platformPayMatrix(pays, "2026-10-20", "2026-10-21", resolve, plats, {
+    card: 8000,
+    cash: 2000,
+    none: 500,
+  });
+  assert.equal(rows[0].label, "야놀자");
+  assert.equal(rows[0].card, 100000);
+  assert.equal(rows[0].transfer, 20000);
+  assert.equal(rows[0].total, 120000);
+  assert.equal(rows[1].label, "현장");
+  assert.equal(rows[1].cash, 50000);
+  assert.equal(rows[1].card, 30000);
+  assert.equal(rows[1].total, 80000);
+  assert.equal(rows[2].label, "매점");
+  assert.equal(rows[2].card, 8000);
+  assert.equal(rows[2].cash, 2000);
+  assert.equal(rows[2].total, 10000);
+  assert.equal(total.card, 138000);
+  assert.equal(total.cash, 52000);
+  assert.equal(total.transfer, 20000);
+  assert.equal(total.total, 210000);
+  assert.equal(total.credit, 10000);
 });

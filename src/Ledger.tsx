@@ -36,7 +36,16 @@ import {
   won,
 } from "../shared/ledger";
 import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
-import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, bookingCash, paySplit, payState, validatePayment } from "../shared/payment";
+import {
+  BOOK_PAY_LABEL,
+  BOOK_PAY_METHODS,
+  type BookPayMethod,
+  type Payment,
+  bookingCash,
+  paySplit,
+  payState,
+  validatePayment,
+} from "../shared/payment";
 import { STAY_CREDIT_COPY, listOpenCredits } from "../shared/stayCredit";
 import StayCreditsModal from "./StayCreditsModal";
 import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights } from "../shared/extend";
@@ -50,7 +59,7 @@ import { PlatBadge, TypeBadge, lookups } from "./ui";
 import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
 import { downloadLedgerXlsx } from "../shared/ledgerExport";
 import { hasProAccess } from "../shared/proGates";
-import { methodSales, typeSalesByType } from "../shared/execSummary";
+import { methodSales, platformPayMatrix, resolvePlatformForPay, typeSalesByType } from "../shared/execSummary";
 
 interface Props {
   data: HotelData;
@@ -161,6 +170,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
+  const [payList, setPayList] = useState<Payment[]>([]);
   const [sort, setSort] = useState<"in-desc" | "in-asc" | "rec">("in-desc");
   const [rows, setRows] = useState<Booking[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -191,11 +201,13 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         if (!alive) return;
         setPayCash(bookingCash(r, from, to));
         setPaySum(paySplit(r, from, to));
+        setPayList(r);
       })
       .catch(() => {
         if (!alive) return;
         setPayCash(0);
         setPaySum(null);
+        setPayList([]);
       });
     return () => {
       alive = false;
@@ -623,6 +635,24 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const listTotal = act.reduce((n, b) => n + b.price, 0);
   const typeSales = typeSalesByType(rows ?? [], from, to, usableTypes(s.types));
   const payMethods = methodSales(paySum ?? { card: 0, cash: 0, transfer: 0, credit: 0, total: 0 }, shopSum?.pay);
+  const platPay = useMemo(() => {
+    const byBooking = new Map<string, Pick<Booking, "platformId" | "groupId">>();
+    for (const b of data.bookings) byBooking.set(b.id, b);
+    for (const b of rows ?? []) byBooking.set(b.id, b);
+    const byGroup = new Map<string, string>();
+    for (const b of byBooking.values()) {
+      if (b.groupId && !byGroup.has(b.groupId)) byGroup.set(b.groupId, b.platformId);
+    }
+    const plats = new Map(s.platforms.map((p) => [p.id, p]));
+    return platformPayMatrix(
+      payList,
+      from,
+      to,
+      (p) => resolvePlatformForPay(p, byBooking, plats, byGroup),
+      s.platforms,
+      shopSum?.pay,
+    );
+  }, [payList, from, to, data.bookings, rows, s.platforms, shopSum?.pay]);
   const exCats = [...exT.byCategory.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
   const printFilters = (() => {
     const bits: string[] = [];
@@ -686,7 +716,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
               </>
             ) : tab === "summary" ? (
               <>
-                경영 요약 <span className="muted">· {from} ~ {to} · 타입별 판매 · 카드/현금/이체 · 매점 · 지출</span>
+                경영 요약 <span className="muted">· {from} ~ {to} · 타입별 판매 · 플랫폼×카드/현금/이체 · 매점 · 지출</span>
               </>
             ) : (
               <>
@@ -971,29 +1001,51 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
               <p className="exec-note muted">입실일 기준 · 취소 제외 · 노쇼 포함 · 환불은 중도퇴실 날</p>
             </section>
 
-            <section className="exec-sec" aria-label="결제 수단별 매출">
-              <h2>카드 · 현금 · 이체</h2>
-              <div className="exec-grid3">
-                <div className="exec-metric">
-                  <span>카드</span>
-                  <b className="num">{won(payMethods.card)}</b>
-                </div>
-                <div className="exec-metric">
-                  <span>현금</span>
-                  <b className="num">{won(payMethods.cash)}</b>
-                </div>
-                <div className="exec-metric">
-                  <span>이체</span>
-                  <b className="num">{won(payMethods.transfer)}</b>
-                </div>
-              </div>
+            <section className="exec-sec" aria-label="플랫폼별 결제 매출">
+              <h2>플랫폼 · 카드 · 현금 · 이체</h2>
+              <table className="exec-tbl">
+                <thead>
+                  <tr>
+                    <th>플랫폼</th>
+                    <th className="r">카드</th>
+                    <th className="r">현금</th>
+                    <th className="r">이체</th>
+                    <th className="r">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {platPay.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="muted">
+                        이 기간 받은 돈이 없어요
+                      </td>
+                    </tr>
+                  ) : (
+                    platPay.rows.map((r) => (
+                      <tr key={r.platformId} className={r.shop ? "exec-shop-row" : undefined}>
+                        <td>{r.label}</td>
+                        <td className="r num">{won(r.card)}</td>
+                        <td className="r num">{won(r.cash)}</td>
+                        <td className="r num">{won(r.transfer)}</td>
+                        <td className="r num">{won(r.total)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th>합계</th>
+                    <th className="r num">{won(platPay.total.card)}</th>
+                    <th className="r num">{won(platPay.total.cash)}</th>
+                    <th className="r num">{won(platPay.total.transfer)}</th>
+                    <th className="r num">{won(platPay.total.total)}</th>
+                  </tr>
+                </tfoot>
+              </table>
               <p className="exec-note muted">
-                합계 {won(payMethods.total)}원 · 객실 받은 돈 카드 {won(payMethods.booking.card)} · 현금 {won(payMethods.booking.cash)} · 이체{" "}
-                {won(payMethods.booking.transfer)}
-                {payMethods.booking.credit > 0 ? ` · 잔액 사용 ${won(payMethods.booking.credit)}` : ""}
-                {payMethods.shop.total > 0
-                  ? ` · 매점 카드 ${won(payMethods.shop.card)} · 현금 ${won(payMethods.shop.cash)}${payMethods.shop.none ? ` · 미지정 ${won(payMethods.shop.none)}` : ""}`
-                  : ""}
+                받은 날 기준 · 행=플랫폼 · 열=결제수단 · 매점은 별도 행
+                {platPay.total.credit > 0 ? ` · 잔액 사용 ${won(platPay.total.credit)}원(합계 제외)` : ""}
+                {payMethods.shop.none > 0 ? ` · 매점 미지정 ${won(payMethods.shop.none)}원(합계 제외)` : ""}
               </p>
             </section>
 
