@@ -23,7 +23,7 @@ import {
 } from "../shared/nowboard";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X } from "lucide-react";
 import { boardGuestSearch, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
@@ -247,6 +247,8 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     }
   };
   const [tab, setTabState] = useState<BoardTab>(read);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   const remember = (x: BoardTab) => {
     try {
       localStorage.setItem(TAB_KEY, x);
@@ -265,6 +267,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     const on = () => {
       const h = boardTabFromHash(location.hash);
       if (h) {
+        tabRef.current = h;
         setTabState(h);
         remember(h);
       } else fill(read());
@@ -273,11 +276,14 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
     return () => window.removeEventListener("hashchange", on);
   }, []);
   const setTab = (x: BoardTab) => {
+    const prev = tabRef.current;
+    tabRef.current = x;
     setTabState(x);
     remember(x);
     const want = `#/board/${x}`;
     if (location.hash !== want) location.hash = want; // 뒤로 가기로 탭을 돌아가요
-    window.scrollTo({ top: 0 });
+    // 같은 탭 재선택은 스크롤 유지 (배치 미배정 연속 배정 중 scrollTo(0) 금지)
+    if (prev !== x) window.scrollTo({ top: 0 });
   };
   return [tab, setTab];
 }
@@ -798,10 +804,39 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     roomId: string;
     overlaps: Booking[];
   } | null>(null);
+  /** 배치 미배정 배정 저장→리렌더 시 window(+side) 스크롤 1회 복원 — document가 보드 스크롤 부모 */
+  const assignScrollPin = useRef<{ winX: number; winY: number; sideTop: number } | null>(null);
+  const assignScrollNeedRestore = useRef(false);
+  const pinAssignScroll = () => {
+    // 이미 저장 직전 pin이 있으면 덮지 않음 (await 중 top으로 튄 값을 다시 잡지 않음)
+    if (assignScrollNeedRestore.current && assignScrollPin.current) return;
+    const side = document.querySelector<HTMLElement>(".board-page:not(.now-page) > .side");
+    assignScrollPin.current = {
+      winX: window.scrollX,
+      winY: window.scrollY,
+      sideTop: side?.scrollTop ?? 0,
+    };
+    assignScrollNeedRestore.current = true;
+  };
+  const restoreAssignScroll = () => {
+    const pin = assignScrollPin.current;
+    if (!pin) return;
+    if (window.scrollX !== pin.winX || window.scrollY !== pin.winY) {
+      window.scrollTo(pin.winX, pin.winY);
+    }
+    const side = document.querySelector<HTMLElement>(".board-page:not(.now-page) > .side");
+    if (side && side.scrollTop !== pin.sideTop) side.scrollTop = pin.sideTop;
+  };
+  useLayoutEffect(() => {
+    if (!assignScrollNeedRestore.current) return;
+    restoreAssignScroll();
+    assignScrollNeedRestore.current = false;
+  });
   /**
    * 「방배정」모드: 「배치」칸 체크 · 입실일로 보드 맞춤.
    * 건물 필터·층 칩은 유지 (배정 성공/단체 다음 건에서 별관→전체 리셋 금지).
-   * continueNext: 같은 세션 이어가기 — 탭/층/스크롤 세션 유지, 입실일만 필요 시 맞춤.
+   * continueNext / 이미 배치 탭: 탭·층·window 스크롤 유지, 입실일만 필요 시 맞춤.
+   * (배치에서 미배정 연속 배정 시 setTab→scrollTo(0) · floor=all 리셋 금지)
    */
   const setAssigningMode = (id: string | null, opts?: { continueNext?: boolean }) => {
     setAssigning(id);
@@ -810,11 +845,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!id) return;
     const bk = bookings.find((x) => x.id === id && isActive(x) && !x.roomId);
     setSideMode("simple");
-    if (opts?.continueNext) {
+    const stayOnRooms = !!opts?.continueNext || tab === "rooms";
+    if (stayOnRooms) {
+      pinAssignScroll();
       if (bk && bk.checkIn !== selDate) setSelDate(bk.checkIn);
       return;
     }
-    // 최초 진입만: 배치 탭 · 층=전체. 건물 탭(bTab)은 건드리지 않음.
+    // 현황 등에서 최초 진입만: 배치 탭 · 층=전체. 건물 탭(bTab)은 건드리지 않음.
     setFloorTab("all");
     if (bk) setSelDate(bk.checkIn);
     setTab("rooms");
@@ -1107,6 +1144,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   const commitAssign = async (b: Booking, roomId: string) => {
     if (assignBusy) return;
+    // pin BEFORE optimistic patch — await 중 scrollTo(0) 되어도 원위치 복원
+    pinAssignScroll();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     setAssignBusy(true);
     setTypeConfirm(null);
     setCheckoutChoice(null);
@@ -1116,9 +1156,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       const siblings = b.groupId
         ? bookings.filter((u) => u.id !== b.id && u.groupId === b.groupId && isActive(u) && !u.roomId)
         : [];
-      // 건물 필터·스크롤·배정 세션 유지 (#113/#114 survive-refresh)
+      // 건물 필터·스크롤·배정 세션 유지 (#113/#114 · 배치 assign scroll lock)
       if (siblings.length) setAssigningMode(siblings[0].id, { continueNext: true });
       else setAssigning(null);
+      assignScrollNeedRestore.current = true;
+      restoreAssignScroll();
+      requestAnimationFrame(() => {
+        restoreAssignScroll();
+        requestAnimationFrame(restoreAssignScroll);
+      });
     } catch (e) {
       notify(saveFailMessage(e, "방을 배정하지 못했어요"));
     } finally {
@@ -1149,6 +1195,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 퇴실 숙박을 다른 방/미배정으로 옮긴 뒤 새 배정 */
   const relocateThenAssign = async (b: Booking, roomId: string, overlaps: Booking[], relocateTo: string | null) => {
     if (assignBusy) return;
+    pinAssignScroll();
     if (relocateTo) {
       for (const old of overlaps) {
         const draft = { ...old, roomId: relocateTo };
@@ -1171,6 +1218,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       notify(moved);
       setAssignBusy(false);
       gateTypeThenAssign(b, roomId);
+      assignScrollNeedRestore.current = true;
+      restoreAssignScroll();
+      requestAnimationFrame(() => {
+        restoreAssignScroll();
+        requestAnimationFrame(restoreAssignScroll);
+      });
     } catch (e) {
       notify(saveFailMessage(e, "퇴실 숙박을 옮기지 못했어요"));
       setAssignBusy(false);
@@ -1180,6 +1233,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 칩·체크 공통: 활성 겹침 하드 · 퇴실완료만 겹치면 선택 모달 · 타입 게이트 */
   const requestAssign = (b: Booking, roomId: string) => {
     if (readOnly || assignBusy) return;
+    pinAssignScroll();
     const room = L.rooms.get(roomId) ?? allRooms(s).find((r) => r.id === roomId);
     if (!room) {
       notify("방을 찾지 못했어요");
