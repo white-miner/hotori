@@ -103,6 +103,7 @@ interface BookingRow {
   payout_amount?: number | null; // 실제 입금액
   group_id?: string | null; // 단체 예약 묶음
   group_name?: string | null;
+  succeeds_booking_id?: string | null; // 연박 연결 · 이전 투숙
   night_rates?: unknown; // 방×밤 요금 {flat,weekday, weekend, nights}
   /** 금액미정 (간단 예약) */
   price_unset?: boolean;
@@ -183,7 +184,7 @@ const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,night_rates,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,succeeds_booking_id,night_rates,cancelled_at,created_at,updated_at";
 // 받은 돈(선금·잔금) · 장기 원장도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
@@ -284,6 +285,7 @@ export function fromRow(r: BookingRow): Booking {
     payoutAmount: r.payout_amount ?? null,
     groupId: r.group_id ?? null,
     groupName: r.group_name ?? null,
+    succeedsBookingId: r.succeeds_booking_id ?? null,
     nightRates: parseStayNightRates(r.night_rates),
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     cancelledAt: r.cancelled_at,
@@ -336,6 +338,7 @@ function toRow(b: Booking) {
     payout_amount: b.payoutOk && b.payoutAmount != null ? Math.max(0, Math.min(100_000_000, Math.round(b.payoutAmount))) : null,
     group_id: b.groupId && b.groupName?.trim() ? b.groupId : null,
     group_name: b.groupId && b.groupName?.trim() ? b.groupName.trim().slice(0, 40) : null,
+    succeeds_booking_id: b.succeedsBookingId || null,
     night_rates: stay && b.stayMode !== "long_stay" ? stayNightRatesToJson(b.nightRates) : null,
   };
 }
