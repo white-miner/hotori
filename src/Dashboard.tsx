@@ -4,7 +4,7 @@ import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from
 import {
   canCheckOut,
   canEndDayuse,
-  filterUnassignedByCheckIn,
+  filterUnassignedForPlacement,
   hotelWallClock,
   isCheckedOut,
   isDepartingStatus,
@@ -497,13 +497,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
-  /** 「배치」사이드 미배정 입실일 필터 (현황에는 없음 · 오늘만) */
+  /** 「배치」사이드 미배정: 보드 selDate 점유 밤 + 범위 칩 (현황은 today만) */
   const [roomsUaFilter, setRoomsUaFilter] = useState<UaCheckInFilter>("today");
   const [roomsOpsQuery, setRoomsOpsQuery] = useState("");
   const roomsUaAll = useMemo(() => listUnassignedBookings(bookings), [bookings]);
   const roomsUaByRange = useMemo(
-    () => filterUnassignedByCheckIn(roomsUaAll, today, roomsUaFilter),
-    [roomsUaAll, today, roomsUaFilter],
+    () => filterUnassignedForPlacement(roomsUaAll, selDate, roomsUaFilter),
+    [roomsUaAll, selDate, roomsUaFilter],
   );
   const roomsUaList = useMemo(
     () =>
@@ -3665,8 +3665,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               type="button"
               className={`side-rail-btn ${assignBk ? "on" : ""}`}
               onClick={() => rememberSideCollapsed(false)}
-              aria-label={`방 미배정 ${uaActiveN}건 · 펼쳐서 방배정`}
-              title={`방 미배정 ${uaActiveN}건 · 펼쳐서 방배정`}
+              aria-label={`미배정 예약 ${uaActiveN}건 · 펼쳐서 방배정`}
+              title={`미배정 예약 ${uaActiveN}건 · 펼쳐서 방배정`}
             >
               <UserRound size={18} strokeWidth={2.4} />
               {uaActiveN > 0 ? <span className="side-rail-badge">{uaActiveN > 99 ? "99+" : uaActiveN}</span> : null}
@@ -3692,9 +3692,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onChange={setRoomsOpsQuery}
               label="배치 목록 검색"
             />
-            <div className="nsel-filters side-ua-filters" role="group" aria-label="입실일 필터">
+            <div className="nsel-filters side-ua-filters" role="group" aria-label="숙박일 필터">
               {UA_CHECKIN_FILTERS.map((x) => {
-                const n = filterUnassignedByCheckIn(roomsUaAll, today, x.id).length;
+                const n = filterUnassignedForPlacement(roomsUaAll, selDate, x.id).length;
                 return (
                   <button
                     key={x.id}
@@ -3709,7 +3709,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               })}
             </div>
             <h3 className="side-ua-h">
-              방 미배정 숙박 <small>{uaActiveN}건</small>
+              미배정 예약 <small>{uaActiveN}건</small>
             </h3>
             <div className="lst side-ua-lst">
               {roomsUaList.length ? (
@@ -3754,7 +3754,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 })
               ) : (
                 <div className="it muted">
-                  {roomsOpsQuery.trim() ? "검색 결과 없음" : "이 기간 미배정 숙박이 없어요"}
+                  {roomsOpsQuery.trim() ? "검색 결과 없음" : "이 기간 미배정 예약이 없어요"}
                 </div>
               )}
             </div>

@@ -506,10 +506,10 @@ export function nowLatestPayMethodLabel(
   return p ? PAYMENT_METHOD_LABEL[p.method] : null;
 }
 
-/** 「배치」사이드 미배정 입실일 필터 (영업일 기준). 「현황」은 today만. */
+/** 「배치」사이드 미배정 범위 칩. 「현황」은 today만(입실일≤오늘). */
 export type UaCheckInFilter = "today" | "week" | "month";
 
-/** 입실일 필터 칩 라벨 (배치 사이드 · 현황에는 없음) */
+/** 범위 칩 라벨 (배치 사이드 · 현황에는 없음) */
 export const UA_CHECKIN_FILTERS: { id: UaCheckInFilter; label: string }[] = [
   { id: "today", label: "오늘" },
   { id: "week", label: "일주일" },
@@ -517,14 +517,31 @@ export const UA_CHECKIN_FILTERS: { id: UaCheckInFilter; label: string }[] = [
 ];
 
 /**
- * 미배정 목록을 입실일(checkIn)로 거른다.
+ * 「현황」미배정: 입실일(checkIn) 기준.
  * 오늘: 당일 + 기한 지난 미배정 · 일주일/한달: today ~ today+6 / +29.
- * 「배치」사이드 칩 · 「현황」은 today만 호출.
  */
 export function filterUnassignedByCheckIn(list: Booking[], today: string, filter: UaCheckInFilter): Booking[] {
   if (filter === "today") return list.filter((b) => b.checkIn <= today);
   const end = addDays(today, filter === "week" ? 6 : 29);
   return list.filter((b) => b.checkIn >= today && b.checkIn <= end);
+}
+
+/**
+ * 「배치」미배정: 보드 숙박일(`boardDate`=selDate) 점유 밤 기준 (nightBoard와 동일).
+ * 오늘 칩 = 그 밤만 · 일주일/한달 = boardDate ~ +6/+29 중 어느 밤이라도 점유.
+ */
+export function filterUnassignedForPlacement(
+  list: Booking[],
+  boardDate: string,
+  filter: UaCheckInFilter,
+): Booking[] {
+  if (filter === "today") return list.filter((b) => occupiesNight(b, boardDate));
+  const end = addDays(boardDate, filter === "week" ? 6 : 29);
+  return list.filter((b) => {
+    if (b.kind !== "stay" || !b.nights) return false;
+    const last = addDays(b.checkIn, (usedNights(b) ?? b.nights) - 1);
+    return b.checkIn <= end && last >= boardDate;
+  });
 }
 
 /** 미배정/간단 예약 목록용 결제 모드 글랜스 (현장·전화) */

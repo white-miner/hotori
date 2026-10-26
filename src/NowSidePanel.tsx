@@ -849,7 +849,7 @@ export default function NowSidePanel({
       {mode === "simple" ? (
         <div className="nowside-body nowside-simple">
           <p className="muted sm nsel-note" title="타입 재고만 · 임시 배치 아님">
-            오늘 미배정(간단 예약) · 임시와 다름 · 입실일≤오늘
+            미배정 예약 · 임시와 다름 · 입실일≤오늘
           </p>
           {filteredUa.length ? (
             <div className="side-ua-list">{filteredUa.map(uaRow)}</div>
@@ -859,7 +859,7 @@ export default function NowSidePanel({
                 ? "검색 결과 없음"
                 : (
                   <>
-                    미배정 0 ·{" "}
+                    미배정 예약 0 ·{" "}
                     {!readOnly ? (
                       <button type="button" className="linkish" onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}>
                         간단 예약
