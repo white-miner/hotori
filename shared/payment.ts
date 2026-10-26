@@ -32,6 +32,8 @@ export function payLineMain(method: PaymentMethod, amount: number): string {
 export interface Payment {
   id: string;
   bookingId: string;
+  /** 단체 정산 결제면 bookingId 비고 groupId만 (booking_payments.group_id) */
+  groupId?: string | null;
   kind: PayKind;
   method: PaymentMethod;
   amount: number;

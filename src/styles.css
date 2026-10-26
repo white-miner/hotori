@@ -2286,6 +2286,7 @@ label.ck input[type="checkbox"] {
 .exec-tbl .r, .exec-tbl th.r { text-align: right; }
 .exec-tbl tfoot th { border-top: 1.5px solid var(--ink); border-bottom: 0; font-weight: 800; color: var(--ink); padding-top: 9px; }
 .exec-tbl.compact th, .exec-tbl.compact td { padding: 5px 8px; font-size: 13px; }
+.exec-tbl .exec-shop-row td { color: var(--ink2); font-style: italic; }
 .exec-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .exec-metric { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .exec-metric span { font-size: 12px; font-weight: 700; color: var(--ink3); }
