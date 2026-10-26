@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, FileText, Minus, Plus, Undo2, X } from "lucide-react";
+import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
+import StayConfirmLetter from "./StayConfirmLetter";
 import {
   type Booking,
   type Kind,
@@ -1095,6 +1097,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [stayConfirm, setStayConfirm] = useState(false);
   const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -1806,9 +1809,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0) +
                   (isActive(draft) ? 2 : 0)
                 : 0) +
+              (base.kind === "stay" ? 1 : 0) +
               1
             }`}
           >
+            {base.kind === "stay" ? (
+              <button
+                type="button"
+                className="beo"
+                onClick={() => setStayConfirm(true)}
+                title="숙박확인서 인쇄·PDF"
+              >
+                <FileText size={17} />
+                <b>{STAY_CONFIRM_COPY}</b>
+              </button>
+            ) : null}
             {isActive(base) && base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
               <button
                 type="button"
@@ -3839,6 +3854,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         onCancel={() => !coBusy && setCoConfirm(null)}
         onCheckoutOnly={() => void confirmEntryCheckoutOnly()}
         onPayThenCheckout={(plan) => void confirmEntryCheckoutPayThen(plan)}
+      />
+    ) : null}
+    {stayConfirm && base && base.kind === "stay" ? (
+      <StayConfirmLetter
+        booking={live ?? base}
+        hotelName={data.hotel!.name}
+        s={s}
+        today={today}
+        onClose={() => setStayConfirm(false)}
       />
     ) : null}
     </>

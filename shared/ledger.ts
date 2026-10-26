@@ -14,6 +14,7 @@ import {
 } from "./salesCalendar";
 import { type RoomHold, normalizeRoomHolds, roomsHeldForStay } from "./roomHold";
 import { type OverbookSub, normalizeOverbookSubs } from "./overbookSub";
+import { type HotelBiz, emptyHotelBiz, normalizeHotelBiz } from "./hotelBiz";
 import {
   DEFAULT_HOUR_FEE,
   type DayuseDefaults,
@@ -30,6 +31,8 @@ import {
 
 export type { RoomHold } from "./roomHold";
 export type { OverbookSub } from "./overbookSub";
+export type { HotelBiz } from "./hotelBiz";
+export { emptyHotelBiz, normalizeHotelBiz, hotelBizDisplayName, hotelBizHasAny, STAY_CONFIRM_COPY } from "./hotelBiz";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -139,6 +142,11 @@ export interface HotelSettings {
    * See docs/overbook-substitute-rooms-plan.md
    */
   overbookSubs: OverbookSub[];
+  /**
+   * 호텔 사업자·기본정보 (숙박확인서).
+   * See docs/stay-confirmation-letter-plan.md
+   */
+  hotelBiz: HotelBiz;
 }
 
 /** OTA platformTypeName → Hotori typeId (per Settings platform). */
@@ -320,6 +328,7 @@ export function emptySettings(): HotelSettings {
     typeAliases: [],
     roomHolds: [],
     overbookSubs: [],
+    hotelBiz: emptyHotelBiz(),
   };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
@@ -376,6 +385,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
     roomHolds: normalizeRoomHolds((s as { roomHolds?: unknown }).roomHolds),
     overbookSubs: normalizeOverbookSubs((s as { overbookSubs?: unknown }).overbookSubs),
+    hotelBiz: normalizeHotelBiz((s as { hotelBiz?: unknown }).hotelBiz),
   };
 }
 

@@ -41,6 +41,14 @@ import {
   typeTotals,
   usableTypes,
 } from "../shared/ledger";
+import {
+  HOTEL_BIZ_ADDRESS_MAX,
+  HOTEL_BIZ_NAME_MAX,
+  HOTEL_BIZ_NUMBER_MAX,
+  HOTEL_BIZ_PHONE_MAX,
+  HOTEL_BIZ_REP_MAX,
+  STAY_CONFIRM_COPY,
+} from "../shared/hotelBiz";
 import { removeTypeAlias, upsertTypeAlias } from "../shared/smartRegister";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
 import { hasProAccess } from "../shared/proGates";
@@ -1432,6 +1440,63 @@ export default function Settings({ data, email, notify }: Props) {
                 update((x) => x);
               }}
             />
+          </div>
+          <div className="hbiz" id="set-hotel-biz">
+            <h4>호텔 사업자 정보</h4>
+            <p className="sub">{STAY_CONFIRM_COPY}에 찍히는 상호·사업자번호·주소예요. 상호를 비우면 위 호텔 이름을 씁니다.</p>
+            <div className="opt">
+              <span>상호(사업자명)</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.businessName}
+                maxLength={HOTEL_BIZ_NAME_MAX}
+                placeholder={name.trim() || "호텔 이름"}
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, businessName: e.target.value } }))}
+                aria-label="상호"
+              />
+            </div>
+            <div className="opt">
+              <span>사업자번호</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.businessNumber}
+                maxLength={HOTEL_BIZ_NUMBER_MAX}
+                placeholder="123-45-67890"
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, businessNumber: e.target.value } }))}
+                aria-label="사업자번호"
+              />
+            </div>
+            <div className="opt stack">
+              <span>주소</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.address}
+                maxLength={HOTEL_BIZ_ADDRESS_MAX}
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, address: e.target.value } }))}
+                aria-label="주소"
+              />
+            </div>
+            <div className="opt">
+              <span>전화</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.phone}
+                maxLength={HOTEL_BIZ_PHONE_MAX}
+                inputMode="tel"
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, phone: e.target.value } }))}
+                aria-label="전화"
+              />
+            </div>
+            <div className="opt">
+              <span>대표자</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.representative}
+                maxLength={HOTEL_BIZ_REP_MAX}
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, representative: e.target.value } }))}
+                aria-label="대표자"
+              />
+            </div>
           </div>
           <div className="opt">
             <span>로그인 계정</span>

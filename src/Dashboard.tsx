@@ -3157,6 +3157,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
             <NowSidePanel
               today={today}
+              hotelName={data.hotel!.name}
               s={s}
               L={L}
               unassigned={nowSide.unassigned}
