@@ -1,5 +1,6 @@
 // 매점: 물품을 누를 때마다 판매 1개를 한 줄로 남겨요. 이름·가격은 판 그때 값으로 복사해 둬요.
 import { SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem } from "./ledger";
+import { hasProAccess } from "./proGates";
 
 export type PayMethod = "card" | "cash";
 export const PAY_LABEL: Record<PayMethod, string> = { card: "카드", cash: "현금" };
@@ -89,7 +90,7 @@ export function addMonths(ym: string, n: number): string {
   const d = new Date(Date.UTC(y, m - 1 + n, 1));
   return d.toISOString().slice(0, 7);
 }
-export const canAddShopItem = (plan: "free" | "pro", count: number, limit: number) => plan === "pro" || count < limit;
+export const canAddShopItem = (plan: "free" | "pro", count: number, limit: number) => hasProAccess(plan) || count < limit;
 
 /** 설정·매점에서 같은 모양으로 물품 한 줄을 만들어요 */
 export function makeShopItem(opts: { id: string; name?: string; price?: number; category?: string; hidden?: boolean }): ShopItem {

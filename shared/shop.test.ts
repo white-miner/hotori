@@ -99,11 +99,18 @@ test("장부 합계: 숙박·대실과 매점 따로, 총 합계", () => {
   assert.deepEqual(ledgerSummary(250000, null), { rooms: 250000, shop: null, total: 250000 });
 });
 
-test("Free는 물품 10개까지", () => {
+test("Free는 물품 10개까지 (판매 시 PRO_GATES_ENABLED=true일 때)", async () => {
   assert.equal(FREE_SHOP_ITEM_LIMIT, 10);
-  assert.equal(canAddShopItem("free", 9, FREE_SHOP_ITEM_LIMIT), true);
-  assert.equal(canAddShopItem("free", 10, FREE_SHOP_ITEM_LIMIT), false);
-  assert.equal(canAddShopItem("pro", 50, FREE_SHOP_ITEM_LIMIT), true);
+  // 개발 중 게이트 OFF → free도 한도 없음. 한도 검사는 proGates + 판매 플립 때 회귀.
+  const { PRO_GATES_ENABLED } = await import("./proGates");
+  if (!PRO_GATES_ENABLED) {
+    assert.equal(canAddShopItem("free", 10, FREE_SHOP_ITEM_LIMIT), true);
+    assert.equal(canAddShopItem("pro", 50, FREE_SHOP_ITEM_LIMIT), true);
+  } else {
+    assert.equal(canAddShopItem("free", 9, FREE_SHOP_ITEM_LIMIT), true);
+    assert.equal(canAddShopItem("free", 10, FREE_SHOP_ITEM_LIMIT), false);
+    assert.equal(canAddShopItem("pro", 50, FREE_SHOP_ITEM_LIMIT), true);
+  }
 });
 
 test("물품 만들기·바로 등록 검사", () => {

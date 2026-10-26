@@ -23,6 +23,7 @@ import {
   validateVendor,
   vendorCadenceMap,
 } from "../shared/expense";
+import { hasProAccess } from "../shared/proGates";
 import { xlsx } from "../shared/xlsx";
 import type { ExpenseDraft, HotelData, VendorDraft } from "./data";
 import { useExpenseVendors, useExpenses } from "./data";
@@ -422,7 +423,7 @@ export function ExpenseList({
       (!qq || `${e.category} ${e.memo ?? ""} ${e.vendorName ?? ""}`.toLowerCase().includes(qq)),
   );
   const t = expenseTotals(rows);
-  const pro = plan === "pro";
+  const pro = hasProAccess(plan);
   const months = useMemo(() => (pro ? monthlyByCategory(rows) : []), [pro, rows]);
   const monthCats = useMemo(() => [...new Set(months.flatMap((m) => [...m.byCategory.keys()]))], [months]);
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import { FREE_SHOP_ITEM_LIMIT, SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem, addDays, dayLabel, won } from "../shared/ledger";
+import { hasProAccess } from "../shared/proGates";
 import {
   type PayMethod,
   PAY_LABEL,
@@ -147,7 +148,7 @@ function ShopAddModal({
 
 export default function Shop({ data, hotelId, today, notify }: Props) {
   const hotel = data.hotel!;
-  const pro = hotel.plan === "pro";
+  const pro = hasProAccess(hotel.plan);
   const items = hotel.settings.shopItems;
   const [mode, setMode] = useState<"day" | "month">("day");
   const [day, setDay] = useState(today);
