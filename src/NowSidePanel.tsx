@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Lock, LogIn, Undo2 } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock, LogIn, Undo2 } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -39,6 +39,12 @@ import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
+import {
+  CONNECT_STAY_COPY,
+  canConnectPrior,
+  priorOf,
+  successorsOf,
+} from "../shared/succeedStay";
 import { EDIT_COPY } from "../shared/bookingEdit";
 import {
   ROOM_HOLD_CREATE_CTA,
@@ -109,6 +115,10 @@ interface Props {
   onLateOut?: (b: Booking) => void;
   /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
   onExtendNight?: (b: Booking) => void;
+  /** 연박 연결 · 다른 이름 예약 B → 이 투숙 A (succeeds) */
+  onConnectStay?: (b: Booking) => void;
+  /** 호텔 전체 예약 (연결 글랜스 · prior/successor) */
+  allBookings?: Booking[];
   /** 빠른 입실 (숙박예약 · 미입실) */
   onEarlyIn?: (b: Booking) => void;
   /** 단실 공실 → 임시 마감 모달 */
@@ -162,6 +172,8 @@ export default function NowSidePanel({
   onPaymentDesk,
   onLateOut,
   onExtendNight,
+  onConnectStay,
+  allBookings = [],
   onEarlyIn,
   onRoomHold,
   onRoomHoldRelease,
@@ -428,7 +440,14 @@ export default function NowSidePanel({
     !isLongStay(b) &&
     !!f &&
     (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
+  const showConnectStay =
+    !readOnly &&
+    !!onConnectStay &&
+    !!b &&
+    canConnectPrior(b, today, nowOpts);
   const showInOutCtas = showEarlyIn || showLateOut || showExtendNight;
+  const succList = b && allBookings.length ? successorsOf(b.id, allBookings) : [];
+  const priorBk = b && allBookings.length ? priorOf(b, allBookings) : null;
 
   return (
     <aside className="nowside" aria-label="운영">
@@ -496,6 +515,20 @@ export default function NowSidePanel({
                       {b.guests ? ` · ${b.guests}명` : ""}
                     </span>
                   </div>
+                  {succList.length ? (
+                    <div className="nsel-row" aria-label="연박 연결 후속">
+                      <span className="nsel-k">연결</span>
+                      <span className="nsel-v">
+                        → {succList.map((x) => `${x.guestName}(${x.nights ?? 0}박)`).join(" · ")}
+                      </span>
+                    </div>
+                  ) : null}
+                  {priorBk ? (
+                    <div className="nsel-row" aria-label="이전 투숙 연결">
+                      <span className="nsel-k">이전</span>
+                      <span className="nsel-v">← {priorBk.guestName} · 연박 연결</span>
+                    </div>
+                  ) : null}
                   <div className="nsel-row">
                     <span className="nsel-k">
                       {b.priceUnset
@@ -623,6 +656,20 @@ export default function NowSidePanel({
                             {EXTEND_COPY}
                           </button>
                         ) : null}
+                      </div>
+                    ) : null}
+                    {!readOnly && !multiGroup && showConnectStay ? (
+                      <div className="nsel-act-sec" role="group" aria-label="연박 연결">
+                        <button
+                          type="button"
+                          className="btn sm line"
+                          disabled={moving}
+                          onClick={() => onConnectStay?.(b)}
+                          aria-label={CONNECT_STAY_COPY}
+                        >
+                          <Link2 size={14} strokeWidth={2.2} aria-hidden />
+                          {CONNECT_STAY_COPY}
+                        </button>
                       </div>
                     ) : null}
                     {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk) ? (

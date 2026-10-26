@@ -276,6 +276,11 @@ export interface Booking {
   groupId?: string | null;
   groupName?: string | null;
   /**
+   * 연박 연결: 이 예약이 이어받는 이전 투숙 id.
+   * 이름·결제·OTA id는 합치지 않음 · 같은 호실·연속 밤은 succeedStay.
+   */
+  succeedsBookingId?: string | null;
+  /**
    * 표준 숙박 방별·밤별 요금 ({ flat, weekday?, weekend?, nights:{date:amount} }).
    * nights 행렬이 LOS를 덮으면 객실료 진실 = Σ nights. 장기 charges와 별개.
    */

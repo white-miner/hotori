@@ -41,6 +41,7 @@ import EarlyInPayModal from "./EarlyInPayModal";
 import AddTimeModal from "./AddTimeModal";
 import ExtendNightModal from "./ExtendNightModal";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
+import ConnectStayModal from "./ConnectStayModal";
 import StaySaleModal from "./StaySaleModal";
 import RoomHoldModal from "./RoomHoldModal";
 import OverbookSubModal, { spareMapForOverNight } from "./OverbookSubModal";
@@ -104,6 +105,12 @@ import {
   planOpsExtend,
   type OpsExtendInput,
 } from "../shared/extend";
+import {
+  CONNECT_STAY_COPY,
+  applyConnect,
+  connectSummaryLine,
+  planConnect,
+} from "../shared/succeedStay";
 import { saveFailMessage } from "../shared/errors";
 import { onsiteCreatePayTail } from "../shared/payment";
 import {
@@ -474,6 +481,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
   const [extendNight, setExtendNight] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [extendNightBusy, setExtendNightBusy] = useState(false);
+  /** 연박 연결 · 다른 이름 B → prior A */
+  const [connectStay, setConnectStay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
+  const [connectStayBusy, setConnectStayBusy] = useState(false);
   /** 객실 임시마감 생성 모달 (취소 마감은 askConfirm) */
   const [roomHoldModal, setRoomHoldModal] = useState<{ roomId: string; boardDate: string } | null>(null);
   const [roomHoldBusy, setRoomHoldBusy] = useState(false);
@@ -2569,6 +2579,43 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 연박 연결 · B.succeeds → A · 같은 호실 · 결제 불변 */
+  const commitConnectStay = async (nextPick: Booking, opts: { alignCheckIn: boolean }) => {
+    if (readOnly || connectStayBusy || !connectStay) return;
+    const prior = data.bookings.find((x) => x.id === connectStay.booking.id) ?? connectStay.booking;
+    const next = data.bookings.find((x) => x.id === nextPick.id) ?? nextPick;
+    const planned = planConnect(s, bookings, prior, next, {
+      alignCheckIn: opts.alignCheckIn,
+      today,
+      nowOpts,
+    });
+    if ("err" in planned) {
+      notify(planned.err);
+      return;
+    }
+    if (planned.typeMismatch) {
+      const ok = await askConfirm({
+        title: "객실 타입이 다릅니다",
+        body: `${next.guestName} 예약 타입과 ${connectStay.roomLabel} 타입이 달라요. 그래도 연결할까요?`,
+        cancelLabel: "취소",
+        confirmLabel: "승인",
+        danger: false,
+      });
+      if (!ok) return;
+    }
+    setConnectStayBusy(true);
+    try {
+      const draft = applyConnect(planned);
+      const saved = await data.saveBooking(draft, false);
+      notify(`${CONNECT_STAY_COPY} · ${connectSummaryLine(prior, saved)}`);
+      setConnectStay(null);
+    } catch (e) {
+      notify(saveFailMessage(e, "연박 연결을 저장하지 못했어요"));
+    } finally {
+      setConnectStayBusy(false);
+    }
+  };
+
   const commitDeskDeletePay = async (bookingId: string, payId: string) => {
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
@@ -3171,6 +3218,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : "";
                 setExtendNight({ booking: bk, roomLabel: lab || "호실" });
               }}
+              allBookings={bookings}
+              onConnectStay={(bk) => {
+                const lab = bk.roomId
+                  ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`
+                  : "";
+                setConnectStay({ booking: bk, roomLabel: lab || "호실" });
+              }}
               onRoomHold={() => {
                 if (readOnly || selectedRoomIds.length !== 1) return;
                 const rid = selectedRoomIds[0];
@@ -3292,6 +3346,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={extendNightBusy}
           onCancel={() => !extendNightBusy && setExtendNight(null)}
           onConfirm={(input) => void commitOpsExtend(input)}
+        />
+      ) : null}
+      {connectStay ? (
+        <ConnectStayModal
+          today={today}
+          s={s}
+          prior={connectStay.booking}
+          bookings={bookings}
+          roomLabel={connectStay.roomLabel}
+          busy={connectStayBusy}
+          nowOpts={nowOpts}
+          onCancel={() => !connectStayBusy && setConnectStay(null)}
+          onConfirm={(next, opts) => void commitConnectStay(next, opts)}
         />
       ) : null}
       {roomHoldModal ? (
