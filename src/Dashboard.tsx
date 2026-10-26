@@ -607,6 +607,37 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setOverbookSubBusy(false);
     }
   };
+  /** Mount on 현황·배치·판매캘 — #168 left modal only inside tab===now, so 배치 setState was a no-op. */
+  const renderOverbookSubModal = () =>
+    overbookSubModal
+      ? (() => {
+          const ot = s.types.find((t) => t.id === overbookSubModal.typeId);
+          if (!ot) return null;
+          const night = overbookSubModal.date;
+          const remMap = new Map(
+            s.types.map((t) => [t.id, stockTable(s, bookings, [night]).get(t.id)?.get(night) ?? 0]),
+          );
+          const { spareByType, overRem } = spareMapForOverNight(
+            remMap,
+            s.overbookSubs ?? [],
+            ot.id,
+            night,
+          );
+          return (
+            <OverbookSubModal
+              s={s}
+              overType={ot}
+              date={night}
+              spareByType={spareByType}
+              overRem={overRem}
+              subs={s.overbookSubs ?? []}
+              busy={overbookSubBusy}
+              onCancel={() => !overbookSubBusy && setOverbookSubModal(null)}
+              onSave={(next) => void commitOverbookSubs(next)}
+            />
+          );
+        })()
+      : null;
   useEffect(
     () => () => {
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
@@ -3278,35 +3309,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onConfirm={(hold) => void commitRoomHold(hold)}
         />
       ) : null}
-      {overbookSubModal
-        ? (() => {
-            const ot = s.types.find((t) => t.id === overbookSubModal.typeId);
-            if (!ot) return null;
-            const night = overbookSubModal.date;
-            const remMap = new Map(
-              s.types.map((t) => [t.id, stockTable(s, bookings, [night]).get(t.id)?.get(night) ?? 0]),
-            );
-            const { spareByType, overRem } = spareMapForOverNight(
-              remMap,
-              s.overbookSubs ?? [],
-              ot.id,
-              night,
-            );
-            return (
-              <OverbookSubModal
-                s={s}
-                overType={ot}
-                date={night}
-                spareByType={spareByType}
-                overRem={overRem}
-                subs={s.overbookSubs ?? []}
-                busy={overbookSubBusy}
-                onCancel={() => !overbookSubBusy && setOverbookSubModal(null)}
-                onSave={(next) => void commitOverbookSubs(next)}
-              />
-            );
-          })()
-        : null}
+      {renderOverbookSubModal()}
       {staySale ? (
         <StaySaleModal
           s={s}
@@ -3402,30 +3405,37 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   if (tab === "stock")
     return (
-      <SalesCalendar
-        data={data}
-        s={s}
-        today={today}
-        selDate={selDate}
-        viewDates={viewDates}
-        viewTable={viewTable}
-        totals={totals}
-        scopeId={scopeId}
-        unassigned={unassigned}
-        readOnly={readOnly}
-        rangeNav={rangeNav}
-        buildingTabs={buildingTabs}
-        periodSeg={periodSeg}
-        banner={banner}
-        tabs={tabs}
-        bName={bName}
-        over={over}
-        wideRef={wideRef}
-        notify={(m) => notify(m)}
-        onSimple={onSimple}
-        focusCell={stockFocus}
-        onFocusConsumed={() => setStockFocus(null)}
-      />
+      <>
+        <SalesCalendar
+          data={data}
+          s={s}
+          today={today}
+          selDate={selDate}
+          viewDates={viewDates}
+          viewTable={viewTable}
+          totals={totals}
+          scopeId={scopeId}
+          unassigned={unassigned}
+          readOnly={readOnly}
+          rangeNav={rangeNav}
+          buildingTabs={buildingTabs}
+          periodSeg={periodSeg}
+          banner={banner}
+          tabs={tabs}
+          bName={bName}
+          over={over}
+          wideRef={wideRef}
+          notify={(m) => notify(m)}
+          onSimple={onSimple}
+          focusCell={stockFocus}
+          onFocusConsumed={() => setStockFocus(null)}
+          onOverbook={(typeId, date) => {
+            const rem = viewTable.get(typeId)?.get(date) ?? 0;
+            onTypeStockChip(typeId, date, rem);
+          }}
+        />
+        {renderOverbookSubModal()}
+      </>
     );
 
   if (tab === "smart")
@@ -3767,6 +3777,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         )}
       </aside>
     </main>
+    {renderOverbookSubModal()}
     {renderAssignModals()}
     </>
   );

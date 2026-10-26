@@ -30,6 +30,7 @@ import {
   shortStayHint,
   typeRateDefaults,
 } from "../shared/salesCalendar";
+import { hasSubsForNight } from "../shared/overbookSub";
 import type { HotelData } from "./data";
 import { Chip, ChipGroup, PriceInp, PriceRow, TypeStockChip } from "./primitives";
 import { TypeBadge } from "./ui";
@@ -61,6 +62,8 @@ interface Props {
   /** 현황 타입 여유 칩 → 오늘·타입 카드 포커스 */
   focusCell?: CellKey | null;
   onFocusConsumed?: () => void;
+  /** 오버 −N(또는 이미 지정된 오버 타입) → 지정 대체 객실 · 요금 시트와 분리 */
+  onOverbook?: (typeId: string, date: string) => void;
 }
 
 export default function SalesCalendar({
@@ -86,6 +89,7 @@ export default function SalesCalendar({
   onSimple,
   focusCell = null,
   onFocusConsumed,
+  onOverbook,
 }: Props) {
   const [cell, setCell] = useState<CellKey | null>(null);
   const [typeEdit, setTypeEdit] = useState<string | null>(null);
@@ -135,13 +139,19 @@ export default function SalesCalendar({
 
   useEffect(() => {
     if (!focusCell) return;
-    setCell(focusCell);
+    const rem = viewTable.get(focusCell.typeId)?.get(focusCell.date) ?? 0;
+    const openSub =
+      !readOnly &&
+      onOverbook &&
+      (rem < 0 || hasSubsForNight(s.overbookSubs ?? [], focusCell.typeId, focusCell.date));
+    if (openSub) onOverbook(focusCell.typeId, focusCell.date);
+    else setCell(focusCell);
     const id = `sales-tcard-${focusCell.typeId}-${focusCell.date}`;
     requestAnimationFrame(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     });
     onFocusConsumed?.();
-  }, [focusCell, onFocusConsumed]);
+  }, [focusCell, onFocusConsumed, onOverbook, readOnly, s.overbookSubs, viewTable]);
 
   /** 타입별 창 안 최소 판매가능 칸 — 한눈에 */
   const glance = useMemo(() => {
@@ -241,6 +251,10 @@ export default function SalesCalendar({
         <div className="sales-glance" aria-label="타입별 재고">
           {types.map((t) => {
             const g = glance.get(t.id)!;
+            const overNight =
+              viewDates.find((d) => (viewTable.get(t.id)?.get(d) ?? 0) < 0) ??
+              viewDates.find((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d));
+            const openOver = !readOnly && !!onOverbook && !!overNight;
             return (
               <TypeStockChip
                 key={t.id}
@@ -248,13 +262,31 @@ export default function SalesCalendar({
                 rem={g.min}
                 total={g.total}
                 lowThreshold={s.lowThreshold}
+                subSrc={viewDates.some((d) => {
+                  const rem = viewTable.get(t.id)?.get(d) ?? 0;
+                  return rem >= 0 && (s.overbookSubs ?? []).some((x) => x.fromTypeId === t.id && x.date === d);
+                })}
+                subRelieved={viewDates.some((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d))}
                 small={
                   <>
                     칸~ · {g.total}실{g.stopped ? ` · 마감 ${g.stopped}` : ""}
                   </>
                 }
-                onClick={readOnly ? undefined : () => setTypeEdit(t.id)}
-                title={readOnly ? undefined : "평일·주말 기본 요금"}
+                onClick={
+                  readOnly
+                    ? undefined
+                    : () => {
+                        if (openOver && overNight) onOverbook!(t.id, overNight);
+                        else setTypeEdit(t.id);
+                      }
+                }
+                title={
+                  readOnly
+                    ? undefined
+                    : openOver
+                      ? "지정 대체 객실"
+                      : "평일·주말 기본 요금"
+                }
               />
             );
           })}
@@ -348,14 +380,26 @@ export default function SalesCalendar({
                                 : stockLevel(rem, total, s.lowThreshold);
                         const statusLabel =
                           status === "sell" ? "판매" : status === "soldout" ? "매진" : "마감";
+                        const isOverChip =
+                          rem < 0 || hasSubsForNight(s.overbookSubs ?? [], t.id, d);
                         return (
                           <button
                             key={t.id}
                             id={`sales-tcard-${t.id}-${d}`}
                             type="button"
                             className={`sales-tcard lv-${lv}`}
-                            onClick={() => setCell({ typeId: t.id, date: d })}
-                            title={`${dayLabel(d)} · ${typeLabel(t)} · 예약 ${booked} / 재고 ${rem} · ${statusLabel} · ${rate ? won(rate) + "원" : "요금 미정"}`}
+                            onClick={() => {
+                              if (!readOnly && onOverbook && isOverChip) {
+                                onOverbook(t.id, d);
+                                return;
+                              }
+                              setCell({ typeId: t.id, date: d });
+                            }}
+                            title={
+                              isOverChip && !readOnly
+                                ? `${dayLabel(d)} · ${typeLabel(t)} · 재고 ${rem < 0 ? `−${-rem}` : rem} · 지정 대체 객실`
+                                : `${dayLabel(d)} · ${typeLabel(t)} · 예약 ${booked} / 재고 ${rem} · ${statusLabel} · ${rate ? won(rate) + "원" : "요금 미정"}`
+                            }
                           >
                             <span className="sales-tcard-type">
                               <TypeBadge t={t} />
