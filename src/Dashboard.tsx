@@ -4,10 +4,12 @@ import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from
 import {
   canCheckOut,
   canEndDayuse,
+  filterUnassignedByCheckIn,
   hotelWallClock,
   isCheckedOut,
   isDepartingStatus,
   groupStayPeers,
+  listUnassignedBookings,
   nowAmountGlance,
   nowAmountTone,
   nowByRoom,
@@ -20,12 +22,14 @@ import {
   nowPayMethodPrefix,
   nowStaySummary,
   shouldAutoArrive,
+  UA_CHECKIN_FILTERS,
+  type UaCheckInFilter,
 } from "../shared/nowboard";
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X } from "lucide-react";
-import { boardGuestSearch, type GuestSearchChip } from "../shared/guestSearch";
+import { boardGuestSearch, filterOpsBookings, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
@@ -42,6 +46,7 @@ import PaymentDeskModal from "./PaymentDeskModal";
 import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
+import OpsPanelSearch from "./OpsPanelSearch";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
 import {
@@ -469,6 +474,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 「현황」선택: 공실=복수 토글 · 점유=단실 · 동일 groupId 점유만 복수 */
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [sideMode, setSideMode] = useState<SideMode>("simple");
+  /** 「배치」사이드 미배정 입실일 필터 (현황에는 없음 · 오늘만) */
+  const [roomsUaFilter, setRoomsUaFilter] = useState<UaCheckInFilter>("today");
+  const [roomsOpsQuery, setRoomsOpsQuery] = useState("");
+  const roomsUaAll = useMemo(() => listUnassignedBookings(bookings), [bookings]);
+  const roomsUaByRange = useMemo(
+    () => filterUnassignedByCheckIn(roomsUaAll, today, roomsUaFilter),
+    [roomsUaAll, today, roomsUaFilter],
+  );
+  const roomsUaList = useMemo(
+    () =>
+      filterOpsBookings(roomsUaByRange, roomsOpsQuery, (b) => {
+        const p = L.plats.get(b.platformId);
+        return {
+          typeName: typeLabel(L.types.get(b.typeId)),
+          platformName: p?.name ?? null,
+          platformAbbr: p?.abbr ?? null,
+        };
+      }),
+    [roomsUaByRange, roomsOpsQuery, L],
+  );
+  /** 레일/헤더 건수 = 활성 입실일 필터 (검색 전) */
+  const uaActiveN = roomsUaByRange.length;
   /** 글랜스/미니맵 → 칸 스크롤·하이라이트 */
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
@@ -886,7 +913,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const b = bookings.find((x) => x.id === move.id)!;
     setSelDate(b.kind === "dayuse" ? b.checkIn : move.night);
     setTab(move.tab === "now" ? "now" : "rooms");
-    setFloorTab((f) => (f === "dayuse" ? "all" : f));
     setPick(null);
     setSwapChoice(null);
     setSwapTypeGate(null);
@@ -1587,13 +1613,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
 
   const scopeFloors = orderedFloors(s).filter((f) => f.rooms.length && (bScope === "all" || f.buildingId === bScope));
-  const floors = scopeFloors.filter((f) => floorTab === "all" || floorTab === f.id);
+  // 대실 층칩 제거됨 — 잔존 "dayuse"면 전체로
+  const floorTabSafe = floorTab === "dayuse" ? "all" : floorTab;
+  const floors = scopeFloors.filter((f) => floorTabSafe === "all" || floorTabSafe === f.id);
   const groups = (multi ? s.buildings : s.buildings.slice(0, 1))
     .map((bd) => ({ bd, floors: multi ? floors.filter((f) => f.buildingId === bd.id) : floors }))
     .filter((g) => g.floors.length);
   const nightIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.filter((r) => { const x = board.byRoom.get(r.id); return x && isActive(x); }).length, 0);
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
-  const activeDayuse = board.dayuse.filter(isActive).length;
 
   const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 룸 타임라인 (+주차)
   const tabs = (
@@ -1665,7 +1692,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           title={bName(id)}
           onClick={() => {
             setBTab(id);
-            if (floorTab !== "dayuse") setFloorTab("all");
+            setFloorTab("all");
           }}
         >
           <span className="bn">{bName(id)}</span>
@@ -3280,8 +3307,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </main>
     );
 
-  const uaActiveN = board.unassigned.filter(isActive).length;
-
   return (
     <>
     <main className={`page board-page${sideCollapsed ? " side-collapsed" : ""}`}>
@@ -3323,7 +3348,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
         ) : null}
         {(() => {
-          const glanceFloors = floorTab === "dayuse" ? scopeFloors : floors;
+          const glanceFloors = floors;
           const glanceGroups = (multi ? s.buildings : s.buildings.slice(0, 1))
             .map((bd) => ({
               bd,
@@ -3397,36 +3422,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               {f.name}
             </button>
           ))}
-          <button className={floorTab === "dayuse" ? "on" : ""} onClick={() => setFloorTab("dayuse")}>
-            대실 {activeDayuse}
-          </button>
         </div>
-        {floorTab !== "dayuse"
-          ? groups.map((g) => (
-              <section className={multi ? "bsec" : undefined} key={g.bd.id}>
-                {multi ? (
-                  <div className="bsh">
-                    <b title={bName(g.bd.id)}>{bName(g.bd.id)}</b>
-                    <span>
-                      숙박 {nightIn(g.floors)}/{roomsIn(g.floors)}
-                    </span>
-                  </div>
-                ) : null}
-                {g.floors.map((f) => (
-                  <div className="floor" key={f.id}>
-                    <div className="fl" title={f.name}>
-                      <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
-                      <span className="fln">{f.name}</span>
-                    </div>
-                    <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
-                  </div>
-                ))}
-              </section>
-            ))
-          : null}
+        {groups.map((g) => (
+          <section className={multi ? "bsec" : undefined} key={g.bd.id}>
+            {multi ? (
+              <div className="bsh">
+                <b title={bName(g.bd.id)}>{bName(g.bd.id)}</b>
+                <span>
+                  숙박 {nightIn(g.floors)}/{roomsIn(g.floors)}
+                </span>
+              </div>
+            ) : null}
+            {g.floors.map((f) => (
+              <div className="floor" key={f.id}>
+                <div className="fl" title={f.name}>
+                  <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
+                  <span className="fln">{f.name}</span>
+                </div>
+                <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
+              </div>
+            ))}
+          </section>
+        ))}
       </div>
 
-      <aside className={`side ${sideCollapsed ? "collapsed" : ""} ${floorTab === "dayuse" ? "show-m" : ""}`}>
+      <aside className={`side ${sideCollapsed ? "collapsed" : ""}`}>
         {sideCollapsed ? (
           <div className="side-rail" role="toolbar" aria-label="배치 패널">
             <button
@@ -3463,50 +3483,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 <span>접기</span>
               </button>
             </div>
-            <h3>
-              {dayLabel(selDate)} 대실 <small>{activeDayuse}건 · 남은 객실에 포함되지 않아요</small>
-            </h3>
-            <div className="lst">
-              {board.dayuse.length ? (
-                board.dayuse.map((d) => (
-                  <div key={d.id} {...act} className={`it ${isActive(d) ? "" : "cx"} ${mvB?.id === d.id ? "mvon" : ""}`} onClick={() => !mvB && onOpen(d, selDate)}>
-                    <span className="tm">
-                      {d.startTime}~{d.endTime}
-                    </span>
-                    <div className="md">
-                      <b>
-                        <PlatBadge p={L.plats.get(d.platformId)} />
-                        <span className="gn">{d.guestName}</span>
-                        {isActive(d) ? null : <span className="cxt">{STATUS[d.status]}</span>}
-                      </b>
-                      <span>
-                        {d.roomId ? `${L.roomLabel(d.roomId) ?? "?"}호` : "방 미배정"} · {typeLabel(L.types.get(d.typeId)) || "?"}
-                        {readOnly ? null : ` · ${won(d.price)}원`}
-                      </span>
-                    </div>
-                    {isActive(d) && isCheckedOut(d) ? (
-                      <span className="intag done">이용완료</span>
-                    ) : isActive(d) && d.arrived ? (
-                      <span className="intag">입실 완료</span>
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                <div className="it muted">이날 대실 기록이 없어요</div>
-              )}
-              {readOnly ? null : (
-                <button className="add" onClick={() => onNew({ kind: "dayuse", checkIn: selDate })}>
-                  + 대실 기록
-                </button>
-              )}
+            <OpsPanelSearch
+              id="rooms-ops-search"
+              value={roomsOpsQuery}
+              onChange={setRoomsOpsQuery}
+              label="배치 목록 검색"
+            />
+            <div className="nsel-filters side-ua-filters" role="group" aria-label="입실일 필터">
+              {UA_CHECKIN_FILTERS.map((x) => {
+                const n = filterUnassignedByCheckIn(roomsUaAll, today, x.id).length;
+                return (
+                  <button
+                    key={x.id}
+                    type="button"
+                    className={`chip sm ${roomsUaFilter === x.id ? "on" : ""}`}
+                    onClick={() => setRoomsUaFilter(x.id)}
+                  >
+                    {x.label}
+                    <small>{n}</small>
+                  </button>
+                );
+              })}
             </div>
-
-            <h3>
+            <h3 className="side-ua-h">
               방 미배정 숙박 <small>{uaActiveN}건</small>
             </h3>
-            <div className="lst">
-              {board.unassigned.length ? (
-                board.unassigned.map((b) => {
+            <div className="lst side-ua-lst">
+              {roomsUaList.length ? (
+                roomsUaList.map((b) => {
                   const open = assigning === b.id;
                   const free = open ? freeRooms(s, bookings, b) : null;
                   const t = L.types.get(b.typeId);
@@ -3546,7 +3550,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   );
                 })
               ) : (
-                <div className="it muted">모든 숙박에 방이 배정됐어요</div>
+                <div className="it muted">
+                  {roomsOpsQuery.trim() ? "검색 결과 없음" : "이 기간 미배정 숙박이 없어요"}
+                </div>
               )}
             </div>
 

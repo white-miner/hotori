@@ -1,6 +1,13 @@
 /** 「현황」·「배치」보드 고객 이름/연락처 검색 (클라이언트 · 로드된 예약만) */
 import { type Booking, isActive } from "./ledger";
 
+/** 운영패널 목록 검색 부가 필드 (타입·플랫폼 · 예약번호=memo) */
+export interface OpsSearchMeta {
+  typeName?: string | null;
+  platformName?: string | null;
+  platformAbbr?: string | null;
+}
+
 export interface GuestSearchQuery {
   /** 소문자·공백 제거된 이름 키 (빈 문자열이면 이름 매칭 안 함) */
   nameKey: string;
@@ -60,6 +67,42 @@ export function textMatchesGuest(
   }
   if (digits.length > 0 && phoneDigits(guestPhone).includes(digits)) return true;
   return false;
+}
+
+/**
+ * 운영패널 목록 검색: 이름·전화 + 타입·플랫폼·예약번호(memo)·id.
+ * 보드 게스트 검색 UX와 동일 정규화(부분·숫자).
+ */
+export function textMatchesOpsBooking(
+  query: GuestSearchQuery,
+  b: Pick<Booking, "id" | "guestName" | "guestPhone" | "groupName" | "memo">,
+  meta?: OpsSearchMeta,
+): boolean {
+  if (textMatchesGuest(query, b.guestName, b.guestPhone, b.groupName)) return true;
+  const { nameKey, digits } = query;
+  if (nameKey) {
+    if (normalizeGuestName(meta?.typeName).includes(nameKey)) return true;
+    if (normalizeGuestName(meta?.platformName).includes(nameKey)) return true;
+    if (normalizeGuestName(meta?.platformAbbr).includes(nameKey)) return true;
+    if (normalizeGuestName(b.memo).includes(nameKey)) return true;
+    if (normalizeGuestName(b.id).includes(nameKey)) return true;
+  }
+  if (digits.length > 0) {
+    if (phoneDigits(b.memo).includes(digits)) return true;
+    if (phoneDigits(b.id).includes(digits)) return true;
+  }
+  return false;
+}
+
+/** raw 비면 원본 · 있으면 매칭만 */
+export function filterOpsBookings<T extends Booking>(
+  list: T[],
+  queryRaw: string,
+  metaOf: (b: T) => OpsSearchMeta,
+): T[] {
+  const query = parseGuestQuery(queryRaw);
+  if (!query) return list;
+  return list.filter((b) => textMatchesOpsBooking(query, b, metaOf(b)));
 }
 
 function bookingMatches(

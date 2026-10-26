@@ -9,8 +9,9 @@ import {
   nowFlags,
   nowNightRange,
   simplePayGlance,
-  type UaCheckInFilter,
 } from "../shared/nowboard";
+import { filterOpsBookings } from "../shared/guestSearch";
+import OpsPanelSearch from "./OpsPanelSearch";
 import { CHECKOUT_UNDO_CTA } from "../shared/checkoutUndo";
 import { isLongStay } from "../shared/longstay";
 import {
@@ -47,12 +48,6 @@ import type { CleanRequestChoice } from "../shared/cleanRequest";
 export type SideMode = "room" | "simple" | "out";
 
 type L = ReturnType<typeof lookups>;
-
-const UA_FILTERS: { id: UaCheckInFilter; label: string }[] = [
-  { id: "today", label: "오늘" },
-  { id: "week", label: "일주일" },
-  { id: "month", label: "한달" },
-];
 
 const MODE_LABEL: Record<SideMode, string> = {
   room: "선택 객실",
@@ -160,16 +155,33 @@ export default function NowSidePanel({
   settleGroupInfo = null,
   nowOpts,
 }: Props) {
-  const [uaFilter, setUaFilter] = useState<UaCheckInFilter>("today");
+  const [opsQuery, setOpsQuery] = useState("");
   const [outZoneOpen, setOutZoneOpen] = useState(false);
   const [cleanAsk, setCleanAsk] = useState<Booking | null>(null);
 
-  const filteredUa = useMemo(
-    () => filterUnassignedByCheckIn(unassigned, today, uaFilter),
-    [unassigned, today, uaFilter],
-  );
-  const outList = useMemo(() => [...lateOut, ...departing], [lateOut, departing]);
+  const opsMeta = (b: Booking) => {
+    const p = L.plats.get(b.platformId);
+    return {
+      typeName: typeLabel(L.types.get(b.typeId)),
+      platformName: p?.name ?? null,
+      platformAbbr: p?.abbr ?? null,
+    };
+  };
+
+  /** 「현황」= 오늘만 (기한초과 포함). 일주일/한달 칩은 「배치」사이드. */
+  const filteredUa = useMemo(() => {
+    const byDate = filterUnassignedByCheckIn(unassigned, today, "today");
+    return filterOpsBookings(byDate, opsQuery, opsMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unassigned, today, opsQuery, L]);
+  const outList = useMemo(() => {
+    const raw = [...lateOut, ...departing];
+    return filterOpsBookings(raw, opsQuery, opsMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lateOut, departing, opsQuery, L]);
   const outCount = outList.length;
+  /** 탭 배지 = 오늘 미배정 (검색과 무관) */
+  const todayUaCount = unassigned.length;
   // E: 퇴실예정이 없으면 퇴실처리 존을 접음 (수동 펼침 가능)
   const showOutZone = outCount > 0 || outZoneOpen;
 
@@ -413,11 +425,18 @@ export default function NowSidePanel({
             onClick={() => onMode(m)}
           >
             {MODE_LABEL[m]}
-            {m === "simple" && unassigned.length ? <small>{unassigned.length}</small> : null}
+            {m === "simple" && todayUaCount ? <small>{todayUaCount}</small> : null}
             {m === "out" && outCount ? <small>{outCount}</small> : null}
           </button>
         ))}
       </div>
+
+      <OpsPanelSearch
+        id="nowside-ops-search"
+        value={opsQuery}
+        onChange={setOpsQuery}
+        label="운영 목록 검색"
+      />
 
       {mode === "room" ? (
         <div className="nowside-body nowside-room">
@@ -770,38 +789,28 @@ export default function NowSidePanel({
 
       {mode === "simple" ? (
         <div className="nowside-body nowside-simple">
-          <div className="nsel-filters" role="group" aria-label="입실일 필터">
-            {UA_FILTERS.map((x) => {
-              const n = filterUnassignedByCheckIn(unassigned, today, x.id).length;
-              return (
-                <button
-                  key={x.id}
-                  type="button"
-                  className={`chip sm ${uaFilter === x.id ? "on" : ""}`}
-                  onClick={() => setUaFilter(x.id)}
-                >
-                  {x.label}
-                  <small>{n}</small>
-                </button>
-              );
-            })}
-          </div>
           <p className="muted sm nsel-note" title="타입 재고만 · 임시 배치 아님">
-            미배정(간단 예약) · 임시와 다름 · 입실일 기준
+            오늘 미배정(간단 예약) · 임시와 다름 · 입실일≤오늘
           </p>
           {filteredUa.length ? (
             <div className="side-ua-list">{filteredUa.map(uaRow)}</div>
           ) : (
             <div className="muted sm nowempty-side">
-              미배정 0 ·{" "}
-              {!readOnly ? (
-                <button type="button" className="linkish" onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}>
-                  간단 예약
-                </button>
-              ) : (
-                "간단 예약"
-              )}
-              으로 받을 수 있어요
+              {opsQuery.trim()
+                ? "검색 결과 없음"
+                : (
+                  <>
+                    미배정 0 ·{" "}
+                    {!readOnly ? (
+                      <button type="button" className="linkish" onClick={() => onSimple({ kind: "stay", checkIn: today, roomId: null })}>
+                        간단 예약
+                      </button>
+                    ) : (
+                      "간단 예약"
+                    )}
+                    으로 받을 수 있어요
+                  </>
+                )}
             </div>
           )}
         </div>

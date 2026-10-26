@@ -3,10 +3,12 @@ import { test } from "node:test";
 import { type Booking } from "./ledger";
 import {
   boardGuestSearch,
+  filterOpsBookings,
   normalizeGuestName,
   parseGuestQuery,
   phoneDigits,
   textMatchesGuest,
+  textMatchesOpsBooking,
 } from "./guestSearch";
 
 let n = 0;
@@ -140,4 +142,24 @@ test("미배정 칩 · 취소는 제외", () => {
   assert.equal(r.chips.length, 1);
   assert.equal(r.chips[0].labelRoom, "미배정");
   assert.equal(r.roomIds.size, 0);
+});
+
+test("운영패널 검색: 이름·전화·타입·플랫폼·예약번호(memo)", () => {
+  const b = bk({
+    guestName: "홍길동",
+    guestPhone: "010-1111-2222",
+    memo: "YAN1234567890",
+    typeId: "s",
+  });
+  const meta = { typeName: "스탠다드", platformName: "야놀자", platformAbbr: "야" };
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("홍길")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("2222")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("스탠")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("야놀")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("야")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("123456")!, b, meta), true);
+  assert.equal(textMatchesOpsBooking(parseGuestQuery("없는이름")!, b, meta), false);
+  const list = [b, bk({ guestName: "김철수", memo: null })];
+  assert.equal(filterOpsBookings(list, "홍", () => meta).length, 1);
+  assert.equal(filterOpsBookings(list, "", () => meta).length, 2);
 });

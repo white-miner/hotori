@@ -12,6 +12,7 @@ import {
   filterUnassignedByCheckIn,
   isDepartingStatus,
   latestPaymentOf,
+  listUnassignedBookings,
   nowAmountGlance,
   nowAmountTone,
   nowBoardVisible,
@@ -236,6 +237,8 @@ test("옆 패널: 임시·미배정·퇴실·늦은퇴실·숙박예약 분류 (
   const list = [
     // 미배정: 오늘 점유 밤(연박 중간) · roomId 없음 — 퇴실 아침이 아님
     bk({ id: "u1", guestName: "미정", roomId: null, checkIn: "2026-10-19", nights: 3, arrived: true }),
+    // 미래 입실 미배정 → 「현황」nowLists에는 안 넣고( today만 ) · listUnassignedBookings에는 있음
+    bk({ id: "uf", guestName: "나중", roomId: null, checkIn: "2026-10-25", nights: 1 }),
     bk({ id: "t1", guestName: "임시", roomId: "r301", tentative: true, arrived: true, checkIn: "2026-10-18", nights: 3 }),
     bk({ id: "d1", guestName: "나감", roomId: "r302", arrived: true, checkIn: "2026-10-19", nights: 1 }),
     bk({ id: "l1", guestName: "늦음", roomId: "r303", arrived: true, checkIn: "2026-10-19", nights: 1, lateOut: 1 }),
@@ -244,10 +247,28 @@ test("옆 패널: 임시·미배정·퇴실·늦은퇴실·숙박예약 분류 (
   ];
   const m = nowLists(list, date, opts);
   assert.equal(m.unassigned.length, 1);
+  assert.equal(m.unassigned[0]?.id, "u1");
   assert.equal(m.tentative.length, 1);
   assert.equal(m.departing.map((b) => b.guestName).join(), "나감");
   assert.equal(m.lateOut.map((b) => b.guestName).join(), "늦음");
   assert.equal(m.arriving.map((b) => b.guestName).join(), "올예");
+});
+
+test("배치 미배정 풀: listUnassigned · 입실일 칩 건수 분기", () => {
+  const today = "2026-10-20";
+  const list = [
+    bk({ id: "past", roomId: null, checkIn: "2026-10-18" }),
+    bk({ id: "td", roomId: null, checkIn: today }),
+    bk({ id: "w", roomId: null, checkIn: "2026-10-25" }),
+    bk({ id: "m", roomId: null, checkIn: "2026-11-10" }),
+    bk({ id: "far", roomId: null, checkIn: "2026-12-01" }),
+    bk({ id: "roomed", roomId: "r1", checkIn: today }),
+  ];
+  const all = listUnassignedBookings(list);
+  assert.deepEqual(all.map((b) => b.id).sort(), ["far", "m", "past", "td", "w"]);
+  assert.deepEqual(filterUnassignedByCheckIn(all, today, "today").map((b) => b.id).sort(), ["past", "td"]);
+  assert.deepEqual(filterUnassignedByCheckIn(all, today, "week").map((b) => b.id).sort(), ["td", "w"]);
+  assert.deepEqual(filterUnassignedByCheckIn(all, today, "month").map((b) => b.id).sort(), ["m", "td", "w"]);
 });
 
 test("nowByRoom: 퇴실 아침에도 마지막 방 칸에 남김", () => {
