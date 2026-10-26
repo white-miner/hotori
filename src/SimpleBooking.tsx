@@ -790,10 +790,22 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
         </div>
 
-        {/* 현장·전화: 결제 모드 칩을 판매금 위에 · shared OnsitePayModeFields */}
+        {/* 현장·전화: 완납/후불/선금 → 결제수단 → 판매금 · shared OnsitePayModeFields */}
         {onsite ? (
           <OnsitePayModeFields
             part="chips"
+            payMode={payMode}
+            onPayMode={setPayMode}
+            depAmt={depAmt}
+            onDepAmt={setDepAmt}
+            depMethod={depMethod}
+            onDepMethod={setDepMethod}
+            priceUnset={priceUnset}
+          />
+        ) : null}
+        {onsite ? (
+          <OnsitePayModeFields
+            part="method"
             payMode={payMode}
             onPayMode={setPayMode}
             depAmt={depAmt}

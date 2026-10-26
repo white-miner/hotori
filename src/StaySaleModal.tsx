@@ -326,14 +326,29 @@ export default function StaySaleModal({
               </div>
 
               {channel === "onsite" ? (
-                <OnsitePayModeFields
-                  payMode={payMode}
-                  onPayMode={setPayMode}
-                  depAmt={depAmt}
-                  onDepAmt={setDepAmt}
-                  depMethod={depMethod}
-                  onDepMethod={setDepMethod}
-                  beforeChips={
+                <>
+                  <OnsitePayModeFields
+                    part="chips"
+                    payMode={payMode}
+                    onPayMode={setPayMode}
+                    depAmt={depAmt}
+                    onDepAmt={setDepAmt}
+                    depMethod={depMethod}
+                    onDepMethod={setDepMethod}
+                    disabled={busy}
+                  />
+                  <OnsitePayModeFields
+                    part="method"
+                    payMode={payMode}
+                    onPayMode={setPayMode}
+                    depAmt={depAmt}
+                    onDepAmt={setDepAmt}
+                    depMethod={depMethod}
+                    onDepMethod={setDepMethod}
+                    disabled={busy}
+                  />
+                  <div className="fld">
+                    <label>판매가</label>
                     <PriceInp sm>
                       <span className="pl">판매가</span>
                       <input
@@ -349,8 +364,18 @@ export default function StaySaleModal({
                         }}
                       />
                     </PriceInp>
-                  }
-                />
+                  </div>
+                  <OnsitePayModeFields
+                    part="take"
+                    payMode={payMode}
+                    onPayMode={setPayMode}
+                    depAmt={depAmt}
+                    onDepAmt={setDepAmt}
+                    depMethod={depMethod}
+                    onDepMethod={setDepMethod}
+                    disabled={busy}
+                  />
+                </>
               ) : (
                 <div className="fld">
                   <label>판매금</label>

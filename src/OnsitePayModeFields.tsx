@@ -1,18 +1,19 @@
 /**
  * 현장·전화 생성 progressive 결제 UI (완납/후불/선금).
  * 간단 예약 · Entry create stay 공유 — Option A 원장(수정)과 별개.
+ *
+ * 잠금 순서: 완납/후불/선금(칩) → 결제수단(원형) → 판매금 → 수납/선금(수단 중복 없음).
+ * 수단은 `part="method"` · 동일 `depMethod` 바인딩.
  */
 import type { ReactNode } from "react";
 import { won } from "../shared/ledger";
 import {
-  BOOK_PAY_LABEL,
-  BOOK_PAY_METHODS,
   ONSITE_PAY_MODE_LABEL,
   ONSITE_PAY_MODES,
   type BookPayMethod,
   type OnsitePayMode,
 } from "../shared/payment";
-import { Chip, ChipGroup, PriceInp, PriceRow } from "./primitives";
+import { BookPayMethodCircles, Chip, ChipGroup, PriceInp, PriceRow } from "./primitives";
 
 export type { OnsitePayMode };
 
@@ -25,10 +26,11 @@ interface Props {
   onDepMethod: (m: BookPayMethod) => void;
   /** 금액미정이면 수납 줄 숨김 (간단) */
   priceUnset?: boolean;
-  /** chips만 / 수납만 / 둘 다 (기본 both) */
-  part?: "chips" | "take" | "both";
-  /** 결제 섹션 안 · 칩 위 (숙박 판매: 판매가 병합) */
+  /** chips / method / take / both(=chips+method+take) */
+  part?: "chips" | "method" | "take" | "both";
+  /** 결제 섹션 안 · 칩 위 (숙박 판매: 판매가 병합 — 레거시; 새 화면은 method→금액 분리 권장) */
   beforeChips?: ReactNode;
+  disabled?: boolean;
 }
 
 export default function OnsitePayModeFields({
@@ -41,9 +43,12 @@ export default function OnsitePayModeFields({
   priceUnset = false,
   part = "both",
   beforeChips,
+  disabled = false,
 }: Props) {
   const chips = part === "chips" || part === "both";
+  const method = part === "method" || part === "both";
   const take = part === "take" || part === "both";
+  const showMethod = method && !priceUnset && payMode !== "postpaid";
 
   return (
     <>
@@ -54,7 +59,7 @@ export default function OnsitePayModeFields({
             {beforeChips ? <div className="stay-sale-pay-price">{beforeChips}</div> : null}
             <ChipGroup>
               {ONSITE_PAY_MODES.map((k) => (
-                <Chip key={k} active={payMode === k} onClick={() => onPayMode(k)}>
+                <Chip key={k} active={payMode === k} disabled={disabled} onClick={() => onPayMode(k)}>
                   {ONSITE_PAY_MODE_LABEL[k]}
                 </Chip>
               ))}
@@ -73,19 +78,17 @@ export default function OnsitePayModeFields({
         </div>
       ) : null}
 
+      {showMethod ? (
+        <div className="fld">
+          <label>결제수단</label>
+          <BookPayMethodCircles value={depMethod} onChange={onDepMethod} disabled={disabled} />
+        </div>
+      ) : null}
+
       {take && payMode === "prepaid" && !priceUnset ? (
         <div className="fld">
           <label>수납</label>
-          <div className="muted sm">
-            저장 시 판매금만큼 받기(완납)로 적어요 · 방법
-            <ChipGroup style={{ display: "inline-flex", marginLeft: "var(--space-3)" }}>
-              {BOOK_PAY_METHODS.map((m) => (
-                <Chip key={m} sm active={depMethod === m} onClick={() => onDepMethod(m)}>
-                  {BOOK_PAY_LABEL[m]}
-                </Chip>
-              ))}
-            </ChipGroup>
-          </div>
+          <div className="muted sm">저장 시 판매금만큼 받기(완납)로 적어요 · 위 결제수단 사용</div>
         </div>
       ) : null}
 
@@ -94,7 +97,7 @@ export default function OnsitePayModeFields({
           <label>받을 선금</label>
           <div>
             <div className="muted sm" style={{ marginBottom: "var(--space-chip)" }}>
-              판매금과 별개 · 일부만 먼저 받을 때
+              판매금과 별개 · 일부만 먼저 받을 때 · 위 결제수단 사용
             </div>
             <PriceRow>
               <PriceInp sm>
@@ -103,17 +106,11 @@ export default function OnsitePayModeFields({
                   inputMode="numeric"
                   aria-label="받을 선금"
                   placeholder="선금"
+                  disabled={disabled}
                   value={depAmt !== "" ? won(Number(depAmt)) : ""}
                   onChange={(e) => onDepAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
                 />
               </PriceInp>
-              <ChipGroup>
-                {BOOK_PAY_METHODS.map((m) => (
-                  <Chip key={m} sm active={depMethod === m} onClick={() => onDepMethod(m)}>
-                    {BOOK_PAY_LABEL[m]}
-                  </Chip>
-                ))}
-              </ChipGroup>
             </PriceRow>
           </div>
         </div>

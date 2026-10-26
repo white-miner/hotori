@@ -1786,17 +1786,19 @@ label.ck input[type="checkbox"] {
 .payota { padding: 9px 0; }
 .payota span { color: var(--ink4); }
 .paydep, .paybal { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-/* Entry Option A: 2-row grid-lock — amount|methods / date|받기·선금 (no wrap chaos) */
+/* Entry Option A: 결제수단(원형) → 금액 → date|받기·선금 */
 .paytake {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "amt meth"
-    "date btns";
+    "meth meth"
+    "amt date"
+    "btns btns";
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
+.paytake > .pay-method-circles { grid-area: meth; }
 .paytake > .inp.price { grid-area: amt; width: 100%; max-width: 170px; }
 .paytake > .seg { grid-area: meth; justify-self: end; }
 .paytake > input[type="date"].inp { grid-area: date; width: 100%; max-width: 150px; }
@@ -1805,6 +1807,37 @@ label.ck input[type="checkbox"] {
 .paydep .inp.price, .paybal .inp.price { width: 170px; flex: none; }
 .paydep input[type="date"].inp { width: 150px; flex: none; }
 .paytake .paybtns { display: flex; gap: 8px; margin-left: 0; }
+
+/* 결제수단 원형 버튼 (카드·현금·이체) — Entry/간단/StaySale/Option A 공유 */
+.pay-method-circles {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-chip);
+  flex-wrap: wrap;
+}
+.pay-method-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  background: var(--panel);
+  color: var(--ink2);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  border: 1px solid var(--line);
+}
+.pay-method-circle:hover:not(:disabled) { background: var(--hover); }
+.pay-method-circle.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.pay-method-circle:disabled { opacity: 0.5; cursor: not-allowed; }
 .payrow { display: flex; align-items: center; gap: 10px; background: var(--panel); border-radius: 12px; padding: 7px 8px 7px 12px; font-size: 13px; }
 .payrow b { font-weight: 800; }
 .payrow .num { font-weight: 750; }
@@ -1824,8 +1857,8 @@ label.ck input[type="checkbox"] {
   .paytake {
     grid-template-columns: 1fr;
     grid-template-areas:
-      "amt"
       "meth"
+      "amt"
       "date"
       "btns";
   }

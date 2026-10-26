@@ -175,7 +175,17 @@ import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import { stopSellDatesForStay } from "../shared/salesCalendar";
-import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, Inp, PriceInp, PriceRow, Stepper } from "./primitives";
+import {
+  BookPayMethodCircles,
+  BookingModeSeg,
+  Chip,
+  ChipGroup,
+  GuestNamePhone,
+  Inp,
+  PriceInp,
+  PriceRow,
+  Stepper,
+} from "./primitives";
 
 interface Props {
   data: HotelData;
@@ -3082,10 +3092,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
 
-        {/* 신규 현장 표준 숙박: 결제 모드 칩을 판매금 위 (간단과 동일 · 총액은 모드와 무관 표시) */}
+        {/* 신규 현장: 완납/후불/선금 → 결제수단(원형) → 판매금 (간단과 동일) */}
         {createOnsitePay ? (
           <OnsitePayModeFields
             part="chips"
+            payMode={createPayMode}
+            onPayMode={setCreatePayMode}
+            depAmt={createDepAmt}
+            onDepAmt={setCreateDepAmt}
+            depMethod={createDepMethod}
+            onDepMethod={setCreateDepMethod}
+          />
+        ) : null}
+        {createOnsitePay ? (
+          <OnsitePayModeFields
+            part="method"
             payMode={createPayMode}
             onPayMode={setCreatePayMode}
             depAmt={createDepAmt}
@@ -3323,6 +3344,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     )}
                   </div>
                   <div className="paytake">
+                    <BookPayMethodCircles
+                      value={recv.method}
+                      onChange={(m) => setRecv({ ...recv, method: m })}
+                      disabled={payBusy}
+                    />
                     <label className="inp price sm">
                       <span className="pl">금액</span>
                       <input
@@ -3341,13 +3367,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       />
                       원
                     </label>
-                    <div className="seg sm" role="group" aria-label="결제 방법">
-                      {BOOK_PAY_METHODS.map((m) => (
-                        <button type="button" key={m} className={recv.method === m ? "on" : ""} onClick={() => setRecv({ ...recv, method: m })}>
-                          {BOOK_PAY_LABEL[m]}
-                        </button>
-                      ))}
-                    </div>
                     <input
                       className="inp sm"
                       type="date"
