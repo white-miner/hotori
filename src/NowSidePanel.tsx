@@ -4,6 +4,7 @@ import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
 import { DAMAGE_COPY } from "../shared/damageDoc";
 import StayConfirmLetter from "./StayConfirmLetter";
 import DamageLetter from "./DamageLetter";
+import { ensureHotelBizReady } from "./hotelBizGate";
 import { useDamageIssues } from "./data";
 import {
   canCheckOut,
@@ -739,7 +740,12 @@ export default function NowSidePanel({
                             type="button"
                             className="btn sm line"
                             disabled={moving}
-                            onClick={() => setStayConfirm(b)}
+                            onClick={() => {
+                              void (async () => {
+                                if (!(await ensureHotelBizReady(s.hotelBiz, hotelName))) return;
+                                setStayConfirm(b);
+                              })();
+                            }}
                             aria-label={STAY_CONFIRM_COPY}
                           >
                             <FileText size={14} strokeWidth={2.2} aria-hidden />
@@ -751,7 +757,12 @@ export default function NowSidePanel({
                             type="button"
                             className="btn sm line"
                             disabled={moving}
-                            onClick={() => setDamageBooking(b)}
+                            onClick={() => {
+                              void (async () => {
+                                if (!(await ensureHotelBizReady(s.hotelBiz, hotelName))) return;
+                                setDamageBooking(b);
+                              })();
+                            }}
                             aria-label={DAMAGE_COPY.title}
                           >
                             <AlertTriangle size={14} strokeWidth={2.2} aria-hidden />

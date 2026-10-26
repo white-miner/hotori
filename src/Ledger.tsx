@@ -9,6 +9,7 @@ import GroupAdd from "./GroupAdd";
 import StayConfirmLetter from "./StayConfirmLetter";
 import InvoiceLetter from "./InvoiceLetter";
 import DamageLetter from "./DamageLetter";
+import { ensureHotelBizReady } from "./hotelBizGate";
 import {
   type HotelData,
   queryLedger,
@@ -335,7 +336,10 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       className="btn sm line l-stay-confirm noprint"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setStayConfirm(b);
+                        void (async () => {
+                          if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
+                          setStayConfirm(b);
+                        })();
                       }}
                       aria-label={STAY_CONFIRM_COPY}
                       title={`${STAY_CONFIRM_COPY} 인쇄·PDF`}
@@ -350,8 +354,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       className="btn sm line l-stay-confirm noprint"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (b.groupId) setInvoiceGroupId(b.groupId);
-                        else setInvoiceBooking(b);
+                        void (async () => {
+                          if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
+                          if (b.groupId) setInvoiceGroupId(b.groupId);
+                          else setInvoiceBooking(b);
+                        })();
                       }}
                       aria-label="청구서"
                       title="청구서 발급·인쇄"
@@ -365,7 +372,10 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       className="btn sm line l-stay-confirm noprint"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDamageBooking(b);
+                        void (async () => {
+                          if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
+                          setDamageBooking(b);
+                        })();
                       }}
                       aria-label={DAMAGE_COPY.title}
                       title={DAMAGE_COPY.title}
@@ -622,7 +632,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
                   정산하기
                 </button>
-                <button type="button" className="btn sm line" onClick={() => setInvoiceGroupId(g.groupId)}>
+                <button
+                  type="button"
+                  className="btn sm line"
+                  onClick={() => {
+                    void (async () => {
+                      if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
+                      setInvoiceGroupId(g.groupId);
+                    })();
+                  }}
+                >
                   청구서
                 </button>
                 <button type="button" className="btn sm line red-t" disabled={gBusy} onClick={() => void groupAct(g, "cancel")}>

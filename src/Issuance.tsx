@@ -42,6 +42,7 @@ import { planQuoteTypeHoldBookings } from "../shared/quoteBookings";
 import { INVOICE_COPY, type InvoiceDoc } from "../shared/invoiceDoc";
 import { DAMAGE_COPY, type DamageDoc } from "../shared/damageDoc";
 import { STAY_CONFIRM_COPY, businessDate, dayLabel } from "../shared/ledger";
+import { ensureHotelBizReady } from "./hotelBizGate";
 
 type Panel = "home" | "vault" | "floor" | "quote" | "invoice" | "damage";
 
@@ -84,12 +85,31 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
   const [panel, setPanel] = useState<Panel>(panelFromHash);
   const [vaultKind, setVaultKind] = useState<HotelDocKind | null>(kindFromHash);
   const [floorOpen, setFloorOpen] = useState(() => panelFromHash() === "floor");
-  const [quoteOpen, setQuoteOpen] = useState<QuoteDoc | "new" | null>(() => (panelFromHash() === "quote" ? "new" : null));
+  const [quoteOpen, setQuoteOpen] = useState<QuoteDoc | "new" | null>(null);
   const [invoiceView, setInvoiceView] = useState<InvoiceDoc | null>(null);
   const [damageView, setDamageView] = useState<DamageDoc | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const hotel = data.hotel!;
   const s = hotel.settings;
+
+  const requireBiz = () => ensureHotelBizReady(s.hotelBiz, hotel.name);
+
+  const openQuote = async (doc: QuoteDoc | "new" = "new") => {
+    if (!(await requireBiz())) return;
+    setQuoteOpen(doc);
+  };
+  const openInvoiceView = async (doc: InvoiceDoc) => {
+    if (!(await requireBiz())) return;
+    setInvoiceView(doc);
+  };
+  const openDamageView = async (doc: DamageDoc) => {
+    if (!(await requireBiz())) return;
+    setDamageView(doc);
+  };
+  const goLedgerPrint = async () => {
+    if (!(await requireBiz())) return;
+    onGoLedger();
+  };
 
   useEffect(() => {
     const on = () => {
@@ -97,24 +117,33 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
       setPanel(p);
       setVaultKind(kindFromHash());
       if (p === "floor") setFloorOpen(true);
-      if (p === "quote" && !quoteOpen) setQuoteOpen("new");
+      if (p === "quote") void openQuote("new");
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
-  }, [quoteOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hash sync only
+  }, []);
+
+  useEffect(() => {
+    if (panelFromHash() === "quote") void openQuote("new");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount deep-link once
+  }, []);
 
   const goPanel = (p: Panel, kind?: HotelDocKind | null) => {
-    let hash = "#/issuance";
-    if (p === "vault") hash = kind ? `#/issuance/vault/${kind}` : "#/issuance/vault";
-    else if (p === "floor") hash = "#/issuance/floor";
-    else if (p === "quote") hash = "#/issuance/quote";
-    else if (p === "invoice") hash = "#/issuance/invoice";
-    else if (p === "damage") hash = "#/issuance/damage";
-    if (location.hash !== hash) location.hash = hash;
-    setPanel(p);
-    if (p === "vault") setVaultKind(kind ?? null);
-    if (p === "floor") setFloorOpen(true);
-    if (p === "quote") setQuoteOpen((cur) => cur ?? "new");
+    void (async () => {
+      if (p === "quote" && !(await requireBiz())) return;
+      let hash = "#/issuance";
+      if (p === "vault") hash = kind ? `#/issuance/vault/${kind}` : "#/issuance/vault";
+      else if (p === "floor") hash = "#/issuance/floor";
+      else if (p === "quote") hash = "#/issuance/quote";
+      else if (p === "invoice") hash = "#/issuance/invoice";
+      else if (p === "damage") hash = "#/issuance/damage";
+      if (location.hash !== hash) location.hash = hash;
+      setPanel(p);
+      if (p === "vault") setVaultKind(kind ?? null);
+      if (p === "floor") setFloorOpen(true);
+      if (p === "quote") setQuoteOpen((cur) => cur ?? "new");
+    })();
   };
 
   type RecentItem =
@@ -175,7 +204,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
           {ISSUANCE_COPY.typesHeading}
         </h2>
         <div className="iss-grid">
-          <button type="button" className="iss-card" onClick={onGoLedger}>
+          <button type="button" className="iss-card" onClick={() => void goLedgerPrint()}>
             <FileText size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{STAY_CONFIRM_COPY}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.stayConfirmHint}</span>
@@ -183,7 +212,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
               {ISSUANCE_COPY.stayConfirmCta} <ExternalLink size={12} aria-hidden />
             </span>
           </button>
-          <button type="button" className="iss-card" onClick={() => goPanel("quote")}>
+          <button type="button" className="iss-card" onClick={() => void goPanel("quote")}>
             <ClipboardList size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{ISSUANCE_COPY.quote}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.quoteHint}</span>
@@ -193,8 +222,11 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             type="button"
             className="iss-card"
             onClick={() => {
-              goPanel("invoice");
-              onGoLedger();
+              void (async () => {
+                if (!(await requireBiz())) return;
+                goPanel("invoice");
+                onGoLedger();
+              })();
             }}
           >
             <Receipt size={22} strokeWidth={2} aria-hidden />
@@ -208,8 +240,11 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             type="button"
             className="iss-card"
             onClick={() => {
-              goPanel("damage");
-              onGoLedger();
+              void (async () => {
+                if (!(await requireBiz())) return;
+                goPanel("damage");
+                onGoLedger();
+              })();
             }}
           >
             <AlertTriangle size={22} strokeWidth={2} aria-hidden />
@@ -270,7 +305,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             <ul className="iss-list">
               {invoices.list.map((d) => (
                 <li key={d.id}>
-                  <button type="button" className="iss-list-link" onClick={() => setInvoiceView(d)}>
+                  <button type="button" className="iss-list-link" onClick={() => void openInvoiceView(d)}>
                     <span className="iss-list-t">
                       {d.issueNumber ? `${d.issueNumber} · ` : ""}
                       {d.payerName || INVOICE_COPY.title}
@@ -284,7 +319,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             </ul>
           )}
           <div className="iss-sec-row" style={{ marginTop: 12 }}>
-            <button type="button" className="btn sm" onClick={onGoLedger}>
+            <button type="button" className="btn sm" onClick={() => void goLedgerPrint()}>
               {ISSUANCE_COPY.invoiceCta} <ExternalLink size={12} aria-hidden />
             </button>
           </div>
@@ -311,7 +346,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             <ul className="iss-list">
               {damages.list.map((d) => (
                 <li key={d.id}>
-                  <button type="button" className="iss-list-link" onClick={() => setDamageView(d)}>
+                  <button type="button" className="iss-list-link" onClick={() => void openDamageView(d)}>
                     <span className="iss-list-t">
                       {d.guestName || DAMAGE_COPY.title}
                       {d.roomNo ? ` · ${d.roomNo}호` : ""}
@@ -324,7 +359,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             </ul>
           )}
           <div className="iss-sec-row" style={{ marginTop: 12 }}>
-            <button type="button" className="btn sm" onClick={onGoLedger}>
+            <button type="button" className="btn sm" onClick={() => void goLedgerPrint()}>
               {ISSUANCE_COPY.damageCta} <ExternalLink size={12} aria-hidden />
             </button>
           </div>
@@ -351,21 +386,21 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
               {recent.map((d) => (
                 <li key={`${d.kind}-${d.id}`}>
                   {d.kind === "quote" ? (
-                    <button type="button" className="iss-list-link" onClick={() => setQuoteOpen(d.doc)}>
+                    <button type="button" className="iss-list-link" onClick={() => void openQuote(d.doc)}>
                       <span className="iss-list-t">{d.title}</span>
                       <span className="tag">{QUOTE_COPY.title}</span>
                       <span className="tag">{d.tag}</span>
                       <span className="muted sm">{dayLabel(d.at.slice(0, 10))}</span>
                     </button>
                   ) : d.kind === "invoice" ? (
-                    <button type="button" className="iss-list-link" onClick={() => setInvoiceView(d.doc)}>
+                    <button type="button" className="iss-list-link" onClick={() => void openInvoiceView(d.doc)}>
                       <span className="iss-list-t">{d.title}</span>
                       <span className="tag">{INVOICE_COPY.title}</span>
                       <span className="tag">{d.tag}</span>
                       <span className="muted sm">{dayLabel(d.at.slice(0, 10))}</span>
                     </button>
                   ) : d.kind === "damage" ? (
-                    <button type="button" className="iss-list-link" onClick={() => setDamageView(d.doc)}>
+                    <button type="button" className="iss-list-link" onClick={() => void openDamageView(d.doc)}>
                       <span className="iss-list-t">{d.title}</span>
                       <span className="tag">{DAMAGE_COPY.title}</span>
                       <span className="tag">{d.tag}</span>

@@ -49,6 +49,8 @@ import {
   HOTEL_BIZ_NUMBER_MAX,
   HOTEL_BIZ_PHONE_MAX,
   HOTEL_BIZ_REP_MAX,
+  HOTEL_BIZ_UPJONG_MAX,
+  HOTEL_BIZ_UPTAE_MAX,
   STAY_CONFIRM_COPY,
 } from "../shared/hotelBiz";
 import { removeTypeAlias, upsertTypeAlias } from "../shared/smartRegister";
@@ -1455,13 +1457,16 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
           <div className="hbiz" id="set-hotel-biz">
             <h4>호텔 사업자 정보</h4>
-            <p className="sub">{STAY_CONFIRM_COPY}에 찍히는 상호·사업자번호·주소예요. 상호를 비우면 위 호텔 이름을 씁니다.</p>
+            <p className="sub">
+              {STAY_CONFIRM_COPY}·견적·청구·손해 서류에 찍혀요.{" "}
+              <b>상호·사업자번호·업종·업태</b>는 발급에 필수예요. 상호를 비우면 위 호텔 이름을 씁니다.
+            </p>
             <p className="sub">
               {ISSUANCE_COPY.settingsVaultHint}{" "}
               <a href="#/issuance/vault">{ISSUANCE_COPY.viewLabel}</a>
             </p>
             <div className="opt">
-              <span>상호(사업자명)</span>
+              <span>상호(사업자명) *</span>
               <input
                 className="inp sm"
                 value={s.hotelBiz.businessName}
@@ -1469,10 +1474,11 @@ export default function Settings({ data, email, notify }: Props) {
                 placeholder={name.trim() || "호텔 이름"}
                 onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, businessName: e.target.value } }))}
                 aria-label="상호"
+                required
               />
             </div>
             <div className="opt">
-              <span>사업자번호</span>
+              <span>사업자번호 *</span>
               <input
                 className="inp sm"
                 value={s.hotelBiz.businessNumber}
@@ -1480,6 +1486,31 @@ export default function Settings({ data, email, notify }: Props) {
                 placeholder="123-45-67890"
                 onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, businessNumber: e.target.value } }))}
                 aria-label="사업자번호"
+                required
+              />
+            </div>
+            <div className="opt">
+              <span>업종 *</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.upjong}
+                maxLength={HOTEL_BIZ_UPJONG_MAX}
+                placeholder="호텔"
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, upjong: e.target.value } }))}
+                aria-label="업종"
+                required
+              />
+            </div>
+            <div className="opt">
+              <span>업태 *</span>
+              <input
+                className="inp sm"
+                value={s.hotelBiz.uptae}
+                maxLength={HOTEL_BIZ_UPTAE_MAX}
+                placeholder="숙박업"
+                onChange={(e) => update((x) => ({ ...x, hotelBiz: { ...x.hotelBiz, uptae: e.target.value } }))}
+                aria-label="업태"
+                required
               />
             </div>
             <div className="opt stack">

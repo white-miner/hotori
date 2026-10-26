@@ -56,6 +56,7 @@ import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import { askConfirm } from "./ConfirmDialog";
+import { ensureHotelBizReady } from "./hotelBizGate";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
@@ -1823,7 +1824,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <button
                 type="button"
                 className="beo"
-                onClick={() => setStayConfirm(true)}
+                onClick={() => {
+                  void (async () => {
+                    if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
+                    setStayConfirm(true);
+                  })();
+                }}
                 title="숙박확인서 인쇄·PDF"
               >
                 <FileText size={17} />
@@ -1834,7 +1840,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <button
                 type="button"
                 className="beo"
-                onClick={() => setDamageOpen(true)}
+                onClick={() => {
+                  void (async () => {
+                    if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
+                    setDamageOpen(true);
+                  })();
+                }}
                 title={DAMAGE_COPY.title}
               >
                 <AlertTriangle size={17} />
