@@ -1143,7 +1143,8 @@ export function stockRangeLabel(period: StockPeriod, from: string, to: string, t
 }
 
 // ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
-export type BoardTab = "now" | "stock" | "smart" | "rooms" | "calendar" | "parking";
+/** FO 상단 칩 표시 순서(주차 제외): now → rooms → smart → stock → calendar */
+export type BoardTab = "now" | "rooms" | "smart" | "stock" | "calendar" | "parking";
 /** '#/board/now' → now, '#/board/rooms' → rooms, … 그 밖에는 null (기기에 남긴 탭을 써요) */
 export function boardTabFromHash(hash: string): BoardTab | null {
   const m = /^#\/board\/(now|stock|smart|rooms|calendar|parking)\/?$/.exec(hash);
