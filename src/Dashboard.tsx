@@ -3413,12 +3413,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           );
         })()}
         <div className="fchips">
-          <button className={floorTab === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
+          <button className={floorTabSafe === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
             전체
           </button>
           {/* 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */}
           {(multi && bScope === "all" ? [] : scopeFloors).map((f) => (
-            <button key={f.id} className={floorTab === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
+            <button key={f.id} className={floorTabSafe === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
               {f.name}
             </button>
           ))}
