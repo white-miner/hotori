@@ -19,7 +19,9 @@ import {
   type Booking,
   dayLabel,
   hotelBizDisplayName,
+  hotelBizFieldLabels,
   hotelBizHasAny,
+  hotelBizUpjongUptaeLine,
   printDateLabel,
   roomLabel,
   typeLabel,
@@ -329,6 +331,10 @@ export default function DamageLetter({
                   {t.bizNumber} {biz.businessNumber}
                 </div>
               ) : null}
+              {(() => {
+                const uu = hotelBizUpjongUptaeLine(biz, hotelBizFieldLabels(lang));
+                return uu ? <div>{uu}</div> : null;
+              })()}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>

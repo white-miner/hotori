@@ -10,6 +10,7 @@ import { findLinkedQuote } from "../shared/quoteVariance";
 import type { HotelData } from "./data";
 import { useInvoiceIssues, useQuoteIssues } from "./data";
 import { askConfirm } from "./ConfirmDialog";
+import { ensureHotelBizReady } from "./hotelBizGate";
 import InvoiceLetter from "./InvoiceLetter";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 
@@ -376,7 +377,16 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
             >
               <Printer size={14} /> 저장(이미지/PDF)
             </button>
-            <button type="button" className="btn line sm" onClick={() => setInvoiceOpen(true)}>
+            <button
+              type="button"
+              className="btn line sm"
+              onClick={() => {
+                void (async () => {
+                  if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
+                  setInvoiceOpen(true);
+                })();
+              }}
+            >
               <Receipt size={14} /> {INVOICE_COPY.title}
             </button>
           </div>

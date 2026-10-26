@@ -6,6 +6,7 @@ import {
   checkOut,
   dayLabel,
   hotelBizDisplayName,
+  hotelBizUpjongUptaeLine,
   md,
   roomLabel,
   typeLabel,
@@ -130,6 +131,10 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
                   {t.bizNumber} {biz.businessNumber}
                 </div>
               ) : null}
+              {(() => {
+                const uu = hotelBizUpjongUptaeLine(biz, { upjong: t.upjong, uptae: t.uptae });
+                return uu ? <div>{uu}</div> : null;
+              })()}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>

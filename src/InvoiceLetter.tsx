@@ -21,7 +21,9 @@ import {
   type Booking,
   dayLabel,
   hotelBizDisplayName,
+  hotelBizFieldLabels,
   hotelBizHasAny,
+  hotelBizUpjongUptaeLine,
   printDateLabel,
   won,
   type HotelSettings,
@@ -239,6 +241,10 @@ export default function InvoiceLetter({
                   {t.bizNumber} {biz.businessNumber}
                 </div>
               ) : null}
+              {(() => {
+                const uu = hotelBizUpjongUptaeLine(biz, hotelBizFieldLabels(lang));
+                return uu ? <div>{uu}</div> : null;
+              })()}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>

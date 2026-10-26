@@ -8,6 +8,10 @@ export interface HotelBiz {
   address: string;
   phone: string;
   representative: string;
+  /** 업종 (예: 호텔) */
+  upjong: string;
+  /** 업태 (예: 숙박업) */
+  uptae: string;
 }
 
 export const HOTEL_BIZ_NAME_MAX = 60;
@@ -15,6 +19,8 @@ export const HOTEL_BIZ_NUMBER_MAX = 20;
 export const HOTEL_BIZ_ADDRESS_MAX = 120;
 export const HOTEL_BIZ_PHONE_MAX = 30;
 export const HOTEL_BIZ_REP_MAX = 40;
+export const HOTEL_BIZ_UPJONG_MAX = 40;
+export const HOTEL_BIZ_UPTAE_MAX = 40;
 
 /** FO CTA · 기본 라벨 (한국어) */
 export const STAY_CONFIRM_COPY = "숙박확인서" as const;
@@ -30,6 +36,8 @@ export type StayConfirmStrings = {
   bizNumber: string;
   phone: string;
   representativeShort: string;
+  upjong: string;
+  uptae: string;
   guest: string;
   room: string;
   unassigned: string;
@@ -64,6 +72,8 @@ const STAY_CONFIRM_KO: StayConfirmStrings = {
   bizNumber: "사업자번호",
   phone: "전화",
   representativeShort: "대표",
+  upjong: "업종",
+  uptae: "업태",
   guest: "투숙객",
   room: "객실",
   unassigned: "미배정",
@@ -82,7 +92,7 @@ const STAY_CONFIRM_KO: StayConfirmStrings = {
   representative: "대표자",
   seal: "(인)",
   tipFilled: "설정에 저장한 사업자 정보가 인쇄됩니다.",
-  tipEmpty: "설정 → 호텔 사업자 정보를 넣으면 상호·사업자번호가 함께 인쇄됩니다.",
+  tipEmpty: "설정 → 호텔 사업자 정보를 넣으면 상호·사업자번호·업종·업태가 함께 인쇄됩니다.",
   print: "인쇄",
   pdf: "PDF",
   pdfHint: "인쇄 창에서「PDF로 저장」을 고르세요",
@@ -97,6 +107,8 @@ const STAY_CONFIRM_EN: StayConfirmStrings = {
   bizNumber: "Business Reg. No.",
   phone: "Tel",
   representativeShort: "Rep.",
+  upjong: "Industry",
+  uptae: "Type of business",
   guest: "Guest",
   room: "Room",
   unassigned: "Unassigned",
@@ -115,7 +127,8 @@ const STAY_CONFIRM_EN: StayConfirmStrings = {
   representative: "Representative",
   seal: "(Seal)",
   tipFilled: "Hotel business details from Settings will appear on the printout.",
-  tipEmpty: "Add hotel business details in Settings to print the legal name and registration number.",
+  tipEmpty:
+    "Add hotel business details in Settings to print the legal name, registration number, industry, and type of business.",
   print: "Print",
   pdf: "PDF",
   pdfHint: "In the print dialog, choose “Save as PDF”",
@@ -152,7 +165,15 @@ export function stayConfirmDateRange(
 }
 
 export function emptyHotelBiz(): HotelBiz {
-  return { businessName: "", businessNumber: "", address: "", phone: "", representative: "" };
+  return {
+    businessName: "",
+    businessNumber: "",
+    address: "",
+    phone: "",
+    representative: "",
+    upjong: "",
+    uptae: "",
+  };
 }
 
 export function normalizeHotelBiz(raw: unknown): HotelBiz {
@@ -164,6 +185,8 @@ export function normalizeHotelBiz(raw: unknown): HotelBiz {
     address: s("address", HOTEL_BIZ_ADDRESS_MAX),
     phone: s("phone", HOTEL_BIZ_PHONE_MAX),
     representative: s("representative", HOTEL_BIZ_REP_MAX),
+    upjong: s("upjong", HOTEL_BIZ_UPJONG_MAX),
+    uptae: s("uptae", HOTEL_BIZ_UPTAE_MAX),
   };
 }
 
@@ -173,5 +196,57 @@ export function hotelBizDisplayName(biz: HotelBiz, hotelName: string): string {
 }
 
 export function hotelBizHasAny(biz: HotelBiz): boolean {
-  return !!(biz.businessName || biz.businessNumber || biz.address || biz.phone || biz.representative);
+  return !!(
+    biz.businessName ||
+    biz.businessNumber ||
+    biz.address ||
+    biz.phone ||
+    biz.representative ||
+    biz.upjong ||
+    biz.uptae
+  );
 }
+
+/** 인쇄 헤더용 업종·업태 한 줄. 둘 다 비면 빈 문자열. */
+export function hotelBizUpjongUptaeLine(
+  biz: HotelBiz,
+  labels: { upjong: string; uptae: string },
+): string {
+  const parts: string[] = [];
+  if (biz.upjong.trim()) parts.push(`${labels.upjong} ${biz.upjong.trim()}`);
+  if (biz.uptae.trim()) parts.push(`${labels.uptae} ${biz.uptae.trim()}`);
+  return parts.join(" · ");
+}
+
+/** ko/en 라벨 — 견적·청구·손해 등 StayConfirmStrings 밖에서도 동일. */
+export function hotelBizFieldLabels(lang: PrintLang): { upjong: string; uptae: string } {
+  return lang === "en"
+    ? { upjong: "Industry", uptae: "Type of business" }
+    : { upjong: "업종", uptae: "업태" };
+}
+
+/**
+ * 발급 서류 게이트: 상호(또는 hotels.name)·사업자번호·업종·업태.
+ * 주소·전화·대표는 선택.
+ */
+export function hotelBizIsReady(biz: HotelBiz, hotelName = ""): boolean {
+  return hotelBizMissingLabels(biz, hotelName).length === 0;
+}
+
+export function hotelBizMissingLabels(biz: HotelBiz, hotelName = ""): string[] {
+  const missing: string[] = [];
+  if (!(biz.businessName.trim() || hotelName.trim())) missing.push("상호");
+  if (!biz.businessNumber.trim()) missing.push("사업자번호");
+  if (!biz.upjong.trim()) missing.push("업종");
+  if (!biz.uptae.trim()) missing.push("업태");
+  return missing;
+}
+
+export const HOTEL_BIZ_GATE_COPY = {
+  title: "사업자 정보가 필요해요",
+  body: (missing: string[]) =>
+    `발급 서류에는 ${missing.join("·")}이(가) 필요해요.\n설정 → 호텔 사업자 정보에서 입력해 주세요.`,
+  confirmLabel: "설정으로 이동",
+  cancelLabel: "닫기",
+  settingsHash: "#/settings/hotel-biz",
+} as const;
