@@ -215,10 +215,19 @@ export interface NowLists {
   arriving: Booking[];
 }
 
+/**
+ * Path A 미배정 전건 (입실일 필터 전).
+ * 「배치」사이드 오늘/일주일/한달 칩의 소스. 「현황」은 today만 씀.
+ */
+export function listUnassignedBookings(bookings: Booking[]): Booking[] {
+  return bookings.filter(
+    (b) => isActive(b) && b.kind === "stay" && !b.roomId && !isCheckedOut(b),
+  );
+}
+
 /** 오늘 「현황」에 보이는 활성 숙박을 옆 패널용으로 분류 */
 export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): NowLists {
   const active = bookings.filter((b) => nowBoardVisible(b, date));
-  const unassigned: Booking[] = [];
   const tentative: Booking[] = [];
   const departing: Booking[] = [];
   const lateOut: Booking[] = [];
@@ -227,14 +236,17 @@ export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): Now
     const f = nowFlags(b, date, opts);
     // 임시 = 방 점유 후 신호만 (미배정·타입 홀드와 분리)
     if (f.tentative && b.roomId) tentative.push(b);
-    if (f.kind === "unassigned") unassigned.push(b);
+    // 미배정은 아래 today 입실 필터로 별도 수집 (보드 가시일 ≠ 입실일 큐)
+    if (f.kind === "unassigned") continue;
     else if (f.kind === "lateOut") lateOut.push(b);
     else if (f.kind === "departing") departing.push(b);
     else if (f.kind === "arriving") arriving.push(b);
   }
   const byName = (a: Booking, b: Booking) => a.guestName.localeCompare(b.guestName, "ko");
+  // 「현황」= 오늘만 (기한초과 포함 · checkIn ≤ date)
+  const unassigned = filterUnassignedByCheckIn(listUnassignedBookings(bookings), date, "today").sort(byName);
   return {
-    unassigned: unassigned.sort(byName),
+    unassigned,
     tentative: tentative.sort(byName),
     departing: departing.sort(byName),
     lateOut: lateOut.sort(byName),
@@ -494,12 +506,20 @@ export function nowLatestPayMethodLabel(
   return p ? PAYMENT_METHOD_LABEL[p.method] : null;
 }
 
-/** 간단 예약 패널 · 입실일 필터 (영업일 기준) */
+/** 「배치」사이드 미배정 입실일 필터 (영업일 기준). 「현황」은 today만. */
 export type UaCheckInFilter = "today" | "week" | "month";
+
+/** 입실일 필터 칩 라벨 (배치 사이드 · 현황에는 없음) */
+export const UA_CHECKIN_FILTERS: { id: UaCheckInFilter; label: string }[] = [
+  { id: "today", label: "오늘" },
+  { id: "week", label: "일주일" },
+  { id: "month", label: "한달" },
+];
 
 /**
  * 미배정 목록을 입실일(checkIn)로 거른다.
  * 오늘: 당일 + 기한 지난 미배정 · 일주일/한달: today ~ today+6 / +29.
+ * 「배치」사이드 칩 · 「현황」은 today만 호출.
  */
 export function filterUnassignedByCheckIn(list: Booking[], today: string, filter: UaCheckInFilter): Booking[] {
   if (filter === "today") return list.filter((b) => b.checkIn <= today);
