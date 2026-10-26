@@ -845,6 +845,16 @@ label.ck input[type="checkbox"] {
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
 .filters .search.ls { width: 280px; }
 .filters select, .fdate input { height: 40px; border-radius: 999px; background: var(--panel); border: 0; padding: 0 14px; font-size: 13.5px; font-weight: 600; color: var(--ink2); }
+/* 장부 예약: 하단 행 = 이용 상태(좌) · 인쇄/PDF/엑셀(우) */
+.ledger-filter-bot {
+  display: flex;
+  flex: 1 1 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ledger-export { display: flex; gap: 8px; align-items: center; margin-left: auto; }
 .fdate { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink3); font-weight: 600; }
 .fdate input { font-family: var(--num); padding: 0 10px; }
 .ltable { background: var(--panel2); border-radius: 22px; padding: 8px; }

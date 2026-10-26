@@ -1256,42 +1256,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <option value="in-asc">입실 날짜 이른 순</option>
           <option value="rec">최근 기록·수정 순</option>
         </select>
-        <button type="button" className="btn line sm" disabled={!list.length} onClick={printLedger} aria-label="장부 인쇄">
-          <Printer size={14} /> 인쇄
-        </button>
-        <button
-          type="button"
-          className="btn line sm"
-          disabled={!list.length}
-          onClick={printLedger}
-          title="인쇄 창에서「PDF로 저장」을 고르세요"
-          aria-label="장부 PDF로 저장"
-        >
-          <FileDown size={14} /> PDF
-        </button>
-        {hasProAccess(data.hotel!.plan) ? (
-          <button
-            type="button"
-            className="btn line sm"
-            disabled={!list.length}
-            onClick={() =>
-              downloadLedgerXlsx(
-                list,
-                {
-                  platformName: (id) => L.plats.get(id)?.name ?? "?",
-                  typeLabel: (id) => {
-                    const t = L.types.get(id);
-                    return t ? typeLabel(t) : "?";
-                  },
-                  roomLabel: (b) => (!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")),
-                },
-                `${data.hotel!.name || "호텔"}_장부_${from}_${to}.xlsx`,
-              )
-            }
-          >
-            <Download size={14} /> 엑셀로 내보내기
-          </button>
-        ) : null}
         <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
           잔금 남음
         </button>
@@ -1313,19 +1277,66 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             </button>
           ))}
         </div>
-        <div className="seg" role="group" aria-label="이용 상태">
-          {(
-            [
-              ["all", "이용 전체"],
-              ["pre", STAY_PHASE_LABEL.pre],
-              ["in", STAY_PHASE_LABEL.in],
-              ["done", STAY_PHASE_LABEL.done],
-            ] as const
-          ).map(([k, l]) => (
-            <button key={k} type="button" className={phase === k ? "on" : ""} onClick={() => setPhase(k)}>
-              {l}
+        <div className="ledger-filter-bot">
+          <div className="seg" role="group" aria-label="이용 상태">
+            {(
+              [
+                ["all", "이용 전체"],
+                ["pre", STAY_PHASE_LABEL.pre],
+                ["in", STAY_PHASE_LABEL.in],
+                ["done", STAY_PHASE_LABEL.done],
+              ] as const
+            ).map(([k, l]) => (
+              <button key={k} type="button" className={phase === k ? "on" : ""} onClick={() => setPhase(k)}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="ledger-export" role="group" aria-label="내보내기">
+            <button type="button" className="btn line sm" disabled={!list.length} onClick={printLedger} aria-label="장부 인쇄">
+              <Printer size={14} /> 인쇄
             </button>
-          ))}
+            <button
+              type="button"
+              className="btn line sm"
+              disabled={!list.length}
+              onClick={printLedger}
+              title="인쇄 창에서「PDF로 저장」을 고르세요"
+              aria-label="장부 PDF로 저장"
+            >
+              <FileDown size={14} /> PDF
+            </button>
+            {hasProAccess(data.hotel!.plan) ? (
+              <button
+                type="button"
+                className="btn line sm"
+                disabled={!list.length}
+                onClick={() =>
+                  downloadLedgerXlsx(
+                    list,
+                    {
+                      platformName: (id) => L.plats.get(id)?.name ?? "?",
+                      typeLabel: (id) => {
+                        const t = L.types.get(id);
+                        return t ? typeLabel(t) : "?";
+                      },
+                      roomLabel: (b) =>
+                        !b.roomId
+                          ? "—"
+                          : isMoved(b)
+                            ? legsOf(b)
+                                .map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?")
+                                .join("→")
+                            : (L.roomLabel(b.roomId) ?? "?"),
+                    },
+                    `${data.hotel!.name || "호텔"}_장부_${from}_${to}.xlsx`,
+                  )
+                }
+              >
+                <Download size={14} /> 엑셀로 내보내기
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
       {err ? <div className="ferr noprint">{err}</div> : null}
