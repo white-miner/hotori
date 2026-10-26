@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { saveFailMessage } from "../shared/errors";
-import { Check, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, FileDown, Printer, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
@@ -511,7 +512,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         {open ? (
           <>
             {g.rooms ? (
-              <div className="gacts">
+              <div className="gacts noprint">
                 <button type="button" className="btn sm dark" disabled={gBusy || g.arrived === g.rooms} onClick={() => void groupAct(g, "in")}>
                   <Check size={14} strokeWidth={2.6} /> 모두 입실
                 </button>
@@ -539,14 +540,14 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 </button>
               </div>
             ) : (
-              <div className="gacts">
+              <div className="gacts noprint">
                 <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
                   정산서 보기
                 </button>
               </div>
             )}
             {gEdit?.id === g.groupId ? (
-              <div className="gedit">
+              <div className="gedit noprint">
                 <input className="inp" aria-label="단체명" maxLength={40} value={gEdit.name} onChange={(e) => setGEdit({ ...gEdit, name: e.target.value })} />
                 <input className="inp" type="date" aria-label="단체 입실일" value={gEdit.checkIn} onChange={(e) => e.target.value && setGEdit({ ...gEdit, checkIn: e.target.value })} />
                 <span className="step sm">
@@ -568,7 +569,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
               </div>
             ) : null}
             {gExt?.id === g.groupId ? (
-              <div className="gedit gext">
+              <div className="gedit gext noprint">
                 {(() => {
                   const planned = planGroupExtend(data.hotel!.settings, data.bookings, g.members, data.groups.get(g.groupId)?.rates ?? null);
                   if ("err" in planned) return <span className="muted sm">{planned.err}</span>;
@@ -614,10 +615,45 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
 
   const money = moneySummary(byPayout ? poRooms.amount - cardFee : roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
+  const listTotal = act.reduce((n, b) => n + b.price, 0);
+  const printFilters = (() => {
+    const bits: string[] = [];
+    if (plat) bits.push(L.plats.get(plat)?.name ?? "플랫폼");
+    if (type) {
+      const t = L.types.get(type);
+      bits.push(t ? typeLabel(t) : "타입");
+    }
+    if (kind === "stay") bits.push("숙박");
+    if (kind === "dayuse") bits.push("대실");
+    if (st === "active") bits.push("정상");
+    if (st === "void") bits.push("취소·노쇼");
+    if (phase !== "all") bits.push(STAY_PHASE_LABEL[phase]);
+    if (dueOnly) bits.push("잔금 남음");
+    if (poWait) bits.push("입금 미확인");
+    if (q) bits.push(`검색「${query.trim()}」`);
+    return bits;
+  })();
+  const printLedger = () => {
+    const prevTitle = document.title;
+    document.title = `${data.hotel!.name || "호텔"}_장부_${from}_${to}`;
+    flushSync(() => setGOpen(new Set(groups.keys())));
+    document.body.classList.add("print-ledger");
+    let cleaned = false;
+    const done = () => {
+      if (cleaned) return;
+      cleaned = true;
+      document.body.classList.remove("print-ledger");
+      document.title = prevTitle;
+      window.removeEventListener("afterprint", done);
+    };
+    window.addEventListener("afterprint", done);
+    window.print();
+    window.setTimeout(done, 1500);
+  };
 
   return (
     <main className="page ledger">
-      <div className="ph">
+      <div className="ph noprint">
         <div>
           <h1>
             장부 <span className="h1-sub">통합 이용내역</span>
@@ -805,7 +841,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         />
       ) : (
         <>
-      <section className="lweek" aria-label="일주일 입실현황">
+      <section className="lweek noprint" aria-label="일주일 입실현황">
         <div className="lweek-h">
           <div className="lweek-title">
             <b>일주일 입실현황</b>
@@ -871,7 +907,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           })}
         </div>
       </section>
-      <div className="filters">
+      <div className="filters noprint">
         <label className="search ls">
           <Search size={16} />
           <input
@@ -936,6 +972,19 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <option value="in-asc">입실 날짜 이른 순</option>
           <option value="rec">최근 기록·수정 순</option>
         </select>
+        <button type="button" className="btn line sm" disabled={!list.length} onClick={printLedger} aria-label="장부 인쇄">
+          <Printer size={14} /> 인쇄
+        </button>
+        <button
+          type="button"
+          className="btn line sm"
+          disabled={!list.length}
+          onClick={printLedger}
+          title="인쇄 창에서「PDF로 저장」을 고르세요"
+          aria-label="장부 PDF로 저장"
+        >
+          <FileDown size={14} /> PDF
+        </button>
         {hasProAccess(data.hotel!.plan) ? (
           <button
             type="button"
@@ -995,30 +1044,53 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           ))}
         </div>
       </div>
-      {err ? <div className="ferr">{err}</div> : null}
-      <div className="ltable">
-        <div className="lrow lhead">
-          <span>입실일</span>
-          <span>종류</span>
-          <span>플랫폼</span>
-          <span>이름</span>
-          <span>연락처</span>
-          <span>상태</span>
-          <span>입–퇴</span>
-          <span>인원</span>
-          <span>타입</span>
-          <span>방</span>
-          <span className="r">가격</span>
+      {err ? <div className="ferr noprint">{err}</div> : null}
+      <div className="ledger-print">
+        <header className="ledger-print-head print-only">
+          <div className="lph-k">{data.hotel!.name || "호텔"}</div>
+          <h1>장부 · 통합 이용내역</h1>
+          <div className="lph-meta">
+            입실일 {from} ~ {to} · {list.length}건 · 숙박 {nights}박
+            {byPayout ? " · 입금 예정 기준" : ""}
+          </div>
+          {printFilters.length ? <div className="lph-filters">필터: {printFilters.join(" · ")}</div> : null}
+          <div className="lph-sum">
+            매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 남은 금액 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
+            {paySum && paySum.total > 0
+              ? ` · 받은 돈 카드 ${won(paySum.card)} · 현금 ${won(paySum.cash)} · 이체 ${won(paySum.transfer)}`
+              : ""}
+          </div>
+        </header>
+        <div className="ltable">
+          <div className="lrow lhead">
+            <span>입실일</span>
+            <span>종류</span>
+            <span>플랫폼</span>
+            <span>이름</span>
+            <span>연락처</span>
+            <span>상태</span>
+            <span>입–퇴</span>
+            <span>인원</span>
+            <span>타입</span>
+            <span>방</span>
+            <span className="r">가격</span>
+          </div>
+          {rows === null ? (
+            <div className="lempty">불러오는 중…</div>
+          ) : list.length === 0 ? (
+            <div className="lempty">조건에 맞는 예약이 없어요</div>
+          ) : (
+            ledgerItems.map((it) => (it.g ? renderGroup(it.g) : renderRow(it.b!, false)))
+          )}
         </div>
-        {rows === null ? (
-          <div className="lempty">불러오는 중…</div>
-        ) : list.length === 0 ? (
-          <div className="lempty">조건에 맞는 예약이 없어요</div>
-        ) : (
-          ledgerItems.map((it) => (it.g ? renderGroup(it.g) : renderRow(it.b!, false)))
-        )}
+        {list.length ? (
+          <div className="ledger-print-foot print-only">
+            합계 {list.length}건 · 정상 판매가 {won(listTotal)}원
+            {dueTotal > 0 ? ` · 잔금 남음 ${won(dueTotal)}원` : ""}
+          </div>
+        ) : null}
       </div>
-      {!hasProAccess(data.hotel!.plan) ? <p className="fine pad">엑셀 내보내기는 Pro에서 쓸 수 있어요.</p> : null}
+      {!hasProAccess(data.hotel!.plan) ? <p className="fine pad noprint">엑셀 내보내기는 Pro에서 쓸 수 있어요.</p> : null}
         </>
       )}
       {settleId && allGroups.get(settleId) ? (
