@@ -16,7 +16,17 @@ import {
 
 const s = normalizeSettings({
   buildings: [{ id: "b1", name: "본관" }],
-  floors: [{ id: "f1", name: "6층", buildingId: "b1", rooms: [{ id: "r1", no: "601", typeId: "t1" }] }],
+  floors: [
+    {
+      id: "f1",
+      name: "6층",
+      buildingId: "b1",
+      rooms: [
+        { id: "r1", no: "601", typeId: "t1" },
+        { id: "r2", no: "603", typeId: "t1" },
+      ],
+    },
+  ],
   types: [{ id: "t1", name: "S" }],
   platforms: [
     { id: "walk", name: "현장·전화", abbr: "현", onsite: true },
@@ -168,6 +178,34 @@ test("현장 회귀: 선금 검증 · 호실 고정 draft", () => {
   assert.ok(!("err" in ok));
   assert.equal(ok[0]!.roomId, "r1");
   assert.equal(ok[0]!.platformId, "walk");
+});
+
+test("다실 바로입실: 대장(첫 호)에 판매가 전액 · 형제 0 · 같은 groupId", () => {
+  const drafts = buildStaySaleDrafts(s, {
+    roomIds: ["r1", "r2"],
+    checkIn: "2026-10-23",
+    nights: 1,
+    guestName: "김다실",
+    guestPhone: "01012345678",
+    guests: 2,
+    price: 300000,
+    platformId: "walk",
+    payMode: "prepaid",
+    depAmt: "",
+    depMethod: "card",
+    bizDate: "2026-10-23",
+    walkInImmediate: true,
+  });
+  assert.ok(!("err" in drafts));
+  assert.equal(drafts.length, 2);
+  assert.equal(drafts[0]!.price, 300000);
+  assert.equal(drafts[1]!.price, 0);
+  assert.equal(drafts[0]!.groupId, drafts[1]!.groupId);
+  assert.ok(drafts[0]!.groupId);
+  assert.equal(drafts[0]!.roomId, "r1");
+  assert.equal(drafts[1]!.roomId, "r2");
+  assert.equal(drafts[0]!.arrived, true);
+  assert.equal(drafts[1]!.arrived, true);
 });
 
 test("바로입실: 현장·플랫폼 빈 이름·전화 OK · arrived", () => {

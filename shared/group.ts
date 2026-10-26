@@ -1,15 +1,67 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
 import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stockTable } from "./ledger";
 import { syncStayNightRates } from "./nightrates";
+import { paidOf } from "./payment";
+import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
 
 export const GROUP_NAME_MAX = 40;
 export const GROUP_ROOMS_MAX = 60;
 
-/** 총액을 방 수로 똑같이 나누고 남는 원은 첫 방에 */
+/** 총액을 방 수로 똑같이 나누고 남는 원은 첫 방에 (레거시 · 단체 Entry 총액 모드 등) */
 export function splitTotal(total: number, n: number): number[] {
   if (n <= 0) return [];
   const per = Math.floor(total / n);
   return Array.from({ length: n }, (_, i) => (i === 0 ? total - per * (n - 1) : per));
+}
+
+/**
+ * 다실 lump/총액: 대장(첫 방)에 전액 · 형제 0.
+ * 바로입실·숙박판매 1/n 분배 중지 SoT.
+ */
+export function leadPrices(total: number, n: number): number[] {
+  if (n <= 0) return [];
+  const t = Math.max(0, Math.round(total));
+  return Array.from({ length: n }, (_, i) => (i === 0 ? t : 0));
+}
+
+/** groupId → 안정 6색 (create 시 badgeColor 자동) */
+export function hashGroupBadgeColor(groupId: string): GroupBadgeColor {
+  let h = 0;
+  for (let i = 0; i < groupId.length; i++) h = (h * 31 + groupId.charCodeAt(i)) >>> 0;
+  return GROUP_BADGE_COLORS[h % GROUP_BADGE_COLORS.length]!;
+}
+
+/**
+ * 대장 예약: 수납액 최대 방 · 동률이면 목록 앞(create 시 drafts[0]).
+ * 스키마 lead_booking_id 없이 P0 규칙.
+ */
+export function groupLeadBooking<T extends Pick<Booking, "id" | "payments" | "roomId" | "createdAt">>(
+  members: readonly T[],
+): T | null {
+  if (!members.length) return null;
+  let best = members[0]!;
+  let bestPaid = paidOf(best as Pick<Booking, "payments">);
+  for (let i = 1; i < members.length; i++) {
+    const m = members[i]!;
+    const p = paidOf(m as Pick<Booking, "payments">);
+    if (p > bestPaid) {
+      best = m;
+      bestPaid = p;
+    }
+  }
+  return best;
+}
+
+/** 보드 칩: 대장이면 `대장` · 형제면 `대장 {호}호` */
+export function groupLeadChipLabel(
+  bookingId: string,
+  lead: Pick<Booking, "id" | "roomId"> | null | undefined,
+  roomLabel: (roomId: string) => string | null | undefined,
+): string | null {
+  if (!lead) return null;
+  if (bookingId === lead.id) return "대장";
+  const no = lead.roomId ? roomLabel(lead.roomId) : null;
+  return no ? `대장 ${no}호` : "대장";
 }
 
 /** 그 기간 내내 비어 있는 방 (방 번호 순서 = 설정 순서) */

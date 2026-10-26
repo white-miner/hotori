@@ -2,7 +2,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type Booking, normalizeSettings, stockTable } from "./ledger";
-import { autoPick, expandTypeSlots, freeForStay, groupDateBlock, groupDrafts, groupStockImpact, groupStockImpactByTypes, groupSummaries, splitTotal, validateGroup, validateGroupAttach } from "./group";
+import {
+  autoPick,
+  expandTypeSlots,
+  freeForStay,
+  groupDateBlock,
+  groupDrafts,
+  groupLeadBooking,
+  groupLeadChipLabel,
+  groupStockImpact,
+  groupStockImpactByTypes,
+  groupSummaries,
+  hashGroupBadgeColor,
+  leadPrices,
+  splitTotal,
+  validateGroup,
+  validateGroupAttach,
+} from "./group";
+import { GROUP_BADGE_COLORS } from "./settle";
 
 const room = (no: string, typeId: string) => ({ id: `r${no}`, no, typeId });
 const S = normalizeSettings({
@@ -25,6 +42,33 @@ test("총액 나누기: 똑같이, 남는 원은 첫 방", () => {
   assert.deepEqual(splitTotal(900000, 3), [300000, 300000, 300000]);
   assert.equal(splitTotal(1000001, 10).reduce((a, b) => a + b, 0), 1000001);
   assert.deepEqual(splitTotal(5, 0), []);
+});
+
+test("leadPrices: 대장 전액 · 형제 0 · 합=총액", () => {
+  assert.deepEqual(leadPrices(300000, 3), [300000, 0, 0]);
+  assert.deepEqual(leadPrices(100000, 1), [100000]);
+  assert.deepEqual(leadPrices(5, 0), []);
+  assert.equal(leadPrices(1000001, 4).reduce((a, b) => a + b, 0), 1000001);
+});
+
+test("hashGroupBadgeColor: 안정 · 팔레트 안", () => {
+  const a = hashGroupBadgeColor("gid-abc");
+  assert.equal(a, hashGroupBadgeColor("gid-abc"));
+  assert.ok((GROUP_BADGE_COLORS as readonly string[]).includes(a));
+  assert.ok((GROUP_BADGE_COLORS as readonly string[]).includes(hashGroupBadgeColor("other-id")));
+});
+
+test("groupLeadBooking: 수납 최대 = 대장 · 칩 라벨", () => {
+  const a = bk({ id: "a", roomId: "r301", payments: [] });
+  const b = bk({
+    id: "b",
+    roomId: "r303",
+    payments: [{ id: "p", bookingId: "b", kind: "balance", method: "card", amount: 200000, bizDate: "2026-10-19", createdAt: "" }],
+  });
+  const lead = groupLeadBooking([a, b]);
+  assert.equal(lead?.id, "b");
+  assert.equal(groupLeadChipLabel("b", lead, (id) => (id === "r303" ? "303" : null)), "대장");
+  assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "대장 303호");
 });
 
 test("그 기간 내내 빈 방만 (하루라도 겹치면 빠져요)", () => {

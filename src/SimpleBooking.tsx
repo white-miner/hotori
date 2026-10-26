@@ -25,8 +25,10 @@ import {
   groupDrafts,
   groupStockImpact,
   groupStockImpactByTypes,
+  hashGroupBadgeColor,
+  leadPrices,
 } from "../shared/group";
-import { nightRatesFromTotal, splitAmountLast, syncStayNightRates } from "../shared/nightrates";
+import { nightRatesFromTotal, syncStayNightRates } from "../shared/nightrates";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
 import { askConfirm } from "./ConfirmDialog";
@@ -202,7 +204,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const linePrices = priceUnset
     ? effectiveTypeIds.map(() => 0)
     : totalMode
-      ? splitAmountLast(totalNum, Math.max(1, effectiveTypeIds.length || 1)).slice(0, effectiveTypeIds.length)
+      ? leadPrices(totalNum, Math.max(1, effectiveTypeIds.length || 1)).slice(0, effectiveTypeIds.length)
       : ratePrices(rateKeysForLines, rateNum, nights);
   const sumPrice = priceUnset ? 0 : totalMode ? totalNum : linePrices.reduce((a, b) => a + b, 0);
   const formula = totalMode
@@ -411,7 +413,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     const prices = priceUnset
       ? saveTypeIds.map(() => 0)
       : totalMode
-        ? splitAmountLast(totalNum, saveTypeIds.length)
+        ? leadPrices(totalNum, saveTypeIds.length)
         : ratePrices(
             saveTypeIds.map((tid) => tid || fallbackRateKey),
             rateNumForSave,
@@ -562,23 +564,26 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         payerPhone: phone,
         rates: ratesPersist,
         extras: [],
-        badgeColor: null,
+        badgeColor: hashGroupBadgeColor(groupId),
       });
 
+      // 다실 완납/선금: 대장(첫 호·savedList[0])에 총액 1줄 — 방마다 1/n 루프 금지
+      const lead = savedList[0];
       let payTail = "";
-      if (onsite && savedList[0]) {
+      if (onsite && lead) {
         try {
           if (payMode === "prepaid" && !priceUnset && totalSale > 0) {
-            for (const b of savedList) {
-              if (b.price > 0) {
-                await data.addPayment(b.id, { kind: "balance", method: depMethod, amount: b.price, bizDate: today });
-              }
-            }
+            await data.addPayment(lead.id, {
+              kind: "balance",
+              method: depMethod,
+              amount: totalSale,
+              bizDate: today,
+            });
             payTail = onsiteCreatePayTail({ kind: "balance", amount: totalSale, method: depMethod });
           } else if (payMode === "deposit") {
             const plan = planOnsiteCreatePay(payMode, { priceUnset, saleTotal: totalSale, depAmt, depMethod });
             if (plan.kind === "deposit") {
-              await data.addPayment(savedList[0].id, {
+              await data.addPayment(lead.id, {
                 kind: "deposit",
                 method: plan.method,
                 amount: plan.amount,

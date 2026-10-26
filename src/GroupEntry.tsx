@@ -23,6 +23,7 @@ import {
   expandTypeSlots,
   freeForStay,
   groupDrafts,
+  hashGroupBadgeColor,
   groupStockImpact,
   groupStockImpactByTypes,
   splitTotal,
@@ -259,7 +260,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         payerPhone: payer.phone || null,
         rates: typeRatesPersist && Object.keys(typeRatesPersist).length ? typeRatesPersist : null,
         extras: [],
-        badgeColor: null,
+        badgeColor: hashGroupBadgeColor(groupId),
       });
       const how = assignMode === "typeOnly" ? `${n}실(간단 예약·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";

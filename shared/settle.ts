@@ -25,7 +25,7 @@ export interface GroupInfo {
   rates: Record<string, number> | null;
   extras: GroupExtra[];
   payments: Payment[];
-  /** 칸 「단체」뱃지 색 (g1..g6). null이면 기본 무채 */
+  /** 칸 「단체」/「대장」뱃지 색 (g1..g6). null이면 기본 무채 · create는 hash 자동 */
   badgeColor: GroupBadgeColor | null;
 }
 export const emptyGroupInfo = (id: string): GroupInfo => ({

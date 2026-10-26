@@ -94,17 +94,20 @@ export function PlatBadge({ p }: { p?: Platform | null }) {
     </span>
   );
 }
-/** 칸 「단체」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
+/** 칸 「단체」/「대장」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
 export function GroupBadge({
   groupName,
   color,
   readOnly,
   onPick,
+  /** 다실 대장 칩: `대장` / `대장 601호` · 없으면 「단체」 */
+  label,
 }: {
   groupName?: string | null;
   color?: GroupBadgeColor | null;
   readOnly?: boolean;
   onPick?: (c: GroupBadgeColor) => void | Promise<void>;
+  label?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -117,12 +120,13 @@ export function GroupBadge({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
-  const cls = `grptag${color ? ` ${color}` : ""}${open ? " open" : ""}`;
-  const title = groupName ? `단체 ${groupName}` : "단체";
+  const text = label?.trim() || "단체";
+  const cls = `grptag${color ? ` ${color}` : ""}${open ? " open" : ""}${label ? " lead" : ""}`;
+  const title = groupName ? `${text} · ${groupName}` : text;
   if (readOnly || !onPick) {
     return (
       <span className={cls} title={title}>
-        단체
+        {text}
       </span>
     );
   }
@@ -140,7 +144,7 @@ export function GroupBadge({
           setOpen((v) => !v);
         }}
       >
-        단체
+        {text}
       </button>
       {open ? (
         <span className="grp-palette" role="listbox" aria-label="단체 뱃지 색" onClick={(e) => e.stopPropagation()}>
