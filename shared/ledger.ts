@@ -13,6 +13,7 @@ import {
   normalizeTypeStopSell,
 } from "./salesCalendar";
 import { type RoomHold, normalizeRoomHolds, roomsHeldForStay } from "./roomHold";
+import { type OverbookSub, normalizeOverbookSubs } from "./overbookSub";
 import {
   DEFAULT_HOUR_FEE,
   type DayuseDefaults,
@@ -28,6 +29,7 @@ import {
 } from "./tiers";
 
 export type { RoomHold } from "./roomHold";
+export type { OverbookSub } from "./overbookSub";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -132,6 +134,11 @@ export interface HotelSettings {
    * See docs/room-temporary-hold-plan.md
    */
   roomHolds: RoomHold[];
+  /**
+   * 오버부킹 지정 대체 객실: 오버 타입 × 숙박일 × 대체 타입 수량.
+   * See docs/overbook-substitute-rooms-plan.md
+   */
+  overbookSubs: OverbookSub[];
 }
 
 /** OTA platformTypeName → Hotori typeId (per Settings platform). */
@@ -307,6 +314,7 @@ export function emptySettings(): HotelSettings {
     typeStopSell: {},
     typeAliases: [],
     roomHolds: [],
+    overbookSubs: [],
   };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
@@ -362,6 +370,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
     typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
     roomHolds: normalizeRoomHolds((s as { roomHolds?: unknown }).roomHolds),
+    overbookSubs: normalizeOverbookSubs((s as { overbookSubs?: unknown }).overbookSubs),
   };
 }
 
@@ -1038,6 +1047,14 @@ export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[
       if (dateSet.has(d)) row.set(d, (row.get(d) ?? 0) - 1);
       d = addDays(d, 1);
     }
+  }
+  // 오버부킹 지정 대체: 대체 타입 −qty · 오버 타입 +qty (호텔 전체 · 건물 필터 무시)
+  for (const sub of s.overbookSubs ?? []) {
+    if (!dateSet.has(sub.date)) continue;
+    const fromRow = table.get(sub.fromTypeId);
+    const overRow = table.get(sub.overTypeId);
+    if (fromRow) fromRow.set(sub.date, (fromRow.get(sub.date) ?? 0) - sub.qty);
+    if (overRow) overRow.set(sub.date, (overRow.get(sub.date) ?? 0) + sub.qty);
   }
   return table;
 }

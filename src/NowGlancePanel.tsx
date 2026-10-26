@@ -16,6 +16,10 @@ export type GlanceTypeStock = {
   t: RoomType;
   rem: number;
   total: number;
+  /** 이 타입 여유가 오버 대체의 소스로 쓰임 */
+  subSrc?: boolean;
+  /** 이 타입 오버에 대체 지정됨 */
+  subRelieved?: boolean;
 };
 
 interface Props {
@@ -144,8 +148,9 @@ export default function NowGlancePanel({
         {typeStock.length ? (
           <div className="now-vacancy-row now-vacancy-types">
             <div className="now-vacancy-typechips open" role="list">
-              {typeStock.map(({ t, rem, total: tot }) => {
+              {typeStock.map(({ t, rem, total: tot, subSrc, subRelieved }) => {
                 const remLab = rem < 0 ? `−${-rem}` : String(rem);
+                const hint = rem < 0 || subRelieved ? "지정 대체 객실" : subSrc ? "대체로 사용 중" : "판매 캘린더";
                 return (
                   <TypeStockChip
                     key={t.id}
@@ -153,7 +158,9 @@ export default function NowGlancePanel({
                     rem={rem}
                     total={tot}
                     lowThreshold={lowThreshold}
-                    title={`${typeLabel(t)} 여유 ${remLab} · 판매 캘린더`}
+                    subSrc={subSrc}
+                    subRelieved={subRelieved}
+                    title={`${typeLabel(t)} 여유 ${remLab} · ${hint}`}
                     onClick={() => onTypeStock(t.id)}
                   />
                 );

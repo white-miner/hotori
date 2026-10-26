@@ -43,6 +43,7 @@ import ExtendNightModal from "./ExtendNightModal";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import StaySaleModal from "./StaySaleModal";
 import RoomHoldModal from "./RoomHoldModal";
+import OverbookSubModal, { spareMapForOverNight } from "./OverbookSubModal";
 import PaymentDeskModal from "./PaymentDeskModal";
 import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
@@ -114,6 +115,12 @@ import {
   releaseRoomHold,
   type RoomHold,
 } from "../shared/roomHold";
+import {
+  OVERBOOK_SUB_TITLE,
+  hasSubsForNight,
+  qtyTakenFrom,
+  type OverbookSub,
+} from "../shared/overbookSub";
 import {
   type BoardTab,
   type Booking,
@@ -470,6 +477,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 객실 임시마감 생성 모달 (취소 마감은 askConfirm) */
   const [roomHoldModal, setRoomHoldModal] = useState<{ roomId: string; boardDate: string } | null>(null);
   const [roomHoldBusy, setRoomHoldBusy] = useState(false);
+  /** 오버부킹 지정 대체 객실 모달 */
+  const [overbookSubModal, setOverbookSubModal] = useState<{ typeId: string; date: string } | null>(null);
+  const [overbookSubBusy, setOverbookSubBusy] = useState(false);
   /** 숙박 판매 전용 (StaySaleModal · SimpleBooking 금지) */
   const [staySale, setStaySale] = useState<{
     roomIds: string[];
@@ -570,6 +580,32 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setSelDate(night);
     setStockFocus({ typeId, date: night });
     setTab("stock");
+  };
+  /** 오버 −N 또는 이미 지정된 오버 타입 → 대체 모달 · 그 외 = 판매 캘린더 */
+  const onTypeStockChip = (typeId: string, night: string, rem: number) => {
+    if (readOnly) {
+      jumpToTypeStock(typeId, night);
+      return;
+    }
+    const subs = s.overbookSubs ?? [];
+    if (rem < 0 || hasSubsForNight(subs, typeId, night)) {
+      setOverbookSubModal({ typeId, date: night });
+      return;
+    }
+    jumpToTypeStock(typeId, night);
+  };
+  const commitOverbookSubs = async (next: OverbookSub[]) => {
+    if (readOnly || overbookSubBusy) return;
+    setOverbookSubBusy(true);
+    try {
+      await data.saveHotel({ settings: { ...s, overbookSubs: next } });
+      setOverbookSubModal(null);
+      notify(`${OVERBOOK_SUB_TITLE} 반영했어요`);
+    } catch (e) {
+      notify(saveFailMessage(e, "대체 객실을 저장하지 못했어요"));
+    } finally {
+      setOverbookSubBusy(false);
+    }
   };
   useEffect(
     () => () => {
@@ -2892,13 +2928,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const glanceUsed = glanceTotal - glanceVacant.length;
     const glanceLeft = glanceVacant.length;
     /** 오늘 · 호텔 전체 stockTable remaining · 방 0개 타입 숨김 · 설정 타입 순서 */
+    const obsToday = s.overbookSubs ?? [];
     const typeStockAll = s.types
       .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
-      .map((t) => ({
-        t,
-        rem: tableAll.get(t.id)?.get(today) ?? 0,
-        total: totalsAll.get(t.id) ?? 0,
-      }));
+      .map((t) => {
+        const rem = tableAll.get(t.id)?.get(today) ?? 0;
+        return {
+          t,
+          rem,
+          total: totalsAll.get(t.id) ?? 0,
+          subSrc: qtyTakenFrom(obsToday, t.id, today) > 0,
+          subRelieved: hasSubsForNight(obsToday, t.id, today),
+        };
+      });
     const minimapNow: MinimapBuilding[] = groupsNow.map(({ bd, floors: fl }) => ({
       id: bd.id,
       name: L.buildings.get(bd.id)?.name ?? bd.name,
@@ -2926,7 +2968,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onVacantChip={jumpToVacantRoom}
         typeStock={typeStockAll}
         lowThreshold={s.lowThreshold}
-        onTypeStock={(typeId) => jumpToTypeStock(typeId, today)}
+        onTypeStock={(typeId) => {
+          const rem = tableAll.get(typeId)?.get(today) ?? 0;
+          onTypeStockChip(typeId, today, rem);
+        }}
         buildings={minimapNow}
         onRoomBlock={jumpSelectNowRoom}
         open={glanceOpenNow}
@@ -3233,6 +3278,35 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onConfirm={(hold) => void commitRoomHold(hold)}
         />
       ) : null}
+      {overbookSubModal
+        ? (() => {
+            const ot = s.types.find((t) => t.id === overbookSubModal.typeId);
+            if (!ot) return null;
+            const night = overbookSubModal.date;
+            const remMap = new Map(
+              s.types.map((t) => [t.id, stockTable(s, bookings, [night]).get(t.id)?.get(night) ?? 0]),
+            );
+            const { spareByType, overRem } = spareMapForOverNight(
+              remMap,
+              s.overbookSubs ?? [],
+              ot.id,
+              night,
+            );
+            return (
+              <OverbookSubModal
+                s={s}
+                overType={ot}
+                date={night}
+                spareByType={spareByType}
+                overRem={overRem}
+                subs={s.overbookSubs ?? []}
+                busy={overbookSubBusy}
+                onCancel={() => !overbookSubBusy && setOverbookSubModal(null)}
+                onSave={(next) => void commitOverbookSubs(next)}
+              />
+            );
+          })()
+        : null}
       {staySale ? (
         <StaySaleModal
           s={s}
@@ -3473,13 +3547,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             if (!freeish) return false;
             return !holdOnNight(s.roomHolds ?? [], r.id, selDate);
           });
+          const obsNight = s.overbookSubs ?? [];
           const typeStockNight = s.types
             .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
-            .map((t) => ({
-              t,
-              rem: stockSelNight.get(t.id)?.get(selDate) ?? 0,
-              total: totalsAll.get(t.id) ?? 0,
-            }));
+            .map((t) => {
+              const rem = stockSelNight.get(t.id)?.get(selDate) ?? 0;
+              return {
+                t,
+                rem,
+                total: totalsAll.get(t.id) ?? 0,
+                subSrc: qtyTakenFrom(obsNight, t.id, selDate) > 0,
+                subRelieved: hasSubsForNight(obsNight, t.id, selDate),
+              };
+            });
           const minimapRooms: MinimapBuilding[] = glanceGroups.map(({ bd, floors: fl }) => ({
             id: bd.id,
             name: L.buildings.get(bd.id)?.name ?? bd.name,
@@ -3511,7 +3591,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 onVacantChip={jumpRoomsRoom}
                 typeStock={typeStockNight}
                 lowThreshold={s.lowThreshold}
-                onTypeStock={(typeId) => jumpToTypeStock(typeId, selDate)}
+                onTypeStock={(typeId) => {
+                  const rem = stockSelNight.get(typeId)?.get(selDate) ?? 0;
+                  onTypeStockChip(typeId, selDate, rem);
+                }}
                 buildings={minimapRooms}
                 onRoomBlock={jumpRoomsRoom}
                 open={glanceOpenRooms}

@@ -279,6 +279,15 @@ label.ck input[type="checkbox"] {
 .sales-gchip.lv-over small { color: rgba(255,255,255,0.75); }
 .sales-gchip.lv-stop { background: var(--badge-stop-s); color: var(--badge-stop); }
 .sales-gchip.lv-stop small { color: var(--badge-stop); }
+/* 오버부킹 지정 대체: 소스(여유 차감) · 완화됨 — 칸 지오메트리 무관 */
+.sales-gchip.sub-src { box-shadow: inset 0 0 0 1.5px var(--badge-info-border); }
+.sales-gchip.sub-src small::after { content: " · 대체"; color: var(--badge-info); }
+.sales-gchip.sub-relieved:not(.lv-over) { box-shadow: inset 0 0 0 1.5px var(--badge-warn-border); }
+.sales-gchip.sub-relieved:not(.lv-over) small::after { content: " · 지정"; color: var(--badge-warn); }
+.overbook-sub-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.overbook-sub-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.overbook-sub-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.overbook-sub-meta b { font-weight: 700; }
 
 .sales-dates {
   display: flex;
