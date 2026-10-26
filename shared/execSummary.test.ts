@@ -1,0 +1,93 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { Booking } from "./ledger";
+import { methodSales, typeSalesByType } from "./execSummary";
+
+let n = 0;
+const bk = (p: Partial<Booking> & Pick<Booking, "typeId" | "checkIn" | "price">): Booking =>
+  ({
+    id: `b${++n}`,
+    kind: "stay",
+    status: "active",
+    platformId: "p",
+    guestName: "손님",
+    guestPhone: null,
+    roomId: "r1",
+    nights: 1,
+    startTime: null,
+    endTime: null,
+    guests: 2,
+    memo: null,
+    groupId: null,
+    groupName: null,
+    earlyOut: null,
+    refund: null,
+    createdAt: "2026-10-01T00:00:00Z",
+    updatedAt: "2026-10-01T00:00:00Z",
+    segments: null,
+    checkedOutAt: null,
+    cancelledAt: null,
+    ...p,
+  }) as Booking;
+
+const types = [
+  { id: "s", name: "스탠다드" },
+  { id: "d", name: "디럭스" },
+];
+
+test("타입별 판매수: 기간 입실·취소 제외·설정 순서", () => {
+  const list = [
+    bk({ typeId: "s", checkIn: "2026-10-20", price: 100000, nights: 2 }),
+    bk({ typeId: "s", checkIn: "2026-10-21", price: 90000, kind: "dayuse", nights: null }),
+    bk({ typeId: "d", checkIn: "2026-10-20", price: 150000, nights: 1 }),
+    bk({ typeId: "s", checkIn: "2026-10-19", price: 80000 }), // 기간 밖
+    bk({ typeId: "d", checkIn: "2026-10-20", price: 50000, status: "cancelled" }), // 제외
+    bk({ typeId: "d", checkIn: "2026-10-22", price: 70000, status: "noshow" }), // 매출 포함
+  ];
+  const { rows, total } = typeSalesByType(list, "2026-10-20", "2026-10-22", types);
+  assert.equal(rows[0].label, "스탠다드");
+  assert.equal(rows[0].count, 2);
+  assert.equal(rows[0].stay, 1);
+  assert.equal(rows[0].dayuse, 1);
+  assert.equal(rows[0].nights, 2);
+  assert.equal(rows[0].net, 190000);
+  assert.equal(rows[1].label, "디럭스");
+  assert.equal(rows[1].count, 2); // active + noshow
+  assert.equal(rows[1].net, 220000);
+  assert.equal(total.count, 4);
+  assert.equal(total.net, 410000);
+});
+
+test("중도퇴실 환불은 퇴실일이 기간 안이면 타입 net에서 차감", () => {
+  const list = [
+    bk({
+      typeId: "s",
+      checkIn: "2026-10-20",
+      price: 200000,
+      nights: 3,
+      earlyOut: "2026-10-21",
+      refund: 50000,
+    }),
+  ];
+  const a = typeSalesByType(list, "2026-10-20", "2026-10-20", types);
+  assert.equal(a.rows[0].sales, 200000);
+  assert.equal(a.rows[0].refunds, 0);
+  assert.equal(a.rows[0].net, 200000);
+  const b = typeSalesByType(list, "2026-10-21", "2026-10-21", types);
+  assert.equal(b.rows[0].sales, 0);
+  assert.equal(b.rows[0].refunds, 50000);
+  assert.equal(b.rows[0].net, -50000);
+});
+
+test("결제수단 합산: 예약 + 매점 카드·현금", () => {
+  const m = methodSales(
+    { card: 100000, cash: 50000, transfer: 30000, credit: 10000, total: 190000 },
+    { card: 8000, cash: 2000, none: 500 },
+  );
+  assert.equal(m.card, 108000);
+  assert.equal(m.cash, 52000);
+  assert.equal(m.transfer, 30000);
+  assert.equal(m.total, 190000);
+  assert.equal(m.shop.total, 10500);
+  assert.equal(m.booking.credit, 10000);
+});

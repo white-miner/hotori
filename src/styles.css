@@ -2269,6 +2269,32 @@ label.ck input[type="checkbox"] {
 .ledger-print-foot { font-size: 11.5px; line-height: 1.45; color: #222; }
 .ledger-print-head .lph-sum { margin-top: 8px; padding: 8px 10px; border: 1px solid #bbb; }
 .ledger-print-foot { margin-top: 10px; padding-top: 8px; border-top: 1.5px solid #000; font-weight: 750; }
+/* 경영 요약 (CEO) */
+.exec-print { color: var(--ink); max-width: 920px; }
+.exec-head { margin-bottom: 16px; }
+.exec-head .lph-k { font-size: 13px; font-weight: 700; color: var(--ink3); margin-bottom: 2px; }
+.exec-head h1 { font-size: 22px; font-weight: 850; letter-spacing: -0.02em; margin: 0 0 6px; }
+.exec-head .lph-meta { font-size: 13px; color: var(--ink2); }
+.exec-tot { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; font-weight: 650; }
+.exec-tot b { font-family: var(--num); font-weight: 850; margin: 0 2px; }
+.exec-tot .neg { color: var(--red); }
+.exec-sec { margin: 18px 0; }
+.exec-sec h2 { font-size: 15px; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.02em; }
+.exec-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.exec-tbl th, .exec-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.exec-tbl th { font-size: 12px; color: var(--ink3); font-weight: 700; }
+.exec-tbl .r, .exec-tbl th.r { text-align: right; }
+.exec-tbl tfoot th { border-top: 1.5px solid var(--ink); border-bottom: 0; font-weight: 800; color: var(--ink); padding-top: 9px; }
+.exec-tbl.compact th, .exec-tbl.compact td { padding: 5px 8px; font-size: 13px; }
+.exec-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.exec-metric { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.exec-metric span { font-size: 12px; font-weight: 700; color: var(--ink3); }
+.exec-metric b { font-size: 16px; font-weight: 850; font-family: var(--num); letter-spacing: -0.02em; word-break: break-all; }
+.exec-note { font-size: 12px; margin: 8px 2px 0; line-height: 1.45; }
+.exec-foot { margin-top: 16px; padding-top: 10px; border-top: 1.5px solid var(--ink); font-size: 13.5px; font-weight: 750; }
+@media (max-width: 760px) {
+  .exec-grid3 { grid-template-columns: minmax(0, 1fr); }
+}
 @media print {
   @page { size: A4; margin: 12mm; }
   /* 단체 정산서 */
@@ -2309,6 +2335,20 @@ label.ck input[type="checkbox"] {
   body.print-ledger .lgroup { break-inside: avoid; page-break-inside: avoid; }
   body.print-ledger .stag { border: 1px solid #999; background: none !important; color: #000 !important; }
   body.print-ledger .dueamt { color: #000 !important; }
+  /* 경영 요약 */
+  body.print-exec * { visibility: hidden !important; }
+  body.print-exec .exec-print,
+  body.print-exec .exec-print * { visibility: visible !important; }
+  body.print-exec .exec-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; max-width: none; }
+  body.print-exec .noprint { display: none !important; }
+  body.print-exec .print-only { display: inline !important; }
+  body.print-exec .exec-head h1 { font-size: 18px; }
+  body.print-exec .exec-tot { border: 1px solid #999; border-radius: 0; }
+  body.print-exec .exec-metric { border: 1px solid #999; border-radius: 0; }
+  body.print-exec .exec-tbl th, body.print-exec .exec-tbl td { border-bottom-color: #ccc; color: #000 !important; }
+  body.print-exec .exec-tbl tfoot th { border-top-color: #000; }
+  body.print-exec .exec-sec { break-inside: avoid; page-break-inside: avoid; }
+  body.print-exec .exec-foot { border-top-color: #000; }
 }
 /* 객실 캘린더 방 칸: 방 번호만 크게 (타입은 툴팁) */
 .cal-l.rm { gap: 7px; padding: 0 6px 0 9px; }
