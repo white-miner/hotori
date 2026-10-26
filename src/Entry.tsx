@@ -1731,6 +1731,16 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         <div className="grab" />
         <div className="mh">
           <h2>{isNew ? "상세 예약" : EDIT_COPY}</h2>
+          {!isNew && onBoardMove ? (
+            <Chip
+              sm
+              className="edit-room-move"
+              onClick={onBoardMove}
+              title={`창을 닫고 옮길 빈 방을 눌러요${base?.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? ` · ${dayLabel(req.night)}부터 옮겨요` : ""}`}
+            >
+              <ArrowRightLeft size={14} /> 객실 이동
+            </Chip>
+          ) : null}
           {isNew && kind === "stay" ? (
             <BookingModeSeg
               mode="detail"
@@ -1771,18 +1781,24 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <kbd>Esc</kbd>닫기
           </button>
         </div>
-        {base && isActive(base) ? (
+        {base ? (
           <div
-            className={`mtop n${(base.kind === "stay" ? 1 : 0) + (onBoardMove ? 1 : 0) + (eoNow || eoToday ? 1 : 0) + (canEx ? 1 : 0) + (live && isLongStay(live) && canExtend(live) ? 1 : 0) + (base.groupId ? 1 : 0) + (canAs ? 1 : 0) + (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0) + (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0)}`}
+            className={`mtop n${
+              (isActive(base)
+                ? (base.kind === "stay" ? 1 : 0) +
+                  (eoNow || eoToday ? 1 : 0) +
+                  (canEx ? 1 : 0) +
+                  (live && isLongStay(live) && canExtend(live) ? 1 : 0) +
+                  (base.groupId ? 1 : 0) +
+                  (canAs ? 1 : 0) +
+                  (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0) +
+                  (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0) +
+                  (isActive(draft) ? 2 : 0)
+                : 0) +
+              1
+            }`}
           >
-            {onBoardMove ? (
-              <button type="button" className="bmove" onClick={onBoardMove}>
-                <ArrowRightLeft size={17} />
-                <b>객실 이동</b>
-                <span>창을 닫고 옮길 빈 방을 눌러요{base.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? ` · ${dayLabel(req.night)}부터 옮겨요` : ""}</span>
-              </button>
-            ) : null}
-            {base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
+            {isActive(base) && base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
               <button
                 type="button"
                 className={`beo cout ${checkedOutAt ? "on" : ""}`}
@@ -1795,7 +1811,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{checkedOutAt ? `퇴실처리됨 · ${CHECKOUT_UNDO_CTA}` : "퇴실처리"}</b>
               </button>
             ) : null}
-            {base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? (
+            {isActive(base) && base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? (
               <button
                 type="button"
                 className={`beo cout ${checkedOutAt ? "on" : ""}`}
@@ -1808,22 +1824,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{checkedOutAt ? `이용 종료됨 · ${CHECKOUT_UNDO_CTA}` : "이용 종료"}</b>
               </button>
             ) : null}
-            {base.kind === "stay" ? (
+            {isActive(base) && base.kind === "stay" ? (
               <button type="button" className={`beo ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} disabled={ncxBusy} onClick={() => void toggleNoClean()} title="청소하지 않음 · 누르면 바로 저장">
                 <b>{noClean ? "청소X · 해제" : "청소X"}</b>
               </button>
             ) : null}
-            {base.groupId ? (
+            {isActive(base) && base.groupId ? (
               <button type="button" className="beo" onClick={() => setAddGroup(true)} title="같은 단체에 방·타입만 멤버를 이어 붙여요">
                 <b>단체에 객실 추가</b>
               </button>
             ) : null}
-            {canAs ? (
+            {isActive(base) && canAs ? (
               <button type="button" className={`beo ${as ? "on" : ""}`} aria-expanded={!!as} onClick={() => (as ? setAs(null) : openAs())}>
                 <b>{SURCHARGE_COPY}</b>
               </button>
             ) : null}
-            {canEx ? (
+            {isActive(base) && canEx ? (
               <button
                 type="button"
                 className={`beo ${ex ? "on" : ""}`}
@@ -1839,23 +1855,42 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <b>{isLongStay(live ?? base) ? "재고 창 +1박" : EXTEND_COPY}</b>
               </button>
             ) : null}
-            {live && isLongStay(live) && canExtend(live) ? (
+            {isActive(base) && live && isLongStay(live) && canExtend(live) ? (
               <button type="button" className="beo" disabled={winBusy} onClick={() => void confirmWinExtend()} title="재고 확정 창을 7박 늘리고 원장에 줄을 쌓아요">
                 <CalendarPlus size={17} />
                 <b>{winBusy ? "연장 중…" : `재고 창 +${WINDOW_EXTEND_DEFAULT}`}</b>
               </button>
             ) : null}
-            {eoNow ? (
+            {isActive(base) && eoNow ? (
               <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
                 <Undo2 size={17} />
                 <b>중도 퇴실 되돌리기</b>
               </button>
-            ) : eoToday ? (
+            ) : isActive(base) && eoToday ? (
               <button type="button" className={`beo ${eo ? "on" : ""}`} aria-expanded={!!eo} onClick={() => (eo ? setEo(null) : openEo())}>
                 <DoorOpen size={17} />
                 <b>중도 퇴실</b>
               </button>
             ) : null}
+            {isActive(draft) ? (
+              <>
+                <button type="button" className="beo" onClick={() => void save(false, "cancelled")}>
+                  <b>취소 처리</b>
+                </button>
+                <button type="button" className="beo" title="결제한 금액은 매출에 남고, 방·재고는 비워요" onClick={() => void save(false, "noshow")}>
+                  <b>노쇼</b>
+                </button>
+              </>
+            ) : null}
+            {confirmDel ? (
+              <button type="button" className="beo danger" onClick={() => void remove()}>
+                <b>정말 지울까요?</b>
+              </button>
+            ) : (
+              <button type="button" className="beo danger" onClick={() => setConfirmDel(true)}>
+                <b>예약 지우기</b>
+              </button>
+            )}
           </div>
         ) : null}
         {!isNew && kind === "stay" && !long ? (
@@ -2740,7 +2775,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <b>{L.roomLabel(roomId) ?? "?"}호</b>
               <span className="muted sm">
                 {typeLabel(L.types.get(typeId)) || "타입"}
-                {" · "}객실 이동은 위 버튼 또는 운영패널
+                {" · "}객실 이동은 제목 옆 또는 운영패널
               </span>
             </div>
           </div>
@@ -3707,38 +3742,19 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <kbd>Ctrl</kbd>+<kbd>Enter</kbd>하나 더
               </span>
             </div>
-          ) : (
+          ) : !isActive(draft) || eoPast ? (
             <div className="keys acts">
               {isActive(draft) ? (
-                <>
-                  <button type="button" className="btn line sm" onClick={() => void save(false, "cancelled")}>
-                    취소 처리
-                  </button>
-                  <button type="button" className="btn line sm" title="결제한 금액은 매출에 남고, 방·재고는 비워요" onClick={() => void save(false, "noshow")}>
-                    노쇼
-                  </button>
-                  {eoPast ? (
-                    <button type="button" className="btn line sm" title="지난 숙박을 바로잡아요: 떠난 날을 고르면 그 뒤 밤은 비워요" onClick={() => (eo ? setEo(null) : openEo())}>
-                      중도 퇴실 적기
-                    </button>
-                  ) : null}
-                </>
+                <button type="button" className="btn line sm" title="지난 숙박을 바로잡아요: 떠난 날을 고르면 그 뒤 밤은 비워요" onClick={() => (eo ? setEo(null) : openEo())}>
+                  중도 퇴실 적기
+                </button>
               ) : (
                 <button type="button" className="btn line sm" onClick={() => setStatus("active")}>
                   예약 되살리기
                 </button>
               )}
-              {confirmDel ? (
-                <button type="button" className="btn sm danger" onClick={() => void remove()}>
-                  정말 지울까요?
-                </button>
-              ) : (
-                <button type="button" className="btn sm ghost" onClick={() => setConfirmDel(true)}>
-                  예약 지우기
-                </button>
-              )}
             </div>
-          )}
+          ) : null}
           <button type="button" className="btn line" onClick={onClose}>
             {isNew ? "취소" : "닫기"}
           </button>
