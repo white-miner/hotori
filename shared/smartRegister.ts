@@ -1432,7 +1432,9 @@ export function isDuplicateReservation(
 
 /**
  * Preview action labels (KR):
- * ok → 신규 · cancel → 예약취소 · dup → 중복스킵 · need_fix → 수정필요
+ * ok → 신규 · cancel → 예약취소 · need_fix → 수정필요
+ * dup (active Hotori match, non-cancel paste) → 기존예약
+ * dup (already cancelled, cancel paste) → 중복스킵
  * skip → 수정필요 (FO same label as need_fix; enum stays skip)
  * cancel_missing — legacy unused (no-match now creates cancelled Path A)
  */
@@ -1475,6 +1477,47 @@ export interface PreviewRow {
   platformLabel: string;
   /** Nested label present but no Settings platform match — show optional chip. */
   nestedChannelUnmatched: boolean;
+}
+
+/**
+ * FO status chip / row label for a preview row.
+ * Unchanged reservation-number matches are 「기존예약」, never 「수정필요」.
+ */
+export function previewRowStatusLabel(
+  row: Pick<PreviewRow, "rowStatus" | "pasteCancel" | "cancelGuard">,
+): string {
+  if (row.rowStatus === "ok") return "신규";
+  if (row.rowStatus === "cancel") return "예약취소";
+  if (row.rowStatus === "need_fix") return "수정필요";
+  if (row.rowStatus === "dup") return row.pasteCancel ? "중복스킵" : "기존예약";
+  if (row.cancelGuard) return "입실·퇴실 — 수동";
+  return "수정필요";
+}
+
+/** Active Hotori stay already imported — no upload (enum `dup`, non-cancel paste). */
+export function isExistingReservationRow(
+  row: Pick<PreviewRow, "rowStatus" | "pasteCancel">,
+): boolean {
+  return row.rowStatus === "dup" && !row.pasteCancel;
+}
+
+/**
+ * Still blocks 「확인 업로드」: unfixed need_fix (FO must edit or 건너뛰기).
+ * Excludes 기존예약 / 중복스킵 (`dup`) and rows already skipped.
+ */
+export function isFixBlockingRow(row: Pick<PreviewRow, "rowStatus" | "skip">): boolean {
+  return !row.skip && row.rowStatus === "need_fix";
+}
+
+/**
+ * Chip/summary 「수정필요」 — need_fix or non-dup skip (cancelGuard / 건너뛰기).
+ * Never includes 기존예약 (`dup`).
+ */
+export function isFixLabelRow(row: Pick<PreviewRow, "rowStatus" | "skip">): boolean {
+  if (row.rowStatus === "dup") return false;
+  if (row.rowStatus === "need_fix") return true;
+  if (row.rowStatus === "skip") return true;
+  return false;
 }
 
 function nestedChannelFromRow(table: ParsedPasteTable, row: string[]): string {

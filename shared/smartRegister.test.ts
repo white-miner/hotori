@@ -46,6 +46,10 @@ import {
   pathADraftFromPreview,
   profileById,
   removeTypeAlias,
+  isExistingReservationRow,
+  isFixBlockingRow,
+  isFixLabelRow,
+  previewRowStatusLabel,
   reservationIdFromMemo,
   reservationMemo,
   upsertTypeAlias,
@@ -734,6 +738,50 @@ test("memo dedupe by platform + 예약번호", () => {
     isDuplicateReservation([{ platformId: "p-ye", memo, status: "active" }], "p-ya", "YN-1001"),
     false,
   );
+});
+
+test("12 known + 1 new → 신규 1 · 기존예약 12 · 수정필요 0", () => {
+  const profile = profileById("yanolja")!;
+  const knownIds = Array.from({ length: 12 }, (_, i) => `YN-EX${String(i + 1).padStart(2, "0")}`);
+  const header =
+    "야놀자예약번호\t예약자\t연락처\t객실타입\t체크인\t체크아웃\t박수\t판매금액\t상태";
+  const knownLines = knownIds.map(
+    (id, i) =>
+      `${id}\t기존${i + 1}\t010-0000-${String(1000 + i).slice(-4)}\t스탠다드\t2026.11.01\t2026.11.02\t1\t80000\t예약완료`,
+  );
+  const newLine =
+    "YN-NEW99\t신규손님\t010-9999-0000\t스탠다드\t2026.11.03\t2026.11.04\t1\t90000\t예약완료";
+  const t = parsePasteTable([header, ...knownLines, newLine].join("\n"))!;
+  const existing = knownIds.map((id, i) => ({
+    id: `b-${id}`,
+    platformId: "p-ya",
+    memo: reservationMemo("야놀자", id, "스탠다드"),
+    status: "active" as const,
+    arrived: false,
+    checkedOutAt: null as string | null,
+    guestName: `기존${i + 1}`,
+    checkIn: "2026-11-01",
+    nights: 1,
+    typeId: "std",
+  }));
+  const preview = buildPreviewRows(t, profile, settings, existing, "p-ya");
+  assert.equal(preview.length, 13);
+  const existingRows = preview.filter((r) => isExistingReservationRow(r));
+  const newRows = preview.filter((r) => r.rowStatus === "ok");
+  const fixLabel = preview.filter((r) => isFixLabelRow(r));
+  const fixBlock = preview.filter((r) => isFixBlockingRow(r));
+  assert.equal(existingRows.length, 12);
+  assert.equal(newRows.length, 1);
+  assert.equal(fixLabel.length, 0);
+  assert.equal(fixBlock.length, 0);
+  assert.equal(previewRowStatusLabel(existingRows[0]!), "기존예약");
+  assert.equal(previewRowStatusLabel(newRows[0]!), "신규");
+  // Must not surface as 수정필요
+  for (const r of existingRows) {
+    assert.equal(r.rowStatus, "dup");
+    assert.equal(r.skip, true);
+    assert.notEqual(previewRowStatusLabel(r), "수정필요");
+  }
 });
 
 test("seed profiles: active = yanolja+yeogi only (hypothesis fixtures)", () => {
