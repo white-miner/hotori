@@ -1762,3 +1762,327 @@ export function useHotelDocuments(hotelId: string) {
 
 export type { HotelDocument, HotelDocumentDraft, HotelDocKind, HotelDocMime };
 
+// ---------- 견적서 · 청구서 (발급 P1.1 / P1.2a) ----------
+import {
+  type QuoteDoc,
+  type QuoteDraft,
+  type QuoteSnapshot,
+  normalizeQuoteLines,
+  quoteTotal,
+  freezeQuoteSnapshot,
+  validateQuoteDraft,
+} from "../shared/quoteDoc";
+import {
+  type InvoiceDoc,
+  type InvoiceSnapshot,
+  formatInvoiceNumber,
+  parseInvoiceYear,
+} from "../shared/invoiceDoc";
+
+interface QuoteRow {
+  id: string;
+  hotel_id: string;
+  status: string;
+  title: string;
+  client_name: string;
+  client_phone: string;
+  notes: string;
+  check_in: string | null;
+  nights: number;
+  guest_count: number;
+  lines: unknown;
+  total: number;
+  show_room_nos?: boolean;
+  group_id?: string | null;
+  booking_ids?: string[] | null;
+  snapshot: unknown;
+  issued_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const QUOTE_COLS =
+  "id,hotel_id,status,title,client_name,client_phone,notes,check_in,nights,guest_count,lines,total,show_room_nos,group_id,booking_ids,snapshot,issued_at,created_by,created_at,updated_at";
+
+function fromQuoteRow(r: QuoteRow): QuoteDoc {
+  const lines = normalizeQuoteLines(r.lines);
+  const snapRaw = r.snapshot && typeof r.snapshot === "object" ? (r.snapshot as QuoteSnapshot) : null;
+  const snap = snapRaw
+    ? ({
+        ...snapRaw,
+        lines: normalizeQuoteLines(snapRaw.lines),
+        showRoomNos: !!snapRaw.showRoomNos,
+        groupId: snapRaw.groupId ?? r.group_id ?? null,
+        bookingIds: snapRaw.bookingIds ?? r.booking_ids ?? [],
+      } as QuoteSnapshot)
+    : null;
+  return {
+    id: r.id,
+    hotelId: r.hotel_id,
+    status: r.status === "issued" ? "issued" : "draft",
+    title: r.title ?? "",
+    clientName: r.client_name ?? "",
+    clientPhone: r.client_phone ?? "",
+    notes: r.notes ?? "",
+    checkIn: r.check_in,
+    nights: r.nights ?? 0,
+    guestCount: r.guest_count ?? 0,
+    lines,
+    total: r.total ?? quoteTotal(lines),
+    showRoomNos: !!r.show_room_nos,
+    groupId: r.group_id ?? null,
+    bookingIds: r.booking_ids ?? [],
+    snapshot: snap,
+    issuedAt: r.issued_at,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function queryQuoteIssues(hotelId: string): Promise<QuoteDoc[]> {
+  const { data, error } = await supabase
+    .from("quote_issues")
+    .select(QUOTE_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return ((data as QuoteRow[]) ?? []).map(fromQuoteRow);
+}
+
+export function useQuoteIssues(hotelId: string) {
+  const [list, setList] = useState<QuoteDoc[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setList(await queryQuoteIssues(hotelId));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "견적을 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const saveDraft = useCallback(
+    async (draft: QuoteDraft, id?: string): Promise<QuoteDoc> => {
+      const v = validateQuoteDraft(draft);
+      if (v) throw new Error(v);
+      const title = (draft.title.trim() || draft.clientName.trim()).slice(0, 80);
+      const lines = draft.lines;
+      const total = quoteTotal(lines);
+      const payload = {
+        hotel_id: hotelId,
+        status: "draft" as const,
+        title,
+        client_name: draft.clientName.trim().slice(0, 60),
+        client_phone: draft.clientPhone.trim().slice(0, 30),
+        notes: draft.notes.trim().slice(0, 280),
+        check_in: draft.checkIn,
+        nights: Math.max(0, Math.round(draft.nights) || 0),
+        guest_count: Math.max(0, Math.round(draft.guestCount) || 0),
+        lines,
+        total,
+        show_room_nos: !!draft.showRoomNos,
+      };
+      if (id) {
+        const { data, error } = await supabase.from("quote_issues").update(payload).eq("id", id).select(QUOTE_COLS).single();
+        if (error) throw error;
+        const saved = fromQuoteRow(data as QuoteRow);
+        setList((cur) => [saved, ...(cur ?? []).filter((x) => x.id !== saved.id)]);
+        return saved;
+      }
+      const { data, error } = await supabase.from("quote_issues").insert(payload).select(QUOTE_COLS).single();
+      if (error) throw error;
+      const saved = fromQuoteRow(data as QuoteRow);
+      setList((cur) => [saved, ...(cur ?? [])]);
+      return saved;
+    },
+    [hotelId],
+  );
+
+  const issue = useCallback(
+    async (
+      draft: QuoteDraft,
+      id?: string,
+      link?: { groupId: string | null; bookingIds: string[] },
+    ): Promise<QuoteDoc> => {
+      const v = validateQuoteDraft(draft);
+      if (v) throw new Error(v);
+      const issuedAt = new Date().toISOString();
+      const snapshot = freezeQuoteSnapshot(draft, issuedAt, link);
+      const title = snapshot.title;
+      const base = {
+        hotel_id: hotelId,
+        status: "issued" as const,
+        title,
+        client_name: snapshot.clientName,
+        client_phone: snapshot.clientPhone,
+        notes: snapshot.notes,
+        check_in: snapshot.checkIn,
+        nights: snapshot.nights,
+        guest_count: snapshot.guestCount,
+        lines: snapshot.lines,
+        total: snapshot.total,
+        show_room_nos: !!draft.showRoomNos,
+        group_id: link?.groupId ?? null,
+        booking_ids: link?.bookingIds ?? [],
+        snapshot,
+        issued_at: issuedAt,
+      };
+      if (id) {
+        const { data, error } = await supabase.from("quote_issues").update(base).eq("id", id).select(QUOTE_COLS).single();
+        if (error) throw error;
+        const saved = fromQuoteRow(data as QuoteRow);
+        setList((cur) => [saved, ...(cur ?? []).filter((x) => x.id !== saved.id)]);
+        return saved;
+      }
+      const { data, error } = await supabase.from("quote_issues").insert(base).select(QUOTE_COLS).single();
+      if (error) throw error;
+      const saved = fromQuoteRow(data as QuoteRow);
+      setList((cur) => [saved, ...(cur ?? [])]);
+      return saved;
+    },
+    [hotelId],
+  );
+
+  const linkBookings = useCallback(async (docId: string, groupId: string | null, bookingIds: string[]) => {
+    const { data: cur, error: readErr } = await supabase.from("quote_issues").select(QUOTE_COLS).eq("id", docId).single();
+    if (readErr) throw readErr;
+    const row = cur as QuoteRow;
+    const snap =
+      row.snapshot && typeof row.snapshot === "object"
+        ? { ...(row.snapshot as QuoteSnapshot), groupId, bookingIds }
+        : row.snapshot;
+    const { data, error } = await supabase
+      .from("quote_issues")
+      .update({ group_id: groupId, booking_ids: bookingIds, snapshot: snap })
+      .eq("id", docId)
+      .select(QUOTE_COLS)
+      .single();
+    if (error) throw error;
+    const saved = fromQuoteRow(data as QuoteRow);
+    setList((list) => [saved, ...(list ?? []).filter((x) => x.id !== saved.id)]);
+    return saved;
+  }, []);
+
+  const remove = useCallback(async (doc: QuoteDoc) => {
+    const { error } = await supabase.from("quote_issues").delete().eq("id", doc.id);
+    if (error) throw error;
+    setList((cur) => (cur ?? []).filter((x) => x.id !== doc.id));
+  }, []);
+
+  return { list, error, refresh, saveDraft, issue, linkBookings, remove };
+}
+
+interface InvoiceRow {
+  id: string;
+  hotel_id: string;
+  status: string;
+  issue_number: string | null;
+  group_id: string | null;
+  booking_ids: string[] | null;
+  payer_name: string;
+  payer_phone: string;
+  is_mid_stay: boolean;
+  snapshot: unknown;
+  issued_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const INVOICE_COLS =
+  "id,hotel_id,status,issue_number,group_id,booking_ids,payer_name,payer_phone,is_mid_stay,snapshot,issued_at,created_by,created_at,updated_at";
+
+function fromInvoiceRow(r: InvoiceRow): InvoiceDoc {
+  return {
+    id: r.id,
+    hotelId: r.hotel_id,
+    status: r.status === "issued" ? "issued" : "draft",
+    issueNumber: r.issue_number,
+    groupId: r.group_id,
+    bookingIds: r.booking_ids ?? [],
+    payerName: r.payer_name ?? "",
+    payerPhone: r.payer_phone ?? "",
+    isMidStay: !!r.is_mid_stay,
+    snapshot: (r.snapshot as InvoiceSnapshot) ?? null,
+    issuedAt: r.issued_at,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function queryInvoiceIssues(hotelId: string): Promise<InvoiceDoc[]> {
+  const { data, error } = await supabase
+    .from("invoice_issues")
+    .select(INVOICE_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return ((data as InvoiceRow[]) ?? []).map(fromInvoiceRow);
+}
+
+export function useInvoiceIssues(hotelId: string) {
+  const [list, setList] = useState<InvoiceDoc[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setList(await queryInvoiceIssues(hotelId));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "청구서를 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const issue = useCallback(
+    async (args: {
+      payerName: string;
+      payerPhone: string;
+      snapshot: InvoiceSnapshot;
+      groupId: string | null;
+      bookingIds: string[];
+      isMidStay: boolean;
+    }): Promise<InvoiceDoc> => {
+      const year = parseInvoiceYear(args.snapshot.issuedAt?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      const { data: numData, error: numErr } = await supabase.rpc("alloc_invoice_number", {
+        p_hotel_id: hotelId,
+        p_year: year,
+      });
+      if (numErr) throw numErr;
+      const issueNumber = typeof numData === "string" ? numData : formatInvoiceNumber(year, 1);
+      const issuedAt = new Date().toISOString();
+      const snapshot: InvoiceSnapshot = { ...args.snapshot, issueNumber, issuedAt, payerName: args.payerName, payerPhone: args.payerPhone, isMidStay: args.isMidStay };
+      const { data, error } = await supabase
+        .from("invoice_issues")
+        .insert({
+          hotel_id: hotelId,
+          status: "issued",
+          issue_number: issueNumber,
+          group_id: args.groupId,
+          booking_ids: args.bookingIds,
+          payer_name: args.payerName.trim().slice(0, 80),
+          payer_phone: args.payerPhone.trim().slice(0, 30),
+          is_mid_stay: args.isMidStay,
+          snapshot,
+          issued_at: issuedAt,
+        })
+        .select(INVOICE_COLS)
+        .single();
+      if (error) throw error;
+      const saved = fromInvoiceRow(data as InvoiceRow);
+      setList((cur) => [saved, ...(cur ?? [])]);
+      return saved;
+    },
+    [hotelId],
+  );
+
+  return { list, error, refresh, issue };
+}
+

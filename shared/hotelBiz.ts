@@ -36,6 +36,12 @@ export type StayConfirmStrings = {
   nights: (n: number) => string;
   reservation: string;
   bookingNo: string;
+  /** 이용 금액 블록 (기관 환급용 · settle과 일치) */
+  amounts: string;
+  sale: string;
+  paid: string;
+  balance: string;
+  amountUnset: string;
   attest: string;
   issued: string;
   representative: string;
@@ -64,6 +70,11 @@ const STAY_CONFIRM_KO: StayConfirmStrings = {
   nights: (n) => `${n}박`,
   reservation: "예약",
   bookingNo: "예약번호",
+  amounts: "이용 금액",
+  sale: "판매가",
+  paid: "받은",
+  balance: "잔금",
+  amountUnset: "금액미정",
   attest: "위와 같이 숙박하였음을 확인합니다.",
   issued: "발급일",
   representative: "대표자",
@@ -92,6 +103,11 @@ const STAY_CONFIRM_EN: StayConfirmStrings = {
   nights: (n) => (n === 1 ? "1 night" : `${n} nights`),
   reservation: "Booking",
   bookingNo: "Conf. No.",
+  amounts: "Charges",
+  sale: "Sale",
+  paid: "Paid",
+  balance: "Balance",
+  amountUnset: "Amount TBD",
   attest: "This certifies that the above guest stayed at our property.",
   issued: "Issued",
   representative: "Representative",

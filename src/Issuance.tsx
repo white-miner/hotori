@@ -1,6 +1,6 @@
 /**
  * App 「발급」 — 서류함 hub (#/issuance)
- * P0: type cards · 증서 vault (화재보험·통장사본·사업자등록증) · 객실 배치도 · 숙박확인서 → 장부
+ * P0 vault/배치도 + P1.1 견적서 + P1.2a 청구서 recent · 숙박확인서 → 장부
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -13,15 +13,18 @@ import {
   Landmark,
   LayoutGrid,
   Printer,
+  Receipt,
   Shield,
   Trash2,
   Upload,
 } from "lucide-react";
 import type { HotelData } from "./data";
-import { useHotelDocuments } from "./data";
+import { useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
 import type { ToastOpt } from "./App";
 import { askConfirm } from "./ConfirmDialog";
 import FloorPlanPrint from "./FloorPlanPrint";
+import QuoteLetter from "./QuoteLetter";
+import InvoiceLetter from "./InvoiceLetter";
 import {
   HOTEL_DOC_HUB_KINDS,
   HOTEL_DOC_KIND_LABEL,
@@ -33,15 +36,20 @@ import {
   type HotelDocument,
   hotelDocExpiryBadge,
 } from "../shared/hotelDocuments";
+import { QUOTE_COPY, type QuoteDoc } from "../shared/quoteDoc";
+import { planQuoteTypeHoldBookings } from "../shared/quoteBookings";
+import { INVOICE_COPY, type InvoiceDoc } from "../shared/invoiceDoc";
 import { STAY_CONFIRM_COPY, businessDate, dayLabel } from "../shared/ledger";
 
-type Panel = "home" | "vault" | "floor";
+type Panel = "home" | "vault" | "floor" | "quote" | "invoice";
 
 function panelFromHash(): Panel {
   const parts = location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] !== "issuance") return "home";
   if (parts[1] === "vault") return "vault";
   if (parts[1] === "floor") return "floor";
+  if (parts[1] === "quote") return "quote";
+  if (parts[1] === "invoice") return "invoice";
   return "home";
 }
 
@@ -67,9 +75,14 @@ interface Props {
 
 export default function Issuance({ data, hotelId, today, notify, onGoLedger }: Props) {
   const docs = useHotelDocuments(hotelId);
+  const quotes = useQuoteIssues(hotelId);
+  const invoices = useInvoiceIssues(hotelId);
   const [panel, setPanel] = useState<Panel>(panelFromHash);
   const [vaultKind, setVaultKind] = useState<HotelDocKind | null>(kindFromHash);
   const [floorOpen, setFloorOpen] = useState(() => panelFromHash() === "floor");
+  const [quoteOpen, setQuoteOpen] = useState<QuoteDoc | "new" | null>(() => (panelFromHash() === "quote" ? "new" : null));
+  const [invoiceView, setInvoiceView] = useState<InvoiceDoc | null>(null);
+  const [quoteBusy, setQuoteBusy] = useState(false);
   const hotel = data.hotel!;
   const s = hotel.settings;
 
@@ -79,22 +92,58 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
       setPanel(p);
       setVaultKind(kindFromHash());
       if (p === "floor") setFloorOpen(true);
+      if (p === "quote" && !quoteOpen) setQuoteOpen("new");
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
-  }, []);
+  }, [quoteOpen]);
 
   const goPanel = (p: Panel, kind?: HotelDocKind | null) => {
     let hash = "#/issuance";
     if (p === "vault") hash = kind ? `#/issuance/vault/${kind}` : "#/issuance/vault";
     else if (p === "floor") hash = "#/issuance/floor";
+    else if (p === "quote") hash = "#/issuance/quote";
+    else if (p === "invoice") hash = "#/issuance/invoice";
     if (location.hash !== hash) location.hash = hash;
     setPanel(p);
     if (p === "vault") setVaultKind(kind ?? null);
     if (p === "floor") setFloorOpen(true);
+    if (p === "quote") setQuoteOpen((cur) => cur ?? "new");
   };
 
-  const recent = useMemo(() => (docs.list ?? []).slice(0, 8), [docs.list]);
+  type RecentItem =
+    | { kind: "vault"; id: string; title: string; tag: string; at: string }
+    | { kind: "quote"; id: string; title: string; tag: string; at: string; doc: QuoteDoc }
+    | { kind: "invoice"; id: string; title: string; tag: string; at: string; doc: InvoiceDoc };
+
+  const recent = useMemo(() => {
+    const items: RecentItem[] = [];
+    for (const d of docs.list ?? []) {
+      items.push({ kind: "vault", id: d.id, title: d.title, tag: HOTEL_DOC_KIND_LABEL[d.kind], at: d.createdAt });
+    }
+    for (const q of quotes.list ?? []) {
+      items.push({
+        kind: "quote",
+        id: q.id,
+        title: q.clientName || q.title || QUOTE_COPY.title,
+        tag: q.status === "issued" ? QUOTE_COPY.issued : QUOTE_COPY.draft,
+        at: q.updatedAt,
+        doc: q,
+      });
+    }
+    for (const inv of invoices.list ?? []) {
+      items.push({
+        kind: "invoice",
+        id: inv.id,
+        title: inv.issueNumber ? `${inv.issueNumber} · ${inv.payerName || INVOICE_COPY.title}` : inv.payerName || INVOICE_COPY.title,
+        tag: inv.isMidStay ? INVOICE_COPY.midWatermark : INVOICE_COPY.issued,
+        at: inv.issuedAt || inv.createdAt,
+        doc: inv,
+      });
+    }
+    items.sort((a, b) => b.at.localeCompare(a.at));
+    return items.slice(0, 12);
+  }, [docs.list, quotes.list, invoices.list]);
 
   return (
     <main className="page issuance">
@@ -117,6 +166,32 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
               {ISSUANCE_COPY.stayConfirmCta} <ExternalLink size={12} aria-hidden />
             </span>
           </button>
+          <button type="button" className="iss-card" onClick={() => goPanel("quote")}>
+            <ClipboardList size={22} strokeWidth={2} aria-hidden />
+            <span className="iss-card-t">{ISSUANCE_COPY.quote}</span>
+            <span className="iss-card-s">{ISSUANCE_COPY.quoteHint}</span>
+            <span className="iss-card-cta">{ISSUANCE_COPY.quoteCta}</span>
+          </button>
+          <button
+            type="button"
+            className="iss-card"
+            onClick={() => {
+              goPanel("invoice");
+              onGoLedger();
+            }}
+          >
+            <Receipt size={22} strokeWidth={2} aria-hidden />
+            <span className="iss-card-t">{ISSUANCE_COPY.invoice}</span>
+            <span className="iss-card-s">{ISSUANCE_COPY.invoiceHint}</span>
+            <span className="iss-card-cta">
+              {ISSUANCE_COPY.invoiceCta} <ExternalLink size={12} aria-hidden />
+            </span>
+          </button>
+          <div className="iss-card soon" aria-disabled>
+            <FolderOpen size={22} strokeWidth={2} aria-hidden />
+            <span className="iss-card-t">{ISSUANCE_COPY.damage}</span>
+            <span className="iss-card-s">{ISSUANCE_COPY.damageSoon}</span>
+          </div>
           <button type="button" className="iss-card" onClick={() => goPanel("floor")}>
             <LayoutGrid size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{ISSUANCE_COPY.floorPlan}</span>
@@ -134,16 +209,6 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
               </button>
             );
           })}
-          <div className="iss-card soon" aria-disabled>
-            <ClipboardList size={22} strokeWidth={2} aria-hidden />
-            <span className="iss-card-t">{ISSUANCE_COPY.quote}</span>
-            <span className="iss-card-s">{ISSUANCE_COPY.quoteSoon}</span>
-          </div>
-          <div className="iss-card soon" aria-disabled>
-            <FolderOpen size={22} strokeWidth={2} aria-hidden />
-            <span className="iss-card-t">{ISSUANCE_COPY.damage}</span>
-            <span className="iss-card-s">{ISSUANCE_COPY.damageSoon}</span>
-          </div>
         </div>
       </section>
 
@@ -156,28 +221,88 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
           onFilterKind={(k) => goPanel("vault", k)}
           onBack={() => goPanel("home")}
         />
+      ) : panel === "invoice" ? (
+        <section className="iss-recent" aria-labelledby="iss-inv-h">
+          <div className="iss-sec-row">
+            <h2 id="iss-inv-h" className="iss-sec-h">
+              {INVOICE_COPY.title} · {ISSUANCE_COPY.invoicePick}
+            </h2>
+            <button type="button" className="btn line sm" onClick={() => goPanel("home")}>
+              목록
+            </button>
+          </div>
+          <p className="muted sm" style={{ marginBottom: 10 }}>
+            {ISSUANCE_COPY.invoiceHint} — {INVOICE_COPY.notDamage}
+          </p>
+          {invoices.error ? <p className="warn sm">{invoices.error}</p> : null}
+          {!invoices.list ? (
+            <p className="muted sm">불러오는 중…</p>
+          ) : invoices.list.length === 0 ? (
+            <p className="muted sm">{INVOICE_COPY.recentEmpty}</p>
+          ) : (
+            <ul className="iss-list">
+              {invoices.list.map((d) => (
+                <li key={d.id}>
+                  <button type="button" className="iss-list-link" onClick={() => setInvoiceView(d)}>
+                    <span className="iss-list-t">
+                      {d.issueNumber ? `${d.issueNumber} · ` : ""}
+                      {d.payerName || INVOICE_COPY.title}
+                    </span>
+                    <span className="tag">{d.isMidStay ? INVOICE_COPY.midWatermark : INVOICE_COPY.issued}</span>
+                    <span className="muted sm">{dayLabel((d.issuedAt || d.createdAt).slice(0, 10))}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="iss-sec-row" style={{ marginTop: 12 }}>
+            <button type="button" className="btn sm" onClick={onGoLedger}>
+              {ISSUANCE_COPY.invoiceCta} <ExternalLink size={12} aria-hidden />
+            </button>
+          </div>
+        </section>
       ) : (
         <section className="iss-recent" aria-labelledby="iss-recent-h">
           <div className="iss-sec-row">
             <h2 id="iss-recent-h" className="iss-sec-h">
-              {ISSUANCE_COPY.recentHeading}
+              {ISSUANCE_COPY.recentDocs}
             </h2>
             <button type="button" className="btn line sm" onClick={() => goPanel("vault")}>
               <Shield size={14} /> {ISSUANCE_COPY.vaultHeading}
             </button>
           </div>
-          {docs.error ? <p className="warn sm">{docs.error}</p> : null}
-          {!docs.list ? (
+          {docs.error || quotes.error || invoices.error ? (
+            <p className="warn sm">{docs.error || quotes.error || invoices.error}</p>
+          ) : null}
+          {!docs.list || !quotes.list || !invoices.list ? (
             <p className="muted sm">불러오는 중…</p>
           ) : recent.length === 0 ? (
             <p className="muted sm">{ISSUANCE_COPY.emptyRecent}</p>
           ) : (
             <ul className="iss-list">
               {recent.map((d) => (
-                <li key={d.id}>
-                  <span className="iss-list-t">{d.title}</span>
-                  <span className="tag">{HOTEL_DOC_KIND_LABEL[d.kind]}</span>
-                  <span className="muted sm">{dayLabel(d.createdAt.slice(0, 10))}</span>
+                <li key={`${d.kind}-${d.id}`}>
+                  {d.kind === "quote" ? (
+                    <button type="button" className="iss-list-link" onClick={() => setQuoteOpen(d.doc)}>
+                      <span className="iss-list-t">{d.title}</span>
+                      <span className="tag">{QUOTE_COPY.title}</span>
+                      <span className="tag">{d.tag}</span>
+                      <span className="muted sm">{dayLabel(d.at.slice(0, 10))}</span>
+                    </button>
+                  ) : d.kind === "invoice" ? (
+                    <button type="button" className="iss-list-link" onClick={() => setInvoiceView(d.doc)}>
+                      <span className="iss-list-t">{d.title}</span>
+                      <span className="tag">{INVOICE_COPY.title}</span>
+                      <span className="tag">{d.tag}</span>
+                      <span className="muted sm">{dayLabel(d.at.slice(0, 10))}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <span className="iss-list-t">{d.title}</span>
+                      <span className="tag">{d.tag}</span>
+                      <span className="muted sm">{dayLabel(d.at.slice(0, 10))}</span>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -194,6 +319,65 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             setFloorOpen(false);
             if (panel === "floor") goPanel("home");
           }}
+        />
+      ) : null}
+
+      {quoteOpen ? (
+        <QuoteLetter
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          initial={quoteOpen === "new" ? null : quoteOpen}
+          busy={quoteBusy}
+          notify={(m) => notify(m)}
+          onSaveDraft={async (draft, id) => {
+            setQuoteBusy(true);
+            try {
+              return await quotes.saveDraft(draft, id);
+            } finally {
+              setQuoteBusy(false);
+            }
+          }}
+          onIssue={async (draft, id) => {
+            setQuoteBusy(true);
+            try {
+              const plan = planQuoteTypeHoldBookings({ draft, quoteId: id ?? "new", s });
+              if (plan.kind === "skip") throw new Error(plan.reason);
+              let groupId: string | null = null;
+              let bookingIds: string[] = [];
+              if (plan.kind === "single") {
+                const saved = await data.saveBooking(plan.booking, true);
+                bookingIds = [saved.id];
+              } else {
+                const savedList = await data.saveGroup(plan.drafts, plan.info);
+                groupId = plan.groupId;
+                bookingIds = savedList.map((b) => b.id);
+              }
+              return await quotes.issue(draft, id, { groupId, bookingIds });
+            } finally {
+              setQuoteBusy(false);
+            }
+          }}
+          onDelete={async (doc) => {
+            await quotes.remove(doc);
+          }}
+          onClose={() => {
+            setQuoteOpen(null);
+            if (panel === "quote") goPanel("home");
+          }}
+        />
+      ) : null}
+
+      {invoiceView?.snapshot ? (
+        <InvoiceLetter
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          members={[]}
+          issuedDoc={invoiceView}
+          onIssue={async () => invoiceView}
+          notify={(m) => notify(m)}
+          onClose={() => setInvoiceView(null)}
         />
       ) : null}
     </main>
