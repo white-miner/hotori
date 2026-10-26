@@ -870,6 +870,7 @@ label.ck input[type="checkbox"] {
 .lrow .c-plat .pn { overflow: hidden; text-overflow: ellipsis; color: var(--ink2); }
 .lrow .c-name { display: flex; gap: 6px; align-items: center; font-weight: 650; min-width: 0; white-space: nowrap; }
 .lrow .c-name .gn { overflow: hidden; text-overflow: ellipsis; }
+.lrow .l-stay-confirm { flex-shrink: 0; gap: 4px; padding: 2px 8px; font-size: 11.5px; font-weight: 650; }
 .lrow .memo { font-size: 11.5px; color: var(--ink3); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .lrow .c-phone, .lrow .c-inout, .lrow .c-guests, .lrow .c-room { font-family: var(--num); font-weight: 650; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lrow .c-phone { font-size: 12.5px; font-weight: 600; }

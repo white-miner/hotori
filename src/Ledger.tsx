@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { saveFailMessage } from "../shared/errors";
-import { Check, ChevronLeft, ChevronRight, Download, FileDown, Printer, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, FileDown, FileText, Printer, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
+import StayConfirmLetter from "./StayConfirmLetter";
 import {
   type Booking,
   type StayPhase,
   CHECKIN_STRIP_LABEL,
+  STAY_CONFIRM_COPY,
   addDays,
   dayLabel,
   isActive,
@@ -168,6 +170,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
+  const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
   const [payList, setPayList] = useState<Payment[]>([]);
@@ -304,6 +307,21 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   {b.groupId && !gm ? <span className="grptag" title="단체 예약">단체 {b.groupName}</span> : null}
                   {b.noClean && b.status === "active" ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
                   {b.memo ? <span className="memo">{b.memo}</span> : null}
+                  {b.kind === "stay" ? (
+                    <button
+                      type="button"
+                      className="btn sm line l-stay-confirm noprint"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStayConfirm(b);
+                      }}
+                      aria-label={STAY_CONFIRM_COPY}
+                      title={`${STAY_CONFIRM_COPY} 인쇄·PDF`}
+                    >
+                      <FileText size={13} strokeWidth={2.2} aria-hidden />
+                      {STAY_CONFIRM_COPY}
+                    </button>
+                  ) : null}
                 </span>
                 <span className="c-phone" title={b.guestPhone ?? undefined}>
                   {b.guestPhone?.trim() || "—"}
@@ -1412,6 +1430,15 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             notify(m);
             setAddGroupId(null);
           }}
+        />
+      ) : null}
+      {stayConfirm && stayConfirm.kind === "stay" ? (
+        <StayConfirmLetter
+          booking={stayConfirm}
+          hotelName={data.hotel!.name}
+          s={s}
+          today={today}
+          onClose={() => setStayConfirm(null)}
         />
       ) : null}
     </main>
