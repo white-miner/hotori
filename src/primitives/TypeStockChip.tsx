@@ -14,6 +14,10 @@ export function TypeStockChip({
   title,
   disabled,
   id,
+  /** 대체 타입으로 여유 차감됨 */
+  subSrc,
+  /** 오버에 대체 지정됨 (완화 중) */
+  subRelieved,
 }: {
   t: RoomType;
   rem: number;
@@ -25,14 +29,17 @@ export function TypeStockChip({
   title?: string;
   disabled?: boolean;
   id?: string;
+  subSrc?: boolean;
+  subRelieved?: boolean;
 }) {
   const lv = stockLevel(rem, total, lowThreshold);
   const remLab = rem < 0 ? `−${-rem}` : String(rem);
+  const extra = [subSrc ? "sub-src" : "", subRelieved ? "sub-relieved" : ""].filter(Boolean).join(" ");
   return (
     <button
       id={id}
       type="button"
-      className={`sales-gchip lv-${lv}`}
+      className={`sales-gchip lv-${lv}${extra ? ` ${extra}` : ""}`}
       onClick={onClick}
       title={title}
       disabled={disabled}
