@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { FileDown, Printer, X } from "lucide-react";
 import {
   type Booking,
@@ -8,8 +9,13 @@ import {
   md,
   roomLabel,
   typeLabel,
-  STAY_CONFIRM_COPY,
+  hotelBizHasAny,
 } from "../shared/ledger";
+import {
+  type StayConfirmLang,
+  stayConfirmDateRange,
+  stayConfirmStrings,
+} from "../shared/hotelBiz";
 import { lookups } from "./ui";
 
 interface Props {
@@ -20,10 +26,11 @@ interface Props {
   onClose: () => void;
 }
 
-function issueStamp(today: string): string {
+function issueStamp(lang: StayConfirmLang, today: string): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
   const clock = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  if (lang === "en") return `${today} ${clock}`;
   return `${dayLabel(today)} ${clock}`;
 }
 
@@ -45,6 +52,8 @@ function runPrint(title: string) {
 }
 
 export default function StayConfirmLetter({ booking: b, hotelName, s, today, onClose }: Props) {
+  const [lang, setLang] = useState<StayConfirmLang>("ko");
+  const t = stayConfirmStrings(lang);
   const L = lookups(s);
   const biz = s.hotelBiz;
   const trade = hotelBizDisplayName(biz, hotelName);
@@ -52,10 +61,16 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
   const out = checkOut(b);
   const plat = L.plats.get(b.platformId);
   const room = roomLabel(s, b.roomId);
-  const type = typeLabel(s.types.find((t) => t.id === b.typeId));
+  const type = typeLabel(s.types.find((x) => x.id === b.typeId));
   const ref = b.memo?.trim() || "";
-  const issued = issueStamp(today);
-  const fileTitle = `${trade}_${STAY_CONFIRM_COPY}_${b.guestName || "손님"}_${md(b.checkIn).replace("/", "")}`;
+  const issued = issueStamp(lang, today);
+  const guestPart = b.guestName || (lang === "en" ? "Guest" : "손님");
+  const fileTitle = `${trade}_${t.title}_${guestPart}_${md(b.checkIn).replace("/", "")}`;
+  const roomLine = room
+    ? `${room}${t.roomSuffix}${type ? ` · ${type}` : ""}`
+    : `${t.unassigned}${type ? ` · ${type}` : ""}`;
+  const period = stayConfirmDateRange(lang, b.checkIn, out, nights, dayLabel);
+  const hasBiz = hotelBizHasAny(biz);
 
   const printDoc = () => runPrint(fileTitle);
 
@@ -68,97 +83,114 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mh noprint">
-          <h2 id="stay-confirm-title">{STAY_CONFIRM_COPY}</h2>
-          <button type="button" className="x" onClick={onClose} aria-label="닫기">
+          <h2 id="stay-confirm-title">{t.title}</h2>
+          <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "ko"}
+              className={lang === "ko" ? "on" : ""}
+              onClick={() => setLang("ko")}
+            >
+              {t.langKo}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "en"}
+              className={lang === "en" ? "on" : ""}
+              onClick={() => setLang("en")}
+            >
+              {t.langEn}
+            </button>
+          </div>
+          <button type="button" className="x" onClick={onClose} aria-label={t.close}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="stay-confirm-print">
+        <div className={`stay-confirm-print${lang === "en" ? " en" : ""}`}>
           <header className="sc-head">
             <div className="sc-hotel">
               <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? <div>사업자번호 {biz.businessNumber}</div> : null}
+              {biz.businessNumber ? (
+                <div>
+                  {t.bizNumber} {biz.businessNumber}
+                </div>
+              ) : null}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>
-                  {biz.phone ? `전화 ${biz.phone}` : null}
+                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
                   {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `대표 ${biz.representative}` : null}
+                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
                 </div>
               ) : null}
             </div>
-            <h1 className="sc-title">{STAY_CONFIRM_COPY}</h1>
+            <h1 className="sc-title">{t.title}</h1>
           </header>
 
           <dl className="sc-body">
             <div>
-              <dt>투숙객</dt>
+              <dt>{t.guest}</dt>
               <dd>
                 {b.guestName}
                 {b.guestPhone?.trim() ? ` · ${b.guestPhone.trim()}` : null}
               </dd>
             </div>
             <div>
-              <dt>객실</dt>
-              <dd>
-                {room ? `${room}호` : "미배정"}
-                {type ? ` · ${type}` : null}
-              </dd>
+              <dt>{t.room}</dt>
+              <dd>{roomLine}</dd>
             </div>
             <div>
-              <dt>숙박기간</dt>
-              <dd>
-                {dayLabel(b.checkIn)} ~ {dayLabel(out)} · {nights}박
-              </dd>
+              <dt>{t.stayPeriod}</dt>
+              <dd>{period}</dd>
             </div>
             {plat || ref ? (
               <div>
-                <dt>예약</dt>
+                <dt>{t.reservation}</dt>
                 <dd>
                   {plat?.name ?? ""}
                   {plat && ref ? " · " : null}
-                  {ref ? `예약번호 ${ref}` : null}
+                  {ref ? `${t.bookingNo} ${ref}` : null}
                 </dd>
               </div>
             ) : null}
           </dl>
 
-          <p className="sc-attest">위와 같이 숙박하였음을 확인합니다.</p>
+          <p className="sc-attest">{t.attest}</p>
 
-          <div className="sc-issue">발급일 {issued}</div>
+          <div className="sc-issue">
+            {t.issued} {issued}
+          </div>
 
           <div className="sc-sign">
             <div className="sc-sign-trade">{trade}</div>
             <div className="sc-sign-rep">
-              대표자 {biz.representative || "____________"}
-              <span className="sc-seal">(인)</span>
+              {t.representative} {biz.representative || "____________"}
+              <span className="sc-seal">{t.seal}</span>
             </div>
           </div>
         </div>
 
         <div className="mf noprint">
-          <p className="fine">
-            {biz.businessNumber || biz.address || biz.phone || biz.representative
-              ? "설정에 저장한 사업자 정보가 인쇄됩니다."
-              : "설정 → 호텔 사업자 정보를 넣으면 상호·사업자번호가 함께 인쇄됩니다."}
-          </p>
+          <p className="fine">{hasBiz ? t.tipFilled : t.tipEmpty}</p>
           <div className="keys acts">
-            <button type="button" className="btn line sm" onClick={printDoc} aria-label={`${STAY_CONFIRM_COPY} 인쇄`}>
-              <Printer size={14} /> 인쇄
+            <button type="button" className="btn line sm" onClick={printDoc} aria-label={`${t.title} ${t.print}`}>
+              <Printer size={14} /> {t.print}
             </button>
             <button
               type="button"
               className="btn line sm"
               onClick={printDoc}
-              title="인쇄 창에서「PDF로 저장」을 고르세요"
-              aria-label={`${STAY_CONFIRM_COPY} PDF로 저장`}
+              title={t.pdfHint}
+              aria-label={`${t.title} ${t.pdf}`}
             >
-              <FileDown size={14} /> PDF
+              <FileDown size={14} /> {t.pdf}
             </button>
           </div>
           <button type="button" className="btn" onClick={onClose}>
-            닫기
+            {t.close}
           </button>
         </div>
       </div>
