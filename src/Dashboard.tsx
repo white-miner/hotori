@@ -1560,7 +1560,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
-  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 캘린더 (+주차)
+  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 룸 타임라인 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
@@ -1586,7 +1586,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </button>
       <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
-        캘린더
+        룸 타임라인
       </button>
       {s.parking.enabled ? (
         <button role="tab" aria-selected={tab === "parking"} className={tab === "parking" ? "on" : ""} onClick={() => setTab("parking")}>
@@ -3210,18 +3210,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <div className="hl">
             <div>
               <div className="hl-t">
-                <h1>객실 캘린더</h1>
+                <h1>룸 타임라인</h1>
                 {periodSeg}
               </div>
               <div className="when">
                 {nowLabel()} · 방마다 숙박 막대{scopeId ? ` · ${bName(scopeId)}만` : ""}
               </div>
-            </div>
-            <div className="lg cal-lg">
-              <span><i className="lg-bar" />숙박</span>
-              <span><i className="lg-bar ok" />입실 완료</span>
-              <span><i className="lg-dot" />대실</span>
-              <span><i className="lg-bar cx" />취소·노쇼</span>
             </div>
           </div>
           {rangeNav}
@@ -3238,6 +3232,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             scopeId={scopeId}
             multi={multi}
             readOnly={readOnly}
+            groups={data.groups}
             onOpen={onOpen}
             onNew={onNew}
           />
