@@ -1,14 +1,16 @@
 /**
  * App 「발급」 — 서류함 hub (#/issuance)
- * P0: type cards · 화재보험 vault · 객실 배치도 print · 숙박확인서 → 장부
+ * P0: type cards · 증서 vault (화재보험·통장사본·사업자등록증) · 객실 배치도 · 숙박확인서 → 장부
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BadgeCheck,
   ClipboardList,
   ExternalLink,
   FileDown,
   FileText,
   FolderOpen,
+  Landmark,
   LayoutGrid,
   Printer,
   Shield,
@@ -21,9 +23,12 @@ import type { ToastOpt } from "./App";
 import { askConfirm } from "./ConfirmDialog";
 import FloorPlanPrint from "./FloorPlanPrint";
 import {
+  HOTEL_DOC_HUB_KINDS,
   HOTEL_DOC_KIND_LABEL,
   HOTEL_DOC_KINDS,
   ISSUANCE_COPY,
+  hotelDocHubCopy,
+  isHotelDocKind,
   type HotelDocKind,
   type HotelDocument,
   hotelDocExpiryBadge,
@@ -40,6 +45,18 @@ function panelFromHash(): Panel {
   return "home";
 }
 
+function kindFromHash(): HotelDocKind | null {
+  const parts = location.hash.replace(/^#\/?/, "").split("/");
+  if (parts[0] !== "issuance" || parts[1] !== "vault") return null;
+  return isHotelDocKind(parts[2]) ? parts[2] : null;
+}
+
+function vaultIcon(kind: HotelDocKind) {
+  if (kind === "bank_book") return <Landmark size={22} strokeWidth={2} aria-hidden />;
+  if (kind === "business_license") return <BadgeCheck size={22} strokeWidth={2} aria-hidden />;
+  return <Shield size={22} strokeWidth={2} aria-hidden />;
+}
+
 interface Props {
   data: HotelData;
   hotelId: string;
@@ -51,6 +68,7 @@ interface Props {
 export default function Issuance({ data, hotelId, today, notify, onGoLedger }: Props) {
   const docs = useHotelDocuments(hotelId);
   const [panel, setPanel] = useState<Panel>(panelFromHash);
+  const [vaultKind, setVaultKind] = useState<HotelDocKind | null>(kindFromHash);
   const [floorOpen, setFloorOpen] = useState(() => panelFromHash() === "floor");
   const hotel = data.hotel!;
   const s = hotel.settings;
@@ -59,16 +77,20 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
     const on = () => {
       const p = panelFromHash();
       setPanel(p);
+      setVaultKind(kindFromHash());
       if (p === "floor") setFloorOpen(true);
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
 
-  const goPanel = (p: Panel) => {
-    const hash = p === "home" ? "#/issuance" : `#/issuance/${p}`;
+  const goPanel = (p: Panel, kind?: HotelDocKind | null) => {
+    let hash = "#/issuance";
+    if (p === "vault") hash = kind ? `#/issuance/vault/${kind}` : "#/issuance/vault";
+    else if (p === "floor") hash = "#/issuance/floor";
     if (location.hash !== hash) location.hash = hash;
     setPanel(p);
+    if (p === "vault") setVaultKind(kind ?? null);
     if (p === "floor") setFloorOpen(true);
   };
 
@@ -101,12 +123,17 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             <span className="iss-card-s">{ISSUANCE_COPY.floorPlanHint}</span>
             <span className="iss-card-cta">{ISSUANCE_COPY.floorPlanCta}</span>
           </button>
-          <button type="button" className="iss-card" onClick={() => goPanel("vault")}>
-            <Shield size={22} strokeWidth={2} aria-hidden />
-            <span className="iss-card-t">{ISSUANCE_COPY.fireInsurance}</span>
-            <span className="iss-card-s">{ISSUANCE_COPY.fireInsuranceHint}</span>
-            <span className="iss-card-cta">{ISSUANCE_COPY.vaultCta}</span>
-          </button>
+          {HOTEL_DOC_HUB_KINDS.map((k) => {
+            const copy = hotelDocHubCopy(k);
+            return (
+              <button key={k} type="button" className="iss-card" onClick={() => goPanel("vault", k)}>
+                {vaultIcon(k)}
+                <span className="iss-card-t">{copy.title}</span>
+                <span className="iss-card-s">{copy.hint}</span>
+                <span className="iss-card-cta">{ISSUANCE_COPY.vaultCta}</span>
+              </button>
+            );
+          })}
           <div className="iss-card soon" aria-disabled>
             <ClipboardList size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{ISSUANCE_COPY.quote}</span>
@@ -121,7 +148,14 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
       </section>
 
       {panel === "vault" ? (
-        <VaultSection docs={docs} today={today} notify={notify} onBack={() => goPanel("home")} />
+        <VaultSection
+          docs={docs}
+          today={today}
+          notify={notify}
+          filterKind={vaultKind}
+          onFilterKind={(k) => goPanel("vault", k)}
+          onBack={() => goPanel("home")}
+        />
       ) : (
         <section className="iss-recent" aria-labelledby="iss-recent-h">
           <div className="iss-sec-row">
@@ -170,14 +204,18 @@ function VaultSection({
   docs,
   today,
   notify,
+  filterKind,
+  onFilterKind,
   onBack,
 }: {
   docs: ReturnType<typeof useHotelDocuments>;
   today: string;
   notify: (m: string, opt?: ToastOpt) => void;
+  filterKind: HotelDocKind | null;
+  onFilterKind: (kind: HotelDocKind | null) => void;
   onBack: () => void;
 }) {
-  const [kind, setKind] = useState<HotelDocKind>("fire_insurance");
+  const [kind, setKind] = useState<HotelDocKind>(filterKind ?? "fire_insurance");
   const [title, setTitle] = useState("");
   const [issuedOn, setIssuedOn] = useState("");
   const [expiresOn, setExpiresOn] = useState("");
@@ -186,6 +224,16 @@ function VaultSection({
   const [busy, setBusy] = useState(false);
   const [viewer, setViewer] = useState<{ doc: HotelDocument; url: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (filterKind) setKind(filterKind);
+  }, [filterKind]);
+
+  const filtered = useMemo(() => {
+    const all = docs.list ?? [];
+    if (!filterKind) return all;
+    return all.filter((d) => d.kind === filterKind);
+  }, [docs.list, filterKind]);
 
   const submit = async () => {
     if (!file) {
@@ -267,7 +315,6 @@ function VaultSection({
       notify("팝업이 막혔어요. 열기로 본 뒤 인쇄해 주세요.");
       return;
     }
-    // PDF/image: browser print after load when possible
     const tryPrint = () => {
       try {
         w.focus();
@@ -289,6 +336,30 @@ function VaultSection({
         <button type="button" className="btn line sm" onClick={onBack}>
           서류 종류
         </button>
+      </div>
+
+      <div className="iss-kind-filters" role="tablist" aria-label={ISSUANCE_COPY.kind}>
+        <button
+          type="button"
+          role="tab"
+          className={`chip${filterKind === null ? " on" : ""}`}
+          aria-selected={filterKind === null}
+          onClick={() => onFilterKind(null)}
+        >
+          {ISSUANCE_COPY.filterAll}
+        </button>
+        {HOTEL_DOC_KINDS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            className={`chip${filterKind === k ? " on" : ""}`}
+            aria-selected={filterKind === k}
+            onClick={() => onFilterKind(k)}
+          >
+            {HOTEL_DOC_KIND_LABEL[k]}
+          </button>
+        ))}
       </div>
 
       <div className="iss-upload card">
@@ -346,11 +417,11 @@ function VaultSection({
       {docs.error ? <p className="warn sm">{docs.error}</p> : null}
       {!docs.list ? (
         <p className="muted sm">불러오는 중…</p>
-      ) : docs.list.length === 0 ? (
-        <p className="muted sm">{ISSUANCE_COPY.emptyVault}</p>
+      ) : filtered.length === 0 ? (
+        <p className="muted sm">{filterKind ? ISSUANCE_COPY.emptyVaultKind : ISSUANCE_COPY.emptyVault}</p>
       ) : (
         <ul className="iss-vault-list">
-          {docs.list.map((d) => {
+          {filtered.map((d) => {
             const badge = hotelDocExpiryBadge(d.expiresOn, today);
             return (
               <li key={d.id} className="iss-vault-row">
