@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   Printer,
   Receipt,
+  ScrollText,
   Shield,
   Trash2,
   Upload,
@@ -66,6 +67,7 @@ function kindFromHash(): HotelDocKind | null {
 function vaultIcon(kind: HotelDocKind) {
   if (kind === "bank_book") return <Landmark size={22} strokeWidth={2} aria-hidden />;
   if (kind === "business_license") return <BadgeCheck size={22} strokeWidth={2} aria-hidden />;
+  if (kind === "operating_report") return <ScrollText size={22} strokeWidth={2} aria-hidden />;
   return <Shield size={22} strokeWidth={2} aria-hidden />;
 }
 
@@ -527,7 +529,6 @@ function VaultSection({
   const [kind, setKind] = useState<HotelDocKind>(filterKind ?? "fire_insurance");
   const [title, setTitle] = useState("");
   const [issuedOn, setIssuedOn] = useState("");
-  const [expiresOn, setExpiresOn] = useState("");
   const [notes, setNotes] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -556,14 +557,13 @@ function VaultSection({
           kind,
           title: title || HOTEL_DOC_KIND_LABEL[kind],
           issuedOn: issuedOn || null,
-          expiresOn: expiresOn || null,
+          expiresOn: null,
           notes: notes || null,
         },
         file,
       );
       setTitle("");
       setIssuedOn("");
-      setExpiresOn("");
       setNotes("");
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -708,10 +708,6 @@ function VaultSection({
           <label>
             <span>{ISSUANCE_COPY.issuedOn}</span>
             <input className="inp sm" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
-          </label>
-          <label>
-            <span>{ISSUANCE_COPY.expiresOn}</span>
-            <input className="inp sm" type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
           </label>
           <label className="wide">
             <span>{ISSUANCE_COPY.notes}</span>
