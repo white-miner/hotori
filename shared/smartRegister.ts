@@ -556,6 +556,35 @@ export function normChannelKey(s: string): string {
     .toLowerCase();
 }
 
+/**
+ * NOL Partner Center occupancy / plan / rate chrome beside the guest name
+ * (chat badge · room-count label) — not a person, not a nested channel.
+ * Same skip family as checkbox 「예약완료」 noise.
+ */
+const OCCUPANCY_OR_PLAN_CHROME = new Set([
+  "싱글",
+  "더블",
+  "트윈",
+  "트리플",
+  "쿼드",
+  "single",
+  "double",
+  "twin",
+  "triple",
+  "quad",
+]);
+
+/** True for occupancy/plan tokens that must not steal guestName. */
+export function isOccupancyOrPlanChrome(line: string): boolean {
+  const raw = normalizePasteLine(line);
+  if (!raw) return false;
+  if (OCCUPANCY_OR_PLAN_CHROME.has(raw.toLowerCase())) return true;
+  if (OCCUPANCY_OR_PLAN_CHROME.has(raw)) return true;
+  // N인 / N명 occupancy chips
+  if (/^[1-9]\d?\s*(인|명)$/.test(raw)) return true;
+  return false;
+}
+
 function hardRejectNestedChannelLine(raw: string): boolean {
   if (!raw || raw.length > 40) return true;
   if (YANOLJA_CARD_RES_ID.test(raw)) return true;
@@ -563,17 +592,23 @@ function hardRejectNestedChannelLine(raw: string): boolean {
   if (/^\d{4}[./-]/.test(raw)) return true;
   if (/[ㅣ|]/.test(raw)) return true;
   if (/^\/\s*\d+\s*박/.test(raw)) return true;
+  if (isOccupancyOrPlanChrome(raw)) return true;
   if (/객실|타입\s*ID|판매가|입금|숙박|연박|차량|도보|안심번호|미리예약|예약완료|예약취소|고객취소/.test(raw)) {
     return true;
   }
   return false;
 }
 
-/** Latin "Sumi Lee" / short Hangul person names — never treat as channel. */
-function looksLikeGuestNameLine(raw: string): boolean {
-  if (/^[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)+$/.test(raw)) return true;
-  // Pure Hangul 2–4 (김한나) without marketplace markers
-  if (/^[\uac00-\ud7a3]{2,4}$/.test(raw)) return true;
+/** Latin "Sumi Lee" / CHOISANGYEON / short Hangul person names — never treat as channel. */
+export function looksLikeGuestNameLine(raw: string): boolean {
+  const s = normalizePasteLine(raw);
+  if (!s || isOccupancyOrPlanChrome(s)) return false;
+  // Latin full name with spaces
+  if (/^[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)+$/.test(s)) return true;
+  // Compact Latin / romanized OTA name (CHOISANGYEON) — letters only, no digits
+  if (/^[A-Za-z][A-Za-z.'-]{2,39}$/.test(s)) return true;
+  // Pure Hangul 2–4 (김한나) without marketplace / occupancy markers
+  if (/^[\uac00-\ud7a3]{2,4}$/.test(s)) return true;
   return false;
 }
 
@@ -741,6 +776,31 @@ function parseYanoljaCardBlock(
     i += 1;
   }
 
+  /**
+   * Occupancy/plan chrome (트리플·더블·싱글 …) beside guest — Partner Center badge noise.
+   * Skip like checkbox 「예약완료」; prefer the following real guest line
+   * (Latin CHOISANGYEON / Hangul person name) over those tokens.
+   */
+  while (i < lines.length && isOccupancyOrPlanChrome(lines[i]!)) i += 1;
+  // Prefer a clear person-name line if the current candidate still looks wrong
+  if (
+    i + 1 < lines.length &&
+    !looksLikeGuestNameLine(lines[i]!) &&
+    looksLikeGuestNameLine(lines[i + 1]!)
+  ) {
+    const cur = lines[i]!;
+    // Only leap when current is short label-like (not phone / type / date)
+    if (
+      cur.length <= 8 &&
+      !/^[\d+\-*]+$/.test(cur) &&
+      !/^0\d/.test(cur) &&
+      !/[ㅣ|]/.test(cur) &&
+      !/^\d{4}/.test(cur)
+    ) {
+      i += 1;
+    }
+  }
+
   const guestName = lines[i++] ?? "";
 
   let guestPhone = "";
@@ -749,7 +809,7 @@ function parseYanoljaCardBlock(
     if (/안심번호/.test(phoneOrSafe)) {
       guestPhone = "";
       i += 1;
-    } else if (/^[\d+\-]+$/.test(phoneOrSafe) || /^0\d/.test(phoneOrSafe)) {
+    } else if (/^[\d+\-*]+$/.test(phoneOrSafe) || /^0\d/.test(phoneOrSafe)) {
       guestPhone = phoneOrSafe;
       i += 1;
     }
@@ -1871,6 +1931,15 @@ export const YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH = new URL(
 /** Hub resale: `이베이_G마켓` after reservation id (marketplace slug). */
 export const YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-nested-gmarket-card.txt",
+  import.meta.url,
+);
+
+/**
+ * Owner SoT: 「트리플」 Partner Center occupancy badge beside guest (not guestName).
+ * Real guest = CHOISANGYEON · phone · 도보 · Family Room VIP.
+ */
+export const YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-triple-chrome-card.txt",
   import.meta.url,
 );
 

@@ -16,6 +16,7 @@ import {
   YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH,
+  YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
@@ -27,6 +28,8 @@ import {
   isCancelStatus,
   isDuplicateReservation,
   isKnownNestedChannelLabel,
+  isOccupancyOrPlanChrome,
+  looksLikeGuestNameLine,
   looksLikeYanoljaCardPaste,
   lookupTypeAlias,
   mapColumns,
@@ -1020,4 +1023,47 @@ test("normal yanolja card unchanged when no nested channel line", () => {
   const preview = buildPreviewRows(card, profileById("yanolja")!, settings, [], "p-ya");
   assert.equal(preview[0]!.platformId, "p-ya");
   assert.equal(preview[0]!.nestedChannelRaw, "");
+});
+
+test("yanolja 「트리플」 chrome: guest=CHOISANGYEON not occupancy badge", () => {
+  assert.equal(isOccupancyOrPlanChrome("트리플"), true);
+  assert.equal(isOccupancyOrPlanChrome("더블"), true);
+  assert.equal(isOccupancyOrPlanChrome("싱글"), true);
+  assert.equal(looksLikeGuestNameLine("트리플"), false);
+  assert.equal(looksLikeGuestNameLine("CHOISANGYEON"), true);
+  assert.equal(looksLikeGuestNameLine("김한나"), true);
+  assert.equal(isKnownNestedChannelLabel("트리플"), false);
+  assert.equal(isKnownNestedChannelLabel("CHOISANGYEON"), false);
+
+  const raw = readFileSync(fileURLToPath(YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH), "utf8");
+  const card = parseYanoljaCardPaste(raw);
+  assert.ok(card);
+  assert.equal(card!.rows.length, 1);
+  assert.equal(card!.rows[0]![0], "2610161664459334");
+  assert.equal(card!.rows[0]![1], "CHOISANGYEON");
+  assert.equal(card!.rows[0]![2], "0503-5083-6164");
+  assert.match(card!.rows[0]![3]!, /^Family Room/);
+  assert.equal(card!.rows[0]![9], "");
+
+  const withFamily = normalizeSettings({
+    ...settings,
+    types: [...settings.types, { id: "family", name: "패밀리룸" }],
+    typeAliases: [
+      {
+        id: "ta-fam",
+        platformId: "p-ya",
+        platformTypeName: "Family RoomㅣVIP",
+        typeId: "family",
+      },
+    ],
+  });
+  const preview = buildPreviewRows(card!, profileById("yanolja")!, withFamily, [], "p-ya");
+  assert.equal(preview[0]!.guestName, "CHOISANGYEON");
+  assert.equal(preview[0]!.guestPhone, "0503-5083-6164");
+  assert.equal(preview[0]!.reservationId, "2610161664459334");
+  assert.equal(preview[0]!.typeId, "family");
+  assert.equal(preview[0]!.checkIn, "2026-11-14");
+  assert.equal(preview[0]!.nights, 1);
+  assert.equal(preview[0]!.amount, 160000);
+  assert.notEqual(preview[0]!.guestName, "트리플");
 });
