@@ -19,14 +19,21 @@ describe("hotelDocuments", () => {
     assert.equal(isHotelDocKind("fire_insurance"), true);
     assert.equal(isHotelDocKind("bank_book"), true);
     assert.equal(isHotelDocKind("business_license"), true);
+    assert.equal(isHotelDocKind("operating_report"), true);
     assert.equal(isHotelDocKind("other"), true);
     assert.equal(isHotelDocKind("nope"), false);
     assert.equal(isHotelDocHubKind("bank_book"), true);
+    assert.equal(isHotelDocHubKind("operating_report"), true);
     assert.equal(isHotelDocHubKind("other"), false);
-    assert.deepEqual([...HOTEL_DOC_KINDS], ["fire_insurance", "bank_book", "business_license", "other"]);
+    assert.deepEqual(
+      [...HOTEL_DOC_KINDS],
+      ["fire_insurance", "bank_book", "business_license", "operating_report", "other"],
+    );
     assert.equal(HOTEL_DOC_KIND_LABEL.bank_book, "통장사본");
     assert.equal(HOTEL_DOC_KIND_LABEL.business_license, "사업자등록증");
+    assert.equal(HOTEL_DOC_KIND_LABEL.operating_report, "영업신고서");
     assert.equal(hotelDocHubCopy("bank_book").title, "통장사본");
+    assert.equal(hotelDocHubCopy("operating_report").title, "영업신고서");
     assert.equal(
       hotelDocStoragePath("hid", "did", "화재 보험.pdf"),
       "hid/certs/did/화재 보험.pdf",
@@ -34,7 +41,7 @@ describe("hotelDocuments", () => {
     assert.equal(sanitizeDocFilename("a/b\\c?.pdf"), "a_b_c_.pdf");
   });
 
-  it("mime + validate file/draft", () => {
+  it("mime + validate file/draft (expiry not required)", () => {
     const pdf = { name: "a.pdf", type: "application/pdf", size: 100 } as File;
     const bad = { name: "a.exe", type: "application/octet-stream", size: 100 } as File;
     const huge = { name: "a.pdf", type: "application/pdf", size: 21 * 1024 * 1024 } as File;
@@ -47,6 +54,10 @@ describe("hotelDocuments", () => {
     assert.equal(validateHotelDocumentDraft({ kind: "fire_insurance", title: "화재보험 2026" }), null);
     assert.equal(validateHotelDocumentDraft({ kind: "bank_book", title: "국민은행 통장" }), null);
     assert.equal(validateHotelDocumentDraft({ kind: "business_license", title: "사업자등록증" }), null);
+    assert.equal(
+      validateHotelDocumentDraft({ kind: "operating_report", title: "영업신고서", expiresOn: null }),
+      null,
+    );
   });
 
   it("expiry badge", () => {

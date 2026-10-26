@@ -7,11 +7,22 @@ export const HOTEL_DOC_NOTES_MAX = 280;
 export const HOTEL_DOC_MAX_BYTES = 20 * 1024 * 1024;
 
 /** Owner FO vault kinds guests ask for + generic */
-export const HOTEL_DOC_KINDS = ["fire_insurance", "bank_book", "business_license", "other"] as const;
+export const HOTEL_DOC_KINDS = [
+  "fire_insurance",
+  "bank_book",
+  "business_license",
+  "operating_report",
+  "other",
+] as const;
 export type HotelDocKind = (typeof HOTEL_DOC_KINDS)[number];
 
 /** Primary type cards on 「발급」 hub (excludes generic `other`) */
-export const HOTEL_DOC_HUB_KINDS = ["fire_insurance", "bank_book", "business_license"] as const;
+export const HOTEL_DOC_HUB_KINDS = [
+  "fire_insurance",
+  "bank_book",
+  "business_license",
+  "operating_report",
+] as const;
 export type HotelDocHubKind = (typeof HOTEL_DOC_HUB_KINDS)[number];
 
 export const HOTEL_DOC_MIMES = ["application/pdf", "image/jpeg", "image/png"] as const;
@@ -72,21 +83,24 @@ export const ISSUANCE_COPY = {
   bankBookHint: "업로드 · 열기 · 인쇄",
   businessReg: "사업자등록증",
   businessRegHint: "업로드 · 열기 · 인쇄",
+  operatingReport: "영업신고서",
+  operatingReportHint: "업로드 · 열기 · 인쇄",
   vaultCta: "보관함 열기",
   filterAll: "전체",
   upload: "업로드",
   title: "제목",
   kind: "종류",
   file: "파일",
-  issuedOn: "발급일",
-  expiresOn: "만료일",
+  issuedOn: "발급일 (선택)",
+  expiresOn: "만료일 (선택)",
   notes: "메모",
   open: "열기",
   print: "인쇄",
   pdf: "PDF 저장",
   download: "내려받기",
   delete: "삭제",
-  emptyVault: "아직 올린 증서가 없어요. 화재보험·통장사본·사업자등록증 PDF나 사진을 올려 두세요.",
+  emptyVault:
+    "아직 올린 증서가 없어요. 화재보험·통장사본·사업자등록증·영업신고서 PDF나 사진을 올려 두세요.",
   emptyVaultKind: "이 종류로 올린 파일이 없어요.",
   emptyRecent: "최근 발급·업로드가 없어요.",
   recentDocs: "최근 발급",
@@ -94,7 +108,7 @@ export const ISSUANCE_COPY = {
 
   expireSoon: "만료 임박",
   expired: "만료",
-  settingsVaultHint: "화재보험·통장사본·사업자등록증은 「발급」보관함에서 관리해요.",
+  settingsVaultHint: "화재보험·통장사본·사업자등록증·영업신고서는 「발급」보관함에서 관리해요.",
   settingsFloorPrint: "배치도 인쇄",
   confirmDeleteTitle: "증서를 삭제할까요?",
   confirmDeleteBody: "보관함과 파일에서 지워져요. 되돌릴 수 없어요.",
@@ -110,6 +124,7 @@ export const HOTEL_DOC_KIND_LABEL: Record<HotelDocKind, string> = {
   fire_insurance: "화재보험증서",
   bank_book: "통장사본",
   business_license: "사업자등록증",
+  operating_report: "영업신고서",
   other: "기타",
 };
 
@@ -125,6 +140,8 @@ export function isHotelDocHubKind(v: unknown): v is HotelDocHubKind {
 export function hotelDocHubCopy(kind: HotelDocHubKind): { title: string; hint: string } {
   if (kind === "bank_book") return { title: ISSUANCE_COPY.bankBook, hint: ISSUANCE_COPY.bankBookHint };
   if (kind === "business_license") return { title: ISSUANCE_COPY.businessReg, hint: ISSUANCE_COPY.businessRegHint };
+  if (kind === "operating_report")
+    return { title: ISSUANCE_COPY.operatingReport, hint: ISSUANCE_COPY.operatingReportHint };
   return { title: ISSUANCE_COPY.fireInsurance, hint: ISSUANCE_COPY.fireInsuranceHint };
 }
 
