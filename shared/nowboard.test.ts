@@ -10,6 +10,7 @@ import {
   departingWindowOpen,
   effectiveArrived,
   filterUnassignedByCheckIn,
+  filterUnassignedForPlacement,
   isDepartingStatus,
   latestPaymentOf,
   listUnassignedBookings,
@@ -345,6 +346,31 @@ test("간단 예약 입실일 필터: 오늘(기한초과 포함) · 일주일 �
   assert.deepEqual(
     filterUnassignedByCheckIn(list, today, "month").map((b) => b.id),
     ["td", "w", "m"],
+  );
+});
+
+test("배치 미배정: 보드 숙박일 점유 밤 · 날짜 바꾸면 목록 바뀜", () => {
+  const list = [
+    bk({ id: "mid", checkIn: "2026-10-19", nights: 3, roomId: null }), // 19·20·21
+    bk({ id: "d20", checkIn: "2026-10-20", nights: 1, roomId: null }),
+    bk({ id: "d25", checkIn: "2026-10-25", nights: 1, roomId: null }),
+    bk({ id: "ended", checkIn: "2026-10-18", nights: 1, roomId: null }),
+  ];
+  assert.deepEqual(
+    filterUnassignedForPlacement(list, "2026-10-20", "today").map((b) => b.id).sort(),
+    ["d20", "mid"],
+  );
+  assert.deepEqual(
+    filterUnassignedForPlacement(list, "2026-10-25", "today").map((b) => b.id),
+    ["d25"],
+  );
+  assert.deepEqual(
+    filterUnassignedForPlacement(list, "2026-10-20", "week").map((b) => b.id).sort(),
+    ["d20", "d25", "mid"],
+  );
+  assert.deepEqual(
+    filterUnassignedForPlacement(list, "2026-10-25", "week").map((b) => b.id),
+    ["d25"],
   );
 });
 
