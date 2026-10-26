@@ -90,3 +90,25 @@ test("defaultInvoicePayer prefers company", () => {
   assert.equal(p.payerName, "여행사A");
   assert.equal(p.payerPhone, "010-1");
 });
+
+test("buildInvoiceSnapshot keeps quoteCompare (P1.3)", () => {
+  const snap = buildInvoiceSnapshot({
+    s,
+    members: [book()],
+    info: emptyGroupInfo("g1"),
+    plat: { name: "현장", onsite: true },
+    payerName: "학교",
+    payerPhone: "",
+    issueNumber: "2026-002",
+    issuedAt: "2026-10-27T12:00:00Z",
+    quoteCompare: {
+      quoteId: "q1",
+      quoteTitle: "견적A",
+      quoteTotal: 180_000,
+      invoiceTotal: 200_000,
+      diff: 20_000,
+    },
+  });
+  assert.equal(snap.quoteCompare?.quoteTotal, 180_000);
+  assert.equal(snap.quoteCompare?.diff, 20_000);
+});
