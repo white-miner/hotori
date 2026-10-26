@@ -6,8 +6,8 @@ import type { Booking } from "./ledger";
 import { boardEntryForRoom, isActive, occupiesRoom } from "./ledger";
 import { type NowFlags, type NowKind, type NowOpts, nowFlags } from "./nowboard";
 
-/** 미니맵 MVP 4색 (lateOut → 퇴실예정 묶음) */
-export type GlanceMapKind = "empty" | "arriving" | "inhouse" | "departing";
+/** 미니맵 색 (lateOut → 퇴실예정 묶음 · held = 객실 임시마감) */
+export type GlanceMapKind = "empty" | "arriving" | "inhouse" | "departing" | "held";
 
 export function glanceMapKindFromNow(kind: NowKind): GlanceMapKind {
   switch (kind) {
@@ -60,7 +60,7 @@ export function glanceMapKindPlacement(
 /** 총/사용/남음 칩 필터 — null=전체 · used=점유 묶음 · left=공실 */
 export type GlanceOccFilter = "used" | "left" | null;
 
-/** 미니맵 kind가 현재 점유 필터에 맞는지 (사용=empty 제외 · 남음=empty만) */
+/** 미니맵 kind가 현재 점유 필터에 맞는지 (사용=empty 제외 · 남음=empty만 · held≠공실) */
 export function glanceKindMatchesOccFilter(kind: GlanceMapKind, filter: GlanceOccFilter): boolean {
   if (!filter) return true;
   const vacant = kind === "empty";

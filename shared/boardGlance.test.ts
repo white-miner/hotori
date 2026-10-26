@@ -40,6 +40,12 @@ test("glanceMapKindFromNow: lateOut → departing 묶음", () => {
   assert.equal(glanceMapKindFromNow("lateOut"), "departing");
 });
 
+test("glanceKindMatchesOccFilter: held ≠ 공실(남음)", () => {
+  assert.equal(glanceKindMatchesOccFilter("held", "left"), false);
+  assert.equal(glanceKindMatchesOccFilter("held", "used"), true);
+  assert.equal(glanceKindMatchesOccFilter("empty", "left"), true);
+});
+
 test("glanceMapKindNow: 공실·숙박예약·숙박", () => {
   const night = "2026-10-22";
   const beforeIn = {

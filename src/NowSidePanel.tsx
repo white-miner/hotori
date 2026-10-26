@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, LogIn, Undo2 } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Lock, LogIn, Undo2 } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -40,6 +40,13 @@ import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
 import { EXTEND_COPY, canExtend } from "../shared/extend";
 import { EDIT_COPY } from "../shared/bookingEdit";
+import {
+  ROOM_HOLD_CREATE_CTA,
+  ROOM_HOLD_RELEASE_CTA,
+  ROOM_HOLD_STATUS,
+  holdDateLabel,
+  type RoomHold,
+} from "../shared/roomHold";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import { PlatBadge, lookups } from "./ui";
@@ -104,6 +111,13 @@ interface Props {
   onExtendNight?: (b: Booking) => void;
   /** 빠른 입실 (숙박예약 · 미입실) */
   onEarlyIn?: (b: Booking) => void;
+  /** 단실 공실 → 임시 마감 모달 */
+  onRoomHold?: () => void;
+  /** 단실 마감 → 취소 마감 */
+  onRoomHoldRelease?: () => void;
+  /** 선택 호실의 오늘 홀드 (없으면 null) */
+  roomHold?: RoomHold | null;
+  roomHoldBusy?: boolean;
   /** 동일 groupId 점유 복수 선택 시 멤버 (패널 글랜스) */
   selectedGroupBookings?: Booking[];
   /** 그룹 정산 정보 (복수 잔금 글랜스) */
@@ -149,6 +163,10 @@ export default function NowSidePanel({
   onLateOut,
   onExtendNight,
   onEarlyIn,
+  onRoomHold,
+  onRoomHoldRelease,
+  roomHold = null,
+  roomHoldBusy = false,
   selectedGroupBookings = [],
   selectedGroupInfo = null,
   settleMembers = [],
@@ -451,7 +469,9 @@ export default function NowSidePanel({
                     ? `단체 ${selectedGroupBookings.length}실 · 일괄 수납`
                     : multiVacant
                       ? `공실 ${selectedRoomIds.length}실`
-                      : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
+                      : roomHold && !b
+                        ? `${typeLabel(t) || "타입 미정"} · ${ROOM_HOLD_STATUS}`
+                        : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
                 </div>
               </div>
               {b ? (
@@ -720,8 +740,14 @@ export default function NowSidePanel({
                 </div>
               ) : (
                 <div className="nsel-body">
-                  <div className="muted sm">{multiVacant ? "선택한 공실" : "비어 있음"}</div>
-                  {!multiVacant && recentCheckedOut ? (
+                  <div className="muted sm">
+                    {multiVacant
+                      ? "선택한 공실"
+                      : roomHold
+                        ? `${ROOM_HOLD_STATUS} · ${holdDateLabel(roomHold)}${roomHold.note ? ` · ${roomHold.note}` : ""}`
+                        : "비어 있음"}
+                  </div>
+                  {!multiVacant && !roomHold && recentCheckedOut ? (
                     <div className="nsel-row" aria-label="최근 퇴실">
                       <span className="nsel-k">최근 퇴실</span>
                       <span className="nsel-v">
@@ -730,7 +756,7 @@ export default function NowSidePanel({
                       </span>
                     </div>
                   ) : null}
-                  {!multiVacant && todayUaForType > 0 ? (
+                  {!multiVacant && !roomHold && todayUaForType > 0 ? (
                     <p className="nsel-hint">
                       이 타입 오늘 입실 미배정 {todayUaForType}건 ·{" "}
                       <button type="button" className="linkish" onClick={() => onMode("simple")}>
@@ -740,9 +766,42 @@ export default function NowSidePanel({
                     </p>
                   ) : null}
                   {dayuseList}
-                  {!readOnly && (showStaySell || dayuseCtaLabel || (recentCheckedOut && onUndoCheckOut)) ? (
+                  {!readOnly &&
+                  (roomHold ||
+                    onRoomHold ||
+                    showStaySell ||
+                    dayuseCtaLabel ||
+                    (recentCheckedOut && onUndoCheckOut)) ? (
                     <div className="nsel-acts">
-                      {!multiVacant && recentCheckedOut && onUndoCheckOut ? (
+                      {!multiVacant && roomHold && onRoomHoldRelease ? (
+                        <div className="nsel-act-sec" role="group" aria-label="마감 해제">
+                          <button
+                            type="button"
+                            className="btn sm dark"
+                            disabled={moving || roomHoldBusy}
+                            onClick={() => onRoomHoldRelease()}
+                            aria-label={ROOM_HOLD_RELEASE_CTA}
+                          >
+                            <Ban size={14} strokeWidth={2.2} aria-hidden />
+                            {roomHoldBusy ? "처리 중…" : ROOM_HOLD_RELEASE_CTA}
+                          </button>
+                        </div>
+                      ) : null}
+                      {!multiVacant && !roomHold && onRoomHold ? (
+                        <div className="nsel-act-sec" role="group" aria-label="임시 마감">
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving || roomHoldBusy}
+                            onClick={() => onRoomHold()}
+                            aria-label={ROOM_HOLD_CREATE_CTA}
+                          >
+                            <Lock size={14} strokeWidth={2.2} aria-hidden />
+                            {ROOM_HOLD_CREATE_CTA}
+                          </button>
+                        </div>
+                      ) : null}
+                      {!multiVacant && !roomHold && recentCheckedOut && onUndoCheckOut ? (
                         <div className="nsel-act-sec" role="group" aria-label="퇴실 되돌리기">
                           <button
                             type="button"
@@ -764,7 +823,7 @@ export default function NowSidePanel({
                           </button>
                         </div>
                       ) : null}
-                      {showStaySell || dayuseCtaLabel ? (
+                      {!roomHold && (showStaySell || dayuseCtaLabel) ? (
                         <div className="nsel-act-sec" role="group" aria-label="판매">
                           {showStaySell ? (
                             <button type="button" className="btn sm stop" onClick={onStaySale}>

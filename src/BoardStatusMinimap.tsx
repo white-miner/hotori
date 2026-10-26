@@ -30,6 +30,7 @@ const KIND_TITLE: Record<GlanceMapKind, string> = {
   arriving: "숙박예약",
   inhouse: "숙박",
   departing: "퇴실예정",
+  held: "마감",
 };
 
 export default function BoardStatusMinimap({

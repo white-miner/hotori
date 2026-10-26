@@ -42,6 +42,7 @@ import AddTimeModal from "./AddTimeModal";
 import ExtendNightModal from "./ExtendNightModal";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import StaySaleModal from "./StaySaleModal";
+import RoomHoldModal from "./RoomHoldModal";
 import PaymentDeskModal from "./PaymentDeskModal";
 import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
@@ -104,6 +105,15 @@ import {
 } from "../shared/extend";
 import { saveFailMessage } from "../shared/errors";
 import { onsiteCreatePayTail } from "../shared/payment";
+import {
+  ROOM_HOLD_RELEASE_CTA,
+  ROOM_HOLD_STATUS,
+  addRoomHold,
+  holdCellNote,
+  holdOnNight,
+  releaseRoomHold,
+  type RoomHold,
+} from "../shared/roomHold";
 import {
   type BoardTab,
   type Booking,
@@ -457,6 +467,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
   const [extendNight, setExtendNight] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [extendNightBusy, setExtendNightBusy] = useState(false);
+  /** 객실 임시마감 생성 모달 (취소 마감은 askConfirm) */
+  const [roomHoldModal, setRoomHoldModal] = useState<{ roomId: string; boardDate: string } | null>(null);
+  const [roomHoldBusy, setRoomHoldBusy] = useState(false);
   /** 숙박 판매 전용 (StaySaleModal · SimpleBooking 금지) */
   const [staySale, setStaySale] = useState<{
     roomIds: string[];
@@ -534,6 +547,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const bk = nowBoardMap.get(roomId);
     return !bk || !isActive(bk);
   };
+  /** 오늘 보드 기준 객실 임시마감 (게스트 예약 아님) */
+  const roomHoldNow = (roomId: string) =>
+    roomIsVacant(roomId) ? holdOnNight(s.roomHolds ?? [], roomId, today) : null;
+  const roomIsHeldNow = (roomId: string) => !!roomHoldNow(roomId);
   const flashRoom = (roomId: string, elId: string) => {
     document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
     setFlashRoomId(roomId);
@@ -626,9 +643,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!occFilter) return "";
     const vacant =
       tab === "now"
-        ? roomIsVacant(roomId)
+        ? roomIsVacant(roomId) && !roomIsHeldNow(roomId)
         : (() => {
             const bk = board.byRoom.get(roomId);
+            const held = !bk || (selDate < today ? !isActive(bk) : !occupiesRoom(bk))
+              ? !!holdOnNight(s.roomHolds ?? [], roomId, selDate)
+              : false;
+            if (held) return false;
             if (!bk) return true;
             if (selDate < today) return !isActive(bk);
             return !occupiesRoom(bk);
@@ -651,7 +672,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       endTime: null,
     }).has(roomId);
   };
-  const roomIsBookTarget = (roomId: string) => roomIsVacant(roomId) || roomIsTurnoverBookable(roomId);
+  /** 판매·복수선택 타깃 — 임시마감 호실은 제외(단실 선택·취소 마감만) */
+  const roomIsBookTarget = (roomId: string) =>
+    (roomIsVacant(roomId) && !roomIsHeldNow(roomId)) || roomIsTurnoverBookable(roomId);
   const selectRoom = (roomId: string) => {
     setNightPopId(null);
     setSideMode("room");
@@ -1425,27 +1448,35 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       : "";
     const gs = gsCellClass(r.id);
     const flash = flashRoomId === r.id;
-    if (!b)
+    if (!b) {
+      const hold = holdOnNight(s.roomHolds ?? [], r.id, selDate);
+      const held = !!hold;
       return (
         <div
           key={r.id}
           id={`rooms-room-${r.id}`}
           data-room-id={r.id}
           {...mvAttr}
-          className={`cell em ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          className={`cell em ${held ? "held" : ""} ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
           onClick={
             mvClick ??
             (() => {
               if (assignMode) {
-                if (canAssign) requestAssign(assignBk!, r.id);
+                if (canAssign && !held) requestAssign(assignBk!, r.id);
+                else if (held) notify("마감된 호실이에요. 현황에서 취소 마감하세요.");
+                return;
+              }
+              if (held) {
+                if (!readOnly && hold) void doReleaseRoomHold(hold);
                 return;
               }
               onNew({ checkIn: selDate, roomId: r.id, typeId: r.typeId ?? undefined });
             })
           }
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
+          title={held ? (hold!.note ? `${ROOM_HOLD_STATUS} · ${hold!.note}` : ROOM_HOLD_STATUS) : undefined}
         >
-          {canAssign ? (
+          {canAssign && !held ? (
             <label className="board-assign-check" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
@@ -1458,10 +1489,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           ) : null}
           {head}
           {typeRow()}
-          <div className="emt">{mvSame ? "같은 타입" : sameType ? "같은 타입" : "빈 방"}</div>
+          <div className={`emt ${held ? "held" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "빈 방"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
       );
+    }
     const nth = Math.round((Date.parse(selDate) - Date.parse(b.checkIn)) / 864e5) + 1;
     const cancelled = !isActive(b);
     const sold = b.typeId !== r.typeId ? L.types.get(b.typeId) : null;
@@ -2378,6 +2410,43 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  const commitRoomHold = async (hold: RoomHold) => {
+    if (readOnly || roomHoldBusy) return;
+    setRoomHoldBusy(true);
+    try {
+      const next = { ...s, roomHolds: addRoomHold(s.roomHolds ?? [], hold) };
+      await data.saveHotel({ settings: next });
+      setRoomHoldModal(null);
+      const lab = L.roomLabel(hold.roomId) ?? hold.roomId;
+      notify(`${lab} · ${ROOM_HOLD_STATUS}했어요`);
+    } catch (e) {
+      notify(saveFailMessage(e, "임시 마감을 저장하지 못했어요"));
+    } finally {
+      setRoomHoldBusy(false);
+    }
+  };
+
+  const doReleaseRoomHold = async (hold: RoomHold) => {
+    if (readOnly || roomHoldBusy) return;
+    const lab = L.roomLabel(hold.roomId) ?? hold.roomId;
+    const ok = await askConfirm({
+      title: ROOM_HOLD_RELEASE_CTA,
+      body: `${lab} 마감을 풀까요?\n다시 판매·배정할 수 있어요.`,
+      confirmLabel: ROOM_HOLD_RELEASE_CTA,
+    });
+    if (!ok) return;
+    setRoomHoldBusy(true);
+    try {
+      const next = { ...s, roomHolds: releaseRoomHold(s.roomHolds ?? [], hold.id) };
+      await data.saveHotel({ settings: next });
+      notify(`${lab} · 마감을 풀었어요`);
+    } catch (e) {
+      notify(saveFailMessage(e, "마감을 풀지 못했어요"));
+    } finally {
+      setRoomHoldBusy(false);
+    }
+  };
+
   /** 운영패널 1박 연장 · planOpsExtend SoT · 충돌 시 ExtendOverlapConfirm */
   const commitOpsExtend = async (input: OpsExtendInput, opts?: { allowOverlap?: boolean }) => {
     if (readOnly || extendNightBusy || !extendNight) return;
@@ -2614,22 +2683,27 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       const emptySel = !mvB && selectedRoomIds.includes(r.id);
       const flash = flashRoomId === r.id;
       const gs = gsCellClass(r.id);
+      const hold = holdOnNight(s.roomHolds ?? [], r.id, today);
+      const held = !!hold;
       return (
         <div
           key={r.id}
           id={`now-room-${r.id}`}
           data-room-id={r.id}
           {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls}`}
+          className={`cell em nowempty ${held ? "held" : ""} ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls}`}
           onClick={mvClick ?? (() => selectRoom(r.id))}
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
+          title={held ? (hold!.note ? `${ROOM_HOLD_STATUS} · ${hold!.note}` : ROOM_HOLD_STATUS) : undefined}
         >
           {duMark}
           <div className="cell-body nowstack sparse">
             {head}
             <TypeRow t={t} />
             <div className="nowstatus-slot">
-              <span className="nowstatus nk-empty">{mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : "공실"}</span>
+              <span className={`nowstatus ${held ? "nk-held" : "nk-empty"}`}>
+                {mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : held ? holdCellNote(hold) : "공실"}
+              </span>
             </div>
           </div>
         </div>
@@ -2811,7 +2885,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const glanceRooms = floorsNow.flatMap((f) => f.rooms);
     const glanceVacant = glanceRooms.filter((r) => {
       const bk = nowBoardMap.get(r.id);
-      return !bk || !isActive(bk);
+      if (bk && isActive(bk)) return false;
+      return !holdOnNight(s.roomHolds ?? [], r.id, today);
     });
     const glanceTotal = glanceRooms.length;
     const glanceUsed = glanceTotal - glanceVacant.length;
@@ -2830,10 +2905,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       floors: fl.map((f) => ({
         id: f.id,
         name: f.name,
-        rooms: f.rooms.map((r) => ({
-          id: r.id,
-          kind: glanceMapKindNow(nowBoardMap.get(r.id) ?? null, today, nowOpts),
-        })),
+        rooms: f.rooms.map((r) => {
+          const bk = nowBoardMap.get(r.id) ?? null;
+          const base = glanceMapKindNow(bk, today, nowOpts);
+          const held = base === "empty" && !!holdOnNight(s.roomHolds ?? [], r.id, today);
+          return { id: r.id, kind: held ? ("held" as const) : base };
+        }),
       })),
     }));
     const nowGlance = (
@@ -2863,6 +2940,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <div className="lg nowlg" aria-label="상태 범례">
         <span>
           <i className="nkdot nk-empty" />공실
+        </span>
+        <span>
+          <i className="nkdot nk-held" />마감
         </span>
         <span>
           <i className="nkdot nk-arriving" />숙박예약
@@ -3015,6 +3095,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : "";
                 setExtendNight({ booking: bk, roomLabel: lab || "호실" });
               }}
+              onRoomHold={() => {
+                if (readOnly || selectedRoomIds.length !== 1) return;
+                const rid = selectedRoomIds[0];
+                if (!roomIsVacant(rid) || roomIsHeldNow(rid)) return;
+                setRoomHoldModal({ roomId: rid, boardDate: today });
+              }}
+              onRoomHoldRelease={() => {
+                if (readOnly || selectedRoomIds.length !== 1) return;
+                const h = roomHoldNow(selectedRoomIds[0]);
+                if (h) void doReleaseRoomHold(h);
+              }}
+              roomHold={
+                selectedRoomIds.length === 1 && selectedRoomId ? roomHoldNow(selectedRoomId) : null
+              }
+              roomHoldBusy={roomHoldBusy}
               onEarlyIn={(bk) => {
                 if (bk.arrived) return;
                 const lab = bk.roomId
@@ -3121,6 +3216,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={extendNightBusy}
           onCancel={() => !extendNightBusy && setExtendNight(null)}
           onConfirm={(input) => void commitOpsExtend(input)}
+        />
+      ) : null}
+      {roomHoldModal ? (
+        <RoomHoldModal
+          roomLabel={
+            L.roomLabel(roomHoldModal.roomId) ??
+            allRooms(s).find((r) => r.id === roomHoldModal.roomId)?.no ??
+            roomHoldModal.roomId
+          }
+          boardDate={roomHoldModal.boardDate}
+          holds={s.roomHolds ?? []}
+          roomId={roomHoldModal.roomId}
+          busy={roomHoldBusy}
+          onCancel={() => !roomHoldBusy && setRoomHoldModal(null)}
+          onConfirm={(hold) => void commitRoomHold(hold)}
         />
       ) : null}
       {staySale ? (
@@ -3359,10 +3469,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           const pastNight = selDate < today;
           const gVacant = gRooms.filter((r) => {
             const bk = board.byRoom.get(r.id);
-            if (!bk) return true;
-            // 과거 = 역사 점유(퇴실 포함)를 「사용」 · 오늘/미래 = 물리 점유만
-            if (pastNight) return !isActive(bk);
-            return !occupiesRoom(bk);
+            const freeish = !bk ? true : pastNight ? !isActive(bk) : !occupiesRoom(bk);
+            if (!freeish) return false;
+            return !holdOnNight(s.roomHolds ?? [], r.id, selDate);
           });
           const typeStockNight = s.types
             .filter((t) => (totalsAll.get(t.id) ?? 0) > 0)
@@ -3377,10 +3486,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             floors: fl.map((f) => ({
               id: f.id,
               name: f.name,
-              rooms: f.rooms.map((r) => ({
-                id: r.id,
-                kind: glanceMapKindPlacement(bookings, r.id, selDate, nowOpts, today),
-              })),
+              rooms: f.rooms.map((r) => {
+                const base = glanceMapKindPlacement(bookings, r.id, selDate, nowOpts, today);
+                const held = base === "empty" && !!holdOnNight(s.roomHolds ?? [], r.id, selDate);
+                return { id: r.id, kind: held ? ("held" as const) : base };
+              }),
             })),
           }));
           return (
