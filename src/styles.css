@@ -2389,6 +2389,15 @@ label.ck input[type="checkbox"] {
   body.print-invoice .noprint { display: none !important; }
   body.print-invoice .inv-watermark { color: rgba(0,0,0,0.12) !important; }
 
+  /* 손해내역서 */
+  body.print-damage * { visibility: hidden !important; }
+  body.print-damage .damage-print,
+  body.print-damage .damage-print * { visibility: visible !important; }
+  body.print-damage .damage-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
+  body.print-damage .modal.damage-letter { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; width: 100% !important; max-width: none !important; }
+  body.print-damage .damage-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 8mm 4mm; }
+  body.print-damage .noprint { display: none !important; }
+
   /* 객실 배치도 A4 landscape (named page — other prints stay portrait) */
   @page floor-plan-page { size: A4 landscape; margin: 10mm; }
   body.print-floor-plan .floor-plan-print { page: floor-plan-page; }
@@ -2518,8 +2527,20 @@ label.ck input[type="checkbox"] {
   border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; color: inherit;
 }
 
-/* 견적서 · 청구서 */
-.modal.quote-letter, .modal.invoice-letter { width: min(720px, 96vw); max-height: min(94vh, 920px); }
+/* 견적서 · 청구서 · 손해내역서 */
+.modal.quote-letter, .modal.invoice-letter, .modal.damage-letter { width: min(720px, 96vw); max-height: min(94vh, 920px); }
+.damage-form { padding: 0 16px 8px; display: grid; gap: 12px; }
+.damage-line {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) minmax(120px, 1.6fr) minmax(72px, 0.8fr) 36px;
+  gap: 6px; align-items: center; margin-bottom: 8px;
+}
+.damage-print { color: var(--ink); padding: 8px 4px 16px; position: relative; }
+.dmg-tbl { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+.inv-quote-cmp { margin: 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2, #f7f7f7); }
+.inv-cmp-tbl { margin: 6px 0 0; width: 100%; border-collapse: collapse; font-size: 13px; }
+.inv-cmp-tbl td, .inv-cmp-tbl th { padding: 4px 0; text-align: left; }
+.inv-cmp-tbl th { font-weight: 850; }
 .quote-form { padding: 0 16px 8px; display: grid; gap: 12px; }
 .quote-lines-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .quote-line-block { display: grid; gap: 6px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }

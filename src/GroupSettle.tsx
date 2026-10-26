@@ -6,8 +6,9 @@ import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledge
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, PAYMENT_METHOD_LABEL, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
 import { INVOICE_COPY } from "../shared/invoiceDoc";
+import { findLinkedQuote } from "../shared/quoteVariance";
 import type { HotelData } from "./data";
-import { useInvoiceIssues } from "./data";
+import { useInvoiceIssues, useQuoteIssues } from "./data";
 import { askConfirm } from "./ConfirmDialog";
 import InvoiceLetter from "./InvoiceLetter";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
@@ -32,6 +33,14 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
   const plat = first ? L.plats.get(first.platformId) : undefined;
   const st = settle(members, info, plat);
   const invoices = useInvoiceIssues(data.hotel!.id);
+  const quotes = useQuoteIssues(data.hotel!.id);
+  const linkedQuote = (() => {
+    const q = findLinkedQuote(quotes.list, {
+      groupId,
+      bookingIds: members.map((m) => m.id),
+    });
+    return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
+  })();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   // 빠른 입실 · 늦은 퇴실한 방: '601 빠른 14:00 · 602 늦은 15:00 서비스'
@@ -389,6 +398,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
           members={members}
           groupId={groupId}
           groupInfo={info}
+          linkedQuote={linkedQuote}
           busy={invoiceBusy}
           notify={notify}
           onIssue={async (args) => {

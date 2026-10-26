@@ -23,6 +23,7 @@ import {
 } from "../shared/ledger";
 import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
 import { PAYMENT_METHOD_LABEL, type PaymentMethod } from "../shared/payment";
+import { buildQuoteCompare, type QuoteCompare, QUOTE_VARIANCE_COPY } from "../shared/quoteVariance";
 import { askConfirm } from "./ConfirmDialog";
 import { lookups } from "./ui";
 
@@ -35,6 +36,8 @@ interface Props {
   groupInfo?: GroupInfo | null;
   /** 이미 발급된 기록 재인쇄 */
   issuedDoc?: InvoiceDoc | null;
+  /** P1.3 linked quote (live) — frozen into snapshot on issue */
+  linkedQuote?: { id: string; title: string; total: number } | null;
   busy?: boolean;
   onIssue: (args: {
     payerName: string;
@@ -77,6 +80,7 @@ export default function InvoiceLetter({
   groupId,
   groupInfo,
   issuedDoc,
+  linkedQuote,
   busy,
   onIssue,
   onClose,
@@ -97,7 +101,7 @@ export default function InvoiceLetter({
 
   const liveSnap = useMemo(() => {
     if (locked && doc?.snapshot) return doc.snapshot;
-    return buildInvoiceSnapshot({
+    const base = buildInvoiceSnapshot({
       s,
       members,
       info,
@@ -107,7 +111,16 @@ export default function InvoiceLetter({
       issueNumber: doc?.issueNumber ?? "····-···",
       issuedAt: new Date().toISOString(),
     });
-  }, [locked, doc, s, members, info, plat, payerName, payerPhone]);
+    const quoteCompare: QuoteCompare | null = linkedQuote
+      ? buildQuoteCompare({
+          quoteId: linkedQuote.id,
+          quoteTitle: linkedQuote.title,
+          quoteTotal: linkedQuote.total,
+          invoiceTotal: base.total,
+        })
+      : null;
+    return { ...base, quoteCompare };
+  }, [locked, doc, s, members, info, plat, payerName, payerPhone, linkedQuote]);
 
   const eligible = invoiceEligible(members);
   const mid = locked ? !!liveSnap.isMidStay : invoiceIsMidStay(members.filter((b) => b.status !== "cancelled"));
@@ -136,10 +149,18 @@ export default function InvoiceLetter({
         issueNumber: "pending",
         issuedAt: new Date().toISOString(),
       });
+      const quoteCompare = linkedQuote
+        ? buildQuoteCompare({
+            quoteId: linkedQuote.id,
+            quoteTitle: linkedQuote.title,
+            quoteTotal: linkedQuote.total,
+            invoiceTotal: snapBase.total,
+          })
+        : null;
       const saved = await onIssue({
         payerName,
         payerPhone,
-        snapshot: snapBase,
+        snapshot: { ...snapBase, quoteCompare },
         groupId: groupId ?? null,
         bookingIds: members.filter((b) => b.status !== "cancelled").map((b) => b.id),
         isMidStay: mid,
@@ -286,6 +307,37 @@ export default function InvoiceLetter({
               ) : null}
             </tfoot>
           </table>
+
+          {liveSnap.quoteCompare ? (
+            <div className="inv-quote-cmp">
+              <div className="inv-pays-h">
+                {INVOICE_COPY.quoteCompare}
+                {liveSnap.quoteCompare.quoteTitle ? (
+                  <span className="muted sm"> · {liveSnap.quoteCompare.quoteTitle}</span>
+                ) : null}
+              </div>
+              <table className="quote-tbl inv-cmp-tbl">
+                <tbody>
+                  <tr>
+                    <td>{INVOICE_COPY.quoteTotal}</td>
+                    <td>{won(liveSnap.quoteCompare.quoteTotal)}</td>
+                  </tr>
+                  <tr>
+                    <td>{INVOICE_COPY.invoiceTotal}</td>
+                    <td>{won(liveSnap.quoteCompare.invoiceTotal)}</td>
+                  </tr>
+                  <tr>
+                    <th>{INVOICE_COPY.quoteDiff}</th>
+                    <th>
+                      {liveSnap.quoteCompare.diff === 0
+                        ? QUOTE_VARIANCE_COPY.same
+                        : `${liveSnap.quoteCompare.diff > 0 ? QUOTE_VARIANCE_COPY.over : QUOTE_VARIANCE_COPY.under} ${won(Math.abs(liveSnap.quoteCompare.diff))}`}
+                    </th>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : null}
 
           {liveSnap.payments.length ? (
             <div className="inv-pays">

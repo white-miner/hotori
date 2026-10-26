@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, FileText, Minus, Plus, Undo2, X } from "lucide-react";
 import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
+import { DAMAGE_COPY } from "../shared/damageDoc";
 import StayConfirmLetter from "./StayConfirmLetter";
+import DamageLetter from "./DamageLetter";
+import { useDamageIssues } from "./data";
 import {
   type Booking,
   type Kind,
@@ -1098,6 +1101,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [stayConfirm, setStayConfirm] = useState(false);
+  const [damageOpen, setDamageOpen] = useState(false);
+  const [damageBusy, setDamageBusy] = useState(false);
+  const damages = useDamageIssues(data.hotel!.id);
   const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -1809,7 +1815,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0) +
                   (isActive(draft) ? 2 : 0)
                 : 0) +
-              (base.kind === "stay" ? 1 : 0) +
+              (base.kind === "stay" ? 2 : 0) +
               1
             }`}
           >
@@ -1822,6 +1828,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               >
                 <FileText size={17} />
                 <b>{STAY_CONFIRM_COPY}</b>
+              </button>
+            ) : null}
+            {base.kind === "stay" ? (
+              <button
+                type="button"
+                className="beo"
+                onClick={() => setDamageOpen(true)}
+                title={DAMAGE_COPY.title}
+              >
+                <AlertTriangle size={17} />
+                <b>{DAMAGE_COPY.cta}</b>
               </button>
             ) : null}
             {isActive(base) && base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
@@ -3863,6 +3880,25 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         s={s}
         today={today}
         onClose={() => setStayConfirm(false)}
+      />
+    ) : null}
+    {damageOpen && base && base.kind === "stay" ? (
+      <DamageLetter
+        hotelName={data.hotel!.name}
+        s={s}
+        today={today}
+        booking={live ?? base}
+        busy={damageBusy}
+        notify={notify}
+        onIssue={async (draft) => {
+          setDamageBusy(true);
+          try {
+            return await damages.issue(draft);
+          } finally {
+            setDamageBusy(false);
+          }
+        }}
+        onClose={() => setDamageOpen(false)}
       />
     ) : null}
     </>

@@ -3,6 +3,7 @@ import { groupLeadBooking } from "./group";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
 import { paidOf } from "./payment";
 import { type GroupInfo, settle, type Settlement } from "./settle";
+import type { QuoteCompare } from "./quoteVariance";
 
 export type InvoiceStatus = "draft" | "issued";
 
@@ -45,6 +46,8 @@ export type InvoiceSnapshot = {
   payments: InvoicePayLine[];
   footnotes: string[];
   issuedAt: string;
+  /** P1.3 견적 대비 (quote↔group 링크 시) */
+  quoteCompare?: QuoteCompare | null;
 };
 
 export type InvoiceDoc = {
@@ -106,6 +109,10 @@ export const INVOICE_COPY = {
   recentEmpty: "최근 청구서가 없어요.",
   fromGroup: "단체 청구서",
   fromStay: "숙박 청구서",
+  quoteCompare: "견적 대비",
+  quoteTotal: "견적 합계",
+  invoiceTotal: "청구 합계",
+  quoteDiff: "차이",
 } as const;
 
 /** 호텔·연도별 일련번호 YYYY-NNN */
@@ -149,6 +156,8 @@ export type BuildInvoiceOpts = {
   issuedAt: string;
   /** 제외할 booking id */
   excludeIds?: Set<string>;
+  /** P1.3 linked quote totals */
+  quoteCompare?: QuoteCompare | null;
 };
 
 function roomLineOf(b: Booking, s: HotelSettings, excluded: boolean): InvoiceRoomLine {
@@ -236,6 +245,7 @@ export function buildInvoiceSnapshot(opts: BuildInvoiceOpts): InvoiceSnapshot {
     payments,
     footnotes,
     issuedAt: opts.issuedAt,
+    quoteCompare: opts.quoteCompare ?? null,
   };
 }
 

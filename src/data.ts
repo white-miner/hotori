@@ -1778,6 +1778,15 @@ import {
   formatInvoiceNumber,
   parseInvoiceYear,
 } from "../shared/invoiceDoc";
+import {
+  type DamageDoc,
+  type DamageDraft,
+  type DamageSnapshot,
+  damageTotal,
+  freezeDamageSnapshot,
+  normalizeDamageLines,
+  validateDamageDraft,
+} from "../shared/damageDoc";
 
 interface QuoteRow {
   id: string;
@@ -2084,5 +2093,117 @@ export function useInvoiceIssues(hotelId: string) {
   );
 
   return { list, error, refresh, issue };
+}
+
+// ---------- 손해내역서 (발급 P1.2b) ----------
+
+interface DamageRow {
+  id: string;
+  hotel_id: string;
+  status: string;
+  booking_id: string | null;
+  guest_name: string;
+  guest_phone: string;
+  room_no: string;
+  type_label: string;
+  notes: string;
+  lines: unknown;
+  total: number;
+  snapshot: unknown;
+  issued_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const DAMAGE_COLS =
+  "id,hotel_id,status,booking_id,guest_name,guest_phone,room_no,type_label,notes,lines,total,snapshot,issued_at,created_by,created_at,updated_at";
+
+function fromDamageRow(r: DamageRow): DamageDoc {
+  const lines = normalizeDamageLines(r.lines);
+  return {
+    id: r.id,
+    hotelId: r.hotel_id,
+    status: r.status === "issued" ? "issued" : "draft",
+    bookingId: r.booking_id,
+    guestName: r.guest_name ?? "",
+    guestPhone: r.guest_phone ?? "",
+    roomNo: r.room_no ?? "",
+    typeLabel: r.type_label ?? "",
+    notes: r.notes ?? "",
+    lines,
+    total: r.total ?? damageTotal(lines),
+    snapshot: (r.snapshot as DamageSnapshot) ?? null,
+    issuedAt: r.issued_at,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function queryDamageIssues(hotelId: string): Promise<DamageDoc[]> {
+  const { data, error } = await supabase
+    .from("damage_issues")
+    .select(DAMAGE_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return ((data as DamageRow[]) ?? []).map(fromDamageRow);
+}
+
+export function useDamageIssues(hotelId: string) {
+  const [list, setList] = useState<DamageDoc[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setList(await queryDamageIssues(hotelId));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "손해내역서를 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const issue = useCallback(
+    async (draft: DamageDraft): Promise<DamageDoc> => {
+      const v = validateDamageDraft(draft);
+      if (v) throw new Error(v);
+      const issuedAt = new Date().toISOString();
+      const snapshot = freezeDamageSnapshot(draft, issuedAt);
+      const { data, error } = await supabase
+        .from("damage_issues")
+        .insert({
+          hotel_id: hotelId,
+          status: "issued",
+          booking_id: draft.bookingId,
+          guest_name: snapshot.guestName,
+          guest_phone: snapshot.guestPhone,
+          room_no: snapshot.roomNo,
+          type_label: snapshot.typeLabel,
+          notes: snapshot.notes,
+          lines: snapshot.lines,
+          total: snapshot.total,
+          snapshot,
+          issued_at: issuedAt,
+        })
+        .select(DAMAGE_COLS)
+        .single();
+      if (error) throw error;
+      const saved = fromDamageRow(data as DamageRow);
+      setList((cur) => [saved, ...(cur ?? [])]);
+      return saved;
+    },
+    [hotelId],
+  );
+
+  const remove = useCallback(async (doc: DamageDoc) => {
+    const { error } = await supabase.from("damage_issues").delete().eq("id", doc.id);
+    if (error) throw error;
+    setList((cur) => (cur ?? []).filter((x) => x.id !== doc.id));
+  }, []);
+
+  return { list, error, refresh, issue, remove };
 }
 
