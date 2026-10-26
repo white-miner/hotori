@@ -13,11 +13,14 @@ import {
 } from "react";
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardPaste,
   Eraser,
   Link2,
   LoaderCircle,
   BookmarkPlus,
+  Settings,
   X,
 } from "lucide-react";
 import {
@@ -105,7 +108,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const [progressStep, setProgressStep] = useState(0);
   const [progressTotal, setProgressTotal] = useState(0);
   const [summary, setSummary] = useState<MountSummary | null>(null);
+  /** Paste band open; auto-collapses when preview first gains rows (Option A). */
+  const [pasteOpen, setPasteOpen] = useState(true);
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const prevRowsLen = useRef(0);
 
   const dismissSummary = useCallback(() => {
     if (summaryTimer.current) {
@@ -120,6 +127,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       if (summaryTimer.current) clearTimeout(summaryTimer.current);
     };
   }, []);
+
+  // Auto-collapse paste after parse; reopen when workspace cleared.
+  useEffect(() => {
+    if (rows.length > 0 && prevRowsLen.current === 0) setPasteOpen(false);
+    if (rows.length === 0 && prevRowsLen.current > 0) setPasteOpen(true);
+    prevRowsLen.current = rows.length;
+  }, [rows.length]);
+
+  const focusPaste = () => {
+    setPasteOpen(true);
+    requestAnimationFrame(() => taRef.current?.focus());
+  };
 
   const profile = profileId ? profileById(profileId) : undefined;
   const platformId = profile ? matchPlatformId(profile, s) : null;
@@ -510,88 +529,145 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         {tabs}
         {banner}
         <header className="smart-reg-head">
-          <h1>스마트 등록</h1>
-          <p className="sub">파트너센터 예약목록을 붙여넣으면 미배정으로 올려요. 채널 API 없음.</p>
-          <a className="smart-reg-alias-link" href="#/settings/type-aliases">
-            <Link2 size={14} strokeWidth={2.2} aria-hidden />
-            설정 · 타입 매칭
-          </a>
+          <div className="smart-reg-head-row">
+            <div className="smart-reg-head-text">
+              <h1>스마트 등록</h1>
+              <p className="sub">파트너센터 예약목록을 붙여넣으면 미배정으로 올려요. 채널 API 없음.</p>
+            </div>
+            <div className="smart-reg-head-actions">
+              <a className="btn sm line" href="#/settings">
+                <Settings size={14} strokeWidth={2.2} aria-hidden />
+                설정
+              </a>
+              <a className="btn sm line" href="#/settings/type-aliases">
+                <Link2 size={14} strokeWidth={2.2} aria-hidden />
+                타입 매칭
+              </a>
+            </div>
+          </div>
         </header>
 
-        <div className="smart-reg-panes">
-          <aside className="smart-reg-paste">
-            <div className="smart-reg-paste-head">
-              <label className="smart-reg-paste-label" htmlFor="smart-reg-ta">
-                <ClipboardPaste size={16} strokeWidth={2.2} aria-hidden />
-                붙여넣기
-              </label>
+        <div className="smart-reg-stack">
+          <section
+            className={"smart-reg-paste" + (pasteOpen ? "" : " is-collapsed")}
+            aria-label="붙여넣기"
+          >
+            <div className="smart-reg-paste-toolbar">
+              <div className="smart-reg-paste-tools">
+                <button
+                  type="button"
+                  className="btn sm line"
+                  disabled={readOnly || busy || uploadPhase !== "idle"}
+                  onClick={focusPaste}
+                  title="붙여넣기 칸으로 이동"
+                >
+                  <ClipboardPaste size={14} strokeWidth={2.2} aria-hidden />
+                  붙여넣기
+                </button>
+                <button
+                  type="button"
+                  className="btn sm line"
+                  disabled={readOnly || busy || uploadPhase !== "idle" || (!paste.trim() && !rows.length)}
+                  onClick={() => clearWorkspace()}
+                  title="붙여넣기와 미리보기를 비워요"
+                >
+                  <Eraser size={14} strokeWidth={2.2} aria-hidden />
+                  새 작성
+                </button>
+              </div>
+              {rows.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn sm ghost"
+                  onClick={() => setPasteOpen((o) => !o)}
+                  aria-expanded={pasteOpen}
+                >
+                  {pasteOpen ? (
+                    <>
+                      <ChevronUp size={14} strokeWidth={2.2} aria-hidden />
+                      접기
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown size={14} strokeWidth={2.2} aria-hidden />
+                      펼치기
+                    </>
+                  )}
+                </button>
+              ) : null}
+            </div>
+
+            {!pasteOpen && rows.length > 0 ? (
               <button
                 type="button"
-                className="smart-reg-clear"
-                disabled={readOnly || busy || uploadPhase !== "idle" || (!paste.trim() && !rows.length)}
-                onClick={() => clearWorkspace()}
-                title="붙여넣기와 미리보기를 비워요"
+                className="smart-reg-paste-strip"
+                onClick={() => setPasteOpen(true)}
               >
-                <Eraser size={14} strokeWidth={2.2} aria-hidden />
-                새 작성
+                <ClipboardPaste size={14} strokeWidth={2.2} aria-hidden />
+                {paste.trim().length.toLocaleString("ko-KR")}자 붙여넣음 · 펼치기
               </button>
-            </div>
-            <textarea
-              id="smart-reg-ta"
-              className="inp smart-reg-ta"
-              value={paste}
-              onChange={(e) => onPasteChange(e.target.value)}
-              onPaste={onPasteEvent}
-              placeholder={"예약번호\t예약자\t연락처\t객실타입\t체크인\t체크아웃\t박수\t판매금액\t상태\n…"}
-              spellCheck={false}
-              disabled={readOnly || busy}
-              rows={12}
-            />
-            {(detectWeak || !profileId) && paste.trim() ? (
-              <div className="smart-reg-chip-block">
-                <div className="sub">플랫폼 {detectWeak ? "(자동인식 약함 — 골라 주세요)" : ""}</div>
-                <ChipGroup scroll>
-                  {PLATFORM_PROFILES.map((p) => (
-                    <Chip
-                      key={p.id}
-                      sm
-                      active={profileId === p.id}
-                      tone={p.active ? "info" : undefined}
-                      onClick={() => onPickProfile(p.id)}
-                      disabled={busy}
-                    >
-                      {p.label}
-                      {!p.active ? " · 미검증" : ""}
+            ) : null}
+
+            <div className="smart-reg-paste-body" hidden={!pasteOpen}>
+              <textarea
+                ref={taRef}
+                id="smart-reg-ta"
+                className="inp smart-reg-ta"
+                value={paste}
+                onChange={(e) => onPasteChange(e.target.value)}
+                onPaste={onPasteEvent}
+                placeholder={"예약번호\t예약자\t연락처\t객실타입\t체크인\t체크아웃\t박수\t판매금액\t상태\n…"}
+                spellCheck={false}
+                disabled={readOnly || busy}
+                rows={8}
+                aria-label="붙여넣기"
+              />
+              {(detectWeak || !profileId) && paste.trim() ? (
+                <div className="smart-reg-chip-block">
+                  <div className="sub">플랫폼 {detectWeak ? "(자동인식 약함 — 골라 주세요)" : ""}</div>
+                  <ChipGroup scroll>
+                    {PLATFORM_PROFILES.map((p) => (
+                      <Chip
+                        key={p.id}
+                        sm
+                        active={profileId === p.id}
+                        tone={p.active ? "info" : undefined}
+                        onClick={() => onPickProfile(p.id)}
+                        disabled={busy}
+                      >
+                        {p.label}
+                        {!p.active ? " · 미검증" : ""}
+                      </Chip>
+                    ))}
+                  </ChipGroup>
+                </div>
+              ) : profile ? (
+                <div className="smart-reg-chip-block">
+                  <ChipGroup>
+                    <Chip sm active tone="info" onClick={() => setDetectWeak(true)}>
+                      {profile.label}
+                      {platformId ? "" : " · 설정 미연결"}
                     </Chip>
-                  ))}
-                </ChipGroup>
-              </div>
-            ) : profile ? (
-              <div className="smart-reg-chip-block">
-                <ChipGroup>
-                  <Chip sm active tone="info" onClick={() => setDetectWeak(true)}>
-                    {profile.label}
-                    {platformId ? "" : " · 설정 미연결"}
-                  </Chip>
-                  <Chip sm onClick={() => setDetectWeak(true)} disabled={busy}>
-                    변경
-                  </Chip>
-                </ChipGroup>
-              </div>
-            ) : null}
-            {parseErr ? <div className="err">{parseErr}</div> : null}
-            {!platformId && profile && !rows.some((r) => r.platformId) ? (
-              <div className="err">설정 → 플랫폼에 「{profile.label}」을 추가해 주세요.</div>
-            ) : null}
-            {rows.some((r) => r.nestedChannelUnmatched) ? (
-              <div className="sub">
-                중첩 채널 미등록 → 붙여넣기 프로필({profile?.label})로 올려요. 미리보기에 원문 채널이 보여요.{" "}
-                <a className="smart-reg-alias-link" href="#/settings/plats">
-                  설정에서 플랫폼 추가
-                </a>
-              </div>
-            ) : null}
-          </aside>
+                    <Chip sm onClick={() => setDetectWeak(true)} disabled={busy}>
+                      변경
+                    </Chip>
+                  </ChipGroup>
+                </div>
+              ) : null}
+              {parseErr ? <div className="err">{parseErr}</div> : null}
+              {!platformId && profile && !rows.some((r) => r.platformId) ? (
+                <div className="err">설정 → 플랫폼에 「{profile.label}」을 추가해 주세요.</div>
+              ) : null}
+              {rows.some((r) => r.nestedChannelUnmatched) ? (
+                <div className="sub">
+                  중첩 채널 미등록 → 붙여넣기 프로필({profile?.label})로 올려요. 미리보기에 원문 채널이 보여요.{" "}
+                  <a className="smart-reg-alias-link" href="#/settings/plats">
+                    설정에서 플랫폼 추가
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          </section>
 
           <section className="smart-reg-preview" aria-label="미리보기">
             <div className="smart-reg-preview-bar">
@@ -675,7 +751,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   {!rows.length ? (
                     <tr>
                       <td colSpan={9} className="smart-reg-empty">
-                        왼쪽(또는 위)에 표를 붙여넣으면 여기에 미리보기가 나타나요.
+                        위에 표를 붙여넣으면 여기에 미리보기가 나타나요.
                       </td>
                     </tr>
                   ) : (
