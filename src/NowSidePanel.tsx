@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock, LogIn, Undo2 } from "lucide-react";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, Undo2 } from "lucide-react";
+import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
+import StayConfirmLetter from "./StayConfirmLetter";
 import {
   canCheckOut,
   canEndDayuse,
@@ -70,6 +72,8 @@ const MODE_LABEL: Record<SideMode, string> = {
 
 interface Props {
   today: string;
+  /** hotels.name · 숙박확인서 상호 fallback */
+  hotelName: string;
   s: HotelSettings;
   L: L;
   unassigned: Booking[];
@@ -140,6 +144,7 @@ interface Props {
 
 export default function NowSidePanel({
   today,
+  hotelName,
   s,
   L,
   unassigned,
@@ -188,6 +193,7 @@ export default function NowSidePanel({
   const [opsQuery, setOpsQuery] = useState("");
   const [outZoneOpen, setOutZoneOpen] = useState(false);
   const [cleanAsk, setCleanAsk] = useState<Booking | null>(null);
+  const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
 
   const opsMeta = (b: Booking) => {
     const p = L.plats.get(b.platformId);
@@ -718,6 +724,18 @@ export default function NowSidePanel({
                         <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
                           {EDIT_COPY}
                         </button>
+                        {b.kind === "stay" ? (
+                          <button
+                            type="button"
+                            className="btn sm line"
+                            disabled={moving}
+                            onClick={() => setStayConfirm(b)}
+                            aria-label={STAY_CONFIRM_COPY}
+                          >
+                            <FileText size={14} strokeWidth={2.2} aria-hidden />
+                            {STAY_CONFIRM_COPY}
+                          </button>
+                        ) : null}
                         {f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
                           <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
                             {coBusy === b.id ? "처리 중…" : "퇴실처리"}
@@ -970,6 +988,15 @@ export default function NowSidePanel({
             onSetNoClean(cleanAsk, next);
             setCleanAsk(null);
           }}
+        />
+      ) : null}
+      {stayConfirm && stayConfirm.kind === "stay" ? (
+        <StayConfirmLetter
+          booking={stayConfirm}
+          hotelName={hotelName}
+          s={s}
+          today={today}
+          onClose={() => setStayConfirm(null)}
         />
       ) : null}
     </aside>

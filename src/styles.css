@@ -2360,7 +2360,40 @@ label.ck input[type="checkbox"] {
   body.print-exec .exec-tbl tfoot th { border-top-color: #000; }
   body.print-exec .exec-sec { break-inside: avoid; page-break-inside: avoid; }
   body.print-exec .exec-foot { border-top-color: #000; }
+  /* 숙박확인서 */
+  body.print-stay-confirm * { visibility: hidden !important; }
+  body.print-stay-confirm .stay-confirm-print,
+  body.print-stay-confirm .stay-confirm-print * { visibility: visible !important; }
+  body.print-stay-confirm .stay-confirm-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
+  body.print-stay-confirm .modal.stay-confirm { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; }
+  body.print-stay-confirm .stay-confirm-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 8mm 4mm; }
+  body.print-stay-confirm .noprint { display: none !important; }
 }
+/* 숙박확인서 (화면 미리보기) */
+.modal.stay-confirm { width: min(560px, 96vw); max-height: min(92vh, 820px); }
+.stay-confirm-print { color: var(--ink); padding: 8px 4px 16px; }
+.sc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; border-bottom: 1.5px solid var(--ink); padding-bottom: 12px; }
+.sc-hotel { font-size: 12.5px; line-height: 1.5; color: var(--ink2); flex: 1; min-width: 0; }
+.sc-trade { font-size: 16px; font-weight: 850; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 4px; }
+.sc-title { font-size: 22px; font-weight: 850; letter-spacing: -0.03em; margin: 0; white-space: nowrap; }
+.sc-body { margin: 0; display: grid; gap: 10px; }
+.sc-body > div { display: grid; grid-template-columns: 72px 1fr; gap: 8px; align-items: baseline; font-size: 14px; }
+.sc-body dt { margin: 0; font-size: 12px; font-weight: 700; color: var(--ink3); }
+.sc-body dd { margin: 0; font-weight: 650; }
+.sc-attest { margin: 28px 0 18px; font-size: 15px; font-weight: 700; text-align: center; letter-spacing: -0.01em; }
+.sc-issue { font-size: 13px; color: var(--ink2); margin-bottom: 28px; }
+.sc-sign { text-align: right; margin-top: 8px; }
+.sc-sign-trade { font-size: 15px; font-weight: 800; margin-bottom: 10px; }
+.sc-sign-rep { font-size: 14px; font-weight: 650; }
+.sc-seal { margin-left: 18px; color: var(--ink3); }
+.modal.stay-confirm .mf { flex-wrap: wrap; gap: 8px; }
+.modal.stay-confirm .mf .fine { flex: 1 1 100%; margin: 0 0 4px; }
+.hbiz { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.hbiz h4 { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: -0.02em; }
+.hbiz .sub { margin: 0; font-size: 12px; color: var(--ink3); line-height: 1.4; }
+.hbiz .opt .inp.sm { max-width: min(280px, 55vw); }
+.hbiz .opt.stack { align-items: flex-start; flex-direction: column; gap: 6px; }
+.hbiz .opt.stack .inp.sm { max-width: none; width: 100%; }
 /* 객실 캘린더 방 칸: 방 번호만 크게 (타입은 툴팁) */
 .cal-l.rm { gap: 7px; padding: 0 6px 0 9px; }
 .cal-l.rm b { font-size: 16px; font-weight: 850; max-width: none; overflow: visible; text-overflow: clip; letter-spacing: -0.02em; color: var(--ink); }
