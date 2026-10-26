@@ -39,11 +39,15 @@ import {
   buildPreviewRows,
   cancelDraftFromMatch,
   detectProfile,
+  isExistingReservationRow,
+  isFixBlockingRow,
+  isFixLabelRow,
   matchPlatformId,
   htmlTableToPlain,
   parsePasteTable,
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
+  previewRowStatusLabel,
   profileById,
   recomputeRowStatus,
   upsertTypeAlias,
@@ -66,7 +70,10 @@ interface Props {
 type MountSummary = {
   ok: number;
   cancelled: number;
+  /** True 수정필요 / blocked skips — excludes 기존예약 */
   skipped: number;
+  /** Unchanged Hotori matches (예약번호) — FO 「기존예약」 */
+  existing: number;
   failed: { reservationId: string; reason: string }[];
 };
 
@@ -80,13 +87,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function statusLabel(r: PreviewRow): string {
-  if (r.rowStatus === "ok") return "신규";
-  if (r.rowStatus === "cancel") return "예약취소";
-  if (r.rowStatus === "need_fix") return "수정필요";
-  if (r.rowStatus === "dup") return "중복스킵";
-  if (r.cancelGuard) return "입실·퇴실 — 수동";
-  // skip (and need_fix above) share FO label 「수정필요」 — enum stays skip
-  return "수정필요";
+  return previewRowStatusLabel(r);
 }
 
 export default function SmartRegister({ data, s, today, tabs, banner, readOnly = false, notify }: Props) {
@@ -245,10 +246,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const createTargets = rows.filter((r) => !r.skip && r.rowStatus === "ok");
   const cancelTargets = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
   const readyCount = createTargets.length + cancelTargets.length;
-  const skipCount = rows.filter(
-    (r) => r.skip || r.rowStatus === "skip" || r.rowStatus === "dup",
-  ).length;
-  const fixCount = rows.filter((r) => !r.skip && r.rowStatus === "need_fix").length;
+  const existingCount = rows.filter((r) => isExistingReservationRow(r)).length;
+  const dupCancelCount = rows.filter((r) => r.rowStatus === "dup" && r.pasteCancel).length;
+  const fixBlockingCount = rows.filter((r) => isFixBlockingRow(r)).length;
+  const fixLabelCount = rows.filter((r) => isFixLabelRow(r)).length;
   const actionableMissingPlatform = [...createTargets, ...cancelTargets].some((r) => !r.platformId);
 
   const mount = async () => {
@@ -262,8 +263,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       notify("설정에 맞는 플랫폼이 없어요. 설정에서 채널을 추가해 주세요.");
       return;
     }
-    if (fixCount > 0) {
-      notify(`수정필요 ${fixCount}건을 고치거나 건너뛴 뒤 올려 주세요.`);
+    if (fixBlockingCount > 0) {
+      notify(`수정필요 ${fixBlockingCount}건을 고치거나 건너뛴 뒤 올려 주세요.`);
       return;
     }
     const creates = rows.filter((r) => !r.skip && r.rowStatus === "ok");
@@ -352,8 +353,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       body: [
         creates.length ? `신규 ${creates.length}건` : null,
         cancels.length ? `예약취소 ${cancels.length}건` : null,
+        existingCount ? `기존예약 ${existingCount}건` : null,
         platNames.length ? `플랫폼 ${platNames.join("·")}` : `플랫폼 ${platformLabel}`,
-        skipCount ? `수정필요 ${skipCount}건` : null,
+        fixLabelCount ? `수정필요 ${fixLabelCount}건` : null,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -467,7 +469,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     const result: MountSummary = {
       ok: saved,
       cancelled,
-      skipped: skipCount,
+      skipped: fixLabelCount,
+      existing: existingCount,
       failed,
     };
     const elapsed = Date.now() - startedAt;
@@ -478,8 +481,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       `스마트 등록` +
         (saved ? ` 신규 ${saved}` : "") +
         (cancelled ? ` · 예약취소 ${cancelled}` : "") +
-        (!saved && !cancelled ? " 0건" : "") +
-        (skipCount ? ` · 수정필요 ${skipCount}` : "") +
+        (existingCount ? ` · 기존예약 ${existingCount}` : "") +
+        (!saved && !cancelled && !existingCount ? " 0건" : "") +
+        (fixLabelCount ? ` · 수정필요 ${fixLabelCount}` : "") +
         (failed.length ? ` · 실패 ${failed.length}` : ""),
     );
     // Full success → clear paste/preview for next date batch; keep summary for overlay.
@@ -596,9 +600,16 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   <>
                     {rows.length}행
                     {createTargets.length ? ` · 신규 ${createTargets.length}` : ""}
+                    {existingCount ? ` · 기존예약 ${existingCount}` : ""}
                     {cancelTargets.length ? ` · 예약취소 ${cancelTargets.length}` : ""}
-                    {!createTargets.length && !cancelTargets.length && readyCount === 0 ? " · 적용 0" : ""}
-                    {fixCount + skipCount ? ` · 수정필요 ${fixCount + skipCount}` : ""}
+                    {dupCancelCount ? ` · 중복스킵 ${dupCancelCount}` : ""}
+                    {!createTargets.length &&
+                    !cancelTargets.length &&
+                    !existingCount &&
+                    readyCount === 0
+                      ? " · 적용 0"
+                      : ""}
+                    {fixLabelCount ? ` · 수정필요 ${fixLabelCount}` : ""}
                   </>
                 ) : (
                   "미리보기"
@@ -612,7 +623,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   busy ||
                   uploadPhase !== "idle" ||
                   !readyCount ||
-                  !!fixCount ||
+                  !!fixBlockingCount ||
                   actionableMissingPlatform
                 }
                 onClick={() => void mount()}
@@ -634,7 +645,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <div className="smart-reg-summary" role="status">
                 신규 {summary.ok}
                 {summary.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
-                {` · 수정필요 ${summary.skipped}`}
+                {summary.existing ? ` · 기존예약 ${summary.existing}` : ""}
+                {summary.skipped ? ` · 수정필요 ${summary.skipped}` : ""}
                 {summary.failed.length
                   ? ` · 실패 ${summary.failed.length} (${summary.failed
                       .slice(0, 5)
@@ -877,7 +889,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   <p className="smart-reg-upload-done">
                     신규 {summary?.ok ?? 0}
                     {summary?.cancelled ? ` · 예약취소 ${summary.cancelled}` : ""}
-                    {summary ? ` · 수정필요 ${summary.skipped}` : ""}
+                    {summary?.existing ? ` · 기존예약 ${summary.existing}` : ""}
+                    {summary?.skipped ? ` · 수정필요 ${summary.skipped}` : ""}
                     {summary?.failed.length ? ` · 실패 ${summary.failed.length}` : ""}
                   </p>
                   {summary?.failed.length ? (
