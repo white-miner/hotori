@@ -342,7 +342,23 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                 <Plus size={14} /> 단체에 객실 추가
               </button>
             ) : null}
-            <button type="button" className="btn line sm" onClick={() => window.print()}>
+            <button
+              type="button"
+              className="btn line sm"
+              onClick={() => {
+                document.body.classList.add("print-settle");
+                let cleaned = false;
+                const done = () => {
+                  if (cleaned) return;
+                  cleaned = true;
+                  document.body.classList.remove("print-settle");
+                  window.removeEventListener("afterprint", done);
+                };
+                window.addEventListener("afterprint", done);
+                window.print();
+                window.setTimeout(done, 1500);
+              }}
+            >
               <Printer size={14} /> 저장(이미지/PDF)
             </button>
           </div>

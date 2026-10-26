@@ -2259,17 +2259,56 @@ label.ck input[type="checkbox"] {
 .sh-add .inp.price.sm { flex: none; width: 130px; }
 .sh-foot { font-size: 11px; color: var(--ink4); margin: 10px 0 12px; }
 .modal.settle .paybal { margin-bottom: 12px; }
+.print-only { display: none; }
+.ledger-print-head { margin-bottom: 12px; color: #000; }
+.ledger-print-head .lph-k { font-size: 12px; font-weight: 700; color: #444; margin-bottom: 2px; }
+.ledger-print-head h1 { font-size: 18px; font-weight: 850; letter-spacing: -0.02em; margin: 0 0 6px; }
+.ledger-print-head .lph-meta,
+.ledger-print-head .lph-filters,
+.ledger-print-head .lph-sum,
+.ledger-print-foot { font-size: 11.5px; line-height: 1.45; color: #222; }
+.ledger-print-head .lph-sum { margin-top: 8px; padding: 8px 10px; border: 1px solid #bbb; }
+.ledger-print-foot { margin-top: 10px; padding-top: 8px; border-top: 1.5px solid #000; font-weight: 750; }
 @media print {
-  @page { size: A4; margin: 14mm; }
-  body * { visibility: hidden !important; }
-  .settle-print, .settle-print * { visibility: visible !important; }
-  .settle-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
-  .modal.settle { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; }
-  .settle-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; }
-  .settle-print .noprint, .noprint { display: none !important; }
-  .sh-payer { background: none; border: 1px solid #bbb; }
-  .sh-tbl td, .sh-tbl th { color: #000 !important; }
-  .sh-tbl tr.left.due td { color: #000 !important; }
+  @page { size: A4; margin: 12mm; }
+  /* 단체 정산서 */
+  body.print-settle * { visibility: hidden !important; }
+  body.print-settle .settle-print,
+  body.print-settle .settle-print * { visibility: visible !important; }
+  body.print-settle .settle-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
+  body.print-settle .modal.settle { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; }
+  body.print-settle .settle-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; }
+  body.print-settle .settle-print .noprint,
+  body.print-settle .noprint { display: none !important; }
+  body.print-settle .sh-payer { background: none; border: 1px solid #bbb; }
+  body.print-settle .sh-tbl td,
+  body.print-settle .sh-tbl th { color: #000 !important; }
+  body.print-settle .sh-tbl tr.left.due td { color: #000 !important; }
+  /* 장부 이용내역 */
+  body.print-ledger * { visibility: hidden !important; }
+  body.print-ledger .ledger-print,
+  body.print-ledger .ledger-print * { visibility: visible !important; }
+  body.print-ledger .ledger-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; }
+  body.print-ledger .noprint { display: none !important; }
+  body.print-ledger .print-only { display: block !important; }
+  body.print-ledger .ltable { background: none; border-radius: 0; padding: 0; }
+  body.print-ledger .lrow {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-radius: 0;
+    background: #fff !important;
+    padding: 5px 2px;
+    font-size: 10.5px;
+    gap: 4px;
+    border-bottom: 1px solid #ccc;
+    margin: 0;
+    cursor: default;
+  }
+  body.print-ledger .lrow + .lrow { margin-top: 0; }
+  body.print-ledger .lrow.lhead { font-size: 10px; font-weight: 700; border-bottom: 1.5px solid #000; padding-bottom: 6px; }
+  body.print-ledger .lgroup { break-inside: avoid; page-break-inside: avoid; }
+  body.print-ledger .stag { border: 1px solid #999; background: none !important; color: #000 !important; }
+  body.print-ledger .dueamt { color: #000 !important; }
 }
 /* 객실 캘린더 방 칸: 방 번호만 크게 (타입은 툴팁) */
 .cal-l.rm { gap: 7px; padding: 0 6px 0 9px; }
