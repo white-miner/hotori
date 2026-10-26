@@ -590,3 +590,50 @@ test("장부 일주일 입실현황: 대실·숙박·연박 · 취소·노쇼 �
   assert.deepEqual(counts.get("2026-10-20"), { dayuse: 0, stay: 0, multi: 1 });
   assert.deepEqual(counts.get("2026-10-19"), { dayuse: 0, stay: 0, multi: 0 });
 });
+
+test("객실 임시마감: freeRooms 제외 · stockTable 타입 −1", () => {
+  const held: HotelSettings = {
+    ...S,
+    roomHolds: [
+      {
+        id: "h1",
+        roomId: "r201",
+        from: "2026-10-20",
+        to: "2026-10-21",
+        note: "상담중",
+        createdAt: "t",
+      },
+    ],
+  };
+  const free = freeRooms(held, [], {
+    id: "new",
+    kind: "stay",
+    checkIn: "2026-10-20",
+    nights: 2,
+    startTime: null,
+    endTime: null,
+  });
+  assert.equal(free.has("r201"), false);
+  assert.equal(free.has("r202"), true);
+  assert.equal(remaining(held, [], "s", "2026-10-20"), 1); // 2실 − 홀드1
+  assert.equal(remaining(held, [], "s", "2026-10-21"), 1);
+  assert.equal(remaining(held, [], "s", "2026-10-22"), 2);
+  const freeAfter = freeRooms(held, [], {
+    id: "new",
+    kind: "stay",
+    checkIn: "2026-10-22",
+    nights: 1,
+    startTime: null,
+    endTime: null,
+  });
+  assert.equal(freeAfter.has("r201"), true);
+});
+
+test("normalizeSettings: roomHolds 보존", () => {
+  const n = normalizeSettings({
+    ...S,
+    roomHolds: [{ id: "x", roomId: "r201", from: "2026-10-26", to: "2026-10-26", note: "예비", createdAt: "t" }],
+  });
+  assert.equal(n.roomHolds.length, 1);
+  assert.equal(n.roomHolds[0].note, "예비");
+});

@@ -12,6 +12,7 @@ import {
   normalizeTypeRates,
   normalizeTypeStopSell,
 } from "./salesCalendar";
+import { type RoomHold, normalizeRoomHolds, roomsHeldForStay } from "./roomHold";
 import {
   DEFAULT_HOUR_FEE,
   type DayuseDefaults,
@@ -25,6 +26,8 @@ import {
   normalizeStayTimes,
   normalizeTiers,
 } from "./tiers";
+
+export type { RoomHold } from "./roomHold";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
 // 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
@@ -124,6 +127,11 @@ export interface HotelSettings {
    * See docs/smart-register-type-alias-plan.md
    */
   typeAliases: TypeAlias[];
+  /**
+   * 객실 임시마감(홀드): 호실 × 숙박일 구간. 게스트 예약 아님.
+   * See docs/room-temporary-hold-plan.md
+   */
+  roomHolds: RoomHold[];
 }
 
 /** OTA platformTypeName → Hotori typeId (per Settings platform). */
@@ -298,6 +306,7 @@ export function emptySettings(): HotelSettings {
     typeRateOverrides: {},
     typeStopSell: {},
     typeAliases: [],
+    roomHolds: [],
   };
 }
 export function normalizeSettings(raw: unknown): HotelSettings {
@@ -352,6 +361,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeRateOverrides: normalizeTypeRateOverrides((s as { typeRateOverrides?: unknown }).typeRateOverrides),
     typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
     typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
+    roomHolds: normalizeRoomHolds((s as { roomHolds?: unknown }).roomHolds),
   };
 }
 
@@ -1016,6 +1026,19 @@ export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[
       }
     }
   }
+  // 객실 임시마감: 그 방 타입 × 홀드 숙박일 −1 (게스트 예약과 별개)
+  for (const h of s.roomHolds ?? []) {
+    const room = rooms.get(h.roomId);
+    if (!room?.typeId) continue;
+    if (buildingId && room.buildingId !== buildingId) continue;
+    const row = table.get(room.typeId);
+    if (!row) continue;
+    let d = h.from;
+    while (d <= h.to) {
+      if (dateSet.has(d)) row.set(d, (row.get(d) ?? 0) - 1);
+      d = addDays(d, 1);
+    }
+  }
   return table;
 }
 export function remaining(s: HotelSettings, bookings: Booking[], typeId: string, date: string): number {
@@ -1299,6 +1322,10 @@ export function freeRooms(
     } else if (b.kind === "dayuse" && b.checkIn === draft.checkIn && timesOverlap(b, draft as Booking)) {
       free.delete(b.roomId);
     }
+  }
+  // 객실 임시마감: 숙박 구간이 겹치면 배정 불가 (대실은 MVP 미차단 — 당일 시간 겹침 Next)
+  if (draft.kind === "stay" && draft.nights && draft.nights > 0) {
+    for (const rid of roomsHeldForStay(s.roomHolds ?? [], draft.checkIn, draft.nights)) free.delete(rid);
   }
   return free;
 }
