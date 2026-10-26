@@ -50,6 +50,7 @@ import { PlatBadge, TypeBadge, lookups } from "./ui";
 import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
 import { downloadLedgerXlsx } from "../shared/ledgerExport";
 import { hasProAccess } from "../shared/proGates";
+import { methodSales, typeSalesByType } from "../shared/execSummary";
 
 interface Props {
   data: HotelData;
@@ -61,7 +62,7 @@ interface Props {
   onOpen: (b: Booking, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
   notify: (m: string) => void;
 }
-type LTab = "bookings" | "expenses";
+type LTab = "bookings" | "expenses" | "summary";
 const LT_KEY = "hotori.ledgerTab";
 type StatusF = "all" | "active" | "void";
 type PhaseF = "all" | StayPhase;
@@ -69,15 +70,19 @@ type PeriodChip = "today" | "7" | "30" | "custom";
 type MoneyBasis = "sale" | "payout";
 const MB_KEY = "hotori.moneyBasis";
 
+function readLedgerTab(): LTab {
+  try {
+    const v = localStorage.getItem(LT_KEY);
+    if (v === "expenses" || v === "summary" || v === "bookings") return v;
+  } catch {
+    /* 개인 정보 보호 모드 */
+  }
+  return "bookings";
+}
+
 export default function Ledger({ data, hotelId, today, query, setQuery, searchRef, onOpen, notify }: Props) {
-  // 장부 탭: 예약 · 지출 (기기마다 마지막 탭 기억)
-  const [tab, setTabRaw] = useState<LTab>(() => {
-    try {
-      return localStorage.getItem(LT_KEY) === "expenses" ? "expenses" : "bookings";
-    } catch {
-      return "bookings";
-    }
-  });
+  // 장부 탭: 예약 · 지출 · 경영 요약 (기기마다 마지막 탭 기억)
+  const [tab, setTabRaw] = useState<LTab>(readLedgerTab);
   const setTab = (x: LTab) => {
     setTabRaw(x);
     try {
@@ -616,6 +621,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const money = moneySummary(byPayout ? poRooms.amount - cardFee : roomsAll, shopSum?.amount ?? 0, shopSum?.pay.cash ?? 0, exT, payCash);
   const categories = s.expenseCategories.map((c) => c.name.trim()).filter(Boolean);
   const listTotal = act.reduce((n, b) => n + b.price, 0);
+  const typeSales = typeSalesByType(rows ?? [], from, to, usableTypes(s.types));
+  const payMethods = methodSales(paySum ?? { card: 0, cash: 0, transfer: 0, credit: 0, total: 0 }, shopSum?.pay);
+  const exCats = [...exT.byCategory.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"));
   const printFilters = (() => {
     const bits: string[] = [];
     if (plat) bits.push(L.plats.get(plat)?.name ?? "플랫폼");
@@ -633,16 +641,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     if (q) bits.push(`검색「${query.trim()}」`);
     return bits;
   })();
-  const printLedger = () => {
+  const runPrint = (mode: "print-ledger" | "print-exec", title: string, before?: () => void) => {
     const prevTitle = document.title;
-    document.title = `${data.hotel!.name || "호텔"}_장부_${from}_${to}`;
-    flushSync(() => setGOpen(new Set(groups.keys())));
-    document.body.classList.add("print-ledger");
+    document.title = title;
+    before?.();
+    document.body.classList.add(mode);
     let cleaned = false;
     const done = () => {
       if (cleaned) return;
       cleaned = true;
-      document.body.classList.remove("print-ledger");
+      document.body.classList.remove(mode);
       document.title = prevTitle;
       window.removeEventListener("afterprint", done);
     };
@@ -650,6 +658,19 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     window.print();
     window.setTimeout(done, 1500);
   };
+  const printLedger = () => {
+    runPrint("print-ledger", `${data.hotel!.name || "호텔"}_장부_${from}_${to}`, () => {
+      flushSync(() => setGOpen(new Set(groups.keys())));
+    });
+  };
+  const printExec = () => {
+    runPrint("print-exec", `${data.hotel!.name || "호텔"}_경영요약_${from}_${to}`);
+  };
+  const printedAt = (() => {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  })();
 
   return (
     <main className="page ledger">
@@ -662,6 +683,10 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             {tab === "bookings" ? (
               <>
                 {list.length}건 · 숙박 {nights}박 <span className="muted">· 입실일 {dayLabel(from)} ~ {dayLabel(to)} · 박수는 취소·노쇼 제외 · 매출은 노쇼 포함, 환불은 퇴실한 날</span>
+              </>
+            ) : tab === "summary" ? (
+              <>
+                경영 요약 <span className="muted">· {from} ~ {to} · 타입별 판매 · 카드/현금/이체 · 매점 · 지출</span>
               </>
             ) : (
               <>
@@ -776,6 +801,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <button role="tab" aria-selected={tab === "expenses"} className={tab === "expenses" ? "on" : ""} onClick={() => setTab("expenses")}>
             지출
           </button>
+          <button role="tab" aria-selected={tab === "summary"} className={tab === "summary" ? "on" : ""} onClick={() => setTab("summary")}>
+            경영 요약
+          </button>
         </div>
       </div>
       {creditsOpen ? (
@@ -839,6 +867,210 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           onOpen={(e) => setExEdit(e)}
           onAdd={() => setExEdit("new")}
         />
+      ) : tab === "summary" ? (
+        <>
+          <div className="filters noprint">
+            <div className="chips period-chips" role="group" aria-label="조회 기간">
+              {(
+                [
+                  ["today", "오늘"],
+                  ["7", "7일"],
+                  ["30", "30일"],
+                  ["custom", "사용자"],
+                ] as const
+              ).map(([k, l]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`chip sm ${period === k ? "on" : ""}`}
+                  aria-pressed={period === k}
+                  onClick={() => (k === "custom" ? setPeriod("custom") : applyPeriod(k))}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <label className="fdate">
+              기간
+              <input type="date" value={from} onChange={(e) => e.target.value && setFromCustom(e.target.value)} />~
+              <input type="date" value={to} onChange={(e) => e.target.value && setToCustom(e.target.value)} />
+            </label>
+            <button type="button" className="btn line sm" onClick={printExec} aria-label="경영 요약 인쇄">
+              <Printer size={14} /> 인쇄
+            </button>
+            <button
+              type="button"
+              className="btn line sm"
+              onClick={printExec}
+              title="인쇄 창에서「PDF로 저장」을 고르세요"
+              aria-label="경영 요약 PDF로 저장"
+            >
+              <FileDown size={14} /> PDF
+            </button>
+          </div>
+          <div className="exec-print">
+            <header className="exec-head">
+              <div className="lph-k">{data.hotel!.name || "호텔"}</div>
+              <h1>경영 요약</h1>
+              <div className="lph-meta">
+                기간 {from} ~ {to}
+                <span className="muted noprint"> · 출력 시 시각 포함</span>
+                <span className="print-only"> · 출력 {printedAt}</span>
+              </div>
+              <div className="exec-tot">
+                매출 <b>{won(money.sales)}</b> − 지출 <b>{won(money.expense)}</b> = 남은 금액{" "}
+                <b className={money.left < 0 ? "neg" : ""}>{won(money.left)}</b>
+                <span className="muted"> · 현금 시재 {won(money.cash)}</span>
+              </div>
+            </header>
+
+            <section className="exec-sec" aria-label="타입별 객실 판매">
+              <h2>타입별 객실 판매</h2>
+              <table className="exec-tbl">
+                <thead>
+                  <tr>
+                    <th>타입</th>
+                    <th className="r">판매</th>
+                    <th className="r">숙박</th>
+                    <th className="r">대실</th>
+                    <th className="r">박수</th>
+                    <th className="r">순매출</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {typeSales.rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="muted">
+                        등록된 타입이 없어요
+                      </td>
+                    </tr>
+                  ) : (
+                    typeSales.rows.map((r) => (
+                      <tr key={r.typeId}>
+                        <td>{r.label}</td>
+                        <td className="r num">{r.count}</td>
+                        <td className="r num">{r.stay}</td>
+                        <td className="r num">{r.dayuse}</td>
+                        <td className="r num">{r.nights}</td>
+                        <td className="r num">{won(r.net)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th>합계</th>
+                    <th className="r num">{typeSales.total.count}</th>
+                    <th className="r num">{typeSales.total.stay}</th>
+                    <th className="r num">{typeSales.total.dayuse}</th>
+                    <th className="r num">{typeSales.total.nights}</th>
+                    <th className="r num">{won(typeSales.total.net)}</th>
+                  </tr>
+                </tfoot>
+              </table>
+              <p className="exec-note muted">입실일 기준 · 취소 제외 · 노쇼 포함 · 환불은 중도퇴실 날</p>
+            </section>
+
+            <section className="exec-sec" aria-label="결제 수단별 매출">
+              <h2>카드 · 현금 · 이체</h2>
+              <div className="exec-grid3">
+                <div className="exec-metric">
+                  <span>카드</span>
+                  <b className="num">{won(payMethods.card)}</b>
+                </div>
+                <div className="exec-metric">
+                  <span>현금</span>
+                  <b className="num">{won(payMethods.cash)}</b>
+                </div>
+                <div className="exec-metric">
+                  <span>이체</span>
+                  <b className="num">{won(payMethods.transfer)}</b>
+                </div>
+              </div>
+              <p className="exec-note muted">
+                합계 {won(payMethods.total)}원 · 객실 받은 돈 카드 {won(payMethods.booking.card)} · 현금 {won(payMethods.booking.cash)} · 이체{" "}
+                {won(payMethods.booking.transfer)}
+                {payMethods.booking.credit > 0 ? ` · 잔액 사용 ${won(payMethods.booking.credit)}` : ""}
+                {payMethods.shop.total > 0
+                  ? ` · 매점 카드 ${won(payMethods.shop.card)} · 현금 ${won(payMethods.shop.cash)}${payMethods.shop.none ? ` · 미지정 ${won(payMethods.shop.none)}` : ""}`
+                  : ""}
+              </p>
+            </section>
+
+            <section className="exec-sec" aria-label="매점 매출">
+              <h2>매점 매출</h2>
+              {shopSum ? (
+                <>
+                  <div className="exec-grid3">
+                    <div className="exec-metric">
+                      <span>매출</span>
+                      <b className="num">{won(shopSum.amount)}</b>
+                    </div>
+                    <div className="exec-metric">
+                      <span>판매 개수</span>
+                      <b className="num">{shopSum.count}</b>
+                    </div>
+                    <div className="exec-metric">
+                      <span>결제</span>
+                      <b className="num">{payLine(shopSum.pay, won)}</b>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="muted">매점 매출을 불러오는 중…</p>
+              )}
+            </section>
+
+            <section className="exec-sec" aria-label="지출">
+              <h2>지출</h2>
+              <div className="exec-grid3">
+                <div className="exec-metric">
+                  <span>지출 합계</span>
+                  <b className="num">{won(exT.amount)}</b>
+                </div>
+                <div className="exec-metric">
+                  <span>건수</span>
+                  <b className="num">{exT.count}</b>
+                </div>
+                <div className="exec-metric">
+                  <span>수단</span>
+                  <b className="num">
+                    카드 {won(exT.card)} · 현금 {won(exT.cash)} · 이체 {won(exT.transfer)}
+                  </b>
+                </div>
+              </div>
+              {exT.unpaidCount > 0 ? (
+                <p className="exec-note">
+                  미수금 {exT.unpaidCount}건 · {won(exT.unpaid)}원
+                </p>
+              ) : null}
+              {exCats.length ? (
+                <table className="exec-tbl compact">
+                  <thead>
+                    <tr>
+                      <th>분류</th>
+                      <th className="r">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exCats.map(([cat, amt]) => (
+                      <tr key={cat}>
+                        <td>{cat || "기타"}</td>
+                        <td className="r num">{won(amt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="muted">이 기간 지출이 없어요</p>
+              )}
+            </section>
+
+            <footer className="exec-foot">
+              매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 남은 금액 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
+            </footer>
+          </div>
+        </>
       ) : (
         <>
       <section className="lweek noprint" aria-label="일주일 입실현황">
