@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { saveFailMessage } from "../shared/errors";
-import { Check, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
@@ -47,6 +47,8 @@ import { ExpenseList, ExpenseModal } from "./Expenses";
 import { askConfirm } from "./ConfirmDialog";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 import { cardFeeOf, payoutOf, payoutRevenue, payoutSummary, payoutValue, payoutWaiting } from "../shared/fee";
+import { downloadLedgerXlsx } from "../shared/ledgerExport";
+import { hasProAccess } from "../shared/proGates";
 
 interface Props {
   data: HotelData;
@@ -934,6 +936,29 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <option value="in-asc">입실 날짜 이른 순</option>
           <option value="rec">최근 기록·수정 순</option>
         </select>
+        {hasProAccess(data.hotel!.plan) ? (
+          <button
+            type="button"
+            className="btn line sm"
+            disabled={!list.length}
+            onClick={() =>
+              downloadLedgerXlsx(
+                list,
+                {
+                  platformName: (id) => L.plats.get(id)?.name ?? "?",
+                  typeLabel: (id) => {
+                    const t = L.types.get(id);
+                    return t ? typeLabel(t) : "?";
+                  },
+                  roomLabel: (b) => (!b.roomId ? "—" : isMoved(b) ? legsOf(b).map((l) => L.rooms.get(l.roomId ?? "")?.no ?? "?").join("→") : (L.roomLabel(b.roomId) ?? "?")),
+                },
+                `${data.hotel!.name || "호텔"}_장부_${from}_${to}.xlsx`,
+              )
+            }
+          >
+            <Download size={14} /> 엑셀로 내보내기
+          </button>
+        ) : null}
         <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
           잔금 남음
         </button>
@@ -993,7 +1018,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           ledgerItems.map((it) => (it.g ? renderGroup(it.g) : renderRow(it.b!, false)))
         )}
       </div>
-      <p className="fine pad">엑셀 내보내기는 Pro에서 제공할 예정이에요.</p>
+      {!hasProAccess(data.hotel!.plan) ? <p className="fine pad">엑셀 내보내기는 Pro에서 쓸 수 있어요.</p> : null}
         </>
       )}
       {settleId && allGroups.get(settleId) ? (

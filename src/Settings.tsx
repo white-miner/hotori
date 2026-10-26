@@ -43,6 +43,7 @@ import {
 } from "../shared/ledger";
 import { removeTypeAlias, upsertTypeAlias } from "../shared/smartRegister";
 import { type HotelData, type ShareState, hasShopSales, shareCreate, shareDisable, shareStatus, shareUrl } from "./data";
+import { hasProAccess } from "../shared/proGates";
 import { canAddShopItem, makeShopItem } from "../shared/shop";
 import { FitText, PALETTE, PlatBadge, floorPaint, TypeBadge, TypeLine, uid } from "./ui";
 
@@ -61,7 +62,7 @@ const NO_TYPE = "__none";
 
 /** 현황 공유 링크 (Pro): 직원이 로그인 없이 현황판을 보기만 해요 */
 function ShareCard({ hotelId, plan, notify }: { hotelId: string; plan: "free" | "pro"; notify: (m: string) => void }) {
-  const pro = plan === "pro";
+  const pro = hasProAccess(plan);
   const [st, setSt] = useState<ShareState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1276,7 +1277,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             매점 물품{" "}
             <span className="tag">
-              {s.shopItems.length}개{hotel.plan === "free" ? ` / ${FREE_SHOP_ITEM_LIMIT}개` : ""}
+              {s.shopItems.length}개{!hasProAccess(hotel.plan) ? ` / ${FREE_SHOP_ITEM_LIMIT}개` : ""}
             </span>
           </h3>
           <div className="sub">매점 화면에 이 순서대로 큰 칸으로 보여요. 분류를 적으면 같은 분류끼리 묶어요. 가격을 바꿔도 지난 매출은 그대로예요.</div>
