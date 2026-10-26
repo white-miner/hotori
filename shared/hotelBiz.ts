@@ -21,7 +21,9 @@ export const STAY_CONFIRM_COPY = "숙박확인서" as const;
 export const STAY_CONFIRM_COPY_EN = "Stay Confirmation" as const;
 
 /** Letter body language (modal toggle). FO chrome CTAs stay KR. */
-export type StayConfirmLang = "ko" | "en";
+export type PrintLang = "ko" | "en";
+/** @deprecated alias — use PrintLang */
+export type StayConfirmLang = PrintLang;
 
 export type StayConfirmStrings = {
   title: string;
@@ -125,6 +127,15 @@ const STAY_CONFIRM_EN: StayConfirmStrings = {
 
 export function stayConfirmStrings(lang: StayConfirmLang): StayConfirmStrings {
   return lang === "en" ? STAY_CONFIRM_EN : STAY_CONFIRM_KO;
+}
+
+/** EN letter uses ISO dates (unambiguous). KR keeps dayLabel (M/D(요일)). */
+export function printDateLabel(
+  lang: PrintLang,
+  date: string,
+  dayLabelKo: (d: string) => string,
+): string {
+  return lang === "en" ? date : dayLabelKo(date);
 }
 
 /** EN letter uses ISO dates (unambiguous). KR keeps dayLabel (M/D(요일)). */

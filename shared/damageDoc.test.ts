@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  damagePrintStrings,
+  damageRoomDisplay,
   damageTotal,
   emptyDamageLine,
   freezeDamageSnapshot,
@@ -60,4 +62,13 @@ test("normalizeDamageLines recovers bad input", () => {
   const n = normalizeDamageLines([{ id: "x", item: "문", description: "찍힘", amount: 10 }]);
   assert.equal(n[0]!.item, "문");
   assert.equal(n[0]!.amount, 10);
+});
+
+test("damagePrintStrings: ko/en titles + room display", () => {
+  assert.equal(damagePrintStrings("ko").title, "손해내역서");
+  assert.equal(damagePrintStrings("en").title, "Damage Assessment");
+  assert.match(damagePrintStrings("en").attest, /damage/i);
+  assert.equal(damageRoomDisplay("301", "ko", "호"), "301호");
+  assert.equal(damageRoomDisplay("301", "en", ""), "301");
+  assert.equal(damageRoomDisplay("미배정", "en", ""), "Unassigned");
 });

@@ -13,6 +13,7 @@ import {
   freezeQuoteSnapshot,
   lineAmount,
   quoteLinePrintLabel,
+  quotePrintStrings,
   quoteTotal,
   validateQuoteDraft,
 } from "../shared/quoteDoc";
@@ -22,9 +23,11 @@ import {
   dayLabel,
   hotelBizDisplayName,
   hotelBizHasAny,
+  printDateLabel,
   typeLabel,
   won,
   type HotelSettings,
+  type PrintLang,
 } from "../shared/ledger";
 import { askConfirm } from "./ConfirmDialog";
 
@@ -125,6 +128,8 @@ export default function QuoteLetter({
   const [doc, setDoc] = useState<QuoteDoc | null>(initial ?? null);
   const [draft, setDraft] = useState<QuoteDraft>(() => draftFromDoc(initial, today, defaultTypeId));
   const [err, setErr] = useState<string | null>(null);
+  const [lang, setLang] = useState<PrintLang>("ko");
+  const t = quotePrintStrings(lang);
   const locked = issued || doc?.status === "issued";
   const showRoomNos = locked ? !!(doc?.snapshot?.showRoomNos ?? doc?.showRoomNos) : draft.showRoomNos;
 
@@ -133,7 +138,7 @@ export default function QuoteLetter({
     return freezeQuoteSnapshot(draft, new Date().toISOString());
   }, [doc, draft]);
   const total = locked && doc?.snapshot ? doc.snapshot.total : quoteTotal(draft.lines);
-  const fileTitle = `${trade}_${QUOTE_COPY.title}_${body.clientName || body.title || "견적"}`;
+  const fileTitle = `${trade}_${t.title}_${body.clientName || body.title || (lang === "en" ? "Quote" : "견적")}`;
   const roomNoOf = (id: string) => allRooms(s).find((r) => r.id === id)?.no;
 
   const setLine = (id: string, patch: Partial<QuoteLine>) => {
@@ -206,9 +211,29 @@ export default function QuoteLetter({
     <div className="dim quote-dim" role="presentation" onClick={onClose}>
       <div className="modal quote-letter" role="dialog" aria-labelledby="quote-title" onClick={(e) => e.stopPropagation()}>
         <div className="mh noprint">
-          <h2 id="quote-title">{QUOTE_COPY.title}</h2>
+          <h2 id="quote-title">{t.title}</h2>
           {doc?.status === "issued" ? <span className="tag">{QUOTE_COPY.issued}</span> : null}
-          <button type="button" className="x" onClick={onClose} aria-label={QUOTE_COPY.close}>
+          <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "ko"}
+              className={lang === "ko" ? "on" : ""}
+              onClick={() => setLang("ko")}
+            >
+              {t.langKo}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "en"}
+              className={lang === "en" ? "on" : ""}
+              onClick={() => setLang("en")}
+            >
+              {t.langEn}
+            </button>
+          </div>
+          <button type="button" className="x" onClick={onClose} aria-label={t.close}>
             <X size={18} />
           </button>
         </div>
@@ -378,26 +403,30 @@ export default function QuoteLetter({
           </div>
         )}
 
-        <div className="quote-print">
+        <div className={`quote-print${lang === "en" ? " en" : ""}`}>
           <header className="sc-head">
             <div className="sc-hotel">
               <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? <div>사업자번호 {biz.businessNumber}</div> : null}
+              {biz.businessNumber ? (
+                <div>
+                  {t.bizNumber} {biz.businessNumber}
+                </div>
+              ) : null}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>
-                  {biz.phone ? `전화 ${biz.phone}` : null}
+                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
                   {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `대표 ${biz.representative}` : null}
+                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
                 </div>
               ) : null}
             </div>
-            <h1 className="sc-title">{QUOTE_COPY.title}</h1>
+            <h1 className="sc-title">{t.title}</h1>
           </header>
 
           <dl className="sc-body">
             <div>
-              <dt>{QUOTE_COPY.client}</dt>
+              <dt>{t.client}</dt>
               <dd>
                 {body.clientName || "—"}
                 {body.clientPhone ? ` · ${body.clientPhone}` : null}
@@ -405,11 +434,11 @@ export default function QuoteLetter({
             </div>
             {body.checkIn ? (
               <div>
-                <dt>{QUOTE_COPY.checkIn}</dt>
+                <dt>{t.checkIn}</dt>
                 <dd>
-                  {dayLabel(body.checkIn)}
-                  {body.nights ? ` · ${body.nights}박` : null}
-                  {body.guestCount ? ` · ${body.guestCount}명` : null}
+                  {printDateLabel(lang, body.checkIn, dayLabel)}
+                  {body.nights ? ` · ${t.nights(body.nights)}` : null}
+                  {body.guestCount ? ` · ${t.guests(body.guestCount)}` : null}
                 </dd>
               </div>
             ) : null}
@@ -418,18 +447,18 @@ export default function QuoteLetter({
           <table className="quote-tbl">
             <thead>
               <tr>
-                <th>{QUOTE_COPY.label}</th>
-                <th>{QUOTE_COPY.rooms}</th>
-                <th>{QUOTE_COPY.nights}</th>
-                <th>{QUOTE_COPY.pax}</th>
-                <th>{QUOTE_COPY.rate}</th>
-                <th>{QUOTE_COPY.amount}</th>
+                <th>{t.label}</th>
+                <th>{t.rooms}</th>
+                <th>{t.nightsCol}</th>
+                <th>{t.pax}</th>
+                <th>{t.rate}</th>
+                <th>{t.amount}</th>
               </tr>
             </thead>
             <tbody>
               {body.lines.map((l) => (
                 <tr key={l.id}>
-                  <td>{quoteLinePrintLabel(l, showRoomNos, roomNoOf)}</td>
+                  <td>{quoteLinePrintLabel(l, showRoomNos, roomNoOf, lang)}</td>
                   <td>{l.rooms}</td>
                   <td>{l.nights}</td>
                   <td>{l.pax}</td>
@@ -440,22 +469,22 @@ export default function QuoteLetter({
             </tbody>
             <tfoot>
               <tr>
-                <th colSpan={5}>{QUOTE_COPY.total}</th>
+                <th colSpan={5}>{t.total}</th>
                 <th>{won(total)}</th>
               </tr>
             </tfoot>
           </table>
 
           {body.notes ? <p className="quote-notes">{body.notes}</p> : null}
-          <p className="sc-attest">{QUOTE_COPY.attest}</p>
+          <p className="sc-attest">{t.attest}</p>
           <div className="sc-issue">
-            {QUOTE_COPY.issueDate} {dayLabel(today)}
+            {t.issueDate} {printDateLabel(lang, today, dayLabel)}
           </div>
           <div className="sc-sign">
             <div className="sc-sign-trade">{trade}</div>
             <div className="sc-sign-rep">
-              대표자 {biz.representative || "____________"}
-              <span className="sc-seal">(인)</span>
+              {t.representative} {biz.representative || "____________"}
+              <span className="sc-seal">{t.seal}</span>
             </div>
           </div>
         </div>
@@ -475,10 +504,10 @@ export default function QuoteLetter({
               </>
             ) : null}
             <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)}>
-              <Printer size={14} /> {QUOTE_COPY.print}
+              <Printer size={14} /> {t.print}
             </button>
-            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={QUOTE_COPY.pdfHint}>
-              <FileDown size={14} /> {QUOTE_COPY.pdf}
+            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={t.pdfHint}>
+              <FileDown size={14} /> {t.pdf}
             </button>
             {doc && onDelete ? (
               <button type="button" className="btn line sm danger" onClick={() => void remove()}>
@@ -487,7 +516,7 @@ export default function QuoteLetter({
             ) : null}
           </div>
           <button type="button" className="btn" onClick={onClose}>
-            {QUOTE_COPY.close}
+            {t.close}
           </button>
         </div>
       </div>

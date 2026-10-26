@@ -1,4 +1,5 @@
 /** 견적서 (P1.1) — 예약 전 제안. See docs/group-invoice-plan.md */
+import type { PrintLang } from "./hotelBiz";
 
 export const QUOTE_TITLE_MAX = 80;
 export const QUOTE_CLIENT_MAX = 60;
@@ -83,7 +84,7 @@ export type QuoteDraft = {
   showRoomNos: boolean;
 };
 
-/** UI copy keys (64-lang roadmap — KR values now) */
+/** FO chrome (KR). Print body uses quotePrintStrings(lang). */
 export const QUOTE_COPY = {
   title: "견적서",
   newQuote: "새 견적",
@@ -132,6 +133,102 @@ export const QUOTE_COPY = {
   recentEmpty: "최근 견적이 없어요.",
   openRecent: "최근 견적",
 } as const;
+
+export const QUOTE_COPY_EN_TITLE = "Quote" as const;
+
+export type QuotePrintStrings = {
+  title: string;
+  bizNumber: string;
+  phone: string;
+  representativeShort: string;
+  representative: string;
+  seal: string;
+  client: string;
+  checkIn: string;
+  nights: (n: number) => string;
+  nightsCol: string;
+  guests: (n: number) => string;
+  label: string;
+  rooms: string;
+  pax: string;
+  rate: string;
+  amount: string;
+  total: string;
+  attest: string;
+  issueDate: string;
+  print: string;
+  pdf: string;
+  pdfHint: string;
+  close: string;
+  langAria: string;
+  langKo: string;
+  langEn: string;
+  roomSuffix: string;
+};
+
+const QUOTE_PRINT_KO: QuotePrintStrings = {
+  title: QUOTE_COPY.title,
+  bizNumber: "사업자번호",
+  phone: "전화",
+  representativeShort: "대표",
+  representative: "대표자",
+  seal: "(인)",
+  client: QUOTE_COPY.client,
+  checkIn: QUOTE_COPY.checkIn,
+  nights: (n) => `${n}박`,
+  nightsCol: QUOTE_COPY.nights,
+  guests: (n) => `${n}명`,
+  label: QUOTE_COPY.label,
+  rooms: QUOTE_COPY.rooms,
+  pax: QUOTE_COPY.pax,
+  rate: QUOTE_COPY.rate,
+  amount: QUOTE_COPY.amount,
+  total: QUOTE_COPY.total,
+  attest: QUOTE_COPY.attest,
+  issueDate: QUOTE_COPY.issueDate,
+  print: QUOTE_COPY.print,
+  pdf: QUOTE_COPY.pdf,
+  pdfHint: QUOTE_COPY.pdfHint,
+  close: QUOTE_COPY.close,
+  langAria: "견적서 언어",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "호",
+};
+
+const QUOTE_PRINT_EN: QuotePrintStrings = {
+  title: QUOTE_COPY_EN_TITLE,
+  bizNumber: "Business Reg. No.",
+  phone: "Tel",
+  representativeShort: "Rep.",
+  representative: "Representative",
+  seal: "(Seal)",
+  client: "Client",
+  checkIn: "Check-in",
+  nights: (n) => (n === 1 ? "1 night" : `${n} nights`),
+  nightsCol: "Nights",
+  guests: (n) => (n === 1 ? "1 guest" : `${n} guests`),
+  label: "Item",
+  rooms: "Rooms",
+  pax: "Pax",
+  rate: "Rate",
+  amount: "Amount",
+  total: "Total",
+  attest: "We quote the above rates for your stay.",
+  issueDate: "Issued",
+  print: "Print",
+  pdf: "PDF",
+  pdfHint: "In the print dialog, choose “Save as PDF”",
+  close: "Close",
+  langAria: "Quote language",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "",
+};
+
+export function quotePrintStrings(lang: PrintLang): QuotePrintStrings {
+  return lang === "en" ? QUOTE_PRINT_EN : QUOTE_PRINT_KO;
+}
 
 export function emptyQuoteLine(typeId = ""): QuoteLine {
   return {
@@ -246,6 +343,7 @@ export function quoteLinePrintLabel(
   line: QuoteLine,
   showRoomNos: boolean,
   roomNoOf: (roomId: string) => string | null | undefined,
+  lang: PrintLang = "ko",
 ): string {
   const type = line.label.trim() || "—";
   if (!showRoomNos) return type;
@@ -253,5 +351,6 @@ export function quoteLinePrintLabel(
     .map((id) => roomNoOf(id)?.trim())
     .filter((x): x is string => !!x);
   if (!nos.length) return type;
+  if (lang === "en") return `${type} · ${nos.join(", ")}`;
   return `${type} · ${nos.join("·")}호`;
 }

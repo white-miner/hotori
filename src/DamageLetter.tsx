@@ -8,6 +8,8 @@ import {
   type DamageDraft,
   type DamageLine,
   DAMAGE_COPY,
+  damagePrintStrings,
+  damageRoomDisplay,
   damageTotal,
   draftFromBooking,
   emptyDamageLine,
@@ -18,10 +20,12 @@ import {
   dayLabel,
   hotelBizDisplayName,
   hotelBizHasAny,
+  printDateLabel,
   roomLabel,
   typeLabel,
   won,
   type HotelSettings,
+  type PrintLang,
 } from "../shared/ledger";
 import { askConfirm } from "./ConfirmDialog";
 
@@ -84,6 +88,8 @@ export default function DamageLetter({
 }: Props) {
   const biz = s.hotelBiz;
   const trade = hotelBizDisplayName(biz, hotelName);
+  const [lang, setLang] = useState<PrintLang>("ko");
+  const t = damagePrintStrings(lang);
 
   const initial = useMemo((): DamageDraft => {
     if (issuedDoc) return draftFromDoc(issuedDoc);
@@ -134,7 +140,7 @@ export default function DamageLetter({
         total: damageTotal(draft.lines),
       };
 
-  const fileTitle = `${trade}_${DAMAGE_COPY.title}_${view.guestName || view.roomNo || "손해"}`;
+  const fileTitle = `${trade}_${t.title}_${view.guestName || view.roomNo || (lang === "en" ? "Damage" : "손해")}`;
 
   const setLine = (id: string, patch: Partial<DamageLine>) => {
     setDraft((d) => ({
@@ -191,9 +197,29 @@ export default function DamageLetter({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mh noprint">
-          <h2 id="damage-title">{DAMAGE_COPY.title}</h2>
+          <h2 id="damage-title">{t.title}</h2>
           {locked ? <span className="tag">{DAMAGE_COPY.issued}</span> : null}
-          <button type="button" className="x" onClick={onClose} aria-label={DAMAGE_COPY.close}>
+          <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "ko"}
+              className={lang === "ko" ? "on" : ""}
+              onClick={() => setLang("ko")}
+            >
+              {t.langKo}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "en"}
+              className={lang === "en" ? "on" : ""}
+              onClick={() => setLang("en")}
+            >
+              {t.langEn}
+            </button>
+          </div>
+          <button type="button" className="x" onClick={onClose} aria-label={t.close}>
             <X size={18} />
           </button>
         </div>
@@ -294,35 +320,39 @@ export default function DamageLetter({
           </div>
         ) : null}
 
-        <div className="damage-print">
+        <div className={`damage-print${lang === "en" ? " en" : ""}`}>
           <header className="sc-head">
             <div className="sc-hotel">
               <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? <div>사업자번호 {biz.businessNumber}</div> : null}
+              {biz.businessNumber ? (
+                <div>
+                  {t.bizNumber} {biz.businessNumber}
+                </div>
+              ) : null}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>
-                  {biz.phone ? `전화 ${biz.phone}` : null}
+                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
                   {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `대표 ${biz.representative}` : null}
+                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
                 </div>
               ) : null}
             </div>
-            <h1 className="sc-title">{DAMAGE_COPY.title}</h1>
+            <h1 className="sc-title">{t.title}</h1>
           </header>
 
           <dl className="sc-body">
             <div>
-              <dt>{DAMAGE_COPY.guest}</dt>
+              <dt>{t.guest}</dt>
               <dd>
                 {view.guestName || "—"}
                 {view.guestPhone ? ` · ${view.guestPhone}` : null}
               </dd>
             </div>
             <div>
-              <dt>{DAMAGE_COPY.room}</dt>
+              <dt>{t.room}</dt>
               <dd>
-                {view.roomNo ? `${view.roomNo}호` : "—"}
+                {view.roomNo ? damageRoomDisplay(view.roomNo, lang, t.roomSuffix) : "—"}
                 {view.typeLabel ? ` · ${view.typeLabel}` : null}
               </dd>
             </div>
@@ -331,9 +361,9 @@ export default function DamageLetter({
           <table className="quote-tbl dmg-tbl">
             <thead>
               <tr>
-                <th>{DAMAGE_COPY.item}</th>
-                <th>{DAMAGE_COPY.description}</th>
-                <th>{DAMAGE_COPY.amount}</th>
+                <th>{t.item}</th>
+                <th>{t.description}</th>
+                <th>{t.amount}</th>
               </tr>
             </thead>
             <tbody>
@@ -349,23 +379,27 @@ export default function DamageLetter({
             </tbody>
             <tfoot>
               <tr>
-                <th colSpan={2}>{DAMAGE_COPY.total}</th>
+                <th colSpan={2}>{t.total}</th>
                 <th>{won(view.total)}</th>
               </tr>
             </tfoot>
           </table>
 
-          {view.notes ? <p className="quote-notes">{DAMAGE_COPY.notes}: {view.notes}</p> : null}
+          {view.notes ? (
+            <p className="quote-notes">
+              {t.notes}: {view.notes}
+            </p>
+          ) : null}
 
-          <p className="sc-attest">{DAMAGE_COPY.attest}</p>
+          <p className="sc-attest">{t.attest}</p>
           <div className="sc-issue">
-            {DAMAGE_COPY.issueDate} {dayLabel(today)}
+            {t.issueDate} {printDateLabel(lang, today, dayLabel)}
           </div>
           <div className="sc-sign">
             <div className="sc-sign-trade">{trade}</div>
             <div className="sc-sign-rep">
-              대표자 {biz.representative || "____________"}
-              <span className="sc-seal">(인)</span>
+              {t.representative} {biz.representative || "____________"}
+              <span className="sc-seal">{t.seal}</span>
             </div>
           </div>
         </div>
@@ -386,10 +420,10 @@ export default function DamageLetter({
               </button>
             ) : null}
             <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)}>
-              <Printer size={14} /> {DAMAGE_COPY.print}
+              <Printer size={14} /> {t.print}
             </button>
-            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={DAMAGE_COPY.pdfHint}>
-              <FileDown size={14} /> {DAMAGE_COPY.pdf}
+            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={t.pdfHint}>
+              <FileDown size={14} /> {t.pdf}
             </button>
             {locked && onDelete ? (
               <button type="button" className="btn line sm danger" onClick={() => void remove()}>
@@ -398,7 +432,7 @@ export default function DamageLetter({
             ) : null}
           </div>
           <button type="button" className="btn" onClick={onClose}>
-            {DAMAGE_COPY.close}
+            {t.close}
           </button>
         </div>
       </div>

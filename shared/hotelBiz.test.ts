@@ -4,6 +4,7 @@ import {
   hotelBizDisplayName,
   normalizeHotelBiz,
   normalizeSettings,
+  printDateLabel,
   stayConfirmDateRange,
   stayConfirmStrings,
   STAY_CONFIRM_COPY,
@@ -65,4 +66,10 @@ test("stayConfirmDateRange: EN ISO · KR dayLabel", () => {
     stayConfirmDateRange("en", "2026-10-20", "2026-10-22", 2, koLabel),
     "2026-10-20 ~ 2026-10-22 · 2 nights",
   );
+});
+
+test("printDateLabel: EN ISO · KR dayLabel", () => {
+  const koLabel = (d: string) => (d === "2026-10-20" ? "10/20(화)" : d);
+  assert.equal(printDateLabel("ko", "2026-10-20", koLabel), "10/20(화)");
+  assert.equal(printDateLabel("en", "2026-10-20", koLabel), "2026-10-20");
 });

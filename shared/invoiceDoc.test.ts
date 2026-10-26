@@ -5,6 +5,10 @@ import {
   formatInvoiceNumber,
   invoiceEligible,
   invoiceIsMidStay,
+  invoicePayLabel,
+  invoicePrintStrings,
+  invoiceRoomDisplay,
+  invoiceSurchargeLabel,
   defaultInvoicePayer,
 } from "./invoiceDoc";
 import type { Booking, HotelSettings } from "./ledger";
@@ -89,6 +93,17 @@ test("defaultInvoicePayer prefers company", () => {
   const p = defaultInvoicePayer([book()], info);
   assert.equal(p.payerName, "여행사A");
   assert.equal(p.payerPhone, "010-1");
+});
+
+test("invoicePrintStrings + pay/room EN helpers", () => {
+  assert.equal(invoicePrintStrings("ko").title, "청구서");
+  assert.equal(invoicePrintStrings("en").title, "Invoice");
+  assert.equal(invoicePayLabel("card", "en"), "Card");
+  assert.equal(invoicePayLabel("card", "ko"), "카드");
+  assert.equal(invoiceSurchargeLabel("추가 인원", "en"), "Extra guests");
+  assert.equal(invoiceRoomDisplay("301", "en", ""), "301");
+  assert.equal(invoiceRoomDisplay("301", "ko", "호"), "301호");
+  assert.equal(invoiceRoomDisplay("미배정", "en", ""), "Unassigned");
 });
 
 test("buildInvoiceSnapshot keeps quoteCompare (P1.3)", () => {

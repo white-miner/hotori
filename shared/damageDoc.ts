@@ -1,4 +1,5 @@
 /** 손해내역서 (P1.2b) — stay-bound damage assessment · ≠ 청구서. See docs/group-invoice-plan.md */
+import type { PrintLang } from "./hotelBiz";
 
 export const DAMAGE_ITEM_MAX = 40;
 export const DAMAGE_DESC_MAX = 120;
@@ -59,7 +60,7 @@ export type DamageDraft = {
   bookingId: string | null;
 };
 
-/** UI copy keys (64-lang roadmap — KR values now) */
+/** FO chrome (KR). Print body uses damagePrintStrings(lang). */
 export const DAMAGE_COPY = {
   title: "손해내역서",
   hint: "파손·클레임 · 숙박에서 발급 (청구서와 별도)",
@@ -99,6 +100,102 @@ export const DAMAGE_COPY = {
   recentEmpty: "최근 손해내역서가 없어요.",
   fromStay: "숙박에서 발급",
 } as const;
+
+export const DAMAGE_COPY_EN_TITLE = "Damage Assessment" as const;
+
+export type DamagePrintStrings = {
+  title: string;
+  bizNumber: string;
+  phone: string;
+  representativeShort: string;
+  representative: string;
+  seal: string;
+  guest: string;
+  room: string;
+  type: string;
+  notes: string;
+  item: string;
+  description: string;
+  amount: string;
+  total: string;
+  attest: string;
+  issueDate: string;
+  print: string;
+  pdf: string;
+  pdfHint: string;
+  close: string;
+  langAria: string;
+  langKo: string;
+  langEn: string;
+  roomSuffix: string;
+  unassigned: string;
+};
+
+const DAMAGE_PRINT_KO: DamagePrintStrings = {
+  title: DAMAGE_COPY.title,
+  bizNumber: "사업자번호",
+  phone: "전화",
+  representativeShort: "대표",
+  representative: "대표자",
+  seal: "(인)",
+  guest: DAMAGE_COPY.guest,
+  room: DAMAGE_COPY.room,
+  type: "타입",
+  notes: DAMAGE_COPY.notes,
+  item: DAMAGE_COPY.item,
+  description: DAMAGE_COPY.description,
+  amount: DAMAGE_COPY.amount,
+  total: DAMAGE_COPY.total,
+  attest: DAMAGE_COPY.attest,
+  issueDate: DAMAGE_COPY.issueDate,
+  print: DAMAGE_COPY.print,
+  pdf: DAMAGE_COPY.pdf,
+  pdfHint: DAMAGE_COPY.pdfHint,
+  close: DAMAGE_COPY.close,
+  langAria: "손해내역서 언어",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "호",
+  unassigned: "미배정",
+};
+
+const DAMAGE_PRINT_EN: DamagePrintStrings = {
+  title: DAMAGE_COPY_EN_TITLE,
+  bizNumber: "Business Reg. No.",
+  phone: "Tel",
+  representativeShort: "Rep.",
+  representative: "Representative",
+  seal: "(Seal)",
+  guest: "Guest",
+  room: "Room",
+  type: "Type",
+  notes: "Notes",
+  item: "Item",
+  description: "Description",
+  amount: "Amount",
+  total: "Total",
+  attest: "This certifies the damage items listed above.",
+  issueDate: "Issued",
+  print: "Print",
+  pdf: "PDF",
+  pdfHint: "In the print dialog, choose “Save as PDF”",
+  close: "Close",
+  langAria: "Damage letter language",
+  langKo: "한국어",
+  langEn: "English",
+  roomSuffix: "",
+  unassigned: "Unassigned",
+};
+
+export function damagePrintStrings(lang: PrintLang): DamagePrintStrings {
+  return lang === "en" ? DAMAGE_PRINT_EN : DAMAGE_PRINT_KO;
+}
+
+export function damageRoomDisplay(roomNo: string, lang: PrintLang, suffix: string): string {
+  const raw = roomNo.trim();
+  if (!raw || raw === "미배정" || raw === "Unassigned") return lang === "en" ? "Unassigned" : "미배정";
+  return suffix ? `${raw}${suffix}` : raw;
+}
 
 export function newDamageLineId(): string {
   return `dl_${Math.random().toString(36).slice(2, 10)}`;

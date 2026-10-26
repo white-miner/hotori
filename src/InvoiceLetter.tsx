@@ -11,6 +11,10 @@ import {
   defaultInvoicePayer,
   invoiceEligible,
   invoiceIsMidStay,
+  invoicePayLabel,
+  invoicePrintStrings,
+  invoiceRoomDisplay,
+  invoiceSurchargeLabel,
   validateInvoicePayer,
 } from "../shared/invoiceDoc";
 import {
@@ -18,12 +22,13 @@ import {
   dayLabel,
   hotelBizDisplayName,
   hotelBizHasAny,
+  printDateLabel,
   won,
   type HotelSettings,
+  type PrintLang,
 } from "../shared/ledger";
 import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
-import { PAYMENT_METHOD_LABEL, type PaymentMethod } from "../shared/payment";
-import { buildQuoteCompare, type QuoteCompare, QUOTE_VARIANCE_COPY } from "../shared/quoteVariance";
+import { buildQuoteCompare, type QuoteCompare } from "../shared/quoteVariance";
 import { askConfirm } from "./ConfirmDialog";
 import { lookups } from "./ui";
 
@@ -68,10 +73,6 @@ function runPrint(title: string) {
   window.setTimeout(done, 1500);
 }
 
-function payLabel(method: string): string {
-  return PAYMENT_METHOD_LABEL[method as PaymentMethod] ?? method;
-}
-
 export default function InvoiceLetter({
   hotelName,
   s,
@@ -97,6 +98,8 @@ export default function InvoiceLetter({
   const [payerPhone, setPayerPhone] = useState(issuedDoc?.snapshot?.payerPhone ?? issuedDoc?.payerPhone ?? defaults.payerPhone);
   const [doc, setDoc] = useState<InvoiceDoc | null>(issuedDoc ?? null);
   const [err, setErr] = useState<string | null>(null);
+  const [lang, setLang] = useState<PrintLang>("ko");
+  const t = invoicePrintStrings(lang);
   const locked = doc?.status === "issued" && !!doc.snapshot;
 
   const liveSnap = useMemo(() => {
@@ -124,7 +127,7 @@ export default function InvoiceLetter({
 
   const eligible = invoiceEligible(members);
   const mid = locked ? !!liveSnap.isMidStay : invoiceIsMidStay(members.filter((b) => b.status !== "cancelled"));
-  const fileTitle = `${trade}_${INVOICE_COPY.title}_${liveSnap.issueNumber || payerName || "청구"}`;
+  const fileTitle = `${trade}_${t.title}_${liveSnap.issueNumber || payerName || (lang === "en" ? "Invoice" : "청구")}`;
 
   const issue = async () => {
     if (!eligible) return setErr(INVOICE_COPY.needNights);
@@ -181,10 +184,30 @@ export default function InvoiceLetter({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mh noprint">
-          <h2 id="invoice-title">{INVOICE_COPY.title}</h2>
+          <h2 id="invoice-title">{t.title}</h2>
           {locked ? <span className="tag">{INVOICE_COPY.issued}</span> : null}
-          {mid ? <span className="tag warn">{INVOICE_COPY.midWatermark}</span> : null}
-          <button type="button" className="x" onClick={onClose} aria-label={INVOICE_COPY.close}>
+          {mid ? <span className="tag warn">{t.midWatermark}</span> : null}
+          <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "ko"}
+              className={lang === "ko" ? "on" : ""}
+              onClick={() => setLang("ko")}
+            >
+              {t.langKo}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lang === "en"}
+              className={lang === "en" ? "on" : ""}
+              onClick={() => setLang("en")}
+            >
+              {t.langEn}
+            </button>
+          </div>
+          <button type="button" className="x" onClick={onClose} aria-label={t.close}>
             <X size={18} />
           </button>
         </div>
@@ -206,26 +229,30 @@ export default function InvoiceLetter({
           </div>
         ) : null}
 
-        <div className={`invoice-print${mid ? " mid" : ""}`}>
-          {mid ? <div className="inv-watermark">{INVOICE_COPY.midWatermark}</div> : null}
+        <div className={`invoice-print${mid ? " mid" : ""}${lang === "en" ? " en" : ""}`}>
+          {mid ? <div className="inv-watermark">{t.midWatermark}</div> : null}
           <header className="sc-head">
             <div className="sc-hotel">
               <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? <div>사업자번호 {biz.businessNumber}</div> : null}
+              {biz.businessNumber ? (
+                <div>
+                  {t.bizNumber} {biz.businessNumber}
+                </div>
+              ) : null}
               {biz.address ? <div>{biz.address}</div> : null}
               {biz.phone || biz.representative ? (
                 <div>
-                  {biz.phone ? `전화 ${biz.phone}` : null}
+                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
                   {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `대표 ${biz.representative}` : null}
+                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
                 </div>
               ) : null}
             </div>
             <div className="inv-title-block">
-              <h1 className="sc-title">{INVOICE_COPY.title}</h1>
+              <h1 className="sc-title">{t.title}</h1>
               {liveSnap.issueNumber && liveSnap.issueNumber !== "····-···" ? (
                 <div className="inv-no">
-                  {INVOICE_COPY.issueNo} {liveSnap.issueNumber}
+                  {t.issueNo} {liveSnap.issueNumber}
                 </div>
               ) : null}
             </div>
@@ -233,7 +260,7 @@ export default function InvoiceLetter({
 
           <dl className="sc-body">
             <div>
-              <dt>{INVOICE_COPY.payer}</dt>
+              <dt>{t.payer}</dt>
               <dd>
                 {liveSnap.payerName || "—"}
                 {liveSnap.payerPhone ? ` · ${liveSnap.payerPhone}` : null}
@@ -241,7 +268,7 @@ export default function InvoiceLetter({
             </div>
             {liveSnap.groupName ? (
               <div>
-                <dt>단체</dt>
+                <dt>{t.group}</dt>
                 <dd>{liveSnap.groupName}</dd>
               </div>
             ) : null}
@@ -250,21 +277,23 @@ export default function InvoiceLetter({
           <table className="quote-tbl inv-tbl">
             <thead>
               <tr>
-                <th>{INVOICE_COPY.room}</th>
-                <th>{INVOICE_COPY.period}</th>
-                <th>{INVOICE_COPY.amount}</th>
-                <th>{INVOICE_COPY.paid}</th>
+                <th>{t.room}</th>
+                <th>{t.period}</th>
+                <th>{t.amount}</th>
+                <th>{t.paid}</th>
               </tr>
             </thead>
             <tbody>
               {liveSnap.rooms.map((r) => (
                 <tr key={r.bookingId}>
                   <td>
-                    {r.roomNo}호{r.typeLabel ? ` · ${r.typeLabel}` : ""}
+                    {invoiceRoomDisplay(r.roomNo, lang, t.roomSuffix)}
+                    {r.typeLabel ? ` · ${r.typeLabel}` : ""}
                     {r.guestName ? <div className="muted sm">{r.guestName}</div> : null}
                   </td>
                   <td>
-                    {dayLabel(r.checkIn)} ~ {dayLabel(r.checkOut)} · {r.nights}박
+                    {printDateLabel(lang, r.checkIn, dayLabel)} ~ {printDateLabel(lang, r.checkOut, dayLabel)} ·{" "}
+                    {t.nights(r.nights)}
                   </td>
                   <td>{won(r.amount)}</td>
                   <td>{won(r.paid)}</td>
@@ -272,7 +301,7 @@ export default function InvoiceLetter({
               ))}
               {liveSnap.surcharges.map((x, i) => (
                 <tr key={`s-${i}`}>
-                  <td colSpan={2}>{x.label}</td>
+                  <td colSpan={2}>{invoiceSurchargeLabel(x.label, lang)}</td>
                   <td>{won(x.amount)}</td>
                   <td />
                 </tr>
@@ -280,7 +309,7 @@ export default function InvoiceLetter({
               {liveSnap.extras.map((x, i) => (
                 <tr key={`e-${i}`}>
                   <td colSpan={2}>
-                    {INVOICE_COPY.extras}: {x.name}
+                    {t.extras}: {x.name}
                   </td>
                   <td>{won(x.amount)}</td>
                   <td />
@@ -289,18 +318,18 @@ export default function InvoiceLetter({
             </tbody>
             <tfoot>
               <tr>
-                <th colSpan={2}>{INVOICE_COPY.total}</th>
+                <th colSpan={2}>{t.total}</th>
                 <th>{won(liveSnap.total)}</th>
                 <th />
               </tr>
               <tr>
-                <th colSpan={2}>{INVOICE_COPY.paid}</th>
+                <th colSpan={2}>{t.paid}</th>
                 <th>{won(liveSnap.paid)}</th>
                 <th />
               </tr>
               {liveSnap.tracked && liveSnap.left > 0 ? (
                 <tr>
-                  <th colSpan={2}>{INVOICE_COPY.left}</th>
+                  <th colSpan={2}>{t.left}</th>
                   <th>{won(liveSnap.left)}</th>
                   <th />
                 </tr>
@@ -311,7 +340,7 @@ export default function InvoiceLetter({
           {liveSnap.quoteCompare ? (
             <div className="inv-quote-cmp">
               <div className="inv-pays-h">
-                {INVOICE_COPY.quoteCompare}
+                {t.quoteCompare}
                 {liveSnap.quoteCompare.quoteTitle ? (
                   <span className="muted sm"> · {liveSnap.quoteCompare.quoteTitle}</span>
                 ) : null}
@@ -319,19 +348,19 @@ export default function InvoiceLetter({
               <table className="quote-tbl inv-cmp-tbl">
                 <tbody>
                   <tr>
-                    <td>{INVOICE_COPY.quoteTotal}</td>
+                    <td>{t.quoteTotal}</td>
                     <td>{won(liveSnap.quoteCompare.quoteTotal)}</td>
                   </tr>
                   <tr>
-                    <td>{INVOICE_COPY.invoiceTotal}</td>
+                    <td>{t.invoiceTotal}</td>
                     <td>{won(liveSnap.quoteCompare.invoiceTotal)}</td>
                   </tr>
                   <tr>
-                    <th>{INVOICE_COPY.quoteDiff}</th>
+                    <th>{t.quoteDiff}</th>
                     <th>
                       {liveSnap.quoteCompare.diff === 0
-                        ? QUOTE_VARIANCE_COPY.same
-                        : `${liveSnap.quoteCompare.diff > 0 ? QUOTE_VARIANCE_COPY.over : QUOTE_VARIANCE_COPY.under} ${won(Math.abs(liveSnap.quoteCompare.diff))}`}
+                        ? t.quoteSame
+                        : `${liveSnap.quoteCompare.diff > 0 ? t.quoteOver : t.quoteUnder} ${won(Math.abs(liveSnap.quoteCompare.diff))}`}
                     </th>
                   </tr>
                 </tbody>
@@ -341,11 +370,11 @@ export default function InvoiceLetter({
 
           {liveSnap.payments.length ? (
             <div className="inv-pays">
-              <div className="inv-pays-h">{INVOICE_COPY.payments}</div>
+              <div className="inv-pays-h">{t.payments}</div>
               <ul>
                 {liveSnap.payments.map((p, i) => (
                   <li key={i}>
-                    {dayLabel(p.bizDate)} · {payLabel(p.method)} {won(p.amount)}
+                    {printDateLabel(lang, p.bizDate, dayLabel)} · {invoicePayLabel(p.method, lang)} {won(p.amount)}
                     {p.note ? ` (${p.note})` : ""}
                   </li>
                 ))}
@@ -355,7 +384,7 @@ export default function InvoiceLetter({
 
           {liveSnap.footnotes.length ? (
             <div className="inv-notes">
-              <div className="inv-pays-h">{INVOICE_COPY.footnotes}</div>
+              <div className="inv-pays-h">{t.footnotes}</div>
               <ul>
                 {liveSnap.footnotes.map((f, i) => (
                   <li key={i}>{f}</li>
@@ -364,15 +393,15 @@ export default function InvoiceLetter({
             </div>
           ) : null}
 
-          <p className="sc-attest">{INVOICE_COPY.attest}</p>
+          <p className="sc-attest">{t.attest}</p>
           <div className="sc-issue">
-            {INVOICE_COPY.issueDate} {dayLabel(today)}
+            {t.issueDate} {printDateLabel(lang, today, dayLabel)}
           </div>
           <div className="sc-sign">
             <div className="sc-sign-trade">{trade}</div>
             <div className="sc-sign-rep">
-              대표자 {biz.representative || "____________"}
-              <span className="sc-seal">(인)</span>
+              {t.representative} {biz.representative || "____________"}
+              <span className="sc-seal">{t.seal}</span>
             </div>
           </div>
         </div>
@@ -389,14 +418,14 @@ export default function InvoiceLetter({
               </button>
             ) : null}
             <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)}>
-              <Printer size={14} /> {INVOICE_COPY.print}
+              <Printer size={14} /> {t.print}
             </button>
-            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={INVOICE_COPY.pdfHint}>
-              <FileDown size={14} /> {INVOICE_COPY.pdf}
+            <button type="button" className="btn line sm" onClick={() => runPrint(fileTitle)} title={t.pdfHint}>
+              <FileDown size={14} /> {t.pdf}
             </button>
           </div>
           <button type="button" className="btn" onClick={onClose}>
-            {INVOICE_COPY.close}
+            {t.close}
           </button>
         </div>
       </div>
