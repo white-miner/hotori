@@ -11,7 +11,7 @@ import {
   validateBooking,
   won,
 } from "./ledger";
-import { GROUP_ROOMS_MAX, groupDrafts, splitTotal } from "./group";
+import { GROUP_ROOMS_MAX, groupDrafts, leadPrices } from "./group";
 import { nightRatesFromTotal } from "./nightrates";
 import {
   type BookPayMethod,
@@ -201,9 +201,10 @@ export function buildStaySaleDrafts(
   const rmap = new Map(allRooms(s).map((r) => [r.id, r]));
   const nights = Math.max(1, Math.round(input.nights));
   const name = input.guestName.trim() || walkInDisplayName(input.checkIn);
+  // 다실: 대장(첫 호)에 판매가 전액 · 형제 0 (1/n splitTotal 폐기)
   const prices = input.priceUnset
     ? input.roomIds.map(() => 0)
-    : splitTotal(Math.round(input.price), input.roomIds.length);
+    : leadPrices(Math.round(input.price), input.roomIds.length);
   const earlyH = clampHours(input.earlyInHours ?? 0);
   const lateH = clampHours(input.lateOutHours ?? 0);
   const earlyAmt =
@@ -261,6 +262,8 @@ export function buildStaySaleDrafts(
   }
 
   const groupId = crypto.randomUUID();
+  // 대장(i=0)에 판매가+timeFee 전액 · 형제 0
+  const withTime = prices.map((p, i) => (i === 0 ? p + timeExtra : p));
   const drafts = groupDrafts({
     groupId,
     groupName: name,
@@ -268,7 +271,7 @@ export function buildStaySaleDrafts(
     checkIn: input.checkIn,
     nights,
     roomIds: input.roomIds,
-    prices: prices.map((p) => p + Math.floor(timeExtra / input.roomIds.length)),
+    prices: withTime,
     s,
     guestsOf: () => (input.guests > 0 ? input.guests : null),
     arrived: !!input.walkInImmediate,
@@ -276,7 +279,7 @@ export function buildStaySaleDrafts(
     ...b,
     guestPhone: input.guestPhone?.trim() || null,
     priceUnset: !!input.priceUnset,
-    price: input.priceUnset ? 0 : (prices[i] ?? 0) + (i === 0 ? timeExtra : 0),
+    price: input.priceUnset ? 0 : (withTime[i] ?? 0),
     earlyIn: earlyH || null,
     lateOut: lateH || null,
     timeFee: i === 0 && timeExtra > 0 ? timeExtra : null,

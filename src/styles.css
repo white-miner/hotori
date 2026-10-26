@@ -2067,6 +2067,14 @@ label.ck input[type="checkbox"] {
 .grptag.g4 { color: var(--grp-g4); background: var(--grp-g4-s); border-color: var(--grp-g4-b); }
 .grptag.g5 { color: var(--grp-g5); background: var(--grp-g5-s); border-color: var(--grp-g5-b); }
 .grptag.g6 { color: var(--grp-g6); background: var(--grp-g6-s); border-color: var(--grp-g6-b); }
+/* 다실 대장 칩 · 칸 박스/비율 무변경 · inset stripe만 (board-cell-ratio-lock) */
+.cell.grp.g1 { box-shadow: inset 3px 0 0 var(--grp-g1); }
+.cell.grp.g2 { box-shadow: inset 3px 0 0 var(--grp-g2); }
+.cell.grp.g3 { box-shadow: inset 3px 0 0 var(--grp-g3); }
+.cell.grp.g4 { box-shadow: inset 3px 0 0 var(--grp-g4); }
+.cell.grp.g5 { box-shadow: inset 3px 0 0 var(--grp-g5); }
+.cell.grp.g6 { box-shadow: inset 3px 0 0 var(--grp-g6); }
+.grptag.lead { letter-spacing: -0.02em; }
 .grptag-wrap { position: relative; flex: none; display: inline-flex; }
 .grp-palette {
   position: absolute;

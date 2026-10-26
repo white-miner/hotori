@@ -163,6 +163,7 @@ import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
+import { groupLeadBooking, groupLeadChipLabel, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import { DateChip, FitText, GroupBadge, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
@@ -1334,6 +1335,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 다실 보드: 공유 badgeColor + 대장/대장#호 칩 · 단실은 「단체」 */
+  const groupBoardMark = (b: Booking) => {
+    if (!b.groupId) return { color: null as GroupBadgeColor | null, label: null as string | null, stripe: "" };
+    const color = data.groups.get(b.groupId)?.badgeColor ?? null;
+    const peers = groupStayPeers(bookings, b.groupId);
+    const multi = peers.length > 1;
+    const lead = multi ? groupLeadBooking(peers) : null;
+    const label =
+      multi && lead ? groupLeadChipLabel(b.id, lead, (id) => L.roomLabel(id) ?? null) : null;
+    return { color, label, stripe: color ? ` ${color}` : "" };
+  };
+
   const roomCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
     const b = board.byRoom.get(r.id);
     const t = r.typeId ? L.types.get(r.typeId) : null;
@@ -1432,13 +1445,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           : "assign-other"
         : "assign-off"
       : "";
+    const gMark = groupBoardMark(b);
     return (
       <div
         key={r.id}
         id={`rooms-room-${r.id}`}
         data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? "grp" : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -1485,7 +1499,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {b.groupId ? (
             <GroupBadge
               groupName={b.groupName}
-              color={data.groups.get(b.groupId)?.badgeColor}
+              color={gMark.color}
+              label={gMark.label}
               readOnly={readOnly}
               onPick={pickGroupColor(b.groupId)}
             />
@@ -2089,30 +2104,24 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           payerPhone: input.guestPhone?.trim() || null,
           rates: null,
           extras: [],
-          badgeColor: null,
+          badgeColor: hashGroupBadgeColor(gid),
         });
       }
       const plat = s.platforms.find((p) => p.id === input.platformId);
       let payTail = "";
-      if (isOnsite(plat) && savedList[0]) {
+      // 다실 완납: 대장(savedList[0])에 총액 1줄 — 방마다 1/n 루프 금지
+      const lead = savedList[0];
+      if (isOnsite(plat) && lead) {
         const total = savedList.reduce((n, b) => n + b.price, 0);
         const plan = staySaleCreatePayPlan(input, total);
         if (plan.kind !== "none") {
           try {
-            if (plan.kind === "balance" && savedList.length > 1) {
-              for (const b of savedList) {
-                if (b.price > 0) {
-                  await data.addPayment(b.id, { kind: "balance", method: plan.method, amount: b.price, bizDate: today });
-                }
-              }
-            } else {
-              await data.addPayment(savedList[0].id, {
-                kind: plan.kind === "balance" ? "balance" : "deposit",
-                method: plan.method,
-                amount: plan.amount,
-                bizDate: today,
-              });
-            }
+            await data.addPayment(lead.id, {
+              kind: plan.kind === "balance" ? "balance" : "deposit",
+              method: plan.method,
+              amount: plan.amount,
+              bizDate: today,
+            });
             payTail = onsiteCreatePayTail(plan);
           } catch (e) {
             payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
@@ -2590,6 +2599,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const payMethod = nowPayMethodPrefix(amount, nowLatestPayMethodLabel(b, groupCtx?.info?.payments));
     const grpGlance =
       groupCtx && groupCtx.members.length > 0 ? groupSettleGlance(groupCtx.members, groupCtx.info, plat) : null;
+    const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
     const coMark = coMarkLabel ? (
@@ -2626,7 +2636,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`now-room-${r.id}`}
         data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? "grp" : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -2684,7 +2694,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {f.group && b.groupId ? (
               <GroupBadge
                 groupName={b.groupName}
-                color={data.groups.get(b.groupId)?.badgeColor}
+                color={gMark.color}
+                label={gMark.label}
                 readOnly={readOnly}
                 onPick={pickGroupColor(b.groupId)}
               />
