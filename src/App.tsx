@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, BookOpen, ClipboardList, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { Bell, BookOpen, ClipboardList, FileStack, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData, useHotelNotices, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
 import { badgeCountLabel, openForHandoff } from "../shared/roomMemo";
 import { unresolvedNoticeCount } from "../shared/hotelNotice";
+import { ISSUANCE_COPY } from "../shared/hotelDocuments";
 import { Brand, isTypingTarget, lookups } from "./ui";
 import { HeaderCTA } from "./primitives/HeaderCTA";
 import AuthScreen from "./Auth";
@@ -16,27 +17,30 @@ import NoticesHubPanel, { type NoticesHubTab } from "./NoticesHubPanel";
 import SimpleBooking from "./SimpleBooking";
 import { ExpensesPage } from "./Expenses";
 import Ledger from "./Ledger";
+import Issuance from "./Issuance";
 import Settings from "./Settings";
 import Shop from "./Shop";
 
-type View = "board" | "ledger" | "expenses" | "shop" | "settings";
+type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
 /** 데스크톱 텍스트 내비: 설정은 우측 톱니로 이동 (공지와 자리 교체) */
 const NAV_VIEWS: { id: View; label: string }[] = [
   { id: "board", label: "보드" },
   { id: "shop", label: "매점" },
   { id: "expenses", label: "지출" },
   { id: "ledger", label: "장부" },
+  { id: "issuance", label: ISSUANCE_COPY.viewLabel },
 ];
 const TAB_VIEWS: { id: View; label: string; icon: typeof LayoutGrid }[] = [
   { id: "board", label: "보드", icon: LayoutGrid },
   { id: "shop", label: "매점", icon: ShoppingBag },
   { id: "expenses", label: "지출", icon: Wallet },
   { id: "ledger", label: "장부", icon: BookOpen },
+  { id: "issuance", label: ISSUANCE_COPY.viewLabel, icon: FileStack },
   { id: "settings", label: "설정", icon: Gear },
 ];
 const viewFromHash = (): View => {
   const h = location.hash.replace(/^#\/?/, "").split("/")[0] ?? "";
-  return h === "ledger" || h === "expenses" || h === "settings" || h === "shop" ? h : "board";
+  return h === "ledger" || h === "expenses" || h === "settings" || h === "shop" || h === "issuance" ? h : "board";
 };
 
 export default function App() {
@@ -339,6 +343,14 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           searchRef={ledgerSearchRef}
           onOpen={(b, opts) => setEntry({ booking: b, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge })}
           notify={notify}
+        />
+      ) : view === "issuance" ? (
+        <Issuance
+          data={data}
+          hotelId={hotelId}
+          today={today}
+          notify={notify}
+          onGoLedger={() => go("ledger")}
         />
       ) : view === "expenses" ? (
         <ExpensesPage data={data} hotelId={hotelId} today={today} notify={notify} />

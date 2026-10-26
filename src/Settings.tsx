@@ -18,9 +18,11 @@ import {
   platformAbbr,
 } from "../shared/platform";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, CheckSquare, Copy, Eye, EyeOff, Link2, Minus, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Building2, CheckSquare, Copy, Eye, EyeOff, Link2, Minus, Plus, Printer, RefreshCw, Trash2, X } from "lucide-react";
 import { askConfirm } from "./ConfirmDialog";
+import FloorPlanPrint from "./FloorPlanPrint";
 import type { Building, Floor, HotelSettings, Room } from "../shared/ledger";
+import { ISSUANCE_COPY } from "../shared/hotelDocuments";
 import {
   FREE_SHOP_ITEM_LIMIT,
   PLATFORM_TYPE_NAME_MAX,
@@ -332,6 +334,7 @@ export default function Settings({ data, email, notify }: Props) {
   const [selBuilding, setSelBuilding] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
   const [addVal, setAddVal] = useState("");
+  const [floorPrintOpen, setFloorPrintOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef({ s, name });
   latest.current = { s, name };
@@ -545,6 +548,15 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
           <div className="stools">
             <span className="push" />
+            <button
+              type="button"
+              className="btn line sm"
+              title={ISSUANCE_COPY.floorPlanHint}
+              onClick={() => setFloorPrintOpen(true)}
+            >
+              <Printer size={14} />
+              {ISSUANCE_COPY.settingsFloorPrint}
+            </button>
             {!multi ? bulkBtn : null}
             {!multi ? (
               <button className="btn line sm" onClick={() => addFloor(s.buildings[0].id)}>
@@ -1444,6 +1456,10 @@ export default function Settings({ data, email, notify }: Props) {
           <div className="hbiz" id="set-hotel-biz">
             <h4>호텔 사업자 정보</h4>
             <p className="sub">{STAY_CONFIRM_COPY}에 찍히는 상호·사업자번호·주소예요. 상호를 비우면 위 호텔 이름을 씁니다.</p>
+            <p className="sub">
+              {ISSUANCE_COPY.settingsVaultHint}{" "}
+              <a href="#/issuance/vault">{ISSUANCE_COPY.viewLabel}</a>
+            </p>
             <div className="opt">
               <span>상호(사업자명)</span>
               <input
@@ -1505,6 +1521,14 @@ export default function Settings({ data, email, notify }: Props) {
           <p className="fine">같은 계정으로 PC·태블릿·휴대폰에서 동시에 쓸 수 있어요. 직원별 계정은 다음 버전에서 추가돼요.</p>
         </section>
       </div>
+      {floorPrintOpen ? (
+        <FloorPlanPrint
+          hotelName={name.trim() || hotel.name}
+          s={s}
+          today={businessDate()}
+          onClose={() => setFloorPrintOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }

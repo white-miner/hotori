@@ -31,6 +31,19 @@ import {
   isHotelNoticeStatus,
   validateHotelNoticeDraft,
 } from "../shared/hotelNotice";
+import {
+  HOTEL_DOC_BUCKET,
+  type HotelDocKind,
+  type HotelDocMime,
+  type HotelDocument,
+  type HotelDocumentDraft,
+  hotelDocStoragePath,
+  isHotelDocKind,
+  isHotelDocMime,
+  mimeFromFile,
+  validateHotelDocFile,
+  validateHotelDocumentDraft,
+} from "../shared/hotelDocuments";
 import { type BookPayMethod, type PayKind, type Payment, type PaymentMethod, isBookPayMethod, isPaymentMethod } from "../shared/payment";
 import {
   type StayCredit,
@@ -1627,4 +1640,125 @@ export function useHotelNotices(hotelId: string, staffId?: string | null) {
   );
   return { list, error, save, setStatus, remove, ack, refresh };
 }
+
+// ---------- 호텔 증서 보관함 (발급 · hotel_documents + Storage) ----------
+interface HotelDocumentRow {
+  id: string;
+  hotel_id: string;
+  kind: string;
+  title: string;
+  storage_path: string;
+  mime: string;
+  issued_on: string | null;
+  expires_on: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+const DOC_COLS = "id,hotel_id,kind,title,storage_path,mime,issued_on,expires_on,notes,created_by,created_at,updated_at";
+
+const fromDocRow = (r: HotelDocumentRow): HotelDocument => ({
+  id: r.id,
+  hotelId: r.hotel_id,
+  kind: isHotelDocKind(r.kind) ? r.kind : "other",
+  title: r.title,
+  storagePath: r.storage_path,
+  mime: isHotelDocMime(r.mime) ? r.mime : "application/pdf",
+  issuedOn: r.issued_on,
+  expiresOn: r.expires_on,
+  notes: r.notes,
+  createdBy: r.created_by,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+export async function queryHotelDocuments(hotelId: string): Promise<HotelDocument[]> {
+  const { data, error } = await supabase
+    .from("hotel_documents")
+    .select(DOC_COLS)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return ((data as HotelDocumentRow[]) ?? []).map(fromDocRow);
+}
+
+export function useHotelDocuments(hotelId: string) {
+  const [list, setList] = useState<HotelDocument[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      const rows = await queryHotelDocuments(hotelId);
+      setList(rows);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "증서를 불러오지 못했어요");
+    }
+  }, [hotelId]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const upload = useCallback(
+    async (draft: HotelDocumentDraft, file: File): Promise<HotelDocument> => {
+      const v = validateHotelDocumentDraft(draft) ?? validateHotelDocFile(file);
+      if (v) throw new Error(v);
+      const mime = mimeFromFile(file)!;
+      const id = crypto.randomUUID();
+      const path = hotelDocStoragePath(hotelId, id, file.name);
+      const { error: upErr } = await supabase.storage.from(HOTEL_DOC_BUCKET).upload(path, file, {
+        contentType: mime,
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+      const { data, error } = await supabase
+        .from("hotel_documents")
+        .insert({
+          id,
+          hotel_id: hotelId,
+          kind: draft.kind,
+          title: draft.title.trim().slice(0, 80),
+          storage_path: path,
+          mime,
+          issued_on: draft.issuedOn || null,
+          expires_on: draft.expiresOn || null,
+          notes: draft.notes?.trim() ? draft.notes.trim().slice(0, 280) : null,
+        })
+        .select(DOC_COLS)
+        .single();
+      if (error) {
+        void supabase.storage.from(HOTEL_DOC_BUCKET).remove([path]);
+        throw error;
+      }
+      const saved = fromDocRow(data as HotelDocumentRow);
+      setList((cur) => [saved, ...(cur ?? []).filter((x) => x.id !== saved.id)]);
+      return saved;
+    },
+    [hotelId],
+  );
+
+  const remove = useCallback(async (doc: HotelDocument) => {
+    const { error } = await supabase.from("hotel_documents").delete().eq("id", doc.id);
+    if (error) throw error;
+    if (doc.storagePath) {
+      const { error: rmErr } = await supabase.storage.from(HOTEL_DOC_BUCKET).remove([doc.storagePath]);
+      if (rmErr) console.warn("hotel doc storage remove", rmErr.message);
+    }
+    setList((cur) => (cur ?? []).filter((x) => x.id !== doc.id));
+  }, []);
+
+  const signedUrl = useCallback(async (doc: HotelDocument, expiresIn = 120): Promise<string> => {
+    const { data, error } = await supabase.storage
+      .from(HOTEL_DOC_BUCKET)
+      .createSignedUrl(doc.storagePath, expiresIn);
+    if (error) throw error;
+    if (!data?.signedUrl) throw new Error("signed url missing");
+    return data.signedUrl;
+  }, []);
+
+  return { list, error, refresh, upload, remove, signedUrl };
+}
+
+export type { HotelDocument, HotelDocumentDraft, HotelDocKind, HotelDocMime };
 
