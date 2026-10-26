@@ -44,13 +44,15 @@ test("normalizeSettings: hotelBiz 보존", () => {
   assert.equal(n.hotelBiz.businessNumber, "1");
 });
 
-test("stayConfirmStrings: ko/en titles + attest", () => {
+test("stayConfirmStrings: ko/en titles + attest + amounts", () => {
   assert.equal(stayConfirmStrings("ko").title, STAY_CONFIRM_COPY);
   assert.equal(stayConfirmStrings("en").title, STAY_CONFIRM_COPY_EN);
   assert.match(stayConfirmStrings("en").attest, /certifies/i);
   assert.equal(stayConfirmStrings("ko").nights(2), "2박");
   assert.equal(stayConfirmStrings("en").nights(1), "1 night");
   assert.equal(stayConfirmStrings("en").nights(2), "2 nights");
+  assert.equal(stayConfirmStrings("ko").sale, "판매가");
+  assert.equal(stayConfirmStrings("en").paid, "Paid");
 });
 
 test("stayConfirmDateRange: EN ISO · KR dayLabel", () => {

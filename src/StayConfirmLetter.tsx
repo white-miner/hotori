@@ -10,12 +10,14 @@ import {
   roomLabel,
   typeLabel,
   hotelBizHasAny,
+  won,
 } from "../shared/ledger";
 import {
   type StayConfirmLang,
   stayConfirmDateRange,
   stayConfirmStrings,
 } from "../shared/hotelBiz";
+import { stayConfirmMoney } from "../shared/stayConfirmMoney";
 import { lookups } from "./ui";
 
 interface Props {
@@ -71,6 +73,16 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
     : `${t.unassigned}${type ? ` · ${type}` : ""}`;
   const period = stayConfirmDateRange(lang, b.checkIn, out, nights, dayLabel);
   const hasBiz = hotelBizHasAny(biz);
+  const money = stayConfirmMoney(b, plat);
+  const moneyLine = money.unset
+    ? t.amountUnset
+    : [
+        `${t.sale} ₩${won(money.sale)}`,
+        money.showPaid ? `${t.paid} ₩${won(money.paid)}` : null,
+        money.left != null ? `${t.balance} ₩${won(money.left)}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
 
   const printDoc = () => runPrint(fileTitle);
 
@@ -156,6 +168,10 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
                 </dd>
               </div>
             ) : null}
+            <div>
+              <dt>{t.amounts}</dt>
+              <dd>{moneyLine}</dd>
+            </div>
           </dl>
 
           <p className="sc-attest">{t.attest}</p>

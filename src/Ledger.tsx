@@ -3,10 +3,20 @@ import { flushSync } from "react-dom";
 import { saveFailMessage } from "../shared/errors";
 import { Check, ChevronLeft, ChevronRight, Download, FileDown, FileText, Printer, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
-import { settle, settleBadge } from "../shared/settle";
+import { emptyGroupInfo, settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
 import StayConfirmLetter from "./StayConfirmLetter";
+import InvoiceLetter from "./InvoiceLetter";
+import {
+  type HotelData,
+  queryLedger,
+  queryPayments,
+  queryShopSales,
+  useExpenseVendors,
+  useExpenses,
+  useInvoiceIssues,
+} from "./data";
 import {
   type Booking,
   type StayPhase,
@@ -37,7 +47,6 @@ import {
   weekday,
   won,
 } from "../shared/ledger";
-import { type HotelData, queryLedger, queryPayments, queryShopSales, useExpenseVendors, useExpenses } from "./data";
 import {
   BOOK_PAY_LABEL,
   BOOK_PAY_METHODS,
@@ -171,6 +180,10 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const [settleId, setSettleId] = useState<string | null>(null);
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
   const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
+  const [invoiceGroupId, setInvoiceGroupId] = useState<string | null>(null);
+  const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
+  const invoices = useInvoiceIssues(hotelId);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
   const [payList, setPayList] = useState<Payment[]>([]);
@@ -320,6 +333,21 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                     >
                       <FileText size={13} strokeWidth={2.2} aria-hidden />
                       {STAY_CONFIRM_COPY}
+                    </button>
+                  ) : null}
+                  {b.kind === "stay" && b.status !== "cancelled" ? (
+                    <button
+                      type="button"
+                      className="btn sm line l-stay-confirm noprint"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (b.groupId) setInvoiceGroupId(b.groupId);
+                        else setInvoiceBooking(b);
+                      }}
+                      aria-label="청구서"
+                      title="청구서 발급·인쇄"
+                    >
+                      청구서
                     </button>
                   ) : null}
                 </span>
@@ -569,6 +597,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 </button>
                 <button type="button" className="btn sm line" onClick={() => setSettleId(g.groupId)}>
                   정산하기
+                </button>
+                <button type="button" className="btn sm line" onClick={() => setInvoiceGroupId(g.groupId)}>
+                  청구서
                 </button>
                 <button type="button" className="btn sm line red-t" disabled={gBusy} onClick={() => void groupAct(g, "cancel")}>
                   단체 취소
@@ -1439,6 +1470,48 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           s={s}
           today={today}
           onClose={() => setStayConfirm(null)}
+        />
+      ) : null}
+      {invoiceGroupId && allGroups.get(invoiceGroupId) ? (
+        <InvoiceLetter
+          hotelName={data.hotel!.name}
+          s={s}
+          today={today}
+          members={allGroups.get(invoiceGroupId)!.members}
+          groupId={invoiceGroupId}
+          groupInfo={data.groups.get(invoiceGroupId) ?? emptyGroupInfo(invoiceGroupId)}
+          busy={invoiceBusy}
+          notify={notify}
+          onIssue={async (args) => {
+            setInvoiceBusy(true);
+            try {
+              return await invoices.issue(args);
+            } finally {
+              setInvoiceBusy(false);
+            }
+          }}
+          onClose={() => setInvoiceGroupId(null)}
+        />
+      ) : null}
+      {invoiceBooking && !invoiceGroupId ? (
+        <InvoiceLetter
+          hotelName={data.hotel!.name}
+          s={s}
+          today={today}
+          members={[invoiceBooking]}
+          groupId={null}
+          groupInfo={null}
+          busy={invoiceBusy}
+          notify={notify}
+          onIssue={async (args) => {
+            setInvoiceBusy(true);
+            try {
+              return await invoices.issue(args);
+            } finally {
+              setInvoiceBusy(false);
+            }
+          }}
+          onClose={() => setInvoiceBooking(null)}
         />
       ) : null}
     </main>
