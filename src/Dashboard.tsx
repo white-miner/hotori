@@ -198,7 +198,7 @@ const nowLabel = () =>
   }).format(new Date());
 const STATUS: Record<string, string> = { cancelled: "취소", noshow: "노쇼" };
 
-/** 현황판 탭: 주소(#/board/now · stock · rooms · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 「현황」 */
+/** 현황판 탭: 주소(#/board/now · rooms · smart · stock · calendar)가 먼저, 없으면 이 기기에서 마지막으로 본 탭, 처음이면 「현황」 */
 const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
@@ -220,7 +220,7 @@ const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "month", label: "월" },
   { id: "range", label: "기간" },
 ];
-const TAB_OK = new Set<BoardTab>(["now", "stock", "smart", "rooms", "calendar", "parking"]);
+const TAB_OK = new Set<BoardTab>(["now", "rooms", "smart", "stock", "calendar", "parking"]);
 const lsGet = (k: string): string | null => {
   try {
     return localStorage.getItem(k);
@@ -1560,7 +1560,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
   const activeDayuse = board.dayuse.filter(isActive).length;
 
-  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 판매 캘린더 · 스마트 등록 · 배치 · 캘린더 (+주차)
+  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 캘린더 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
@@ -1571,6 +1571,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </span>
         ) : null}
       </button>
+      <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
+        배치
+      </button>
+      <button role="tab" aria-selected={tab === "smart"} className={tab === "smart" ? "on" : ""} onClick={() => setTab("smart")}>
+        스마트 등록
+      </button>
       <button role="tab" aria-selected={tab === "stock"} className={tab === "stock" ? "on" : ""} onClick={() => setTab("stock")}>
         판매 캘린더
         {(over ? overs : oversAll).length ? (
@@ -1578,12 +1584,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             {(over ? overs : oversAll).length}
           </span>
         ) : null}
-      </button>
-      <button role="tab" aria-selected={tab === "smart"} className={tab === "smart" ? "on" : ""} onClick={() => setTab("smart")}>
-        스마트 등록
-      </button>
-      <button role="tab" aria-selected={tab === "rooms"} className={tab === "rooms" ? "on" : ""} onClick={() => setTab("rooms")}>
-        배치
       </button>
       <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
         캘린더

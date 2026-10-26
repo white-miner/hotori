@@ -465,7 +465,7 @@ test("대실 시간: 사람이 적은 그대로 알아들어요", () => {
   assert.equal(nowRounded(new Date(2026, 9, 18, 23, 58)), "00:00");
 });
 
-test("현황판 탭 주소: #/board/now · stock · smart · rooms", async () => {
+test("현황판 탭 주소: #/board/now · rooms · smart · stock · calendar", async () => {
   const { boardTabFromHash } = await import("./ledger");
   assert.equal(boardTabFromHash("#/board/now"), "now");
   assert.equal(boardTabFromHash("#/board/stock"), "stock");
