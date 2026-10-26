@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  HOTEL_BIZ_GATE_COPY,
   hotelBizDisplayName,
   hotelBizIsReady,
   hotelBizMissingLabels,
@@ -80,6 +81,18 @@ test("hotelBizIsReady / missing: 상호·사업자번호·업종·업태", () =>
     hotelBizMissingLabels(normalizeHotelBiz({ businessName: "A", businessNumber: "1", upjong: "호텔" }), ""),
     ["업태"],
   );
+  // legacy JSON without upjong/uptae — no throw, fields missing
+  assert.deepEqual(hotelBizMissingLabels({ businessName: "A", businessNumber: "1" } as never, ""), ["업종", "업태"]);
+});
+
+test("HOTEL_BIZ_GATE_COPY: lists missing fields · no 이(가) · settings hash", () => {
+  const body = HOTEL_BIZ_GATE_COPY.body(["상호", "업태"]);
+  assert.match(body, /· 상호/);
+  assert.match(body, /· 업태/);
+  assert.doesNotMatch(body, /이\(가\)/);
+  assert.doesNotMatch(body, /상호·업태/);
+  assert.equal(HOTEL_BIZ_GATE_COPY.settingsHash, "#/settings/hotel-biz");
+  assert.equal(HOTEL_BIZ_GATE_COPY.confirmLabel, "설정으로 이동");
 });
 
 test("hotelBizUpjongUptaeLine", () => {

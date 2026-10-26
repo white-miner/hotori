@@ -233,19 +233,25 @@ export function hotelBizIsReady(biz: HotelBiz, hotelName = ""): boolean {
   return hotelBizMissingLabels(biz, hotelName).length === 0;
 }
 
-export function hotelBizMissingLabels(biz: HotelBiz, hotelName = ""): string[] {
+export function hotelBizMissingLabels(biz: HotelBiz | unknown, hotelName = ""): string[] {
+  const b = normalizeHotelBiz(biz);
   const missing: string[] = [];
-  if (!(biz.businessName.trim() || hotelName.trim())) missing.push("상호");
-  if (!biz.businessNumber.trim()) missing.push("사업자번호");
-  if (!biz.upjong.trim()) missing.push("업종");
-  if (!biz.uptae.trim()) missing.push("업태");
+  if (!(b.businessName || hotelName.trim())) missing.push("상호");
+  if (!b.businessNumber) missing.push("사업자번호");
+  if (!b.upjong) missing.push("업종");
+  if (!b.uptae) missing.push("업태");
   return missing;
 }
 
+/** askConfirm body — 빠진 필드를 줄마다 나열 (이(가) 한 줄 금지). */
 export const HOTEL_BIZ_GATE_COPY = {
   title: "사업자 정보가 필요해요",
-  body: (missing: string[]) =>
-    `발급 서류에는 ${missing.join("·")}이(가) 필요해요.\n설정 → 호텔 사업자 정보에서 입력해 주세요.`,
+  body: (missing: string[]) => {
+    const lines = missing.length
+      ? missing.map((m) => `· ${m}`)
+      : ["· 상호", "· 사업자번호", "· 업종", "· 업태"];
+    return ["발급하려면 아래 항목이 필요해요.", ...lines, "설정에서 입력한 뒤 다시 발급해 주세요."].join("\n");
+  },
   confirmLabel: "설정으로 이동",
   cancelLabel: "닫기",
   settingsHash: "#/settings/hotel-biz",
