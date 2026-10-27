@@ -28,7 +28,7 @@ import {
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X, Zap } from "lucide-react";
 import { boardGuestSearch, filterOpsBookings, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
@@ -197,9 +197,10 @@ import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadg
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
 import PlatformFilterBar from "./PlatformFilterBar";
+import { groupDisplayColor } from "../shared/cellBadges";
 import { normalizePlatformFilter, platformChips, platformMatch, PLATFORM_FILTER_STORAGE_KEY, togglePlatformChoice } from "../shared/platformFilter";
 import { normalizeUaSort, sortUnassigned, UA_SORT_STORAGE_KEY, type UaSort } from "../shared/uaSort";
-import { DateChip, FitText, GroupBadge, GroupRoomNoHit, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
+import { DateChip, FitText, CellBadges, GroupBadge, GroupRoomNoHit, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
   data: HotelData;
@@ -1506,7 +1507,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 다실 보드: 공유 badgeColor + 대장/대장#호 칩 · 단실은 「단체」 */
   const groupBoardMark = (b: Booking) => {
     if (!b.groupId) return { color: null as GroupBadgeColor | null, label: null as string | null, stripe: "" };
-    const color = data.groups.get(b.groupId)?.badgeColor ?? null;
+    // 저장된 색이 없으면 groupId 해시색을 표시 전용으로 (저장하지 않음)
+    const color = groupDisplayColor(b.groupId, data.groups.get(b.groupId)?.badgeColor);
     const peers = groupStayPeers(bookings, b.groupId);
     const multi = peers.length > 1;
     const lead = multi ? groupLeadBooking(peers) : null;
@@ -1684,23 +1686,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span className="gn">{b.guestName}</span>
-          {!cancelled && isWalkInPlaceholderName(b.guestName) ? (
-            <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
-              바로입실
-            </span>
-          ) : null}
-          {!cancelled && b.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
-          {!cancelled && b.tentative ? <span className="tenttag" title="임시 배치 · 재고는 막혀 있어요">임시</span> : null}
-          {b.groupId ? (
-            <GroupBadge
-              groupName={b.groupName}
-              color={gMark.color}
-              label={gMark.label}
-              readOnly={readOnly}
-              onPick={pickGroupColor(b.groupId)}
-            />
-          ) : null}
         </div>
+        {!cancelled ? (
+          <CellBadges
+            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b) }}
+            group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId) } : null}
+          />
+        ) : null}
         <div className="r3 rp">
           {readOnly ? (
             <span />
@@ -2979,24 +2971,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span className="gn">{b.guestName}</span>
-            {isWalkInPlaceholderName(b.guestName) ? (
-              <span className="wiittag" title="바로 입실 · 이름·연락처 미입력">
-                바로입실
-              </span>
-            ) : null}
-            {f.noClean ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
-            {f.tentative ? <span className="tenttag">임시</span> : null}
-            {f.longStay ? <span className="longtag" title="장기 · 퇴실 미정">장기</span> : null}
-            {f.group && b.groupId ? (
-              <GroupBadge
-                groupName={b.groupName}
-                color={gMark.color}
-                label={gMark.label}
-                readOnly={readOnly}
-                onPick={pickGroupColor(b.groupId)}
-              />
-            ) : null}
           </div>
+          <CellBadges
+            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay }}
+            group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId) } : null}
+          />
           {amount || payMethod ? (
             <div className={`nowamt tone-${amountTone}`} title={f.longStay ? "미수" : "요금·잔금"}>
               {payMethod ? <span className="nowpay">{payMethod}</span> : null}
@@ -3139,6 +3118,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
         <span>
           <i className="nkdot nk-ncx" />청소X
+        </span>
+        <span title="이름·연락처 없이 바로 입실">
+          <em className="bdg bdg-walkIn"><Zap size={11} strokeWidth={2.8} aria-hidden />바로입실</em>
+        </span>
+        <span title="같은 단체 예약 · 색 같은 칸이 한 단체">
+          <em className="bdg bdg-grp">단체</em>
+        </span>
+        <span title="퇴실 미정 장기 숙박">
+          <em className="bdg bdg-longStay">장기</em>
         </span>
         <span>
           <MessageCircle size={12} strokeWidth={2.2} aria-hidden />특이사항

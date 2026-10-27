@@ -1,5 +1,6 @@
 import type { Booking, Building, Floor, HotelSettings, Platform, Room, RoomType } from "../shared/ledger";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, X, Zap } from "lucide-react";
+import { CELL_BADGE_LABEL, cellBadgeKinds, type CellBadgeFlags, type CellBadgeKind } from "../shared/cellBadges";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FLOOR_PALETTE, onStrong, strongColor } from "../shared/floorColor";
 import { dayLabel, defaultBuildingName, isMultiBuilding, legsOf, orderedFloors, typeLabel } from "../shared/ledger";
@@ -95,6 +96,55 @@ export function PlatBadge({ p }: { p?: Platform | null }) {
     </span>
   );
 }
+/**
+ * 칸 뱃지 줄 — 이름 줄(.nm)과 분리해 이름이 잘리지 않게. 뱃지가 없으면 줄 자체를 그리지 않아요(칸 높이 불변).
+ * 모양+색: 청소X=빨강 채움 ✕ · 바로입실=검정 채움 ⚡ · 임시=노랑 점선 · 장기=파랑 외곽선 · 단체=단체색 리본.
+ */
+export function CellBadges({
+  flags,
+  group,
+}: {
+  flags: CellBadgeFlags;
+  group?: {
+    groupName?: string | null;
+    color: GroupBadgeColor;
+    label?: string | null;
+    readOnly?: boolean;
+    onPick?: (c: GroupBadgeColor) => void | Promise<void>;
+    /** 이름 줄에 이미 같은 이름이 있으면 리본엔 단체명을 또 쓰지 않음 */
+    hideName?: boolean;
+  } | null;
+}) {
+  const kinds = cellBadgeKinds(flags);
+  if (!kinds.length && !group) return null;
+  return (
+    <div className="bdg-row">
+      {group ? (
+        <GroupBadge
+          groupName={group.groupName}
+          color={group.color}
+          label={group.label}
+          readOnly={group.readOnly}
+          onPick={group.onPick}
+          showName={!group.hideName}
+        />
+      ) : null}
+      {kinds.map((k) => (
+        <span key={k} className={`bdg bdg-${k}`} title={BADGE_TITLE[k]}>
+          {k === "noClean" ? <X size={11} strokeWidth={3.2} aria-hidden /> : null}
+          {k === "walkIn" ? <Zap size={11} strokeWidth={2.8} aria-hidden /> : null}
+          {CELL_BADGE_LABEL[k]}
+        </span>
+      ))}
+    </div>
+  );
+}
+const BADGE_TITLE: Record<CellBadgeKind, string> = {
+  noClean: "청소하지 않음",
+  walkIn: "바로 입실 · 이름·연락처 미입력",
+  tentative: "임시 배치 · 재고는 막혀 있어요",
+  longStay: "장기 · 퇴실 미정",
+};
 /** 칸 「단체」/「대장」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
 export function GroupBadge({
   groupName,
@@ -103,12 +153,15 @@ export function GroupBadge({
   onPick,
   /** 다실 대장 칩: `대장` / `대장 601호` · 없으면 「단체」 */
   label,
+  showName,
 }: {
   groupName?: string | null;
   color?: GroupBadgeColor | null;
   readOnly?: boolean;
   onPick?: (c: GroupBadgeColor) => void | Promise<void>;
   label?: string | null;
+  /** 리본형: 「단체」 옆에 단체명도 같이 (좁으면 말줄임) */
+  showName?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -124,10 +177,16 @@ export function GroupBadge({
   const text = label?.trim() || "단체";
   const cls = `grptag${color ? ` ${color}` : ""}${open ? " open" : ""}${label ? " lead" : ""}`;
   const title = groupName ? `${text} · ${groupName}` : text;
+  const inner = (
+    <>
+      <b className="grptag-k">{text}</b>
+      {showName && groupName ? <span className="grptag-nm">{groupName}</span> : null}
+    </>
+  );
   if (readOnly || !onPick) {
     return (
       <span className={cls} title={title}>
-        {text}
+        {inner}
       </span>
     );
   }
@@ -145,7 +204,7 @@ export function GroupBadge({
           setOpen((v) => !v);
         }}
       >
-        {text}
+        {inner}
       </button>
       {open ? (
         <span className="grp-palette" role="listbox" aria-label="단체 뱃지 색" onClick={(e) => e.stopPropagation()}>

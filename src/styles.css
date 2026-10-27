@@ -5427,3 +5427,46 @@ body.bulking .toast { bottom: 96px; }
   .pf-note { flex-wrap: wrap; gap: 4px 8px; }
 }
 @media (max-width: 760px) { .pf-note > span { display: none; } }
+
+/* ───── 칸 뱃지 줄 (.bdg-row) — 이름 줄과 분리 · 모양+색 · 세게 보이는 건 청소X(빨강)·단체(단체색)뿐 ───── */
+.bdg-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 3px 0 0; padding: 0 3px; min-width: 0; max-width: 100%; }
+.bdg { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 12px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; white-space: nowrap; border: 1.5px solid transparent; }
+.bdg-noClean { background: #c43c28; border-color: #c43c28; color: #fff; }
+.bdg-walkIn { background: var(--ink); border-color: var(--ink); color: #fff; }
+.bdg-tentative { background: #fff8dc; border: 1.5px dashed #c9a227; color: #7a5a00; }
+.bdg-longStay { background: #fff; border-color: #7aa8c9; color: #1a4a6e; font-weight: 700; }
+/* 단체 리본: 단체색 채움 + 단체명 (좁으면 말줄임) */
+.bdg-row .grptag-wrap { flex: 1 1 100%; min-width: 0; display: flex; }
+.bdg-row .grptag { flex: 1 1 auto; min-width: 0; height: 20px; padding: 0 7px; gap: 6px; font-size: 12px; font-weight: 800; line-height: 18px; border-radius: 6px; border: 1.5px solid transparent; justify-content: flex-start; }
+.bdg-row .grptag .grptag-k { flex: none; font-weight: 900; }
+.bdg-row .grptag .grptag-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; opacity: 0.95; }
+.bdg-row .grptag.g1 { background: var(--grp-g1); border-color: var(--grp-g1); color: #fff; }
+.bdg-row .grptag.g2 { background: var(--grp-g2); border-color: var(--grp-g2); color: #fff; }
+.bdg-row .grptag.g3 { background: var(--grp-g3); border-color: var(--grp-g3); color: #fff; }
+.bdg-row .grptag.g4 { background: var(--grp-g4); border-color: var(--grp-g4); color: #fff; }
+.bdg-row .grptag.g5 { background: var(--grp-g5); border-color: var(--grp-g5); color: #fff; }
+.bdg-row .grptag.g6 { background: var(--grp-g6); border-color: var(--grp-g6); color: #fff; }
+.bdg-row .grptag.open { outline: 2px solid var(--ink); outline-offset: 1px; }
+/* 칸 왼쪽 띠: 단체색 4px · 청소X는 오른쪽 띠 (같은 box-shadow를 덮어쓰지 않게 합쳐서) */
+.cell.bk.ncx { box-shadow: inset 4px 0 0 #c43c28; }
+.cell.bk.grp.g1 { box-shadow: inset 4px 0 0 var(--grp-g1); }
+.cell.bk.grp.g2 { box-shadow: inset 4px 0 0 var(--grp-g2); }
+.cell.bk.grp.g3 { box-shadow: inset 4px 0 0 var(--grp-g3); }
+.cell.bk.grp.g4 { box-shadow: inset 4px 0 0 var(--grp-g4); }
+.cell.bk.grp.g5 { box-shadow: inset 4px 0 0 var(--grp-g5); }
+.cell.bk.grp.g6 { box-shadow: inset 4px 0 0 var(--grp-g6); }
+.cell.bk.grp.g1.ncx { box-shadow: inset 4px 0 0 var(--grp-g1), inset -4px 0 0 #c43c28; }
+.cell.bk.grp.g2.ncx { box-shadow: inset 4px 0 0 var(--grp-g2), inset -4px 0 0 #c43c28; }
+.cell.bk.grp.g3.ncx { box-shadow: inset 4px 0 0 var(--grp-g3), inset -4px 0 0 #c43c28; }
+.cell.bk.grp.g4.ncx { box-shadow: inset 4px 0 0 var(--grp-g4), inset -4px 0 0 #c43c28; }
+.cell.bk.grp.g5.ncx { box-shadow: inset 4px 0 0 var(--grp-g5), inset -4px 0 0 #c43c28; }
+.cell.bk.grp.g6.ncx { box-shadow: inset 4px 0 0 var(--grp-g6), inset -4px 0 0 #c43c28; }
+@media (max-width: 760px) {
+  .bdg-row { gap: 3px; }
+  .bdg { height: 18px; padding: 0 6px; font-size: 11px; }
+  .bdg-row .grptag { height: 18px; padding: 0 6px; font-size: 11px; line-height: 16px; }
+}
+/* 범례 안의 작은 뱃지 */
+.nowlg .bdg { height: 17px; padding: 0 5px; font-size: 11px; }
+.nowlg .bdg { font-style: normal; }
+.nowlg .bdg-grp { background: var(--grp-g1); border-color: var(--grp-g1); color: #fff; }
