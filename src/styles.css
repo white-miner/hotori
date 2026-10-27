@@ -5604,3 +5604,37 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   .rs-rates.three { grid-template-columns: 1fr; }
   .rs-sum { font-size: 11.5px; }
 }
+
+/* ---------- 단체 기간 결제 시트 ---------- */
+.gpp-modal { width: min(560px, 100%); }
+.gpp-modal .mb { display: flex; flex-direction: column; gap: 12px; }
+.gpp-gname { flex: 1; min-width: 0; }
+.gpp-hero { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--panel); }
+.gpp-hl { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.2px; }
+.gpp-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line, #eee); border-radius: 14px; overflow: hidden; }
+.gpp-row { display: grid; grid-template-columns: minmax(84px, auto) minmax(0, 1fr); gap: 2px 12px; align-items: baseline; padding: 9px 12px; }
+.gpp-row + .gpp-row { border-top: 1px solid var(--line, #eee); }
+.gpp-row.idle .gpp-no { opacity: 0.6; }
+.gpp-no { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.gpp-lead { font-style: normal; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: var(--dark, #222); color: #fff; }
+.gpp-amt { display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 6px; font-variant-numeric: tabular-nums; }
+.gpp-amt b { font-size: 15px; }
+.gpp-amt small { color: var(--ink3); font-size: 11.5px; }
+.gpp-st { grid-column: 1 / -1; }
+.gpp-glance { margin: 0; }
+.gpp-more summary { cursor: pointer; font-size: 12.5px; color: var(--ink3); padding: 4px 0; }
+.gpp-lead-pick { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.gpp-sw { display: inline-flex; gap: 8px; }
+.gpp-done { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 18px 8px; }
+.gpp-done b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.gpp-done-ic { display: inline-flex; width: 44px; height: 44px; border-radius: 50%; align-items: center; justify-content: center; background: #e7f5ec; color: #1f8a4c; }
+.gpp-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.gpp-acts .gpp-go { flex: 1 1 200px; min-height: 46px; font-size: 15px; font-weight: 800; }
+.grptag.payable { cursor: pointer; }
+@media (max-width: 760px) {
+  .gpp-hl { font-size: 19px; }
+  .gpp-acts { position: sticky; bottom: 0; background: #fff; padding-top: 8px; }
+  .gpp-acts .btn { flex: 1 1 auto; }
+  .gpp-acts .gpp-go { flex-basis: 100%; order: -1; }
+  .gpp-modal .chip { height: 38px; }
+}

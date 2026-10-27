@@ -111,6 +111,8 @@ export function CellBadges({
     label?: string | null;
     readOnly?: boolean;
     onPick?: (c: GroupBadgeColor) => void | Promise<void>;
+    /** 다실 단체: 뱃지를 누르면 「기간 결제」 시트 (색 팔레트 대신) */
+    onOpen?: () => void;
     /** 이름 줄에 이미 같은 이름이 있으면 리본엔 단체명을 또 쓰지 않음 */
     hideName?: boolean;
   } | null;
@@ -126,6 +128,7 @@ export function CellBadges({
           label={group.label}
           readOnly={group.readOnly}
           onPick={group.onPick}
+          onOpen={group.onOpen}
           showName={!group.hideName}
         />
       ) : null}
@@ -151,6 +154,7 @@ export function GroupBadge({
   color,
   readOnly,
   onPick,
+  onOpen,
   /** 다실 대장 칩: `대장` / `대장 601호` · 없으면 「단체」 */
   label,
   showName,
@@ -159,6 +163,8 @@ export function GroupBadge({
   color?: GroupBadgeColor | null;
   readOnly?: boolean;
   onPick?: (c: GroupBadgeColor) => void | Promise<void>;
+  /** 있으면 탭 = 기간 결제 시트 (팔레트는 시트 안으로) */
+  onOpen?: () => void;
   label?: string | null;
   /** 리본형: 「단체」 옆에 단체명도 같이 (좁으면 말줄임) */
   showName?: boolean;
@@ -183,10 +189,28 @@ export function GroupBadge({
       {showName && groupName ? <span className="grptag-nm">{groupName}</span> : null}
     </>
   );
-  if (readOnly || !onPick) {
+  if (readOnly || (!onPick && !onOpen)) {
     return (
       <span className={cls} title={title}>
         {inner}
+      </span>
+    );
+  }
+  if (onOpen) {
+    return (
+      <span className="grptag-wrap">
+        <button
+          type="button"
+          className={`${cls} payable`}
+          title={`${title} · 눌러서 기간 결제`}
+          aria-haspopup="dialog"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+        >
+          {inner}
+        </button>
       </span>
     );
   }
@@ -219,7 +243,7 @@ export function GroupBadge({
               onClick={(e) => {
                 e.stopPropagation();
                 setBusy(true);
-                void Promise.resolve(onPick(id))
+                void Promise.resolve(onPick?.(id))
                   .then(() => setOpen(false))
                   .finally(() => setBusy(false));
               }}
