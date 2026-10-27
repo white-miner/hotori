@@ -174,7 +174,7 @@ export default function MoveScheduleSheet({
           {err ? <div className="ferr">{err}</div> : null}
         </div>
         <div className="mf">
-          <button type="button" className="btn dark lg" disabled={busy || !plan?.ok} onClick={() => void save()}>
+          <button type="button" className="btn dark mvs-go" disabled={busy || !plan?.ok} onClick={() => void save()}>
             {busy ? "예약 중…" : plan?.ok ? `${md(date)} ${L.roomLabel(to)}호로 이동 예약` : "객실을 골라 주세요"}
           </button>
         </div>
