@@ -214,3 +214,26 @@ test("단체 날짜 바꾸기: 다른 예약과 겹치는 방 · 객실 이동�
   const mv = { ...m1, nights: 2, segments: [{ roomId: "r301", nights: 1 }, { roomId: "r304", nights: 1 }] };
   assert.match(groupDateBlock(S, [mv, m2], [mv, m2], "2026-10-20", 2)!, /객실 이동/);
 });
+
+test("groupLeadBooking: 중도퇴실로 빈 방은 대장 후보에서 뒤로 (본관 302호 사례) · 수납 0 동률", () => {
+  const gone = bk({ id: "g302", roomId: "r302", checkIn: "2026-10-11", nights: 30, earlyOut: "2026-10-21", payments: [] });
+  const a = bk({ id: "a602", roomId: "r301", checkIn: "2026-10-11", nights: 30, payments: [] });
+  const b = bk({ id: "a501", roomId: "r303", checkIn: "2026-10-11", nights: 30, payments: [] });
+  assert.equal(groupLeadBooking([gone, a, b], { today: "2026-10-27" })?.id, "a602");
+  // today 없어도 퇴실처리된 방은 뒤로
+  const out = bk({ id: "out", roomId: "r304", checkIn: "2026-10-11", nights: 30, checkedOutAt: "2026-10-21T01:00:00Z", payments: [] });
+  assert.equal(groupLeadBooking([out, b])?.id, "a501");
+  // 퇴실 당일(stayEnd = today)은 아직 방을 씀
+  const dep = bk({ id: "dep", roomId: "r305", checkIn: "2026-10-25", nights: 2, payments: [] });
+  assert.equal(groupLeadBooking([dep, a], { today: "2026-10-27" })?.id, "dep");
+});
+
+test("groupLeadBooking: 직원이 지정한 대장이 항상 우선 · 구성원이 아니면 자동", () => {
+  const a = bk({ id: "a", roomId: "r301", payments: [] });
+  const b = bk({ id: "b", roomId: "r303", payments: [{ id: "p", bookingId: "b", kind: "balance", method: "card", amount: 200000, bizDate: "2026-10-19", createdAt: "" }] });
+  assert.equal(groupLeadBooking([a, b], { preferredId: "a" })?.id, "a");
+  assert.equal(groupLeadBooking([a, b], { preferredId: "zzz" })?.id, "b");
+  assert.equal(groupLeadBooking([a, b], { preferredId: null })?.id, "b");
+  const items = groupPeerRoomItems([a, b], (id) => id.slice(1), { preferredId: "a" });
+  assert.deepEqual(items.filter((x) => x.lead).map((x) => x.no), ["301"]);
+});

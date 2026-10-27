@@ -1,5 +1,5 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
-import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stockTable } from "./ledger";
+import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
 import { syncStayNightRates } from "./nightrates";
 import { paidOf } from "./payment";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
@@ -31,21 +31,47 @@ export function hashGroupBadgeColor(groupId: string): GroupBadgeColor {
   return GROUP_BADGE_COLORS[h % GROUP_BADGE_COLORS.length]!;
 }
 
+type LeadPick = Pick<Booking, "id" | "payments" | "roomId" | "createdAt"> &
+  Partial<Pick<Booking, "status" | "checkedOutAt" | "kind" | "checkIn" | "nights" | "earlyOut">>;
+
 /**
- * 대장 예약: 수납액 최대 방 · 동률이면 목록 앞(create 시 drafts[0]).
- * 스키마 lead_booking_id 없이 P0 규칙.
+ * 아직 방을 쓰는 단체 구성원: 활성 · 퇴실처리 전 · (today가 있으면) 실제 퇴실일이 오늘 이후.
+ * 중도퇴실로 비어 버린 방(status는 active)은 대장 후보에서 뒤로 밀려요.
  */
-export function groupLeadBooking<T extends Pick<Booking, "id" | "payments" | "roomId" | "createdAt">>(
+export function isLiveGroupMember(b: LeadPick, today?: string | null): boolean {
+  if (b.status && b.status !== "active") return false;
+  if (b.checkedOutAt) return false;
+  if (today && b.checkIn && b.nights && b.kind !== "dayuse") {
+    if (stayEnd({ kind: b.kind ?? "stay", checkIn: b.checkIn, nights: b.nights, earlyOut: b.earlyOut ?? null }) < today) return false;
+  }
+  return true;
+}
+
+/**
+ * 대장 예약:
+ *  1) 직원이 지정한 대장(preferredId · booking_groups.lead_booking_id)이 구성원이면 그 방
+ *  2) 아니면 자동: 투숙 중인 방 먼저 → 수납액 최대 → 목록 앞(create 시 drafts[0]).
+ *     (예전: 수납 동률이면 목록 첫 방 → 중도퇴실로 빈 방이 대장으로 뜨던 문제)
+ */
+export function groupLeadBooking<T extends LeadPick>(
   members: readonly T[],
+  opts: { preferredId?: string | null; today?: string | null } = {},
 ): T | null {
   if (!members.length) return null;
+  if (opts.preferredId) {
+    const pick = members.find((m) => m.id === opts.preferredId);
+    if (pick) return pick;
+  }
   let best = members[0]!;
+  let bestLive = isLiveGroupMember(best, opts.today);
   let bestPaid = paidOf(best as Pick<Booking, "payments">);
   for (let i = 1; i < members.length; i++) {
     const m = members[i]!;
+    const live = isLiveGroupMember(m, opts.today);
     const p = paidOf(m as Pick<Booking, "payments">);
-    if (p > bestPaid) {
+    if ((live && !bestLive) || (live === bestLive && p > bestPaid)) {
       best = m;
+      bestLive = live;
       bestPaid = p;
     }
   }
@@ -70,8 +96,9 @@ export type GroupPeerRoomItem = { no: string; lead: boolean };
 export function groupPeerRoomItems(
   members: readonly Pick<Booking, "id" | "roomId" | "payments" | "createdAt">[],
   roomLabel: (roomId: string) => string | null | undefined,
+  opts: { preferredId?: string | null; today?: string | null } = {},
 ): GroupPeerRoomItem[] {
-  const lead = groupLeadBooking(members);
+  const lead = groupLeadBooking(members, opts);
   const leadId = lead?.id ?? null;
   const items: GroupPeerRoomItem[] = [];
   for (const m of members) {

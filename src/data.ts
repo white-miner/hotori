@@ -138,6 +138,8 @@ interface PaymentRow {
   biz_date: string;
   created_at: string;
   note?: string | null;
+  night_date?: string | null;
+  period_nights?: number | null;
 }
 interface StayCreditRow {
   id: string;
@@ -178,7 +180,7 @@ interface ChargeRow {
   amount: number;
   created_at: string;
 }
-const PAY_COLS = "id,booking_id,group_id,kind,method,amount,biz_date,created_at,note";
+const PAY_COLS = "id,booking_id,group_id,kind,method,amount,biz_date,created_at,note,night_date,period_nights";
 const CHARGE_COLS = "id,booking_id,night_date,amount,created_at";
 const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
@@ -190,6 +192,8 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   bizDate: r.biz_date,
   createdAt: r.created_at,
   note: r.note?.trim() ? r.note.trim().slice(0, 80) : null,
+  nightDate: r.night_date ?? null,
+  periodNights: r.period_nights ?? null,
 });
 const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   id: r.id,
@@ -214,9 +218,10 @@ interface GroupRow {
   rates: unknown;
   extras: unknown;
   badge_color: string | null;
+  lead_booking_id?: string | null;
   booking_payments?: PaymentRow[];
 }
-const GROUP_COLS = `id,pay_mode,due_on,payer_company,payer_name,payer_phone,rates,extras,badge_color,booking_payments(${PAY_COLS})`;
+const GROUP_COLS = `id,pay_mode,due_on,payer_company,payer_name,payer_phone,rates,extras,badge_color,lead_booking_id,booking_payments(${PAY_COLS})`;
 function groupFromRow(r: GroupRow): GroupInfo {
   const rates: Record<string, number> = {};
   if (r.rates && typeof r.rates === "object") for (const [k, v] of Object.entries(r.rates as Record<string, unknown>)) if (Number.isFinite(Number(v))) rates[k] = Number(v);
@@ -234,6 +239,7 @@ function groupFromRow(r: GroupRow): GroupInfo {
     extras,
     payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     badgeColor: isGroupBadgeColor(r.badge_color) ? r.badge_color : null,
+    leadBookingId: r.lead_booking_id ?? null,
   };
 }
 const t = (v: string | null | undefined, max: number) => (v && v.trim() ? v.trim().slice(0, max) : null);
@@ -889,6 +895,70 @@ export function useHotelData(hotelId: string) {
       return n;
     });
   }, []);
+  /** 단체 대장 객실 지정 (null = 자동). 다른 칸은 건드리지 않고 이 한 칸만 저장 */
+  const setGroupLead = useCallback(
+    async (id: string, bookingId: string | null): Promise<void> => {
+      const { data, error } = await supabase
+        .from("booking_groups")
+        .upsert({ id, hotel_id: hotelId, lead_booking_id: bookingId }, { onConflict: "id" })
+        .select(GROUP_COLS)
+        .single();
+      if (error) throw error;
+      setGroups((m) => new Map(m).set(id, groupFromRow(data as unknown as GroupRow)));
+    },
+    [hotelId],
+  );
+  /**
+   * 단체 기간 결제: 방마다 한 줄씩 한 번에 저장 (한 문장 insert = 모두 되거나 모두 안 됨 · created_at 같음).
+   * leadBookingId가 주어지면 현재 대장을 같이 고정해요 (자동 대장이 결제 때문에 바뀌지 않게).
+   */
+  const addPeriodPayments = useCallback(
+    async (
+      groupId: string,
+      lines: { bookingId: string; amount: number; nightDate: string; periodNights: number; note: string }[],
+      p: { method: BookPayMethod; bizDate: string; leadBookingId?: string | null },
+    ): Promise<Payment[]> => {
+      if (!lines.length) return [];
+      if (p.leadBookingId && !groups.get(groupId)?.leadBookingId) {
+        const r = await supabase.from("booking_groups").upsert({ id: groupId, hotel_id: hotelId, lead_booking_id: p.leadBookingId }, { onConflict: "id" });
+        if (r.error) throw r.error;
+      }
+      const { data, error } = await supabase
+        .from("booking_payments")
+        .insert(
+          lines.map((l) => ({
+            booking_id: l.bookingId,
+            kind: "balance",
+            method: p.method,
+            amount: Math.round(l.amount),
+            biz_date: p.bizDate,
+            note: l.note.slice(0, 80),
+            night_date: l.nightDate,
+            period_nights: l.periodNights,
+          })),
+        )
+        .select(PAY_COLS);
+      if (error) throw error;
+      const saved = (data as PaymentRow[]).map((x) => payFromRow(x));
+      setBookingsLocal((list) =>
+        list.map((x) => {
+          const mine = saved.filter((y) => y.bookingId === x.id);
+          return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
+        }),
+      );
+      if (p.leadBookingId) setGroups((m) => new Map(m).set(groupId, { ...(m.get(groupId) ?? emptyGroupInfo(groupId)), leadBookingId: m.get(groupId)?.leadBookingId ?? p.leadBookingId! }));
+      return saved;
+    },
+    [hotelId, groups],
+  );
+  /** 방금 한 기간 결제 취소: 줄 여러 개를 한 번에 지워요 */
+  const deletePayments = useCallback(async (list: { bookingId: string; id: string }[]) => {
+    if (!list.length) return;
+    const { error } = await supabase.from("booking_payments").delete().in("id", list.map((x) => x.id));
+    if (error) throw error;
+    const gone = new Set(list.map((x) => x.id));
+    setBookingsLocal((all) => all.map((x) => ((x.payments ?? []).some((y) => gone.has(y.id)) ? { ...x, payments: (x.payments ?? []).filter((y) => !gone.has(y.id)) } : x)));
+  }, []);
   const deleteBooking = useCallback(async (id: string) => {
     const { error } = await supabase.from("bookings").delete().eq("id", id);
     if (error) throw error;
@@ -926,6 +996,9 @@ export function useHotelData(hotelId: string) {
     saveGroupInfo,
     addGroupPayment,
     deleteGroupPayment,
+    setGroupLead,
+    addPeriodPayments,
+    deletePayments,
     stayCredits,
     createStayCredit,
     applyStayCredit,

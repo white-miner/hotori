@@ -27,6 +27,8 @@ export interface GroupInfo {
   payments: Payment[];
   /** 칸 「단체」/「대장」뱃지 색 (g1..g6). null이면 기본 무채 · create는 hash 자동 */
   badgeColor: GroupBadgeColor | null;
+  /** 직원이 지정한 대장 객실(예약 id). null/없음 = 자동 선택 (booking_groups.lead_booking_id) */
+  leadBookingId?: string | null;
 }
 export const emptyGroupInfo = (id: string): GroupInfo => ({
   id,

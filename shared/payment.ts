@@ -41,6 +41,9 @@ export interface Payment {
   createdAt: string;
   /** 추가금 등 보조 라벨 (`추가금 · 늦은 퇴실`). 없으면 Entry는 kind 라벨 */
   note?: string | null;
+  /** 기간 결제: 이 결제가 덮는 첫 박 + 박수 (둘 다 있을 때만 기간 결제 · 없으면 맨 앞 미결제 박부터 채움) */
+  nightDate?: string | null;
+  periodNights?: number | null;
 }
 export const PAY_MAX = 100_000_000;
 
