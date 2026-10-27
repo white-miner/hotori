@@ -59,6 +59,7 @@ import { clampHours } from "../shared/extratime";
 import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
+import { hashGroupBadgeColor } from "../shared/group";
 import {
   type NightCharge,
   chargesOutsideWindow,
@@ -977,6 +978,27 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId],
   );
+  /** 혼자 묵는 예약을 한 단체로 묶어요 (객실 추가의 첫걸음) — 결제·박별 요금은 그대로 예약에 남아요 */
+  const groupify = useCallback(
+    async (cur: Booking): Promise<string> => {
+      const bookingId = cur.id;
+      if (cur.groupId) return cur.groupId;
+      const gid = crypto.randomUUID();
+      const gname = (cur.guestName || "단체").slice(0, 40);
+      const g = await supabase.from("booking_groups").insert({ ...groupToRow({ ...emptyGroupInfo(gid), payerName: cur.guestName || null, payerPhone: cur.guestPhone ?? null, badgeColor: hashGroupBadgeColor(gid) }), id: gid, hotel_id: hotelId }).select(GROUP_COLS).single();
+      if (g.error) throw g.error;
+      const r = await supabase.from("bookings").update({ group_id: gid, group_name: gname }).eq("id", bookingId).select(COLS).single();
+      if (r.error) {
+        await supabase.from("booking_groups").delete().eq("id", gid);
+        throw r.error;
+      }
+      setGroups((m) => new Map(m).set(gid, groupFromRow(g.data as unknown as GroupRow)));
+      const saved = fromRow(r.data as BookingRow);
+      setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? saved : x)));
+      return gid;
+    },
+    [hotelId],
+  );
   const addGroupPayment = useCallback(
     async (id: string, p: { method: BookPayMethod; amount: number; bizDate: string }) => {
       if (!groups.has(id)) {
@@ -1238,6 +1260,7 @@ export function useHotelData(hotelId: string) {
     patchGroup,
     groups,
     saveGroupInfo,
+    groupify,
     addGroupPayment,
     deleteGroupPayment,
     setGroupLead,

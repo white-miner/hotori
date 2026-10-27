@@ -3693,6 +3693,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onEndDayuse={(bk) => void doEndDayuse(bk)}
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}
+              onAddRoom={(bk) => {
+                void data.groupify(bk).then(
+                  (gid) => setJoinGroupId(gid),
+                  (e) => notify(e instanceof Error ? `묶지 못했어요: ${e.message}` : "묶지 못했어요"),
+                );
+              }}
               moving={!!mvB}
               onSetNoClean={(bk, v) => void setNoClean(bk, v)}
               ncxBusy={ncxBusy}

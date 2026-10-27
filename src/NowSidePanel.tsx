@@ -127,6 +127,8 @@ interface Props {
   onMemo: (roomId: string) => void;
   /** 점유/예약 단실 → 현황 보드 객실 이동 모드 */
   onRoomMove?: () => void;
+  /** 혼자 묵는 예약에 객실을 더해요 (한 단체로 묶고 객실 추가 창을 열어요) */
+  onAddRoom?: (b: Booking) => void;
   /** 이동 모드 중이면 CTA 비활성 */
   moving?: boolean;
   /** 청소 요청 팝업 확정 → patchBooking({ noClean }) */
@@ -208,6 +210,7 @@ export default function NowSidePanel({
   onEndDayuse,
   onMemo,
   onRoomMove,
+  onAddRoom,
   moving = false,
   onSetNoClean,
   ncxBusy = null,
@@ -833,6 +836,11 @@ export default function NowSidePanel({
                           >
                             <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
                             {moving ? "이동 중…" : "객실 이동"}
+                          </button>
+                        ) : null}
+                        {onAddRoom && b.kind === "stay" && !b.groupId && isActive(b) ? (
+                          <button type="button" className="btn sm line" disabled={moving} onClick={() => onAddRoom(b)}>
+                            객실 추가
                           </button>
                         ) : null}
                         <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>

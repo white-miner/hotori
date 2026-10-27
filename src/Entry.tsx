@@ -268,6 +268,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 단체 예약: 신규 등록할 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
   const [addGroup, setAddGroup] = useState(false);
+  /** 혼자 묵는 예약에서 「객실 추가」를 누르면 한 단체로 묶고 그 id를 여기 둬요 */
+  const [soloGid, setSoloGid] = useState<string | null>(null);
+  const [soloBusy, setSoloBusy] = useState(false);
   // 이용 기간 미정(∞) · 추가 객실(신규 숙박 여러 방) — 새 예약에서만 고르고, 고치는 예약은 저장된 값을 그대로 이어요
   const [openOn, setOpenOn] = useState(base?.openEnded === true);
   const [openHold, setOpenHold] = useState(base?.holdAhead ?? OPEN_HOLD_DEFAULT);
@@ -1813,8 +1816,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         onSaved={(m) => onSaved(m)}
       />
     );
-  if (addGroup && base?.groupId) {
-    const members = data.bookings.filter((b) => b.groupId === base.groupId);
+  if (addGroup && (base?.groupId || soloGid)) {
+    const gidAdd = base?.groupId ?? soloGid;
+    const members = data.bookings.filter((b) => b.groupId === gidAdd);
     return (
       <GroupAdd
         data={data}
@@ -1972,6 +1976,30 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {isActive(base) && base.groupId ? (
               <button type="button" className="beo" onClick={() => setAddGroup(true)} title="같은 단체에 방·타입만 멤버를 이어 붙여요">
                 <b>단체에 객실 추가</b>
+              </button>
+            ) : null}
+            {isActive(base) && base.kind === "stay" && !base.groupId ? (
+              <button
+                type="button"
+                className="beo"
+                disabled={soloBusy}
+                title="어떤 객실이든 이 예약에 더해요 · 한 단체로 묶여요"
+                onClick={() => {
+                  void (async () => {
+                    setSoloBusy(true);
+                    try {
+                      const gid = await data.groupify(base);
+                      setSoloGid(gid);
+                      setAddGroup(true);
+                    } catch (e) {
+                      setErr(saveFailMessage(e));
+                    } finally {
+                      setSoloBusy(false);
+                    }
+                  })();
+                }}
+              >
+                <b>{soloBusy ? "묶는 중…" : "객실 추가"}</b>
               </button>
             ) : null}
             {isActive(base) && canAs ? (
