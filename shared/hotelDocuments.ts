@@ -252,6 +252,14 @@ export function hotelDocPageTitle(base: string, index: number, total: number): s
   return `${trimmed.slice(0, maxBase)}${suffix}`;
 }
 
+/**
+ * Display title for vault list/preview.
+ * Leftover default 「영업신고서」(pre-rename) → 「영업신고증」; keeps page suffixes.
+ */
+export function hotelDocDisplayTitle(title: string): string {
+  return title.replaceAll("영업신고서", ISSUANCE_COPY.operatingReport);
+}
+
 /** Toast after vault upload (1장 vs 여러 장). */
 export function hotelDocUploadOkMessage(count: number): string {
   if (count <= 1) return ISSUANCE_COPY.uploadOk;
