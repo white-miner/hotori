@@ -147,6 +147,7 @@ const BADGE_TITLE: Record<CellBadgeKind, string> = {
   walkIn: "바로 입실 · 이름·연락처 미입력",
   tentative: "임시 배치 · 재고는 막혀 있어요",
   longStay: "장기 · 퇴실 미정",
+  openEnded: "끝 날짜 없이 계속 묵어요 · 앱이 오늘 밤까지 이어 줘요",
 };
 /** 칸 「단체」/「대장」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
 export function GroupBadge({

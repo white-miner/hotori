@@ -260,6 +260,10 @@ export interface Booking {
   tentative?: boolean;
   /** 청소X: 이 투숙은 청소하지 않음 (예약 단위 · 현장 운영 플래그) */
   noClean?: boolean;
+  /** 열린 숙박: 끝 날짜 없이 계속 묵음 — 앱이 오늘 밤(+holdAhead일)까지 박수를 따라 늘려요 (결제 주기 아님) */
+  openEnded?: boolean;
+  /** 열린 숙박의 방 보호 버퍼(일, 0~30). 없으면 1 */
+  holdAhead?: number;
   /** 조기 퇴실: 손님이 떠난 영업일 (입실 다음 날 ~ 퇴실 전날). 그날 밤부터는 방이 비어요. 없으면 끝까지 묵어요 */
   earlyOut?: string | null;
   /** 조기 퇴실 때 돌려준 금액 (없으면 환불 없음). 매출에서는 조기 퇴실한 날짜에 빠져요 */

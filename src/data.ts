@@ -97,6 +97,8 @@ interface BookingRow {
   arrived: boolean;
   tentative?: boolean; // 임시 배치
   no_clean?: boolean; // 청소X
+  open_ended?: boolean; // 열린 숙박
+  hold_ahead?: number; // 열린 숙박 버퍼(일)
   early_out_on?: string | null; // 조기 퇴실한 영업일 (없으면 끝까지)
   checked_out_at?: string | null; // 정상 퇴실처리 시각
   stay_mode?: string | null;
@@ -204,7 +206,7 @@ const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   createdAt: r.created_at,
 });
 const COLS_BASE =
-  "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,succeeds_booking_id,night_rates,cancelled_at,created_at,updated_at";
+  "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,open_ended,hold_ahead,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,succeeds_booking_id,night_rates,cancelled_at,created_at,updated_at";
 // 수납액(선금·잔금) · 장기 원장도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
@@ -284,6 +286,8 @@ export function fromRow(r: BookingRow): Booking {
     arrived: r.arrived,
     tentative: r.tentative === true,
     noClean: r.no_clean === true,
+    openEnded: r.open_ended === true,
+    holdAhead: typeof r.hold_ahead === "number" ? r.hold_ahead : 1,
     earlyOut: r.early_out_on ?? null,
     checkedOutAt: r.checked_out_at ?? null,
     stayMode: parseStayMode(r.stay_mode),
@@ -337,6 +341,8 @@ function toRow(b: Booking) {
     // 임시 배치는 방 있을 때만 (미배정 roomId=null 은 타입 홀드)
     tentative: b.tentative === true && !!b.roomId,
     no_clean: b.noClean === true,
+    open_ended: stay && b.openEnded === true,
+    hold_ahead: Math.max(0, Math.min(30, Math.round(b.holdAhead ?? 1))),
     // 조기 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 삭제해요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     checked_out_at: stay && b.status === "active" && b.checkedOutAt ? b.checkedOutAt : null,
@@ -567,13 +573,15 @@ export function useHotelData(hotelId: string) {
   const patchBooking = useCallback(
     async (
       id: string,
-      patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt" | "nights" | "price" | "segments">>,
+      patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt" | "nights" | "price" | "segments" | "openEnded" | "holdAhead">>,
     ) => {
       const row: Record<string, unknown> = {};
       if (patch.arrived !== undefined) row.arrived = patch.arrived;
       if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 삭제해요
       if (patch.status !== undefined) row.status = patch.status;
       if (patch.noClean !== undefined) row.no_clean = patch.noClean;
+      if (patch.openEnded !== undefined) row.open_ended = patch.openEnded;
+      if (patch.holdAhead !== undefined) row.hold_ahead = Math.max(0, Math.min(30, Math.round(patch.holdAhead)));
       if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
       if (patch.nights !== undefined) row.nights = patch.nights;
       if (patch.price !== undefined) row.price = Math.round(patch.price);

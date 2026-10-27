@@ -151,3 +151,13 @@ test("정렬: 돈 → 겹침 → 정리 · 이대로 둠은 서명이 같을 때
   assert.equal(visibleTangles(list, new Map([[t04.key, t04.signature]])).length, 1);
   assert.equal(visibleTangles(list, new Map([[t04.key, "다른 서명"]])).length, 2);
 });
+
+test("T12 열린 숙박이 오늘 밤 다른 예약과 겹치면 · T01은 열린 숙박을 건너뜀", () => {
+  const o = bk({ id: "o", checkIn: "2026-10-25", nights: 1, arrived: true, openEnded: true, holdAhead: 1 });
+  const m = bk({ id: "m", guestName: "다음", checkIn: "2026-10-28", nights: 1 });
+  const rules = findTangles([o, m], ctx).map((x) => x.rule);
+  assert.ok(rules.includes("T12"));
+  assert.ok(!rules.includes("T01"));
+  // 겹치지 않으면 둘 다 없음 (앱이 알아서 이어 줌)
+  assert.deepEqual(findTangles([o], ctx).map((x) => x.rule), []);
+});

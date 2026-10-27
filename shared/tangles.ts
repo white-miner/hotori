@@ -6,10 +6,10 @@ import { type Booking, type Leg, type Platform, addDays, legsClash, legsOf, md, 
 import { groupLedger } from "./groupLedger";
 import { isOnsite, paidOf, payState } from "./payment";
 import { type GroupInfo } from "./settle";
-import { unusedNightRefund } from "./extend";
+import { openFollowBlocked, unusedNightRefund } from "./extend";
 
-/** T01 퇴실 미처리 · T02 환불 비어 있음 · T04 낸 돈이 더 많음 · T05 박당 금액 이상 · T07 금액 미정 · T08 겹침 · T09 방 미배정 · T11 중복 */
-export type TangleRule = "T01" | "T02" | "T04" | "T05" | "T07" | "T08" | "T09" | "T11";
+/** T01 퇴실 미처리 · T02 환불 비어 있음 · T04 낸 돈이 더 많음 · T05 박당 금액 이상 · T07 금액 미정 · T08 겹침 · T09 방 미배정 · T11 중복 · T12 열린 숙박이 다음 밤 다른 예약과 겹침 */
+export type TangleRule = "T01" | "T02" | "T04" | "T05" | "T07" | "T08" | "T09" | "T11" | "T12";
 
 /** 고치기 버튼이 하는 일 (한 번 탭). open = 해당 예약을 열어 직접 고치기 */
 export type TangleFix =
@@ -137,6 +137,7 @@ export function findUncheckedOut(bookings: readonly Booking[], ctx: TangleCtx): 
   const out: Tangle[] = [];
   for (const b of bookings) {
     if (b.kind !== "stay" || b.status !== "active" || b.stayMode === "long_stay" || b.checkedOutAt || !b.arrived || !b.nights) continue;
+    if (b.openEnded) continue; // 열린 숙박은 따라가기 · 겹침이면 T12가 알려요
     const end = stayEnd(b);
     if (end >= today) continue;
     out.push({
@@ -293,10 +294,36 @@ export function findUnassignedPast(bookings: readonly Booking[], ctx: TangleCtx)
     }));
 }
 
-const RULE_RANK: Record<TangleRule, number> = { T02: 0, T04: 1, T05: 2, T08: 3, T09: 4, T01: 5, T07: 6, T11: 7 };
+const RULE_RANK: Record<TangleRule, number> = { T02: 0, T04: 1, T05: 2, T08: 3, T09: 4, T12: 5, T01: 6, T07: 7, T11: 8 };
 /** 돈 → 겹침 → 정리 순 */
 export function sortTangles(list: readonly Tangle[]): Tangle[] {
   return [...list].sort((a, b) => RULE_RANK[a.rule] - RULE_RANK[b.rule] || a.key.localeCompare(b.key));
+}
+
+/** T12 · 열린 숙박인데 이어서 묵을 밤에 같은 방 다른 예약이 있어요 (방 옮기기 / 이대로 둠) */
+export function findOpenBlocked(bookings: readonly Booking[], ctx: TangleCtx): Tangle[] {
+  const today = ctx.today;
+  if (!today) return [];
+  const label = ctx.label ?? defaultLabel;
+  const all = [...bookings];
+  const out: Tangle[] = [];
+  for (const b of all) {
+    if (!b.openEnded) continue;
+    const hits = openFollowBlocked(b, all, today);
+    if (!hits.length) continue;
+    const hit = hits[0]!;
+    out.push({
+      key: `T12:${b.id}`,
+      rule: "T12",
+      severity: "mid",
+      ids: [b.id],
+      title: `${b.roomId ? `${label(b.roomId)}호 ` : ""}${nameOf(b)} 님은 계속 묵는데 ${md(hit.checkIn)} 입실 ${nameOf(hit)} 님 예약과 밤이 겹쳐요`,
+      detail: "열린 숙박이라 오늘 밤을 이으려면 겹쳐요 · 방을 옮기거나 그대로 두세요",
+      signature: `${b.checkIn}+${b.nights}|${hits.map((h) => h.id).sort().join(",")}`,
+      fix: { kind: "open", label: "방 옮기기", hint: "예약을 열어 방을 정해요" },
+    });
+  }
+  return out;
 }
 
 /** 겹침 + 중복 + 나머지 전부 (정렬됨) */
@@ -311,6 +338,7 @@ export function findTangles(bookings: readonly Booking[], ctx: TangleCtx = {}): 
     ...findOddRates(bookings, ctx),
     ...findPriceUnset(bookings, ctx),
     ...findUnassignedPast(bookings, ctx),
+    ...findOpenBlocked(bookings, ctx),
   ]);
 }
 

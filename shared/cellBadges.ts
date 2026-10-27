@@ -5,16 +5,17 @@
 import { hashGroupBadgeColor } from "./group";
 import type { GroupBadgeColor } from "./settle";
 
-export type CellBadgeKind = "noClean" | "walkIn" | "tentative" | "longStay";
+export type CellBadgeKind = "noClean" | "walkIn" | "tentative" | "longStay" | "openEnded";
 
 /** 표시 순서 = 눈에 먼저 띄어야 하는 순 (청소X → 바로입실 → 임시 → 장기). 단체는 별도 리본. */
-export const CELL_BADGE_ORDER: CellBadgeKind[] = ["noClean", "walkIn", "tentative", "longStay"];
+export const CELL_BADGE_ORDER: CellBadgeKind[] = ["noClean", "walkIn", "tentative", "longStay", "openEnded"];
 
 export interface CellBadgeFlags {
   noClean?: boolean;
   walkIn?: boolean;
   tentative?: boolean;
   longStay?: boolean;
+  openEnded?: boolean;
 }
 
 export function cellBadgeKinds(f: CellBadgeFlags): CellBadgeKind[] {
@@ -26,6 +27,7 @@ export const CELL_BADGE_LABEL: Record<CellBadgeKind, string> = {
   walkIn: "바로입실",
   tentative: "임시",
   longStay: "장기",
+  openEnded: "∞ 계속",
 };
 
 /** 단체 색: 저장된 badgeColor 우선 · 없으면 groupId 해시색(표시 전용, 저장 안 함) */

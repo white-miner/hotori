@@ -15,6 +15,7 @@ import Entry from "./Entry";
 import HandoverAlertsPanel from "./HandoverAlertsPanel";
 import TangleInbox from "./TangleInbox";
 import { useTangles } from "./useTangles";
+import { useOpenFollow } from "./useOpenFollow";
 import { applyCheckoutMany, applyTangleFix } from "./tangleFix";
 import NoticesHubPanel, { type NoticesHubTab } from "./NoticesHubPanel";
 import SimpleBooking from "./SimpleBooking";
@@ -179,6 +180,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
     setToast({ m, opt, n });
     setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
+  useOpenFollow(data, today, notify, !data.hotel?.isDemo);
   const tangles = useTangles(data, hotelId, today, notify);
   const tangleLabel = useCallback(
     (id: string | null | undefined) => (id && data.hotel?.settings ? lookups(data.hotel.settings).roomLabel(id) ?? id : "?"),

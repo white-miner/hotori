@@ -21,3 +21,6 @@ test("단체 색: 저장값 우선, 없으면 해시색(항상 같은 값)", () 
   assert.equal(groupDisplayColor("g-abc", undefined), groupDisplayColor("g-abc", null));
   assert.match(groupDisplayColor("zzz", null), /^g[1-6]$/);
 });
+test("열린 숙박은 맨 뒤에 ∞ 계속", () => {
+  assert.deepEqual(cellBadgeKinds({ openEnded: true, longStay: true }), ["longStay", "openEnded"]);
+});

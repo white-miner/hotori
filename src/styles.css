@@ -5438,6 +5438,7 @@ body.bulking .toast { bottom: 96px; }
 .bdg-walkIn { background: var(--ink); border-color: var(--ink); color: #fff; }
 .bdg-tentative { background: #fff8dc; border: 1.5px dashed #c9a227; color: #7a5a00; }
 .bdg-longStay { background: #fff; border-color: #7aa8c9; color: #1a4a6e; font-weight: 700; }
+.bdg-openEnded { background: #fff; border-color: #6a9a78; color: #1f5a33; font-weight: 700; }
 /* 단체 리본: 단체색 채움 + 단체명 (좁으면 말줄임) */
 .bdg-row .grptag-wrap { flex: 1 1 100%; min-width: 0; display: flex; }
 .bdg-row .grptag { flex: 1 1 auto; min-width: 0; height: 20px; padding: 0 7px; gap: 6px; font-size: 12px; font-weight: 800; line-height: 18px; border-radius: 6px; border: 1.5px solid transparent; justify-content: flex-start; }
@@ -5705,3 +5706,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .tng-preview { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
 .tng-restore { display: block; margin: 8px auto 0; background: none; border: 0; color: var(--ink2); text-decoration: underline; font-size: 13px; cursor: pointer; padding: 8px; }
 .top-alert-badge.tng { background: var(--badge-warn-border); }
+.nsel-open { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.nsel-open .btn.on { background: #eef6f0; border-color: #6a9a78; color: #1f5a33; }
+.nsel-hold { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.nsel-hold .chip.on { background: #1a1a1a; color: #fff; }

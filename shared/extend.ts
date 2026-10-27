@@ -188,10 +188,11 @@ export interface ThroughPlan {
  * 오늘까지 연장 — 퇴실 예정일이 오늘 이전·오늘이면 "오늘 밤까지 묵는 것"으로 박수를 늘려요.
  * 요금은 마지막 박(없으면 1박 평균) 그대로. 결제는 따로(연장과 분리). 366박 상한은 넘지 않아요.
  */
-export function planThroughToday(b: Booking, today: string, rateOverride?: number | null): ThroughPlan | null {
+export function planThroughToday(b: Booking, today: string, rateOverride?: number | null, ahead = 0): ThroughPlan | null {
   if (!canExtend(b)) return null;
   const nights0 = b.nights ?? 0;
-  const want = Math.min(STAY_NIGHTS_MAX, daysBetween(b.checkIn, today) + 1);
+  // 절대값으로 맞춰요 (두 번 실행해도, 두 사람이 동시에 열어도 같은 결과)
+  const want = Math.min(STAY_NIGHTS_MAX, daysBetween(b.checkIn, today) + 1 + Math.max(0, Math.min(30, ahead)));
   const add = want - nights0;
   if (add < 1) return null;
   const rate = Math.max(0, Math.round(rateOverride ?? lastNightRate(b)));
@@ -437,4 +438,42 @@ export function skippedNote(s: HotelSettings, skipped: GroupExtendPlan["skipped"
 export function extendNotifyLine(guestName: string, d: ExtendDraft, collected: boolean): string {
   const pay = collected && d.rate > 0 ? ` · 오늘 요금 ${won(d.rate)}원 수납` : d.rate > 0 ? ` · 잔금 +${won(d.rate)}원` : "";
   return `${guestName} 님 ${EXTEND_COPY} · ${d.nights}박 · ${dayLabel(d.checkOut)} 퇴실${pay}`;
+}
+
+
+/** 열린 숙박: 앱이 따라가야 하는 입실 중 숙박인가 (입실함 · 퇴실/조기 퇴실/취소 아님 · 장기 모드 아님) */
+export function isOpenFollowable(b: Booking): boolean {
+  return b.kind === "stay" && b.status === "active" && b.openEnded === true && b.arrived && !b.checkedOutAt && b.stayMode !== "long_stay" && canExtend(b);
+}
+
+export interface OpenFollow {
+  plan: ThroughPlan;
+  /** 실제로 확보한 여분 박 (원하는 버퍼에서 겹치면 줄어들 수 있음) */
+  ahead: number;
+}
+
+/**
+ * 열린 숙박을 "오늘 밤 + 버퍼"까지 이을 계획. 새로 늘어나는 밤에 다른 예약이 있으면 버퍼를 줄여 보고,
+ * 오늘 밤까지도 겹치면 건드리지 않아요 (null — 확인 필요 T12′가 알려 줘요). 이미 충분하면 null.
+ */
+export function planOpenFollow(b: Booking, bookings: Booking[], today: string): OpenFollow | null {
+  if (!isOpenFollowable(b)) return null;
+  const hold = Math.max(0, Math.min(30, b.holdAhead ?? 1));
+  const before = new Set(throughOverlaps(bookings, b, { draft: { nights: b.nights ?? 0, price: b.price, segments: b.segments ?? null } } as ThroughPlan).map((x) => x.id));
+  for (let a = hold; a >= 0; a--) {
+    const plan = planThroughToday(b, today, null, a);
+    if (!plan) return null;
+    const hits = throughOverlaps(bookings, b, plan).filter((x) => !before.has(x.id));
+    if (!hits.length) return { plan, ahead: a };
+  }
+  return null;
+}
+
+/** 열린 숙박인데 이을 밤(버퍼 포함 필요 최소 = 오늘 밤)에 다른 예약이 있어 따라가지 못하는 경우 → 겹치는 예약들 */
+export function openFollowBlocked(b: Booking, bookings: Booking[], today: string): Booking[] {
+  if (!isOpenFollowable(b)) return [];
+  const plan = planThroughToday(b, today, null, 0);
+  if (!plan) return [];
+  const before = new Set(throughOverlaps(bookings, b, { draft: { nights: b.nights ?? 0, price: b.price, segments: b.segments ?? null } } as ThroughPlan).map((x) => x.id));
+  return throughOverlaps(bookings, b, plan).filter((x) => !before.has(x.id));
 }

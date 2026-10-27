@@ -28,6 +28,7 @@ import {
   type Room,
   allRooms,
   isActive,
+  isEarlyOut,
   md,
   typeLabel,
   won,
@@ -143,6 +144,8 @@ interface Props {
   onExtendNight?: (b: Booking) => void;
   /** 오늘까지 연장 (퇴실 예정일이 오늘 이전·오늘일 때 한 번 탭) */
   onExtendThrough?: (b: Booking) => void;
+  /** 열린 숙박 켜기/끄기 + 방 보호 버퍼(일) */
+  onOpenEnded?: (b: Booking, on: boolean, holdAhead: number) => void;
   /** 연박 연결 · 다른 이름 예약 B → 이 투숙 A (succeeds) */
   onConnectStay?: (b: Booking) => void;
   /** 호텔 전체 예약 (연결 글랜스 · prior/successor) */
@@ -211,6 +214,7 @@ export default function NowSidePanel({
   onLateOut,
   onExtendNight,
   onExtendThrough,
+  onOpenEnded,
   onConnectStay,
   allBookings = [],
   onEarlyIn,
@@ -485,8 +489,9 @@ export default function NowSidePanel({
     !isLongStay(b) &&
     !!f &&
     (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
-  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today) : null;
+  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, b.openEnded ? b.holdAhead ?? 1 : 0) : null;
   const showExtendThrough = !!throughPlan;
+  const showOpenEnded = !readOnly && !!onOpenEnded && !!b && b.kind === "stay" && b.status === "active" && b.arrived && !b.checkedOutAt && !isLongStay(b) && !isEarlyOut(b);
   const showConnectStay =
     !readOnly &&
     !!onConnectStay &&
@@ -711,7 +716,7 @@ export default function NowSidePanel({
                             title={`오늘 밤까지 묵는 것으로 ${throughPlan.add}박 늘려요`}
                           >
                             <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
-                            오늘까지 연장 (+{throughPlan.add}박)
+                            {b.openEnded ? "오늘 밤도 이어서 묵음" : "오늘까지 연장"} (+{throughPlan.add}박)
                           </button>
                         ) : null}
                         {showExtendNight ? (
@@ -725,6 +730,37 @@ export default function NowSidePanel({
                             <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
                             {EXTEND_COPY}
                           </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {!multiGroup && showOpenEnded && b ? (
+                      <div className="nsel-act-sec nsel-open" role="group" aria-label="열린 숙박">
+                        <button
+                          type="button"
+                          className={`btn sm line ${b.openEnded ? "on" : ""}`}
+                          aria-pressed={!!b.openEnded}
+                          disabled={moving}
+                          onClick={() => onOpenEnded?.(b, !b.openEnded, b.holdAhead ?? 1)}
+                          title="끝 날짜 없이 계속 묵어요. 앱이 열릴 때 오늘 밤까지 박수를 이어 줘요 (결제는 따로)"
+                        >
+                          ∞ 끝 날짜 없이 계속 묵음
+                        </button>
+                        {b.openEnded ? (
+                          <span className="nsel-hold" role="group" aria-label="방 보호">
+                            <span className="muted">방 보호</span>
+                            {[0, 1, 3, 7].map((n) => (
+                              <button
+                                key={n}
+                                type="button"
+                                className={`chip sm ${(b.holdAhead ?? 1) === n ? "on" : ""}`}
+                                aria-pressed={(b.holdAhead ?? 1) === n}
+                                disabled={moving}
+                                onClick={() => onOpenEnded?.(b, true, n)}
+                              >
+                                {n === 0 ? "오늘 밤만" : `${n}일`}
+                              </button>
+                            ))}
+                          </span>
                         ) : null}
                       </div>
                     ) : null}

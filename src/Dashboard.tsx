@@ -2007,7 +2007,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </div>
         {!cancelled ? (
           <CellBadges
-            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b) }}
+            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b), openEnded: b.openEnded && b.status === "active" }}
             group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
         ) : null}
@@ -2948,11 +2948,29 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 열린 숙박 켜기/끄기 · 단체면 같은 단체의 입실 중 방 전부 · 켜는 즉시 오늘 밤까지 따라가요 */
+  const setOpenEnded = async (bk: Booking, on: boolean, hold: number) => {
+    if (readOnly) return;
+    const targets = (bk.groupId ? data.bookings.filter((x) => x.groupId === bk.groupId && x.kind === "stay" && x.status === "active" && x.arrived && !x.checkedOutAt) : [bk]);
+    try {
+      for (const t of targets) await data.patchBooking(t.id, { openEnded: on, holdAhead: hold });
+      void data.logChange({
+        kind: "stay",
+        groupId: bk.groupId ?? null,
+        bookingId: bk.groupId ? null : bk.id,
+        summary: on ? `열린 숙박 켬${targets.length > 1 ? ` (${targets.length}실)` : ""} · 방 보호 ${hold === 0 ? "오늘 밤만" : `${hold}일`}` : `열린 숙박 끔${targets.length > 1 ? ` (${targets.length}실)` : ""}`,
+      });
+      notify(on ? `${targets.length > 1 ? `${targets.length}실을 ` : ""}끝 날짜 없이 계속 묵는 것으로 해 두었어요 · 앱이 오늘 밤까지 이어 줘요` : "열린 숙박을 껐어요");
+    } catch (e) {
+      notify(saveFailMessage(e, "열린 숙박을 저장하지 못했어요"));
+    }
+  };
+
   /** 오늘까지 연장 · 한 번 탭 · 퇴실 예정일이 오늘 이전이면 오늘 밤까지 박수를 늘려요 (결제는 따로) */
   const extendThroughToday = async (bk: Booking) => {
     if (readOnly || extendNightBusy) return;
     const live = data.bookings.find((x) => x.id === bk.id) ?? bk;
-    const plan = planThroughToday(live, today);
+    const plan = planThroughToday(live, today, null, live.openEnded ? live.holdAhead ?? 1 : 0);
     if (!plan) return;
     const lab = (live.roomId ? L.roomLabel(live.roomId) : "") ?? "";
     const hits = throughOverlaps(bookings, live, plan);
@@ -3344,7 +3362,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span className="gn">{b.guestName}</span>
           </div>
           <CellBadges
-            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay }}
+            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: b.openEnded && b.status === "active" }}
             group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
           {amount || payMethod ? (
@@ -3644,6 +3662,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 setExtendNight({ booking: bk, roomLabel: lab || "호실" });
               }}
               onExtendThrough={(bk) => void extendThroughToday(bk)}
+              onOpenEnded={(bk, on, hold) => void setOpenEnded(bk, on, hold)}
               allBookings={bookings}
               onConnectStay={(bk) => {
                 const lab = bk.roomId
