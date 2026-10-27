@@ -129,6 +129,8 @@ interface Props {
   ncxBusy?: string | null;
   /** 결제/납입 데스크 (단실 · 동일 groupId 복수). b 주면 그 예약 기준 */
   onPaymentDesk?: (b?: Booking) => void;
+  /** 다실 단체 「기간 결제」 시트 열기 (null이면 버튼 없음) */
+  onGroupPay?: (() => void) | null;
   /** 늦은 퇴실 (숙박 lateOut · 대실 종료 연장) · Entry 금지 */
   onLateOut?: (b: Booking) => void;
   /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
@@ -195,6 +197,7 @@ export default function NowSidePanel({
   onSetNoClean,
   ncxBusy = null,
   onPaymentDesk,
+  onGroupPay,
   onLateOut,
   onExtendNight,
   onConnectStay,
@@ -703,7 +706,7 @@ export default function NowSidePanel({
                         </button>
                       </div>
                     ) : null}
-                    {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk) ? (
+                    {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk || onGroupPay) ? (
                       <div className="nsel-act-sec nsel-act-row" role="group" aria-label="숙박 운영">
                         {b.kind === "stay" && onSetNoClean ? (
                           <button
@@ -716,6 +719,12 @@ export default function NowSidePanel({
                           >
                             <Ban size={14} strokeWidth={2.2} aria-hidden />
                             {ncxBusy === b.id ? "저장 중…" : CLEAN_REQUEST_COPY}
+                          </button>
+                        ) : null}
+                        {onGroupPay && !readOnly ? (
+                          <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
+                            <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
+                            기간 결제
                           </button>
                         ) : null}
                         {showPaymentDesk ? (
@@ -842,8 +851,14 @@ export default function NowSidePanel({
                     </div>
                   ) : null}
                   <div className="nsel-acts">
+                    {onGroupPay && !readOnly ? (
+                      <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
+                        <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
+                        기간 결제
+                      </button>
+                    ) : null}
                     {showPaymentDesk ? (
-                      <button type="button" className="btn sm dark" disabled={moving} onClick={() => onPaymentDesk?.()}>
+                      <button type="button" className="btn sm line" disabled={moving} onClick={() => onPaymentDesk?.()}>
                         <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
                         {PAYMENT_DESK_CTA}
                       </button>

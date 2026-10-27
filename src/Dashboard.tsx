@@ -56,6 +56,8 @@ import NowSidePanel, { type SideMode } from "./NowSidePanel";
 import OpsPanelSearch from "./OpsPanelSearch";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
+import GroupPeriodPaySheet from "./GroupPeriodPaySheet";
+import { type PeriodPayLine } from "../shared/periodPay";
 import {
   checkoutLeaveBalanceNotifyLine,
   checkoutPayNotifyLine,
@@ -491,6 +493,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 결제/납입 데스크 */
   const [payDesk, setPayDesk] = useState<{ members: Booking[]; focusId?: string } | null>(null);
   const [payDeskBusy, setPayDeskBusy] = useState(false);
+  /** 단체 「기간 결제」 시트 (뱃지·패널에서 열림) */
+  const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
   const [addTime, setAddTime] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [addTimeBusy, setAddTimeBusy] = useState(false);
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
@@ -1654,22 +1658,70 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /** 단체 대장: 직원이 지정한 대장(lead_booking_id) 우선 · 아니면 투숙 중인 방 → 수납 최대 */
+  const groupLeadOf = (groupId: string, peers: Booking[]) =>
+    groupLeadBooking(peers, { preferredId: data.groups.get(groupId)?.leadBookingId ?? null, today });
+
   /** 다실 보드: 공유 badgeColor + 대장/대장#호 칩 · 단실은 「단체」 */
   const groupBoardMark = (b: Booking) => {
-    if (!b.groupId) return { color: null as GroupBadgeColor | null, label: null as string | null, stripe: "" };
+    if (!b.groupId) return { color: null as GroupBadgeColor | null, label: null as string | null, stripe: "", multi: false };
     // 저장된 색이 없으면 groupId 해시색을 표시 전용으로 (저장하지 않음)
     const color = groupDisplayColor(b.groupId, data.groups.get(b.groupId)?.badgeColor);
     const peers = groupStayPeers(bookings, b.groupId);
     const multi = peers.length > 1;
-    const lead = multi ? groupLeadBooking(peers) : null;
+    const lead = multi ? groupLeadOf(b.groupId, peers) : null;
     const label =
       multi && lead ? groupLeadChipLabel(b.id, lead, (id) => L.roomLabel(id) ?? null) : null;
-    return { color, label, stripe: color ? ` ${color}` : "" };
+    return { color, label, stripe: color ? ` ${color}` : "", multi };
   };
 
   const groupRoomsFor = (b: Booking | null | undefined) => {
     if (!b?.groupId) return [];
-    return groupPeerRoomItems(groupStayPeers(bookings, b.groupId), (id) => L.rooms.get(id)?.no ?? null);
+    return groupPeerRoomItems(groupStayPeers(bookings, b.groupId), (id) => L.rooms.get(id)?.no ?? null, {
+      preferredId: data.groups.get(b.groupId)?.leadBookingId ?? null,
+      today,
+    });
+  };
+
+  const openGroupPay = (groupId: string) => {
+    if (!readOnly) setPeriodPay({ groupId });
+  };
+
+  const renderPeriodPay = (groupId: string) => {
+    const peers = groupStayPeers(bookings, groupId).map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
+    if (!peers.length) return null;
+    const info = data.groups.get(groupId) ?? null;
+    const lead = groupLeadOf(groupId, peers);
+    const labelOf = (b: Booking) => (b.roomId ? (L.roomLabel(b.roomId) ?? L.rooms.get(b.roomId)?.no ?? "?") : "미배정") + "호";
+    return (
+      <GroupPeriodPaySheet
+        today={today}
+        members={peers}
+        groupName={peers[0]?.groupName}
+        groupLump={(info?.payments ?? []).reduce((n, p) => n + p.amount, 0)}
+        leadId={lead?.id ?? null}
+        leadPinned={!!info?.leadBookingId && peers.some((p) => p.id === info.leadBookingId)}
+        badgeColor={groupDisplayColor(groupId, info?.badgeColor)}
+        roomLabel={labelOf}
+        readOnly={readOnly}
+        onClose={() => setPeriodPay(null)}
+        onPay={async (lines: PeriodPayLine[], method, headline) => {
+          const saved = await data.addPeriodPayments(groupId, lines, { method, bizDate: today, leadBookingId: lead?.id ?? null });
+          notify(`${peers[0]?.groupName || "단체"} · ${headline} 결제 기록`);
+          return saved;
+        }}
+        onUndo={async (saved) => {
+          await data.deletePayments(saved.map((p) => ({ bookingId: p.bookingId, id: p.id })));
+          notify("방금 기간 결제를 취소했어요");
+        }}
+        onSetLead={(id) => data.setGroupLead(groupId, id)}
+        onPickColor={pickGroupColor(groupId)}
+        onOpenDesk={() => {
+          setPeriodPay(null);
+          setPayDesk({ members: peers });
+        }}
+      />
+    );
   };
 
   const toggleGroupPop = (roomId: string) => {
@@ -1840,7 +1892,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {!cancelled ? (
           <CellBadges
             flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b) }}
-            group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId) } : null}
+            group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
         ) : null}
         <div className="r3 rp">
@@ -3124,7 +3176,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           <CellBadges
             flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay }}
-            group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId) } : null}
+            group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
           {amount || payMethod ? (
             <div className={`nowamt tone-${amountTone}`} title={f.longStay ? "미수" : "요금·잔금"}>
@@ -3400,6 +3452,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onSetNoClean={(bk, v) => void setNoClean(bk, v)}
               ncxBusy={ncxBusy}
               onPaymentDesk={(bk) => openPaymentDesk(bk)}
+              onGroupPay={
+                selectedSettle.members.length > 1 && selectedSettle.members[0]?.groupId
+                  ? () => openGroupPay(selectedSettle.members[0]!.groupId!)
+                  : null
+              }
               onLateOut={(bk) => {
                 const lab = bk.roomId
                   ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`
@@ -3641,6 +3698,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onContinue={() => void commitDayuseSale(dayuseSaleWarn.input, true)}
         />
       ) : null}
+      {periodPay ? renderPeriodPay(periodPay.groupId) : null}
       {payDesk ? (
         <PaymentDeskModal
           s={s}
@@ -4054,6 +4112,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </aside>
     </main>
     {renderOverbookSubModal()}
+    {periodPay ? renderPeriodPay(periodPay.groupId) : null}
     {renderAssignModals()}
     </>
   );
