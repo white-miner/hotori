@@ -202,7 +202,7 @@ test("큰 버튼: 결제 등록 · N박 금액 — 3박 결제 후엔 다음 3�
 
 // ── §9 나중에 배분 ──
 import { allocatePlan } from "./receipt";
-test("나중에 배분: 객실로 나누지 않고 단체 몫 한 줄 · 총 받은 돈에 바로 반영", () => {
+test("나중에 배분: 객실로 나누지 않고 단체 몫 한 줄 · 총 수납액에 바로 반영", () => {
   const ms = [room("a", 100_000, 3), room("b", 100_000, 3)];
   const ledger = groupLedger(ms, 0, "2026-10-28");
   const plan = receiptPlan({ ledger, roomIds: null, period: { kind: "later" }, amount: 250_000 }, "2026-10-28");

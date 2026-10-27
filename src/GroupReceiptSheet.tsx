@@ -125,7 +125,7 @@ export default function GroupReceiptSheet({
 
   const submit = async () => {
     if (busy || readOnly) return;
-    if (!plan.ok) return setErr(plan.error ?? "금액을 적어 주세요.");
+    if (!plan.ok) return setErr(plan.error ?? "금액을 입력해 주세요.");
     if (plan.total > 100_000_000) return setErr("금액을 확인해 주세요 (1억 원까지).");
     setBusy(true);
     setErr(null);
@@ -193,7 +193,7 @@ export default function GroupReceiptSheet({
     reset();
   };
   const amountShown = amountEdit != null ? amountEdit : plan.suggested > 0 ? String(plan.suggested) : "";
-  const rangeText = mode === "later" ? "나중에 배분 · 단체에 받은 돈으로 적어요" : plan.start && plan.end ? `${md(plan.start)}${plan.nights > 1 ? `~${md(plan.end)}` : ""} · ${plan.nights}박` : "기간 없음 · 선수금으로 등록";
+  const rangeText = mode === "later" ? "나중에 배분 · 단체 선수금으로 등록해요" : plan.start && plan.end ? `${md(plan.start)}${plan.nights > 1 ? `~${md(plan.end)}` : ""} · ${plan.nights}박` : "기간 없음 · 선수금으로 등록";
   const firstAll = ledger.rooms.reduce<string | null>((m, r) => (r.firstNight && (!m || r.firstNight < m) ? r.firstNight : m), null);
   const payableCount = members.filter(isPeriodPayable).length;
   const owedOf = (r: (typeof ledger.rooms)[number]) => r.nights.filter((n) => n.date <= today).reduce((a, n) => a + n.amount - n.covered, 0);
@@ -215,13 +215,13 @@ export default function GroupReceiptSheet({
             <div className="gpp-done" role="status">
               <span className="gpp-done-ic"><Check size={22} /></span>
               <b>{won(allocDone)}원 배분 완료</b>
-              <span className="muted sm">객실별 결제 내역으로 옮겼어요. 총 받은 돈과 미수금은 그대로예요.</span>
+              <span className="muted sm">객실별 결제 내역으로 옮겼어요. 총 수납액과 미수금은 그대로예요.</span>
             </div>
           ) : allocLump && allocCalc ? (
             <div className="grc-alloc" aria-label="배분 확인">
               <div className="gpp-hero">
                 <span className="gpp-hl">{won(allocLump.amount)}원 · {BOOK_PAY_LABEL[allocLump.method as BookPayMethod] ?? "결제"}</span>
-                <span className="muted sm">{md(allocLump.bizDate)}에 단체로 받은 돈을 앞 날부터 객실별로 채워요</span>
+                <span className="muted sm">{md(allocLump.bizDate)}에 단체 선수금을 앞 날부터 객실별로 채워요</span>
               </div>
               <ul className="gpp-rows grc-rows" aria-label="객실별 배분">
                 {allocCalc.lines.map((l) => {
@@ -267,7 +267,7 @@ export default function GroupReceiptSheet({
               ) : null}
 
               <div className="gpp-hero" aria-live="polite">
-                <span className="gpp-hl">{plan.ok ? receiptHeadline(plan, period) : "금액을 적어 주세요"}</span>
+                <span className="gpp-hl">{plan.ok ? receiptHeadline(plan, period) : "금액을 입력해 주세요"}</span>
                 <span className="muted sm">{rangeText}</span>
               </div>
 
@@ -444,7 +444,7 @@ export default function GroupReceiptSheet({
                 </button>
               ) : null}
               <button type="button" className="btn dark gpp-go" disabled={!canGo} onClick={() => void submit()} autoFocus>
-                {busy ? "저장 중…" : plan.ok ? `${BOOK_PAY_LABEL[method]}로 ${won(plan.total)}원 결제 등록` : "금액을 적어 주세요"}
+                {busy ? "저장 중…" : plan.ok ? `${BOOK_PAY_LABEL[method]}로 ${won(plan.total)}원 결제 등록` : "금액을 입력해 주세요"}
               </button>
             </>
           )}

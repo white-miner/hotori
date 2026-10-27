@@ -136,16 +136,16 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
 
   const amount = inp.amount == null ? suggested : Math.round(inp.amount);
   const notes: string[] = [];
-  if (!Number.isFinite(amount) || amount <= 0) return { ...empty(period.kind === "none" ? "금액을 적어 주세요." : null), rows, start, end, nights, suggested, notes: [], ok: false, error: "금액을 적어 주세요." };
+  if (!Number.isFinite(amount) || amount <= 0) return { ...empty(period.kind === "none" ? "금액을 입력해 주세요." : null), rows, start, end, nights, suggested, notes: [], ok: false, error: "금액을 입력해 주세요." };
   if (amount > RECEIPT_AMOUNT_MAX) return { ...empty("금액을 확인해 주세요."), rows, start, end, nights, suggested };
 
-  // 나중에 배분: 객실로 나누지 않고 단체에 받은 돈으로만 적어요 (총 받은 돈에는 바로 반영)
+  // 나중에 배분: 객실로 나누지 않고 단체 선수금으로만 등록해요 (총 수납액에는 바로 반영)
   if (period.kind === "later") {
     rows.forEach((r) => (r.amount = 0));
     return {
       rows, start: null, end: null, nights: 0, suggested: owedToday, total: amount, diff: 0, lines: [],
       lump: { amount, note: "나중에 배분" }, carry: amount,
-      notes: ["객실로 나누지 않고 단체에 받은 돈으로 적어요. 요약에는 앞 날부터 채운 것으로 보고, 나중에 「배분하기」로 확정해요."],
+      notes: ["객실로 나누지 않고 단체 선수금으로 등록해요. 요약에는 앞 날부터 채운 것으로 보고, 나중에 「배분하기」로 확정해요."],
       ok: true, error: null,
     };
   }
@@ -208,7 +208,7 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
 
 /** 확인 문구: `3박 × 3객실 = 690,000원` · 기간 없음은 `선수금 · 500,000원` */
 export function receiptHeadline(plan: ReceiptPlan, period: ReceiptPeriod): string {
-  if (!plan.ok) return plan.error ?? "금액을 적어 주세요";
+  if (!plan.ok) return plan.error ?? "금액을 입력해 주세요";
   if (period.kind === "later") return `${won(plan.total)}원 · 나중에 배분`;
   if (period.kind === "none") return `${won(plan.total)}원 결제 등록`;
   const act = plan.rows.filter((r) => r.amount > 0);

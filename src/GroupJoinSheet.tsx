@@ -72,7 +72,7 @@ export default function GroupJoinSheet({
     const prices = picked.map((id) => rateOf(id) * nights);
     const v = validateGroupAttach({ nights, roomIds: picked, prices, free });
     if (v) return setErr(v);
-    if (picked.some((id) => rateOf(id) <= 0)) return setErr("객실마다 1박 요금을 적어 주세요.");
+    if (picked.some((id) => rateOf(id) <= 0)) return setErr("객실마다 1박 요금을 입력해 주세요.");
     setBusy(true);
     setErr(null);
     try {
