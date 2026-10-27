@@ -34,7 +34,10 @@ import {
   ISSUANCE_COPY,
   hotelDocFailMessage,
   hotelDocHubCopy,
+  hotelDocPageTitle,
+  hotelDocUploadOkMessage,
   isHotelDocKind,
+  validateHotelDocFile,
   type HotelDocKind,
   type HotelDocument,
   hotelDocExpiryBadge,
@@ -531,7 +534,7 @@ function VaultSection({
   const [title, setTitle] = useState("");
   const [issuedOn, setIssuedOn] = useState("");
   const [notes, setNotes] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [viewer, setViewer] = useState<{ doc: HotelDocument; url: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -546,37 +549,69 @@ function VaultSection({
     return all.filter((d) => d.kind === filterKind);
   }, [docs.list, filterKind]);
 
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const next: File[] = [];
+    let bad = false;
+    for (const f of Array.from(list)) {
+      const err = validateHotelDocFile(f);
+      if (err) {
+        bad = true;
+        continue;
+      }
+      next.push(f);
+    }
+    if (bad && next.length === 0) {
+      notify(ISSUANCE_COPY.fileTypeBad);
+      return;
+    }
+    if (bad) notify(ISSUANCE_COPY.fileTypeBad);
+    setFiles((cur) => [...cur, ...next]);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
   const submit = async () => {
-    if (!file) {
+    if (files.length === 0) {
       notify(ISSUANCE_COPY.fileTypeBad);
       return;
     }
     setBusy(true);
+    const base = title.trim() || HOTEL_DOC_KIND_LABEL[kind];
+    let uploaded = 0;
     try {
-      await docs.upload(
-        {
-          kind,
-          title: title || HOTEL_DOC_KIND_LABEL[kind],
-          issuedOn: issuedOn || null,
-          expiresOn: null,
-          notes: notes || null,
-        },
-        file,
-      );
+      for (let i = 0; i < files.length; i++) {
+        await docs.upload(
+          {
+            kind,
+            title: hotelDocPageTitle(base, i, files.length),
+            issuedOn: issuedOn || null,
+            expiresOn: null,
+            notes: notes || null,
+          },
+          files[i],
+        );
+        uploaded += 1;
+      }
       setTitle("");
       setIssuedOn("");
       setNotes("");
-      setFile(null);
+      setFiles([]);
       if (fileRef.current) fileRef.current.value = "";
-      notify(ISSUANCE_COPY.uploadOk);
+      notify(hotelDocUploadOkMessage(uploaded));
     } catch (e) {
-      const body = hotelDocFailMessage(e, ISSUANCE_COPY.uploadFail);
+      const body =
+        uploaded > 0
+          ? `${hotelDocUploadOkMessage(uploaded)}\n${hotelDocFailMessage(e, ISSUANCE_COPY.uploadFail)}`
+          : hotelDocFailMessage(e, ISSUANCE_COPY.uploadFail);
       await askConfirm({
         title: ISSUANCE_COPY.uploadFailTitle,
         body,
         confirmLabel: "확인",
         cancelLabel: "닫기",
       });
+      if (uploaded > 0) {
+        setFiles((cur) => cur.slice(uploaded));
+      }
     } finally {
       setBusy(false);
     }
@@ -718,15 +753,38 @@ function VaultSection({
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
-          <label>
-            <span>{ISSUANCE_COPY.file}</span>
+          <label className="wide">
+            <span>
+              {ISSUANCE_COPY.file}
+              <span className="muted"> · {ISSUANCE_COPY.fileMultiHint}</span>
+            </span>
             <input
               ref={fileRef}
               type="file"
+              multiple
               accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => addFiles(e.target.files)}
             />
           </label>
+          {files.length > 0 ? (
+            <ul className="iss-file-queue wide" aria-label={ISSUANCE_COPY.file}>
+              {files.map((f, i) => (
+                <li key={`${f.name}-${f.size}-${f.lastModified}-${i}`}>
+                  <span className="iss-file-name">
+                    {i + 1}. {f.name}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn line sm"
+                    disabled={busy}
+                    onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
+                  >
+                    {ISSUANCE_COPY.removeFile}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <label>
             <span>{ISSUANCE_COPY.issuedOn}</span>
             <input className="inp sm" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
@@ -736,9 +794,14 @@ function VaultSection({
             <input className="inp sm" value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} />
           </label>
         </div>
-        <button type="button" className="btn dark sm" disabled={busy || !file} onClick={() => void submit()}>
-          {busy ? "올리는 중…" : ISSUANCE_COPY.upload}
-        </button>
+        <div className="iss-upload-acts">
+          <button type="button" className="btn line sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+            {ISSUANCE_COPY.addMoreFiles}
+          </button>
+          <button type="button" className="btn dark sm" disabled={busy || files.length === 0} onClick={() => void submit()}>
+            {busy ? "올리는 중…" : files.length > 1 ? `${ISSUANCE_COPY.upload} (${files.length})` : ISSUANCE_COPY.upload}
+          </button>
+        </div>
       </div>
 
       {docs.error ? <p className="warn sm">{docs.error}</p> : null}
