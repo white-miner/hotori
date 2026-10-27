@@ -271,6 +271,38 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const fixLabelCount = rows.filter((r) => isFixLabelRow(r)).length;
   const actionableMissingPlatform = [...createTargets, ...cancelTargets].some((r) => !r.platformId);
 
+  /** CTA clickable with rows but nothing to upload / blocked — askConfirm next steps (prefs 신규 0건 안내). */
+  const guideEmptyOrBlockedUpload = async (kind: "empty" | "fix"): Promise<void> => {
+    const summaryBits = [
+      existingCount ? `기존예약 ${existingCount}건` : null,
+      dupCancelCount ? `중복스킵 ${dupCancelCount}건` : null,
+      fixLabelCount ? `수정필요 ${fixLabelCount}건` : null,
+      kind === "fix" && readyCount ? `대기 ${readyCount}건(수정필요 해소 후)` : null,
+    ].filter(Boolean);
+    const lines =
+      kind === "fix"
+        ? [
+            summaryBits.length ? summaryBits.join(" · ") : null,
+            `수정필요 ${fixBlockingCount}건을 고치거나 「건너뛰기」한 뒤 올려 주세요.`,
+            "붙여넣기를 비우려면 「새 작성」을 눌러 주세요.",
+          ]
+        : [
+            summaryBits.length ? summaryBits.join(" · ") : null,
+            "올릴 신규·예약취소가 없어요.",
+            fixLabelCount
+              ? "수정필요 행은 타입·날짜 등을 고치거나 「건너뛰기」한 뒤 다시 올려 주세요."
+              : "이미 Hotori에 있는 예약이거나 중복스킵만 있어요.",
+            "붙여넣기를 비우려면 「새 작성」을 눌러 주세요.",
+          ];
+    const clear = await askConfirm({
+      title: kind === "fix" ? "수정필요 행이 있어요" : "올릴 행이 없어요",
+      body: lines.filter(Boolean).join("\n"),
+      confirmLabel: "새 작성",
+      cancelLabel: "닫기",
+    });
+    if (clear) clearWorkspace();
+  };
+
   const mount = async () => {
     if (readOnly || busy) return;
     if (!profile) {
@@ -283,13 +315,13 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       return;
     }
     if (fixBlockingCount > 0) {
-      notify(`수정필요 ${fixBlockingCount}건을 고치거나 건너뛴 뒤 올려 주세요.`);
+      await guideEmptyOrBlockedUpload("fix");
       return;
     }
     const creates = rows.filter((r) => !r.skip && r.rowStatus === "ok");
     const cancels = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
     if (!creates.length && !cancels.length) {
-      notify("올릴 행이 없어요.");
+      await guideEmptyOrBlockedUpload("empty");
       return;
     }
 
@@ -698,11 +730,19 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   readOnly ||
                   busy ||
                   uploadPhase !== "idle" ||
-                  !readyCount ||
-                  !!fixBlockingCount ||
+                  !rows.length ||
                   actionableMissingPlatform
                 }
                 onClick={() => void mount()}
+                title={
+                  !rows.length
+                    ? undefined
+                    : fixBlockingCount > 0
+                      ? `수정필요 ${fixBlockingCount}건 · 안내 보기`
+                      : !readyCount
+                        ? "올릴 행 없음 · 안내 보기"
+                        : undefined
+                }
               >
                 {busy ? (
                   <>
