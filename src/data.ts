@@ -390,6 +390,32 @@ export function useHotelData(hotelId: string) {
     setBookings(update);
   }, []);
 
+  /**
+   * 자동 배정 저장 직전용: 로컬 캐시 대신 서버의 최신 예약(해당 기간 ± 창)·호텔 설정을 새로 읽어요.
+   * 읽지 못하면 null (호출한 쪽은 그 건을 배정하지 말아야 해요).
+   */
+  const fetchFreshAround = useCallback(
+    async (checkIn: string, nights: number): Promise<{ bookings: Booking[]; settings: HotelSettings } | null> => {
+      try {
+        const [h, b] = await Promise.all([
+          supabase.from("hotels").select("settings").eq("id", hotelId).single(),
+          supabase
+            .from("bookings")
+            .select(COLS)
+            .eq("hotel_id", hotelId)
+            .gte("check_in", addDays(checkIn, -WINDOW_BACK))
+            .lte("check_in", addDays(checkIn, Math.max(1, nights)))
+            .limit(10000),
+        ]);
+        if (h.error || b.error || !h.data || !b.data) return null;
+        return { bookings: (b.data as BookingRow[]).map(fromRow), settings: normalizeSettings(h.data.settings) };
+      } catch {
+        return null;
+      }
+    },
+    [hotelId],
+  );
+
   const refresh = useCallback(async () => {
     if (busy.current) {
       again.current = true;
@@ -883,6 +909,7 @@ export function useHotelData(hotelId: string) {
     error,
     syncedAt,
     refresh,
+    fetchFreshAround,
     saveBooking,
     patchBooking,
     syncNightCharges,

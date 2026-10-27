@@ -1429,7 +1429,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     };
     try {
       for (const it of items) {
-        const why = revalidateItem(s, overlay(), it);
+        // 저장 직전마다 서버의 최신 예약·마감을 새로 읽어 검증 (다른 기기·직원이 그 사이 넣은 예약 반영). 못 읽으면 건너뜀(안전 우선)
+        const cur = bookingsRef.current.find((x) => x.id === it.bookingId);
+        const fresh = cur ? await data.fetchFreshAround(cur.checkIn, cur.nights ?? 1) : null;
+        let why: string | null;
+        if (!fresh) why = "최신 상태를 확인하지 못했어요";
+        else {
+          const byId = new Map(bookingsRef.current.map((x) => [x.id, x]));
+          for (const x of fresh.bookings) byId.set(x.id, x);
+          const latest = [...byId.values()].map((x) => (done.has(x.id) ? { ...x, ...done.get(x.id)! } : x));
+          why = revalidateItem(fresh.settings, latest, it);
+        }
         if (why) {
           skipped.push(`${nameOf(it.bookingId)}: ${why}`);
           continue;

@@ -15,6 +15,7 @@ import {
   type HotelSettings,
   addDays,
   allRooms,
+  checkedOutRoomOverlaps,
   daysBetween,
   freeRooms,
   legConflicts,
@@ -23,6 +24,7 @@ import {
   occupiesRoom,
   orderedFloors,
 } from "./ledger";
+import { dayuseStayOverlapWarn } from "./dayuseOverlap";
 import { listUnassignedBookings } from "./nowboard";
 import { roomsHeldForStay } from "./roomHold";
 
@@ -147,10 +149,28 @@ interface Pick1 {
   segments: RoomSegment[] | null;
 }
 
+/**
+ * freeRooms가 막지 않지만 자동 배정은 절대 넣지 않는 겹침 (사람이 확인해야 하는 경우)
+ * - checkedout: 퇴실처리된 숙박이 같은 방·같은 밤을 아직 잡고 있음 (수동 배정은 「덮어쓰기」 확인 모달을 띄움 → 자동은 확인할 수 없으니 건너뜀)
+ * - dayuse: 같은 방·같은 날 대실과 시간이 겹침 (수동 배정은 경고 후 허용 → 자동은 건너뜀)
+ */
+export type ExtraBlock = "checkedout" | "dayuse";
+export function extraBlock(s: HotelSettings, bookings: Booking[], b: Booking, roomId: string, checkIn: string, nights: number): ExtraBlock | null {
+  const draft: Booking = { ...b, kind: "stay", roomId, segments: null, checkIn, nights, earlyOut: null, checkedOutAt: null, status: "active" };
+  if (checkedOutRoomOverlaps(bookings, draft).length) return "checkedout";
+  for (const d of bookings) {
+    if (d.id === b.id || d.kind !== "dayuse" || !occupiesRoom(d) || d.roomId !== roomId) continue;
+    // 같은 손님 예외(수동 경로)도 두지 않아요: 이름·번호를 비워서 검사
+    if (!dayuseStayOverlapWarn(s, [draft], { ...d, guestName: "", guestPhone: null }).ok) return "dayuse";
+  }
+  return null;
+}
+
 /** 한 방에 통째로 들어갈 수 있는 방들 (같은 타입만) */
 function wholeStayCandidates(s: HotelSettings, work: Work, idx: Map<string, RoomInfo>, b: Booking): RoomInfo[] {
-  const free = freeRooms(s, work.list(), draftOf(b));
-  return typeRoomsOf(idx, b.typeId).filter((i) => free.has(i.room.id));
+  const list = work.list();
+  const free = freeRooms(s, list, draftOf(b));
+  return typeRoomsOf(idx, b.typeId).filter((i) => free.has(i.room.id) && !extraBlock(s, list, b, i.room.id, b.checkIn, b.nights ?? 0));
 }
 
 /** 밤마다 가장 오래 이어 묵을 수 있는 방으로 이어 붙여 구간 계획. 실패 시 null */
@@ -163,7 +183,8 @@ function planSplit(s: HotelSettings, work: Work, idx: Map<string, RoomInfo>, b: 
   const freeByNight: Set<string>[] = [];
   for (let i = 0; i < n; i++) {
     const f = freeRooms(s, list, draftOf(b, addDays(b.checkIn, i), 1));
-    freeByNight.push(new Set(rooms.filter((r) => f.has(r.room.id)).map((r) => r.room.id)));
+    const night = addDays(b.checkIn, i);
+    freeByNight.push(new Set(rooms.filter((r) => f.has(r.room.id) && !extraBlock(s, list, b, r.room.id, night, 1)).map((r) => r.room.id)));
     if (!freeByNight[i].size) return null;
   }
   const segs: RoomSegment[] = [];
@@ -196,9 +217,11 @@ function whyUnassignable(s: HotelSettings, work: Work, idx: Map<string, RoomInfo
   if (!b.typeId) return mk("no-type");
   const rooms = typeRoomsOf(idx, b.typeId);
   if (!rooms.length) return mk("no-rooms-of-type");
-  const noHold = freeRooms({ ...s, roomHolds: [] }, work.list(), draftOf(b));
-  const heldOnly = rooms.filter((r) => noHold.has(r.room.id));
+  const list = work.list();
+  const noHold = freeRooms({ ...s, roomHolds: [] }, list, draftOf(b));
+  const heldOnly = rooms.filter((r) => noHold.has(r.room.id) && !extraBlock(s, list, b, r.room.id, b.checkIn, b.nights ?? 0));
   if (heldOnly.length) return mk("held");
+  if (rooms.some((r) => noHold.has(r.room.id))) return mk("full", "퇴실처리·대실과 겹치는 방은 자동으로 넣지 않아요");
   if ((b.nights ?? 0) > 1 && !opts.allowSplit && planSplit(s, work, idx, b, opts.maxSegments)) return mk("fragmented", "방 나눠 배정을 켜면 들어가요");
   return mk("full");
 }
@@ -232,8 +255,17 @@ function bestRoom(
 export function planAutoAssign(s: HotelSettings, bookings: Booking[], targets: Booking[], options: AutoAssignOptions = {}): AutoAssignPlan {
   const opts: Required<AutoAssignOptions> = { allowSplit: options.allowSplit ?? false, maxSegments: options.maxSegments ?? 3 };
   const idx = buildRoomIndex(s);
-  const unassignedIds = new Set(listUnassignedBookings(bookings).map((b) => b.id));
-  const todo = targets.filter((t) => unassignedIds.has(t.id));
+  // 장부(bookings)의 최신 사본만 쓰고, 같은 예약이 두 번 넘어와도 한 번만 (중복 배정 → 겹침 방지)
+  const unassigned = new Map(listUnassignedBookings(bookings).map((b) => [b.id, b]));
+  const seen = new Set<string>();
+  const todo: Booking[] = [];
+  for (const t of targets) {
+    const cur = unassigned.get(t.id);
+    if (cur && !seen.has(t.id)) {
+      seen.add(t.id);
+      todo.push(cur);
+    }
+  }
   const work = new Work(bookings);
   const items: AutoAssignItem[] = [];
   const skipped: AutoAssignSkip[] = [];
@@ -359,5 +391,12 @@ export function revalidateItem(s: HotelSettings, latest: Booking[], item: Pick<A
   if (!legs.length || legs.some((l) => !l.roomId || !roomIds.has(l.roomId))) return "방 정보가 바뀌었어요";
   if (legConflicts(latest, draft).length) return "그 사이 다른 예약과 겹쳐요";
   for (const l of legs) if (roomsHeldForStay(s.roomHolds ?? [], l.checkIn, l.nights).has(l.roomId!)) return "그 방이 임시마감이에요";
+  const rm = new Map(allRooms(s).map((r) => [r.id, r]));
+  for (const l of legs) {
+    if (b.typeId && rm.get(l.roomId!)?.typeId !== b.typeId) return "예약한 타입과 다른 방이에요";
+    const x = extraBlock(s, latest, b, l.roomId!, l.checkIn, l.nights);
+    if (x === "checkedout") return "퇴실처리된 숙박과 같은 방·같은 밤이 겹쳐요";
+    if (x === "dayuse") return "같은 날 대실과 시간이 겹쳐요";
+  }
   return null;
 }
