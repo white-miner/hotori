@@ -282,9 +282,9 @@ export default function QuoteLetter({
                   onChange={(e) => setDraft((d) => ({ ...d, guestCount: Number(e.target.value.replace(/\D/g, "")) || 0 }))}
                 />
               </label>
-              <label className="wide">
+              <label className="iss-notes">
                 {QUOTE_COPY.notes}
-                <input className="inp" value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
+                <input className="inp iss-notes-inp" value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
               </label>
             </div>
 
@@ -298,6 +298,15 @@ export default function QuoteLetter({
                 >
                   <Plus size={14} /> {QUOTE_COPY.addLine}
                 </button>
+              </div>
+              <div className="quote-line quote-line-head" aria-hidden>
+                <span>{QUOTE_COPY.label}</span>
+                <span>{QUOTE_COPY.rooms}</span>
+                <span>박</span>
+                <span>{QUOTE_COPY.pax}</span>
+                <span>{QUOTE_COPY.rate}</span>
+                <span>{QUOTE_COPY.amount}</span>
+                <span />
               </div>
               {draft.lines.map((l) => (
                 <div className="quote-line-block" key={l.id}>
@@ -317,6 +326,7 @@ export default function QuoteLetter({
                     <input
                       className="inp"
                       placeholder={QUOTE_COPY.label}
+                      aria-label={QUOTE_COPY.label}
                       value={l.label}
                       onChange={(e) => setLine(l.id, { label: e.target.value })}
                     />
@@ -376,9 +386,6 @@ export default function QuoteLetter({
                   </label>
                 </div>
               ))}
-              <div className="quote-line-hint muted sm">
-                {QUOTE_COPY.type} · {QUOTE_COPY.rooms} · {QUOTE_COPY.nights} · {QUOTE_COPY.pax} · {QUOTE_COPY.rate} · {QUOTE_COPY.amount}
-              </div>
             </div>
 
             <label className="quote-show-rooms">

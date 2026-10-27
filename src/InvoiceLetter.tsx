@@ -217,7 +217,7 @@ export default function InvoiceLetter({
         {!locked ? (
           <div className="invoice-form noprint">
             <div className="iss-form">
-              <label className="wide">
+              <label>
                 {INVOICE_COPY.payer}
                 <input className="inp" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
               </label>

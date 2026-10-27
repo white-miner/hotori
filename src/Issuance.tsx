@@ -1,6 +1,6 @@
 /**
  * App 「발급」 — 서류함 hub (#/issuance)
- * P0 vault/배치도 + P1.1 견적 · P1.2a 청구 · P1.2b 손해 · 숙박확인서 → 장부
+ * P0 vault/배치도 + P1 견적·청구·손해·숙박확인서 (hub 모달 · 장부 점프 금지)
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import {
   Shield,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import type { HotelData } from "./data";
 import { useDamageIssues, useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
@@ -27,6 +28,7 @@ import FloorPlanPrint from "./FloorPlanPrint";
 import QuoteLetter from "./QuoteLetter";
 import InvoiceLetter from "./InvoiceLetter";
 import DamageLetter from "./DamageLetter";
+import StayConfirmLetter from "./StayConfirmLetter";
 import {
   HOTEL_DOC_HUB_KINDS,
   HOTEL_DOC_KIND_LABEL,
@@ -45,12 +47,18 @@ import {
 } from "../shared/hotelDocuments";
 import { QUOTE_COPY, type QuoteDoc } from "../shared/quoteDoc";
 import { planQuoteTypeHoldBookings } from "../shared/quoteBookings";
+import { findLinkedQuote } from "../shared/quoteVariance";
 import { INVOICE_COPY, type InvoiceDoc } from "../shared/invoiceDoc";
 import { DAMAGE_COPY, type DamageDoc } from "../shared/damageDoc";
-import { STAY_CONFIRM_COPY, businessDate, dayLabel } from "../shared/ledger";
+import { STAY_CONFIRM_COPY, businessDate, dayLabel, stayStatusLabel, type Booking } from "../shared/ledger";
+import { groupSummaries } from "../shared/group";
+import { emptyGroupInfo } from "../shared/settle";
+import { parseGuestQuery, textMatchesGuest } from "../shared/guestSearch";
 import { ensureHotelBizReady } from "./hotelBizGate";
+import { lookups } from "./ui";
 
-type Panel = "home" | "vault" | "floor" | "quote" | "invoice" | "damage";
+type Panel = "home" | "vault" | "floor" | "quote" | "invoice" | "damage" | "confirm";
+type PickMode = "confirm" | "invoice" | "damage";
 
 function panelFromHash(): Panel {
   const parts = location.hash.replace(/^#\/?/, "").split("/");
@@ -60,6 +68,7 @@ function panelFromHash(): Panel {
   if (parts[1] === "quote") return "quote";
   if (parts[1] === "invoice") return "invoice";
   if (parts[1] === "damage") return "damage";
+  if (parts[1] === "confirm") return "confirm";
   return "home";
 }
 
@@ -81,10 +90,9 @@ interface Props {
   hotelId: string;
   today: string;
   notify: (m: string, opt?: ToastOpt) => void;
-  onGoLedger: () => void;
 }
 
-export default function Issuance({ data, hotelId, today, notify, onGoLedger }: Props) {
+export default function Issuance({ data, hotelId, today, notify }: Props) {
   const docs = useHotelDocuments(hotelId);
   const quotes = useQuoteIssues(hotelId);
   const invoices = useInvoiceIssues(hotelId);
@@ -95,9 +103,18 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
   const [quoteOpen, setQuoteOpen] = useState<QuoteDoc | "new" | null>(null);
   const [invoiceView, setInvoiceView] = useState<InvoiceDoc | null>(null);
   const [damageView, setDamageView] = useState<DamageDoc | null>(null);
+  const [pickMode, setPickMode] = useState<PickMode | null>(null);
+  const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
+  const [invoiceGroupId, setInvoiceGroupId] = useState<string | null>(null);
+  const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
+  const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [damageBusy, setDamageBusy] = useState(false);
   const hotel = data.hotel!;
   const s = hotel.settings;
+  const L = lookups(s);
+  const groups = useMemo(() => groupSummaries(data.bookings), [data.bookings]);
 
   const requireBiz = () => ensureHotelBizReady(s.hotelBiz, hotel.name);
 
@@ -113,9 +130,9 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
     if (!(await requireBiz())) return;
     setDamageView(doc);
   };
-  const goLedgerPrint = async () => {
+  const openPick = async (mode: PickMode) => {
     if (!(await requireBiz())) return;
-    onGoLedger();
+    setPickMode(mode);
   };
 
   useEffect(() => {
@@ -125,6 +142,7 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
       setVaultKind(kindFromHash());
       if (p === "floor") setFloorOpen(true);
       if (p === "quote") void openQuote("new");
+      if (p === "confirm") void openPick("confirm");
     };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
@@ -132,24 +150,30 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
   }, []);
 
   useEffect(() => {
-    if (panelFromHash() === "quote") void openQuote("new");
+    const p = panelFromHash();
+    if (p === "quote") void openQuote("new");
+    if (p === "confirm") void openPick("confirm");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount deep-link once
   }, []);
 
   const goPanel = (p: Panel, kind?: HotelDocKind | null) => {
     void (async () => {
-      if (p === "quote" && !(await requireBiz())) return;
+      if ((p === "quote" || p === "confirm" || p === "invoice" || p === "damage") && !(await requireBiz())) return;
       let hash = "#/issuance";
       if (p === "vault") hash = kind ? `#/issuance/vault/${kind}` : "#/issuance/vault";
       else if (p === "floor") hash = "#/issuance/floor";
       else if (p === "quote") hash = "#/issuance/quote";
       else if (p === "invoice") hash = "#/issuance/invoice";
       else if (p === "damage") hash = "#/issuance/damage";
+      else if (p === "confirm") hash = "#/issuance/confirm";
       if (location.hash !== hash) location.hash = hash;
       setPanel(p);
       if (p === "vault") setVaultKind(kind ?? null);
       if (p === "floor") setFloorOpen(true);
       if (p === "quote") setQuoteOpen((cur) => cur ?? "new");
+      if (p === "confirm") setPickMode("confirm");
+      if (p === "invoice") setPickMode("invoice");
+      if (p === "damage") setPickMode("damage");
     })();
   };
 
@@ -217,13 +241,11 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
           {ISSUANCE_COPY.typesHeading}
         </h2>
         <div className="iss-grid">
-          <button type="button" className="iss-card" onClick={() => void goLedgerPrint()}>
+          <button type="button" className="iss-card" onClick={() => void goPanel("confirm")}>
             <FileText size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{STAY_CONFIRM_COPY}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.stayConfirmHint}</span>
-            <span className="iss-card-cta">
-              {ISSUANCE_COPY.stayConfirmCta} <ExternalLink size={12} aria-hidden />
-            </span>
+            <span className="iss-card-cta">{ISSUANCE_COPY.stayConfirmCta}</span>
           </button>
           <button type="button" className="iss-card" onClick={() => void goPanel("quote")}>
             <ClipboardList size={22} strokeWidth={2} aria-hidden />
@@ -231,41 +253,17 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             <span className="iss-card-s">{ISSUANCE_COPY.quoteHint}</span>
             <span className="iss-card-cta">{ISSUANCE_COPY.quoteCta}</span>
           </button>
-          <button
-            type="button"
-            className="iss-card"
-            onClick={() => {
-              void (async () => {
-                if (!(await requireBiz())) return;
-                goPanel("invoice");
-                onGoLedger();
-              })();
-            }}
-          >
+          <button type="button" className="iss-card" onClick={() => void goPanel("invoice")}>
             <Receipt size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{ISSUANCE_COPY.invoice}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.invoiceHint}</span>
-            <span className="iss-card-cta">
-              {ISSUANCE_COPY.invoiceCta} <ExternalLink size={12} aria-hidden />
-            </span>
+            <span className="iss-card-cta">{ISSUANCE_COPY.invoiceCta}</span>
           </button>
-          <button
-            type="button"
-            className="iss-card"
-            onClick={() => {
-              void (async () => {
-                if (!(await requireBiz())) return;
-                goPanel("damage");
-                onGoLedger();
-              })();
-            }}
-          >
+          <button type="button" className="iss-card" onClick={() => void goPanel("damage")}>
             <AlertTriangle size={22} strokeWidth={2} aria-hidden />
             <span className="iss-card-t">{ISSUANCE_COPY.damage}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.damageHint}</span>
-            <span className="iss-card-cta">
-              {ISSUANCE_COPY.damageCta} <ExternalLink size={12} aria-hidden />
-            </span>
+            <span className="iss-card-cta">{ISSUANCE_COPY.damageCta}</span>
           </button>
           <button type="button" className="iss-card" onClick={() => goPanel("floor")}>
             <LayoutGrid size={22} strokeWidth={2} aria-hidden />
@@ -332,8 +330,8 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             </ul>
           )}
           <div className="iss-sec-row" style={{ marginTop: 12 }}>
-            <button type="button" className="btn sm" onClick={() => void goLedgerPrint()}>
-              {ISSUANCE_COPY.invoiceCta} <ExternalLink size={12} aria-hidden />
+            <button type="button" className="btn sm" onClick={() => void openPick("invoice")}>
+              {ISSUANCE_COPY.invoiceCta}
             </button>
           </div>
         </section>
@@ -372,8 +370,8 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
             </ul>
           )}
           <div className="iss-sec-row" style={{ marginTop: 12 }}>
-            <button type="button" className="btn sm" onClick={() => void goLedgerPrint()}>
-              {ISSUANCE_COPY.damageCta} <ExternalLink size={12} aria-hidden />
+            <button type="button" className="btn sm" onClick={() => void openPick("damage")}>
+              {ISSUANCE_COPY.damageCta}
             </button>
           </div>
         </section>
@@ -518,7 +516,275 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
           onClose={() => setDamageView(null)}
         />
       ) : null}
+
+      {pickMode ? (
+        <IssuancePickModal
+          mode={pickMode}
+          bookings={data.bookings}
+          groups={groups}
+          roomLabel={L.stayRoomLabel}
+          onClose={() => {
+            setPickMode(null);
+            if (panel === "confirm") goPanel("home");
+          }}
+          onPickBooking={(b) => {
+            setPickMode(null);
+            if (pickMode === "confirm") setStayConfirm(b);
+            else if (pickMode === "damage") setDamageBooking(b);
+            else if (pickMode === "invoice") {
+              if (b.groupId) {
+                setInvoiceGroupId(b.groupId);
+                setInvoiceBooking(null);
+              } else {
+                setInvoiceBooking(b);
+                setInvoiceGroupId(null);
+              }
+            }
+          }}
+          onPickGroup={(groupId) => {
+            setPickMode(null);
+            setInvoiceGroupId(groupId);
+            setInvoiceBooking(null);
+          }}
+        />
+      ) : null}
+
+      {stayConfirm && stayConfirm.kind === "stay" ? (
+        <StayConfirmLetter
+          booking={stayConfirm}
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          onClose={() => {
+            setStayConfirm(null);
+            if (panel === "confirm") goPanel("home");
+          }}
+        />
+      ) : null}
+
+      {invoiceGroupId && groups.get(invoiceGroupId) ? (
+        <InvoiceLetter
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          members={groups.get(invoiceGroupId)!.members}
+          groupId={invoiceGroupId}
+          groupInfo={data.groups.get(invoiceGroupId) ?? emptyGroupInfo(invoiceGroupId)}
+          linkedQuote={(() => {
+            const q = findLinkedQuote(quotes.list, {
+              groupId: invoiceGroupId,
+              bookingIds: groups.get(invoiceGroupId)!.members.map((m) => m.id),
+            });
+            return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
+          })()}
+          busy={invoiceBusy}
+          notify={(m) => notify(m)}
+          onIssue={async (args) => {
+            setInvoiceBusy(true);
+            try {
+              return await invoices.issue(args);
+            } finally {
+              setInvoiceBusy(false);
+            }
+          }}
+          onClose={() => {
+            setInvoiceGroupId(null);
+            if (panel === "invoice") goPanel("home");
+          }}
+        />
+      ) : null}
+
+      {invoiceBooking && !invoiceGroupId ? (
+        <InvoiceLetter
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          members={[invoiceBooking]}
+          groupId={null}
+          groupInfo={null}
+          linkedQuote={(() => {
+            const q = findLinkedQuote(quotes.list, { bookingIds: [invoiceBooking.id] });
+            return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
+          })()}
+          busy={invoiceBusy}
+          notify={(m) => notify(m)}
+          onIssue={async (args) => {
+            setInvoiceBusy(true);
+            try {
+              return await invoices.issue(args);
+            } finally {
+              setInvoiceBusy(false);
+            }
+          }}
+          onClose={() => {
+            setInvoiceBooking(null);
+            if (panel === "invoice") goPanel("home");
+          }}
+        />
+      ) : null}
+
+      {damageBooking && damageBooking.kind === "stay" ? (
+        <DamageLetter
+          hotelName={hotel.name}
+          s={s}
+          today={today || businessDate()}
+          booking={damageBooking}
+          busy={damageBusy}
+          notify={(m) => notify(m)}
+          onIssue={async (draft) => {
+            setDamageBusy(true);
+            try {
+              return await damages.issue(draft);
+            } finally {
+              setDamageBusy(false);
+            }
+          }}
+          onClose={() => {
+            setDamageBooking(null);
+            if (panel === "damage") goPanel("home");
+          }}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function IssuancePickModal({
+  mode,
+  bookings,
+  groups,
+  roomLabel,
+  onClose,
+  onPickBooking,
+  onPickGroup,
+}: {
+  mode: PickMode;
+  bookings: Booking[];
+  groups: ReturnType<typeof groupSummaries>;
+  roomLabel: (b: Booking) => string | null;
+  onClose: () => void;
+  onPickBooking: (b: Booking) => void;
+  onPickGroup: (groupId: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const title =
+    mode === "confirm"
+      ? ISSUANCE_COPY.stayConfirmPick
+      : mode === "invoice"
+        ? ISSUANCE_COPY.invoicePickTitle
+        : ISSUANCE_COPY.damagePickTitle;
+  const empty =
+    mode === "confirm"
+      ? ISSUANCE_COPY.stayConfirmEmpty
+      : mode === "invoice"
+        ? ISSUANCE_COPY.invoiceEmpty
+        : ISSUANCE_COPY.damageEmpty;
+
+  const stayList = useMemo(() => {
+    const query = parseGuestQuery(q);
+    return bookings
+      .filter((b) => b.kind === "stay" && b.status !== "cancelled")
+      .filter((b) => {
+        if (!query) return true;
+        const room = roomLabel(b) ?? "";
+        return (
+          textMatchesGuest(query, b.guestName, b.guestPhone, b.groupName) ||
+          room.includes(q.trim()) ||
+          (b.guestPhone ?? "").includes(q.trim())
+        );
+      })
+      .sort((a, b) => b.checkIn.localeCompare(a.checkIn) || b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 80);
+  }, [bookings, q, roomLabel]);
+
+  const groupList = useMemo(() => {
+    if (mode !== "invoice") return [] as { id: string; name: string; checkIn: string; rooms: number; members: Booking[] }[];
+    const query = parseGuestQuery(q);
+    const rows: { id: string; name: string; checkIn: string; rooms: number; members: Booking[] }[] = [];
+    for (const g of groups.values()) {
+      const lead = g.members[0];
+      if (!lead) continue;
+      if (query) {
+        const hit =
+          textMatchesGuest(query, lead.guestName, lead.guestPhone, g.name) ||
+          g.members.some((m) => textMatchesGuest(query, m.guestName, m.guestPhone, g.name));
+        if (!hit) continue;
+      }
+      rows.push({ id: g.groupId, name: g.name || lead.guestName || ISSUANCE_COPY.pickGroupTag, checkIn: g.checkIn, rooms: g.rooms || g.members.length, members: g.members });
+    }
+    rows.sort((a, b) => b.checkIn.localeCompare(a.checkIn));
+    return rows.slice(0, 40);
+  }, [groups, mode, q]);
+
+  return (
+    <div className="dim iss-pick-dim" role="presentation" onClick={onClose}>
+      <div
+        className="modal iss-pick-modal"
+        role="dialog"
+        aria-labelledby="iss-pick-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mh">
+          <h2 id="iss-pick-title">{title}</h2>
+          <button type="button" className="x" onClick={onClose} aria-label={ISSUANCE_COPY.pickClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="iss-pick-body">
+          <input
+            className="inp"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={ISSUANCE_COPY.stayConfirmSearch}
+            aria-label={ISSUANCE_COPY.stayConfirmSearch}
+            autoFocus
+          />
+          {mode === "invoice" && groupList.length > 0 ? (
+            <div className="iss-pick-sec">
+              <h3 className="iss-pick-h">{ISSUANCE_COPY.pickGroupTag}</h3>
+              <ul className="iss-pick-list">
+                {groupList.map((g) => (
+                  <li key={g.id}>
+                    <button type="button" className="iss-pick-row" onClick={() => onPickGroup(g.id)}>
+                      <span className="iss-pick-t">
+                        {g.name} <span className="tag">{g.rooms}실</span>
+                      </span>
+                      <span className="muted sm">{dayLabel(g.checkIn)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="iss-pick-sec">
+            <h3 className="iss-pick-h">숙박</h3>
+            {stayList.length === 0 ? (
+              <p className="muted sm">{empty}</p>
+            ) : (
+              <ul className="iss-pick-list">
+                {stayList.map((b) => {
+                  const room = roomLabel(b);
+                  return (
+                    <li key={b.id}>
+                      <button type="button" className="iss-pick-row" onClick={() => onPickBooking(b)}>
+                        <span className="iss-pick-t">
+                          {b.guestName || "이름 없음"}
+                          {room ? ` · ${room}호` : " · 미배정"}
+                          {b.groupId ? <span className="tag">{ISSUANCE_COPY.pickGroupTag}</span> : null}
+                        </span>
+                        <span className="muted sm">
+                          {dayLabel(b.checkIn)} · {stayStatusLabel(b)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
