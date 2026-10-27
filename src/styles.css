@@ -3250,7 +3250,10 @@ button.nowstatus { cursor: pointer; }
   color: #0c4a6e;
   border: 0;
 }
-.nownight-grid .npick-d.blk {
+.nownight-grid .npick-d.co:not(.sel) { box-shadow: inset 0 0 0 1.5px var(--red); color: var(--red-d); }
+.npick-d.co::after { content: "퇴실"; position: absolute; bottom: 3px; font-size: 9px; font-weight: 750; color: var(--red-d); }
+.npick-d { position: relative; }
+.npick-d.blk {
   background: repeating-linear-gradient(135deg, #e8e8e8 0 3px, #f4f4f4 3px 6px);
   color: #888;
 }
@@ -5514,3 +5517,90 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .board-page .cell[data-drag-over="ok"] { outline: 3px solid var(--mv, #0b7a3b); outline-offset: 2px; }
 .board-page .cell[data-drag-over="no"] { outline: 2px dashed var(--ink3); outline-offset: 2px; cursor: not-allowed; }
 @media (pointer: fine) { .board-page .cell.bk:not(.ro):not(.mvt):not(.mvoff):not(.mvsrc) { cursor: grab; } }
+
+/* 간단 예약 — 날짜 입력 (오늘·내일·모레 · 박수 · 입실→퇴실) */
+.sdf { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sdf-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.sdf-lab { font-size: 12px; font-weight: 700; color: var(--ink3); width: 28px; flex: none; }
+.sdf .chips { gap: 6px; }
+.sdf .chip { min-height: 40px; font-weight: 750; gap: 6px; }
+.sdf .chip:focus-visible, .sdf .sb:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.sdf .chip svg.flip { transform: rotate(180deg); }
+.sdf .step { gap: 4px; }
+.sdf .step .sb { width: 40px; height: 40px; }
+.sdf .step .sv { font-size: 17px; min-width: 52px; }
+.sdf-sum { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; padding: 10px 12px; border-radius: 14px; background: var(--panel2); font-size: 14px; color: var(--ink2); }
+.sdf-sum b { color: var(--ink); font-family: var(--num); font-weight: 800; }
+.sdf-n { margin-left: auto; font-size: 12.5px; font-weight: 750; color: var(--red-d); }
+@media (max-width: 480px) {
+  .sdf .chip { padding: 0 12px; }
+  .sdf-sum { font-size: 13.5px; }
+}
+
+/* 간단 예약 — 박별 자동 요금 */
+.anr { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--panel2); }
+.anr-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.anr-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 188px; overflow-y: auto; }
+.anr-n { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 92px; padding: 7px 10px; border-radius: 12px; background: #fff; border: 1px solid var(--line, #e7e7ea); font: inherit; color: var(--ink); cursor: pointer; text-align: left; }
+.anr-n:hover { background: var(--hover); }
+.anr-n:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.anr-n.none { border-style: dashed; color: var(--ink3); }
+.anr-n.man { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.anr-n.edit { cursor: default; }
+.anr-n.edit input { width: 96px; height: 28px; border: 0; border-radius: 8px; background: var(--panel); padding: 0 8px; font-weight: 750; text-align: right; }
+.anr-d { font-size: 11.5px; font-weight: 700; color: var(--ink3); }
+.anr-a { font-size: 14px; font-weight: 800; }
+.anr-t { font-size: 10.5px; font-weight: 750; color: var(--ink3); }
+.anr-t.s-season { color: var(--red-d); }
+.anr-t.s-date { color: var(--red-d); }
+.anr-t.s-weekend { color: var(--dayuse); }
+.anr-hint { padding: 8px 12px; border-radius: 12px; background: var(--panel2); color: var(--ink2); font-size: 12.5px; line-height: 1.45; }
+@media (max-width: 480px) { .anr-n { min-width: calc(50% - 3px); } }
+
+/* 설정 › 객실 요금 (시즌 · 평일/주말) */
+.rs-prec { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; counter-reset: rs; }
+.rs-prec li { background: var(--panel2); border-radius: 12px; padding: 8px 10px; font-size: 12.5px; font-weight: 750; color: var(--ink); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rs-prec li b { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; font-family: var(--num); margin-bottom: 2px; }
+.rs-prec li:first-child b { background: var(--red); }
+.rs-prec li small { font-size: 11px; font-weight: 500; color: var(--ink3); line-height: 1.35; }
+.rs-weekend { margin-bottom: 14px; }
+.rs-label { font-size: 12.5px; font-weight: 800; margin-bottom: 6px; }
+.rs-days { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.rs-day { width: 40px; height: 36px; border-radius: 11px; background: var(--panel); font-size: 13.5px; font-weight: 750; color: var(--ink2); }
+.rs-day:hover { background: var(--hover); }
+.rs-day.on { background: var(--red); color: #fff; }
+.rs-day:focus-visible, .rs-chip:focus-visible, .rs-thead:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.rs-hint { background: var(--badge-warn-s); color: var(--badge-warn); border-radius: 12px; padding: 9px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 10px; }
+.rs-type { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 8px; background: #fff; overflow: hidden; }
+.rs-thead { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; text-align: left; min-height: 44px; }
+.rs-thead b { font-size: 14px; font-weight: 800; }
+.rs-sum { margin-left: auto; font-size: 12px; color: var(--ink3); font-family: var(--num); text-align: right; }
+.rs-sum.none { color: var(--ink4); font-family: inherit; }
+.rs-thead svg { color: var(--ink4); transition: transform .15s; flex: none; }
+.rs-thead svg.up { transform: rotate(180deg); }
+.rs-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rs-rates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rs-rates.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rs-rates .tierin { height: 38px; }
+.rs-rates .tierin span { flex: none; font-weight: 750; color: var(--ink2); }
+.rs-sh { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; margin-top: 6px; flex-wrap: wrap; }
+.rs-sh small { font-size: 11.5px; font-weight: 500; color: var(--ink3); }
+.rs-season { background: var(--panel2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.rs-season.bad { box-shadow: inset 0 0 0 1.5px var(--red); background: #fff; }
+.rs-srow { display: flex; gap: 6px; align-items: center; }
+.rs-sname { flex: 1; min-width: 0; height: 36px; border: 0; background: #fff; border-radius: 9px; padding: 0 10px; font-weight: 750; font-size: 14px; color: var(--ink); }
+.rs-dates { display: flex; gap: 6px; align-items: flex-end; }
+.rs-dates label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--ink3); }
+.rs-dates input { height: 36px; border: 0; border-radius: 9px; background: #fff; padding: 0 8px; font-size: 14px; color: var(--ink); min-width: 0; width: 100%; font-family: var(--num); }
+.rs-dates i { font-style: normal; color: var(--ink4); padding-bottom: 8px; }
+.rs-season .tierin { background: #fff; height: 36px; }
+.rs-err { color: var(--red-d); font-size: 12px; line-height: 1.45; font-weight: 650; }
+.rs-copybox { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.rs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-chip { height: 32px; padding: 0 12px; border-radius: var(--radius-pill); background: #fff; font-size: 12.5px; font-weight: 700; color: var(--ink2); box-shadow: inset 0 0 0 1px var(--line); }
+.rs-chip.on { background: var(--ink); color: #fff; }
+@media (max-width: 560px) {
+  .rs-prec { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rs-rates.three { grid-template-columns: 1fr; }
+  .rs-sum { font-size: 11.5px; }
+}

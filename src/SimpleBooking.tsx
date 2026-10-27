@@ -29,6 +29,7 @@ import {
   leadPrices,
 } from "../shared/group";
 import { nightRatesFromTotal, syncStayNightRates } from "../shared/nightrates";
+import { type ManualNightRates, autoNightRates, autoStayRates } from "../shared/autoRate";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
 import { askConfirm } from "./ConfirmDialog";
@@ -49,7 +50,8 @@ import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
 import { TypeBadge, lookups } from "./ui";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
-import NightPickCalendar from "./NightPickCalendar";
+import StayDateFields from "./StayDateFields";
+import AutoNightRates from "./AutoNightRates";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OnsitePayModeFields from "./OnsitePayModeFields";
 
@@ -131,6 +133,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   /** 플랫폼 전용 · 기본 총액(OTA 붙여넣기) */
   const [salesMode, setSalesMode] = useState<SalesMode>("total");
   const [totalStr, setTotalStr] = useState(() => (p.price != null && p.price > 0 ? String(p.price) : ""));
+  /** 총액을 직접 적었으면 자동 요금 대신 그 값 (「자동 계산으로 되돌리기」로 해제) */
+  const [totalTouched, setTotalTouched] = useState(() => p.price != null && p.price > 0);
+  /** 박별 자동 요금에서 직접 고친 금액: 타입 → 날짜 → 원 */
+  const [nightOv, setNightOv] = useState<ManualNightRates>({});
   /** Path B · #71 roomIds / 단실 roomId prefill → 배치도에 선택 상태 */
   const [roomIds, setRoomIds] = useState<string[]>(presetRoomIds);
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
@@ -194,7 +200,17 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
    * (나머지 원은 마지막 호실·마지막 박). 박당 강요 금지.
    */
   const totalMode = salesMode === "total";
-  const totalNum = Math.max(0, Math.round(Number(totalStr || 0)));
+  const manualTotalNum = Math.max(0, Math.round(Number(totalStr || 0)));
+  /**
+   * 현장·전화 총액 모드: 박마다 요금(특별일 > 시즌 > 평일/주말 > 기본)을 더해 자동으로 채워요.
+   * 직접 적은 총액이 있으면 그게 먼저예요. 요금이 없는 타입이 있으면 수동 입력 그대로.
+   */
+  const autoStay =
+    onsite && totalMode && !priceUnset && pickedTypes.length > 0 && effectiveTypeIds.every(Boolean)
+      ? autoStayRates(s, pickedTypes.map((t) => ({ typeId: t.id, count: countOf(t.id) })), checkIn, nights, nightOv)
+      : null;
+  const autoActive = !!autoStay?.ready && !totalTouched;
+  const totalNum = autoActive ? autoStay!.total : manualTotalNum;
   const rateKeysForLines =
     !totalMode && pickedTypes.length
       ? effectiveTypeIds.map((tid) => tid || fallbackRateKey)
@@ -228,7 +244,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     if (mode === salesMode) return;
     if (mode === "total") {
       const fromRates = ratePrices(effectiveTypeIds, rateNum, nights).reduce((a, b) => a + b, 0);
-      if (fromRates > 0) setTotalStr(String(fromRates));
+      if (fromRates > 0) {
+        setTotalStr(String(fromRates));
+        setTotalTouched(true);
+      }
     } else if (totalNum > 0 && pickedTypes.length) {
       // 총액 → 박당: 타입별 균등 몫을 박수로 나눈 단가(표시용). 저장은 박당 모드 규칙.
       const roomN = Math.max(1, effectiveTypeIds.length);
@@ -484,7 +503,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
       const ratesForBooking = (typeId: string, roomPrice: number) => {
         if (priceUnset || !(roomPrice > 0)) return null;
-        if (totalMode) return nightRatesFromTotal(checkIn, nights, roomPrice);
+        if (totalMode) return autoActive && autoStay ? autoNightRates(autoStay, nights) : nightRatesFromTotal(checkIn, nights, roomPrice);
         const flat = rateNum[typeId] ?? 0;
         return flat > 0 ? syncStayNightRates(checkIn, nights, { flat }) : null;
       };
@@ -661,13 +680,13 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         <div className="fld simple-nights">
           <label>이용 날짜</label>
           <div>
-            <NightPickCalendar
+            <StayDateFields
               checkIn={checkIn}
               nights={nights}
+              today={today}
               bookings={data.bookings}
               roomId={pathB ? roomIds[0] ?? null : null}
-              today={today}
-              onPick={(ci, n) => {
+              onChange={(ci, n) => {
                 setCheckIn(ci);
                 setNights(n);
               }}
@@ -869,8 +888,11 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                         inputMode="numeric"
                         aria-label="판매금 총액"
                         placeholder="총액"
-                        value={totalStr !== "" ? won(Number(totalStr)) : ""}
-                        onChange={(e) => setTotalStr(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                        value={autoActive ? won(totalNum) : totalStr !== "" ? won(Number(totalStr)) : ""}
+                        onChange={(e) => {
+                          setTotalStr(e.target.value.replace(/\D/g, "").slice(0, 9));
+                          setTotalTouched(true);
+                        }}
                       />
                     </PriceInp>
                   </PriceRow>
@@ -885,6 +907,41 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       </>
                     ) : null}
                   </div>
+                  {autoStay ? (
+                    <>
+                      {autoStay.missingTypeIds.length ? (
+                        <div className="anr-hint" role="status" style={{ marginTop: "var(--space-chip)" }}>
+                          {autoStay.missingTypeIds.map((id) => typeLabel(L.types.get(id)) || id).join(" · ")} 요금이 아직 없어요. 총액을 직접 적거나,
+                          박마다 눌러서 적어 주세요. (설정 › 객실 요금에서 정해 두면 자동으로 채워져요)
+                        </div>
+                      ) : null}
+                      <div style={{ marginTop: "var(--space-chip)" }}>
+                        <AutoNightRates
+                          lines={autoStay.lines}
+                          typeOf={(id) => L.types.get(id)}
+                          onEdit={(tid, date, amount) => {
+                            setNightOv((m) => {
+                              const row = { ...(m[tid] ?? {}) };
+                              if (amount > 0) row[date] = amount;
+                              else delete row[date];
+                              return { ...m, [tid]: row };
+                            });
+                            setTotalTouched(false);
+                          }}
+                        />
+                      </div>
+                      {totalTouched && autoStay.ready ? (
+                        <button
+                          type="button"
+                          className="btn sm ghost"
+                          style={{ marginTop: "var(--space-chip)" }}
+                          onClick={() => setTotalTouched(false)}
+                        >
+                          자동 계산으로 되돌리기 · {won(autoStay.total)}원
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
                 </>
               ) : (
                 <>

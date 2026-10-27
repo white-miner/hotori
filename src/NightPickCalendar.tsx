@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type Booking, addDays, md, weekday, won } from "../shared/ledger";
+import { type RangePickState, pickRangeClick, stayRangeSummary } from "../shared/dateChips";
 import {
   addMonths,
   blockedNightsForRoom,
@@ -31,6 +32,11 @@ interface Props {
   /** 선택 밤 금액 (있으면 셀에 표시 · 중간 클릭으로 수정) */
   nightAmounts?: Record<string, number> | null;
   onEditNight?: (date: string, amount: number) => void;
+  /**
+   * 입실일 → 퇴실일 두 번 누르기 (간단 예약).
+   * 첫 번째 누름은 항상 새 구간의 시작이라 멀리 있는 날짜도 '선택 해제' 없이 바로 골라요.
+   */
+  rangeMode?: boolean;
 }
 
 function shortAmt(n: number): string {
@@ -53,6 +59,7 @@ export default function NightPickCalendar({
   onBlocked,
   nightAmounts,
   onEditNight,
+  rangeMode = false,
 }: Props) {
   const paintedFromProps = useMemo(() => paintedNightsFromStay(checkIn, nights), [checkIn, nights]);
   /** 연속 클릭이 props 반영 전에 쌓이도록 로컬 구간 유지 (호버로는 절대 안 바꿈) */
@@ -62,6 +69,8 @@ export default function NightPickCalendar({
   const [anchor, setAnchor] = useState<string | null>(null);
   /** 선택 해제 후 다음 클릭은 그 밤만 */
   const [fresh, setFresh] = useState(false);
+  /** rangeMode: 입실일만 눌렀고 퇴실일을 기다리는 중 */
+  const [pending, setPending] = useState<RangePickState>({ start: null });
   const [editDate, setEditDate] = useState<string | null>(null);
   const [editStr, setEditStr] = useState("");
 
@@ -71,7 +80,9 @@ export default function NightPickCalendar({
 
   useEffect(() => {
     setPainted(paintedFromProps);
-  }, [paintedFromProps]);
+    // 바깥(칩 · 박수)에서 날짜가 바뀌면 퇴실일 기다림은 끝
+    setPending((p) => (p.start != null && p.start === checkIn && nights === 1 ? p : { start: null }));
+  }, [paintedFromProps, checkIn, nights]);
 
   const cells = useMemo(() => monthGrid(month), [month]);
   const blocked = useMemo(() => {
@@ -110,8 +121,31 @@ export default function NightPickCalendar({
   };
 
   const onCellClick = (date: string, blockedDay: boolean, shiftKey: boolean) => {
-    if (blockedDay) {
+    if (blockedDay && !(rangeMode && pending.start != null && date > pending.start)) {
       onBlocked();
+      return;
+    }
+    if (rangeMode) {
+      const r = pickRangeClick(pending, date);
+      if (r.nights > 1 || (pending.start != null && date >= pending.start)) {
+        // 퇴실일 누름: 묵는 밤은 입실일 ~ 퇴실 전날
+        const last = addDays(r.checkIn, r.nights - 1);
+        if (rangeHitsBlocked(r.checkIn, last, blocked)) {
+          onBlocked();
+          return;
+        }
+        setPending(r.state);
+        setPainted({ firstNight: r.checkIn, lastNight: last });
+        onPick(r.checkIn, r.nights);
+        return;
+      }
+      if (blockedDay) {
+        onBlocked();
+        return;
+      }
+      setPending(r.state);
+      setPainted({ firstNight: r.checkIn, lastNight: r.checkIn });
+      onPick(r.checkIn, 1);
       return;
     }
     const next = nextPaintedFromClick(painted, date, { shiftKey, anchor, fresh });
@@ -151,9 +185,11 @@ export default function NightPickCalendar({
         <button type="button" className="sb" aria-label="다음 달" onClick={() => setMonth(addMonths(month, 1))}>
           <ChevronRight size={18} />
         </button>
-        <button type="button" className="btn sm ghost" onClick={clear} disabled={!anchor && !fresh}>
-          선택 해제
-        </button>
+        {rangeMode ? null : (
+          <button type="button" className="btn sm ghost" onClick={clear} disabled={!anchor && !fresh}>
+            선택 해제
+          </button>
+        )}
       </div>
       <div className="npick-dow" aria-hidden>
         {DOW.map((d) => (
@@ -167,6 +203,7 @@ export default function NightPickCalendar({
           const blockedDay = blocked.has(c.date);
           const selected = isNightInRange(c.date, painted.firstNight, painted.lastNight);
           const isToday = c.date === today;
+          const isOut = rangeMode && c.date === addDays(painted.lastNight, 1);
           const out = !c.inMonth;
           const amt = selected && nightAmounts?.[c.date] != null ? nightAmounts[c.date]! : null;
           const cls = [
@@ -175,6 +212,7 @@ export default function NightPickCalendar({
             selected ? "sel" : "",
             blockedDay ? "blk" : "",
             isToday ? "td" : "",
+            isOut ? "co" : "",
             c.dow === 0 ? "su" : "",
             c.dow === 6 ? "sa" : "",
             amt != null ? "has-amt" : "",
@@ -188,7 +226,7 @@ export default function NightPickCalendar({
               data-night={out ? undefined : c.date}
               className={cls}
               disabled={out}
-              aria-label={`${md(c.date)}(${weekday(c.date)}) ${blockedDay ? "이미 예약됨" : selected ? (amt != null ? `선택 · ${won(amt)}원` : "선택됨") : "밤"}`}
+              aria-label={`${md(c.date)}(${weekday(c.date)}) ${blockedDay ? "이미 예약됨" : isOut ? "퇴실일" : selected ? (amt != null ? `선택 · ${won(amt)}원` : "선택됨") : "밤"}`}
               aria-pressed={selected}
               title={blockedDay ? "이미 예약됨" : selected && onEditNight ? "다시 누르면 그날 요금" : undefined}
               onClick={(e) => !out && onCellClick(c.date, blockedDay, e.shiftKey)}
@@ -248,7 +286,14 @@ export default function NightPickCalendar({
         </div>
       ) : null}
       <div className="npick-sum" role="status" aria-live="polite">
-        <b>{nightPickSummary(painted.firstNight, painted.lastNight)}</b>
+        {rangeMode ? (
+          <>
+            <b>{stayRangeSummary(painted.firstNight, stayFromPaintedNights(painted.firstNight, painted.lastNight).nights).text}</b>
+            <span className="muted sm">{pending.start != null ? "퇴실일을 눌러 주세요 (1박이면 같은 날을 한 번 더)" : "다른 날짜를 누르면 새로 시작해요"}</span>
+          </>
+        ) : (
+          <b>{nightPickSummary(painted.firstNight, painted.lastNight)}</b>
+        )}
         {blocked.size > 0 ? <span className="muted sm">빗금 = 이 방 이미 예약된 밤</span> : null}
       </div>
     </div>
