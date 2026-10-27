@@ -18,6 +18,8 @@ import {
 } from "../shared/nowboard";
 import { filterOpsBookings } from "../shared/guestSearch";
 import OpsPanelSearch from "./OpsPanelSearch";
+import UaSortBar from "./UaSortBar";
+import { sortUnassigned, UA_SORT_DEFAULT, type UaSort } from "../shared/uaSort";
 import { CHECKOUT_UNDO_CTA } from "../shared/checkoutUndo";
 import { isLongStay } from "../shared/longstay";
 import {
@@ -82,6 +84,9 @@ interface Props {
   s: HotelSettings;
   L: L;
   unassigned: Booking[];
+  /** 미배정 정렬 (현황·배치 공용, 기본 입실일 오름차순) */
+  uaSort?: UaSort;
+  onUaSort?: (s: UaSort) => void;
   lateOut: Booking[];
   departing: Booking[];
   /** 「현황」선택 호실 (공실 복수 · 점유 단실) */
@@ -155,6 +160,8 @@ export default function NowSidePanel({
   s,
   L,
   unassigned,
+  uaSort = UA_SORT_DEFAULT,
+  onUaSort,
   lateOut,
   departing,
   selectedRoomIds,
@@ -217,10 +224,10 @@ export default function NowSidePanel({
 
   /** 「현황」= 오늘만 (기한초과 포함). 일주일/한달 칩은 「배치」사이드. */
   const filteredUa = useMemo(() => {
-    const byDate = filterUnassignedByCheckIn(unassigned, today, "today");
+    const byDate = sortUnassigned(filterUnassignedByCheckIn(unassigned, today, "today"), uaSort);
     return filterOpsBookings(byDate, opsQuery, opsMeta);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unassigned, today, opsQuery, L]);
+  }, [unassigned, today, opsQuery, L, uaSort]);
   const outList = useMemo(() => {
     const raw = [...lateOut, ...departing];
     return filterOpsBookings(raw, opsQuery, opsMeta);
@@ -949,6 +956,7 @@ export default function NowSidePanel({
           <p className="muted sm nsel-note" title="타입 재고만 · 임시 배치 아님">
             미배정 예약 · 임시와 다름 · 입실일≤오늘
           </p>
+          {onUaSort ? <UaSortBar sort={uaSort} onChange={onUaSort} /> : null}
           {filteredUa.length ? (
             <div className="side-ua-list">{filteredUa.map(uaRow)}</div>
           ) : (

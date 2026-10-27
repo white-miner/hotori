@@ -195,6 +195,8 @@ import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
+import UaSortBar from "./UaSortBar";
+import { normalizeUaSort, sortUnassigned, UA_SORT_STORAGE_KEY, type UaSort } from "../shared/uaSort";
 import { DateChip, FitText, GroupBadge, GroupRoomNoHit, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
 interface Props {
@@ -516,6 +518,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 「배치」사이드 미배정: 보드 selDate 점유 밤 + 범위 칩 (현황은 today만) */
   const [roomsUaFilter, setRoomsUaFilter] = useState<UaCheckInFilter>("today");
   const [roomsOpsQuery, setRoomsOpsQuery] = useState("");
+  /** 미배정 정렬 · 현황/배치 공용 · 기기에 기억 (기본 입실일 오름차순) */
+  const [uaSort, setUaSortState] = useState<UaSort>(() => {
+    try {
+      return normalizeUaSort(JSON.parse(lsGet(UA_SORT_STORAGE_KEY) ?? "null"));
+    } catch {
+      return normalizeUaSort(null);
+    }
+  });
+  const setUaSort = (v: UaSort) => {
+    setUaSortState(v);
+    lsSet(UA_SORT_STORAGE_KEY, JSON.stringify(v));
+  };
   const roomsUaAll = useMemo(() => listUnassignedBookings(bookings), [bookings]);
   const roomsUaByRange = useMemo(
     () => filterUnassignedForPlacement(roomsUaAll, selDate, roomsUaFilter),
@@ -523,7 +537,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   );
   const roomsUaList = useMemo(
     () =>
-      filterOpsBookings(roomsUaByRange, roomsOpsQuery, (b) => {
+      filterOpsBookings(sortUnassigned(roomsUaByRange, uaSort), roomsOpsQuery, (b) => {
         const p = L.plats.get(b.platformId);
         return {
           typeName: typeLabel(L.types.get(b.typeId)),
@@ -531,7 +545,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           platformAbbr: p?.abbr ?? null,
         };
       }),
-    [roomsUaByRange, roomsOpsQuery, L],
+    [roomsUaByRange, roomsOpsQuery, L, uaSort],
   );
   /** 레일/헤더 건수 = 활성 입실일 필터 (검색 전) */
   const uaActiveN = roomsUaByRange.length;
@@ -3170,6 +3184,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               s={s}
               L={L}
               unassigned={nowSide.unassigned}
+              uaSort={uaSort}
+              onUaSort={setUaSort}
               lateOut={nowSide.lateOut}
               departing={nowSide.departing}
               selectedRoomIds={selectedRoomIds}
@@ -3793,6 +3809,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <h3 className="side-ua-h">
               미배정 예약 <small>{uaActiveN}건</small>
             </h3>
+            <UaSortBar sort={uaSort} onChange={setUaSort} />
             <div className="lst side-ua-lst">
               {roomsUaList.length ? (
                 roomsUaList.map((b) => {
