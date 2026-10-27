@@ -10,6 +10,8 @@ import {
   invoiceRoomDisplay,
   invoiceSurchargeLabel,
   defaultInvoicePayer,
+  mergeInvoiceGroupInfo,
+  resolveInvoicePick,
 } from "./invoiceDoc";
 import type { Booking, HotelSettings } from "./ledger";
 import { emptyGroupInfo } from "./settle";
@@ -126,4 +128,113 @@ test("buildInvoiceSnapshot keeps quoteCompare (P1.3)", () => {
   });
   assert.equal(snap.quoteCompare?.quoteTotal, 180_000);
   assert.equal(snap.quoteCompare?.diff, 20_000);
+});
+
+test("mergeInvoiceGroupInfo sums extras+payments; postpaid wins", () => {
+  const a = emptyGroupInfo("g1");
+  a.payMode = "prepaid";
+  a.payerCompany = "여행사A";
+  a.extras = [{ name: "버스", amount: 10_000 }];
+  a.payments = [
+    {
+      id: "gp1",
+      bookingId: "",
+      groupId: "g1",
+      kind: "deposit",
+      method: "transfer",
+      amount: 30_000,
+      bizDate: "2026-10-19",
+      createdAt: "2026-10-19T00:00:00Z",
+    },
+  ];
+  const b = emptyGroupInfo("g2");
+  b.payMode = "postpaid";
+  b.dueOn = "2026-11-01";
+  b.extras = [{ name: "식사", amount: 20_000 }];
+  b.payments = [
+    {
+      id: "gp2",
+      bookingId: "",
+      groupId: "g2",
+      kind: "balance",
+      method: "card",
+      amount: 40_000,
+      bizDate: "2026-10-20",
+      createdAt: "2026-10-20T00:00:00Z",
+    },
+  ];
+  const m = mergeInvoiceGroupInfo([a, b]);
+  assert.equal(m.payMode, "postpaid");
+  assert.equal(m.dueOn, "2026-11-01");
+  assert.equal(m.payerCompany, "여행사A");
+  assert.equal(m.extras.length, 2);
+  assert.equal(m.payments.reduce((n, p) => n + p.amount, 0), 70_000);
+});
+
+test("resolveInvoicePick + buildInvoiceSnapshot merges multi group/booking lines", () => {
+  const b1 = book({ id: "b1", groupId: "g1", guestName: "A", price: 100_000, payments: [] });
+  const b2 = book({
+    id: "b2",
+    groupId: "g1",
+    guestName: "A2",
+    roomId: "r1",
+    price: 100_000,
+    payments: [],
+  });
+  const b3 = book({
+    id: "b3",
+    groupId: null,
+    guestName: "개인",
+    price: 80_000,
+    payments: [
+      {
+        id: "p3",
+        bookingId: "b3",
+        kind: "deposit",
+        method: "cash",
+        amount: 80_000,
+        bizDate: "2026-10-20",
+        createdAt: "2026-10-20T00:00:00Z",
+      },
+    ],
+  });
+  const g1 = emptyGroupInfo("g1");
+  g1.payments = [
+    {
+      id: "gp1",
+      bookingId: "",
+      groupId: "g1",
+      kind: "deposit",
+      method: "transfer",
+      amount: 50_000,
+      bizDate: "2026-10-19",
+      createdAt: "2026-10-19T00:00:00Z",
+    },
+  ];
+  const resolved = resolveInvoicePick({
+    selection: { groupIds: ["g1"], bookingIds: ["b3"] },
+    bookingsById: new Map([
+      ["b1", b1],
+      ["b2", b2],
+      ["b3", b3],
+    ]),
+    groupMembers: new Map([["g1", [b1, b2]]]),
+    groupInfos: new Map([["g1", g1]]),
+  });
+  assert.equal(resolved.members.length, 3);
+  assert.equal(resolved.groupId, null);
+  const snap = buildInvoiceSnapshot({
+    s,
+    members: resolved.members,
+    info: resolved.groupInfo,
+    plat: { name: "현장", onsite: true },
+    payerName: "합산청구",
+    payerPhone: "",
+    issueNumber: "2026-010",
+    issuedAt: "2026-10-27T12:00:00Z",
+  });
+  assert.equal(snap.rooms.length, 3);
+  assert.equal(snap.total, 280_000);
+  assert.equal(snap.paid, 130_000);
+  assert.equal(snap.left, 150_000);
 });

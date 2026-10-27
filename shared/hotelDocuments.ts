@@ -74,6 +74,10 @@ export const ISSUANCE_COPY = {
   invoicePick: "최근 청구 · 재인쇄",
   invoicePickTitle: "청구서 · 예약/단체 선택",
   invoiceEmpty: "청구할 숙박 예약이 없어요.",
+  invoicePickConfirm: "확인",
+  /** Prefix with count: `${n}${invoicePickSelected}` → `3건 선택` */
+  invoicePickSelected: "건 선택",
+  invoicePickNeedOne: "예약이나 단체를 하나 이상 고르세요.",
   damage: "손해내역서",
   damageHint: "파손·클레임 · 숙박에서 발급 (청구서와 별도)",
   damageCta: "예약 고르기",
