@@ -323,8 +323,7 @@ export function validateGroup(p: {
   } else {
     if (p.roomIds.length < 2) return "방을 두 개 이상 골라 주세요.";
     if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 만들 수 있어요.`;
-    const busy = p.roomIds.filter((id) => !p.free.has(id));
-    if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
+    // 다른 예약과 겹쳐도 막지 않아요 (어떤 호실이든 추가 가능) — 겹침은 화면에서 알려 주고 확인 필요 함이 잡아요
     if (p.prices.length && p.prices.length !== p.roomIds.length) return "방별 금액을 확인해 주세요.";
   }
   if (p.prices.some((x) => !Number.isInteger(x) || x < 0 || x > 100_000_000)) return "금액을 확인해 주세요.";
@@ -354,8 +353,7 @@ export function validateGroupAttach(p: {
   } else {
     if (p.roomIds.length < 1) return "방을 한 개 이상 골라 주세요.";
     if (p.roomIds.length > GROUP_ROOMS_MAX) return `한 번에 ${GROUP_ROOMS_MAX}실까지 추가할 수 있어요.`;
-    const busy = p.roomIds.filter((id) => !p.free.has(id));
-    if (busy.length) return "그 기간에 다른 예약이 있는 방이 있어요. 다시 골라 주세요.";
+    // 다른 예약과 겹쳐도 막지 않아요 (어떤 호실이든 추가 가능) — 겹침은 화면에서 알려 주고 확인 필요 함이 잡아요
     if (p.prices.length && p.prices.length !== p.roomIds.length) return "방별 금액을 확인해 주세요.";
   }
   if (p.prices.some((x) => !Number.isInteger(x) || x < 0 || x > 100_000_000)) return "금액을 확인해 주세요.";

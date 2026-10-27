@@ -143,7 +143,7 @@ test("단체 검사", () => {
   assert.equal(validateGroup(ok), null);
   assert.match(validateGroup({ ...ok, name: " " })!, /단체명/);
   assert.match(validateGroup({ ...ok, roomIds: ["r301"] })!, /두 개/);
-  assert.match(validateGroup({ ...ok, roomIds: ["r301", "r304"] })!, /다른 예약/);
+  assert.equal(validateGroup({ ...ok, roomIds: ["r301", "r304"] }), null, "겹치는 방도 막지 않아요");
   assert.match(validateGroup({ ...ok, nights: 0 })!, /박수/);
 });
 
@@ -184,7 +184,7 @@ test("기존 단체에 객실 추가: 1실부터 · 겹침 막기 · 타입만 1
   const free = new Set(["r301", "r302"]);
   assert.equal(validateGroupAttach({ nights: 2, roomIds: ["r301"], prices: [100000], free }), null);
   assert.match(validateGroupAttach({ nights: 2, roomIds: [], prices: [], free })!, /한 개/);
-  assert.match(validateGroupAttach({ nights: 2, roomIds: ["r304"], prices: [1], free })!, /다른 예약/);
+  assert.equal(validateGroupAttach({ nights: 2, roomIds: ["r304"], prices: [1], free }), null, "겹치는 방도 추가 가능");
   assert.equal(validateGroupAttach({ nights: 2, roomIds: [], prices: [90000], free, typeOnly: [{ typeId: "s", count: 1 }] }), null);
   assert.match(validateGroupAttach({ nights: 2, roomIds: [], prices: [], free, typeOnly: [{ typeId: "s", count: 0 }] })!, /타입/);
   // 기존 group_id로 줄 만들기 (단체를 새로 만들지 않아요)

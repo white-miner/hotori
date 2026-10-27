@@ -8,6 +8,7 @@ import { typeGuests } from "../shared/surcharge";
 import type { HotelData } from "./data";
 import { Chip, ChipGroup, PriceInp, Stepper } from "./primitives";
 import { lookups } from "./ui";
+import RoomClashNote from "./RoomClashNote";
 
 /**
  * 객실 추가 — 이미 머무는 단체에 방을 더해요. 입실일·박수·객실별 1박 요금을 자유롭게:
@@ -139,12 +140,22 @@ export default function GroupJoinSheet({
               const ok = free.has(r.id);
               const on = picked.includes(r.id);
               return (
-                <button key={r.id} type="button" className={`chip sm${on ? " on" : ""}`} disabled={!ok && !on} aria-pressed={on} onClick={() => toggle(r.id)} title={ok ? "" : "그 기간에 다른 예약이 있어요"}>
+                <button key={r.id} type="button" className={`chip sm${on ? " on" : ""}${ok ? "" : " warn"}`} aria-pressed={on} onClick={() => toggle(r.id)} title={ok ? "" : "그 기간에 다른 예약이 있어요 · 골라도 돼요"}>
                   {L.roomLabel(r.id)}
+                  {ok ? "" : " !"}
                 </button>
               );
             })}
           </div>
+
+          <RoomClashNote
+            data={data}
+            today={today}
+            picked={picked}
+            checkIn={checkIn}
+            nights={nights}
+            onSwap={(from, to) => setPicked((p) => p.map((x) => (x === from ? to : x)))}
+          />
 
           {picked.length ? (
             <ul className="gpp-rows" aria-label="객실별 1박 요금">

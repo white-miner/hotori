@@ -36,6 +36,7 @@ import { typeGuests } from "../shared/surcharge";
 import { type GroupPayMode, PAY_MODE_LABEL, rateFormula, ratePrices } from "../shared/settle";
 import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
+import RoomClashNote from "./RoomClashNote";
 
 type AssignMode = "rooms" | "typeOnly";
 type PriceMode = "rate" | "member" | "room" | "total" | "line";
@@ -84,15 +85,6 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const free = useMemo(() => freeForStay(s, data.bookings, checkIn, nights), [s, data.bookings, checkIn, nights]);
   const order = useMemo(() => roomOrder(s), [s]);
   const rmap = useMemo(() => new Map(allRooms(s).map((r) => [r.id, r])), [s]);
-  useEffect(() => {
-    if (assignMode !== "rooms") return;
-    const gone = picked.filter((id) => !free.has(id));
-    if (!gone.length) return;
-    setPicked((x) => x.filter((id) => free.has(id)));
-    setNote(`${gone.map((id) => L.roomLabel(id)).join(", ")}호는 그 기간에 다른 예약이 있어서 뺐어요`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [free, assignMode]);
-
   useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, mode, roomPrice, total, rates, payMode, assignMode, linePrices, memberRates]);
 
   const types = usableTypes(s.types);
@@ -120,7 +112,6 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     setNote(null);
   };
   const toggle = (id: string) => {
-    if (!free.has(id)) return;
     setPicked((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
     setNote(null);
   };
@@ -501,8 +492,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                             <button
                               type="button"
                               key={r.id}
-                              className={`groom ${on ? "on" : ""} ${ok ? "" : "busy"}`}
-                              disabled={!ok || view !== "board"}
+                              className={`groom ${on ? "on" : ""} ${ok ? "" : "clash"}`}
+                              disabled={view !== "board"}
                               title={ok ? `${r.no}호 · ${typeLabel(L.types.get(r.typeId ?? ""))}` : `${r.no}호 · 그 기간에 다른 예약이 있어요`}
                               onClick={() => toggle(r.id)}
                             >
@@ -517,6 +508,16 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                   );
                 })}
               </div>
+            ) : null}
+            {assignMode === "rooms" ? (
+              <RoomClashNote
+                data={data}
+                today={today}
+                picked={picked}
+                checkIn={checkIn}
+                nights={nights}
+                onSwap={(from, to) => setPicked((x) => x.map((y) => (y === from ? to : y)))}
+              />
             ) : null}
             {note ? <div className="muted sm">{note}</div> : null}
           </div>
