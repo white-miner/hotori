@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  applyInvoiceNightCellAcross,
+  applyInvoiceStayItemRates,
   buildInvoiceSnapshot,
   formatInvoiceNumber,
+  groupInvoiceRoomsAsStayItems,
   invoiceEligible,
   invoiceIsMidStay,
   invoicePayLabel,
@@ -12,7 +13,6 @@ import {
   invoiceSurchargeLabel,
   defaultInvoicePayer,
   mergeInvoiceGroupInfo,
-  redistributeInvoiceRoomsEven,
   resolveInvoicePick,
   withInvoiceRoomAmount,
   withInvoiceRoomMoney,
@@ -265,7 +265,7 @@ test("resolveInvoicePick + buildInvoiceSnapshot merges multi group/booking lines
   assert.equal(snap.left, 150_000);
 });
 
-test("owner case: leadPrices skew → 객실 균등 분배 + same date×type night sync + 인원", () => {
+test("owner case: leadPrices skew → FO calendar rates per type item (no 균등 분배)", () => {
   // Twin Annex 1 + Twin Deluxe 2 · 총 570,000 stuck on first deluxe (lead)
   const annex = book({
     id: "ba",
@@ -308,32 +308,43 @@ test("owner case: leadPrices skew → 객실 균등 분배 + same date×type nig
     issuedAt: "2026-10-27T12:00:00Z",
   });
   assert.equal(snap.rooms.reduce((n, r) => n + r.amount, 0), 570_000);
-  assert.equal(snap.rooms.find((r) => r.bookingId === "bd1")!.amount, 570_000);
-  assert.equal(snap.rooms.find((r) => r.bookingId === "ba")!.amount, 0);
   assert.ok(snap.rooms.every((r) => r.guestCount === 2));
-  assert.ok(snap.rooms.every((r) => r.typeId === "annex" || r.typeId === "deluxe"));
 
-  const even = redistributeInvoiceRoomsEven(snap.rooms);
-  assert.equal(even.reduce((n, r) => n + r.amount, 0), 570_000);
+  const items = groupInvoiceRoomsAsStayItems(snap.rooms);
+  assert.equal(items.length, 2);
+  const deluxe = items.find((i) => i.typeId === "deluxe")!;
+  const annexItem = items.find((i) => i.typeId === "annex")!;
+  assert.equal(deluxe.rooms, 2);
+  assert.equal(annexItem.rooms, 1);
+
+  // Staff enters calendar rates on deluxe item → both deluxe rooms get same nights
+  const afterDx = applyInvoiceStayItemRates(snap.rooms, deluxe.bookingIds, [
+    { date: "2026-11-05", amount: 120_000 },
+    { date: "2026-11-06", amount: 130_000 },
+  ]);
+  const d1 = afterDx.find((r) => r.bookingId === "bd1")!;
+  const d2 = afterDx.find((r) => r.bookingId === "bd2")!;
+  const an = afterDx.find((r) => r.bookingId === "ba")!;
+  assert.equal(d1.amount, 250_000);
+  assert.equal(d2.amount, 250_000);
+  assert.equal(an.amount, 0);
   assert.deepEqual(
-    even.map((r) => r.amount).sort((a, b) => a - b),
-    [190_000, 190_000, 190_000],
+    d1.nightAmounts!.map((c) => c.amount),
+    [120_000, 130_000],
   );
-  const money = withInvoiceRoomMoney(snap, even);
-  assert.equal(money.total, snap.total);
 
-  // Set deluxe night on one line → both deluxe lines sync; annex untouched
-  const afterNight = applyInvoiceNightCellAcross(even, "bd1", "2026-11-05", 120_000);
-  const d1 = afterNight.find((r) => r.bookingId === "bd1")!;
-  const d2 = afterNight.find((r) => r.bookingId === "bd2")!;
-  const an = afterNight.find((r) => r.bookingId === "ba")!;
-  assert.equal(d1.nightAmounts!.find((c) => c.date === "2026-11-05")!.amount, 120_000);
-  assert.equal(d2.nightAmounts!.find((c) => c.date === "2026-11-05")!.amount, 120_000);
-  assert.equal(an.nightAmounts!.find((c) => c.date === "2026-11-05")!.amount, 95_000);
-  assert.equal(d1.amount, d1.nightAmounts!.reduce((n, c) => n + c.amount, 0));
-  assert.equal(d2.amount, d2.nightAmounts!.reduce((n, c) => n + c.amount, 0));
+  const afterAn = applyInvoiceStayItemRates(afterDx, annexItem.bookingIds, [
+    { date: "2026-11-05", amount: 80_000 },
+    { date: "2026-11-06", amount: 90_000 },
+  ]);
+  const money = withInvoiceRoomMoney(snap, afterAn);
+  assert.equal(money.rooms.find((r) => r.bookingId === "ba")!.amount, 170_000);
+  assert.equal(
+    money.rooms.reduce((n, r) => n + r.amount, 0),
+    250_000 + 250_000 + 170_000,
+  );
+  assert.equal(money.total, snap.total + (670_000 - 570_000));
 
   const bumped = withInvoiceRoomAmount(an, 200_000);
   assert.equal(bumped.amount, 200_000);
-  assert.equal(bumped.nightAmounts!.reduce((n, c) => n + c.amount, 0), 200_000);
 });

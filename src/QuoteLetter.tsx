@@ -10,22 +10,19 @@ import {
   type QuoteLine,
   QUOTE_COPY,
   emptyQuoteLine,
-  ensureQuoteLineNights,
   freezeQuoteSnapshot,
-  lineAmount,
   quoteLinePrintLabel,
   quotePrintStrings,
   quoteTotal,
   validateQuoteDraft,
 } from "../shared/quoteDoc";
-import { quoteLineTypeOptions, validateQuoteForBookings } from "../shared/quoteBookings";
+import { validateQuoteForBookings } from "../shared/quoteBookings";
 import {
   formatIssuanceNightDate,
-  patchIssuanceNightCell,
   quoteAmountFromNightCells,
   quoteLineNightCells,
-  sumIssuanceNightCells,
   unitRateFromCells,
+  type IssuanceNightCell,
 } from "../shared/issuanceNightDetail";
 import { chunkIssuanceLines } from "../shared/issuancePages";
 import {
@@ -37,12 +34,14 @@ import {
   hotelBizUpjongUptaeLine,
   printDateLabel,
   typeLabel,
+  usableTypes,
   won,
   type HotelSettings,
   type PrintLang,
 } from "../shared/ledger";
 import { askConfirm } from "./ConfirmDialog";
 import IssuancePager, { ISS_PAGER_EN, ISS_PAGER_KO } from "./IssuancePager";
+import IssuanceStayItemEditor from "./IssuanceStayItemEditor";
 
 interface Props {
   hotelName: string;
@@ -133,7 +132,7 @@ export default function QuoteLetter({
   onClose,
   notify,
 }: Props) {
-  const types = quoteLineTypeOptions(s);
+  const types = usableTypes(s.types);
   const defaultTypeId = types[0]?.id ?? "";
   const biz = s.hotelBiz;
   const trade = hotelBizDisplayName(biz, hotelName);
@@ -143,7 +142,6 @@ export default function QuoteLetter({
   const [err, setErr] = useState<string | null>(null);
   const [lang, setLang] = useState<PrintLang>("ko");
   const [page, setPage] = useState(0);
-  const [openNights, setOpenNights] = useState<Record<string, boolean>>({});
   const t = quotePrintStrings(lang);
   const locked = issued || doc?.status === "issued";
   const showRoomNos = locked ? !!(doc?.snapshot?.showRoomNos ?? doc?.showRoomNos) : draft.showRoomNos;
@@ -168,50 +166,59 @@ export default function QuoteLetter({
   const previewChunk = previewChunkIdx >= 0 ? lineChunks[previewChunkIdx] ?? [] : [];
   const isLastPreview = previewChunkIdx >= 0 && previewChunkIdx === lineChunks.length - 1;
 
-  const setLine = (id: string, patch: Partial<QuoteLine>) => {
-    setDraft((d) => ({
-      ...d,
-      lines: d.lines.map((l) => {
+  const patchLine = (id: string, patch: Partial<QuoteLine>) => {
+    setDraft((d) => {
+      const lines = d.lines.map((l) => {
         if (l.id !== id) return l;
-        const next = { ...l, ...patch };
+        const next: QuoteLine = { ...l, ...patch };
         if (patch.typeId != null) {
           const ty = s.types.find((x) => x.id === patch.typeId);
-          if (ty && !patch.label) next.label = typeLabel(ty);
+          if (ty) next.label = typeLabel(ty);
         }
         if (patch.nightAmounts) {
-          next.rate = unitRateFromCells(patch.nightAmounts, next.rate * Math.max(1, next.nights), next.nights);
+          next.rate = unitRateFromCells(patch.nightAmounts, 0, next.nights);
           next.amount = quoteAmountFromNightCells(next.rooms, patch.nightAmounts);
-          return next;
-        }
-        if (patch.rooms != null || patch.nights != null || patch.rate != null) {
-          if (patch.amount == null) next.amount = lineAmount(next.rooms, next.nights, next.rate);
-          if (patch.nights != null || patch.rate != null) {
-            next.nightAmounts = quoteLineNightCells({
-              checkIn: d.checkIn,
-              nights: next.nights,
-              rate: next.rate,
-              roomTotal: next.nights > 0 ? Math.round(next.amount / Math.max(1, next.rooms)) : 0,
-            });
-          }
-        }
-        if (patch.amount != null && patch.nightAmounts == null && next.nights > 0) {
-          next.nightAmounts = quoteLineNightCells({
-            checkIn: d.checkIn,
-            nights: next.nights,
-            rate: next.rate,
-            roomTotal: Math.round(next.amount / Math.max(1, next.rooms)),
-          });
-          next.rate = unitRateFromCells(next.nightAmounts, next.amount, next.nights * Math.max(1, next.rooms));
+        } else if (patch.rooms != null && next.nightAmounts?.length) {
+          next.amount = quoteAmountFromNightCells(next.rooms, next.nightAmounts);
         }
         return next;
-      }),
-    }));
+      });
+      return {
+        ...d,
+        lines,
+        nights: Math.max(1, ...lines.map((l) => l.nights || 0), d.nights || 1),
+      };
+    });
   };
 
-  const expandNights = (line: QuoteLine) => {
-    const ensured = ensureQuoteLineNights(line, draft.checkIn);
-    setLine(line.id, { nightAmounts: ensured.nightAmounts, rate: ensured.rate, amount: ensured.amount });
-    setOpenNights((p) => ({ ...p, [line.id]: true }));
+  const setLineStay = (id: string, checkIn: string, nights: number, cells?: IssuanceNightCell[]) => {
+    setDraft((d) => {
+      const lines = d.lines.map((l) => {
+        if (l.id !== id) return l;
+        const nightAmounts =
+          cells ??
+          quoteLineNightCells({
+            checkIn,
+            nights,
+            rate: l.rate,
+            nightAmounts: l.nightAmounts,
+            roomTotal: nights > 0 ? Math.round(l.amount / Math.max(1, l.rooms)) : 0,
+          });
+        return {
+          ...l,
+          nights,
+          nightAmounts,
+          rate: unitRateFromCells(nightAmounts, 0, nights),
+          amount: quoteAmountFromNightCells(l.rooms, nightAmounts),
+        };
+      });
+      return {
+        ...d,
+        lines,
+        checkIn,
+        nights: Math.max(1, ...lines.map((l) => l.nights || 0), nights),
+      };
+    });
   };
 
   const save = async () => {
@@ -310,24 +317,6 @@ export default function QuoteLetter({
                   <input className="inp" value={draft.clientPhone} onChange={(e) => setDraft((d) => ({ ...d, clientPhone: e.target.value }))} />
                 </label>
                 <label>
-                  {QUOTE_COPY.checkIn}
-                  <input
-                    className="inp"
-                    type="date"
-                    value={draft.checkIn ?? ""}
-                    onChange={(e) => setDraft((d) => ({ ...d, checkIn: e.target.value || null }))}
-                  />
-                </label>
-                <label>
-                  {QUOTE_COPY.nights}
-                  <input
-                    className="inp"
-                    inputMode="numeric"
-                    value={draft.nights || ""}
-                    onChange={(e) => setDraft((d) => ({ ...d, nights: Number(e.target.value.replace(/\D/g, "")) || 0 }))}
-                  />
-                </label>
-                <label>
                   {QUOTE_COPY.guestCount}
                   <input
                     className="inp"
@@ -349,148 +338,90 @@ export default function QuoteLetter({
                   <button
                     type="button"
                     className="btn line sm"
-                    onClick={() => setDraft((d) => ({ ...d, lines: [...d.lines, emptyQuoteLine(defaultTypeId)] }))}
+                    onClick={() => {
+                      const base = emptyQuoteLine(defaultTypeId);
+                      const ci = draft.checkIn || today;
+                      const n = Math.max(1, draft.nights || 1);
+                      setDraft((d) => ({
+                        ...d,
+                        lines: [
+                          ...d.lines,
+                          {
+                            ...base,
+                            nights: n,
+                            nightAmounts: quoteLineNightCells({ checkIn: ci, nights: n, rate: 0 }),
+                          },
+                        ],
+                        checkIn: ci,
+                        nights: n,
+                      }));
+                    }}
                   >
                     <Plus size={14} /> {QUOTE_COPY.addLine}
                   </button>
                 </div>
                 {draft.lines.map((l) => {
+                  const lineCi = draft.checkIn || today;
                   const cells = l.nightAmounts?.length
                     ? l.nightAmounts
                     : quoteLineNightCells({
-                        checkIn: draft.checkIn,
-                        nights: l.nights,
+                        checkIn: lineCi,
+                        nights: l.nights || draft.nights || 1,
                         rate: l.rate,
-                        roomTotal: l.rooms > 0 ? Math.round(l.amount / Math.max(1, l.rooms)) : l.rate * l.nights,
+                        roomTotal: l.rooms > 0 ? Math.round(l.amount / Math.max(1, l.rooms)) : l.rate * (l.nights || 1),
                       });
-                  const showN = !!openNights[l.id];
                   return (
                     <div className="quote-line-block" key={l.id}>
-                      <div className="chips wrap quote-type-chips" role="group" aria-label={QUOTE_COPY.type}>
-                        {types.map((ty) => (
-                          <button
-                            key={ty.id}
-                            type="button"
-                            className={`chip ${l.typeId === ty.id ? "on" : ""}`}
-                            onClick={() => setLine(l.id, { typeId: ty.id, label: ty.label })}
-                          >
-                            {ty.label}
-                          </button>
-                        ))}
-                      </div>
-                      <table className="quote-edit-tbl">
-                        <thead>
-                          <tr>
-                            <th scope="col">{QUOTE_COPY.label}</th>
-                            <th scope="col">{QUOTE_COPY.rooms}</th>
-                            <th scope="col">{QUOTE_COPY.nights}</th>
-                            <th scope="col">{QUOTE_COPY.pax}</th>
-                            <th scope="col">{QUOTE_COPY.rate}</th>
-                            <th scope="col">{QUOTE_COPY.amount}</th>
-                            <th scope="col" className="quote-edit-act">
-                              <span className="sr-only">{QUOTE_COPY.delete}</span>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="quote-edit-inputs">
-                            <td>
-                              <input className="inp" placeholder="—" aria-label={QUOTE_COPY.label} value={l.label} onChange={(e) => setLine(l.id, { label: e.target.value })} />
-                            </td>
-                            <td>
-                              <input className="inp" inputMode="numeric" aria-label={QUOTE_COPY.rooms} value={l.rooms || ""} onChange={(e) => setLine(l.id, { rooms: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
-                            </td>
-                            <td>
-                              <input className="inp" inputMode="numeric" aria-label={QUOTE_COPY.nights} value={l.nights || ""} onChange={(e) => setLine(l.id, { nights: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
-                            </td>
-                            <td>
-                              <input className="inp" inputMode="numeric" aria-label={QUOTE_COPY.pax} value={l.pax || ""} onChange={(e) => setLine(l.id, { pax: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
-                            </td>
-                            <td>
-                              <input className="inp price" inputMode="numeric" aria-label={QUOTE_COPY.rate} value={l.rate || ""} onChange={(e) => setLine(l.id, { rate: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
-                            </td>
-                            <td>
-                              <input className="inp price" inputMode="numeric" aria-label={QUOTE_COPY.amount} value={l.amount || ""} onChange={(e) => setLine(l.id, { amount: Number(e.target.value.replace(/\D/g, "")) || 0 })} />
-                            </td>
-                            <td className="quote-edit-act">
-                              <button type="button" className="btn line sm" aria-label={QUOTE_COPY.delete} disabled={draft.lines.length <= 1} onClick={() => setDraft((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== l.id) }))}>
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                      <div className="quote-night-bar">
-                        <button type="button" className="btn line sm" onClick={() => (showN ? setOpenNights((p) => ({ ...p, [l.id]: false })) : expandNights(l))}>
-                          {QUOTE_COPY.nightDetail}
-                        </button>
+                      <IssuanceStayItemEditor
+                        types={types}
+                        typeId={l.typeId || defaultTypeId}
+                        rooms={Math.max(1, l.rooms || 1)}
+                        checkIn={lineCi}
+                        nights={Math.max(1, l.nights || draft.nights || 1)}
+                        nightAmounts={cells}
+                        today={today}
+                        canRemove={draft.lines.length > 1}
+                        onTypeRooms={(typeId, rooms) => patchLine(l.id, { typeId, rooms })}
+                        onStay={(checkIn, nights) => setLineStay(l.id, checkIn, nights)}
+                        onNightAmounts={(nightAmounts) => {
+                          const nn = nightAmounts.length || l.nights || 1;
+                          const nextCi =
+                            nightAmounts[0]?.date && !nightAmounts[0].date.startsWith("N")
+                              ? nightAmounts[0].date
+                              : draft.checkIn || today;
+                          setLineStay(l.id, nextCi, nn, nightAmounts);
+                        }}
+                        onRemove={() => setDraft((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== l.id) }))}
+                      />
+                      <label className="iss-stay-pax">
+                        <span className="muted sm">{QUOTE_COPY.pax}</span>
+                        <input
+                          className="inp sm"
+                          inputMode="numeric"
+                          aria-label={QUOTE_COPY.pax}
+                          value={l.pax || ""}
+                          onChange={(e) => patchLine(l.id, { pax: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                        />
+                      </label>
+                      {draft.showRoomNos ? (
                         <label className="quote-room-opt">
                           <span className="muted sm">{QUOTE_COPY.roomNos} (선택)</span>
-                          <input className="inp sm" placeholder="301, 302" value={roomNosText(l.roomIds, s)} onChange={(e) => setLine(l.id, { roomIds: parseRoomNos(e.target.value, l.typeId, s) })} />
+                          <input
+                            className="inp sm"
+                            placeholder="301, 302"
+                            value={roomNosText(l.roomIds, s)}
+                            onChange={(e) => patchLine(l.id, { roomIds: parseRoomNos(e.target.value, l.typeId, s) })}
+                          />
                         </label>
-                      </div>
-                      {showN ? (
-                        <ul className="inv-night-list">
-                          {cells.map((c, i) => (
-                            <li key={c.date}>
-                              <span>{formatIssuanceNightDate(c.date, lang)}</span>
-                              <input
-                                className="inp price sm"
-                                inputMode="numeric"
-                                aria-label={`${QUOTE_COPY.nightDetail} ${c.date}`}
-                                value={c.amount || ""}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value.replace(/\D/g, "")) || 0;
-                                  const date = c.date;
-                                  // Same type + same date → set once, apply to matching lines
-                                  setDraft((d) => {
-                                    const peers =
-                                      !!l.typeId && d.lines.filter((x) => x.typeId === l.typeId).length > 1;
-                                    return {
-                                      ...d,
-                                      lines: d.lines.map((line) => {
-                                        const match =
-                                          line.id === l.id || (!!l.typeId && line.typeId === l.typeId);
-                                        if (!match) return line;
-                                        const lineCells =
-                                          line.id === l.id
-                                            ? cells
-                                            : line.nightAmounts?.length
-                                              ? line.nightAmounts
-                                              : quoteLineNightCells({
-                                                  checkIn: d.checkIn,
-                                                  nights: line.nights,
-                                                  rate: line.rate,
-                                                  roomTotal:
-                                                    line.rooms > 0
-                                                      ? Math.round(line.amount / Math.max(1, line.rooms))
-                                                      : line.rate * line.nights,
-                                                });
-                                        const idx = lineCells.findIndex((x) => x.date === date);
-                                        if (idx < 0) return line;
-                                        const roomTotal = Math.round(line.amount / Math.max(1, line.rooms));
-                                        const next = peers
-                                          ? lineCells.map((x, j) => (j === idx ? { ...x, amount: val } : { ...x }))
-                                          : patchIssuanceNightCell(lineCells, idx, val, roomTotal);
-                                        const perRoom = peers ? sumIssuanceNightCells(next) : roomTotal;
-                                        return {
-                                          ...line,
-                                          nightAmounts: next,
-                                          rate: unitRateFromCells(next, perRoom, line.nights),
-                                          amount: quoteAmountFromNightCells(line.rooms, next),
-                                        };
-                                      }),
-                                    };
-                                  });
-                                }}
-                              />
-                            </li>
-                          ))}
-                        </ul>
                       ) : null}
                     </div>
                   );
                 })}
+                <div className="quote-total-bar">
+                  <strong>
+                    {QUOTE_COPY.total} {won(total)}
+                  </strong>
+                </div>
               </div>
 
               <label className="quote-show-rooms">

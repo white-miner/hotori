@@ -2,10 +2,8 @@
 import { groupLeadBooking } from "./group";
 import type { PrintLang } from "./hotelBiz";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
-import { splitTotal } from "./group";
 import {
   issuanceNightCells,
-  patchIssuanceNightCell,
   redistributeIssuanceNights,
   sumIssuanceNightCells,
   unitRateFromCells,
@@ -106,9 +104,8 @@ export const INVOICE_COPY = {
   amount: "판매가",
   unitRate: "1박",
   nightDetail: "날짜별 단가",
-  redistribute: "날짜 균등 분배",
-  redistributeRooms: "객실 균등 분배",
   guests: "인원",
+  stayItems: "숙박 항목",
   paid: "받은",
   left: "잔금",
   total: "합계",
@@ -127,7 +124,7 @@ export const INVOICE_COPY = {
   tip: "발급하면 금액이 고정돼요. 예약·결제를 고친 뒤엔 새 버전으로 재발급하세요.",
   tipLive: "미리보기는 지금 예약·정산과 같아요. 발급 시 스냅샷으로 얼려요.",
   tipNights:
-    "객실 판매가를 나눠 적을 수 있어요. 같은 날짜·같은 타입 단가는 한 번 입력하면 맞는 줄에 같이 적용돼요.",
+    "예약처럼 타입별로 캘린더에서 날짜 요금을 적어요. 같은 타입 실은 같은 날짜 요금이 적용돼요.",
   needNights: "실제 숙박(입실·퇴실)이 있는 예약이 필요해요.",
   notDamage: "손해·파손은 「손해내역서」로 따로 발급해요.",
   saveOk: "청구서를 저장했어요.",
@@ -411,63 +408,85 @@ export function withInvoiceRoomAmount(r: InvoiceRoomLine, amount: number): Invoi
   };
 }
 
-/** Σ room amounts kept · even split across lines (remainder on first — splitTotal). */
-export function redistributeInvoiceRoomsEven(rooms: InvoiceRoomLine[]): InvoiceRoomLine[] {
-  if (rooms.length <= 1) return rooms.map((r) => withInvoiceRoomAmount(r, r.amount));
-  const sum = rooms.reduce((n, r) => n + Math.max(0, Math.round(r.amount || 0)), 0);
-  const parts = splitTotal(sum, rooms.length);
-  return rooms.map((r, i) => withInvoiceRoomAmount(r, parts[i]!));
+/** FO editor item: same type + checkIn + nights → one calendar block. */
+export type InvoiceStayItem = {
+  key: string;
+  typeId: string;
+  typeLabel: string;
+  bookingIds: string[];
+  rooms: number;
+  checkIn: string;
+  nights: number;
+  guestCount: number;
+  /** 1실 기준 날짜 요금 */
+  nightAmounts: IssuanceNightCell[];
+};
+
+export function invoiceStayItemKey(r: Pick<InvoiceRoomLine, "typeId" | "checkIn" | "nights">): string {
+  return `${r.typeId || "_"}|${r.checkIn}|${r.nights}`;
 }
 
-/**
- * Edit one night cell. When other lines share typeId + that date, apply the same
- * amount and set each affected line's sale = Σ nights (owner: Deluxe twins sync).
- * Solo line keeps sale total (last night pads).
- */
-export function applyInvoiceNightCellAcross(
-  rooms: InvoiceRoomLine[],
-  bookingId: string,
-  date: string,
-  amount: number,
-): InvoiceRoomLine[] {
-  const source = rooms.find((r) => r.bookingId === bookingId);
-  if (!source) return rooms;
-  const amt = Math.max(0, Math.round(amount || 0));
-  const typeId = source.typeId;
-  const matchIds = new Set<string>([bookingId]);
-  if (typeId) {
-    for (const r of rooms) {
-      if (r.bookingId === bookingId) continue;
-      if (r.typeId !== typeId) continue;
-      const cells = cellsOf(r);
-      if (cells.some((c) => c.date === date)) matchIds.add(r.bookingId);
+/** Group room lines for FO-style type×count + calendar rate editor. */
+export function groupInvoiceRoomsAsStayItems(rooms: InvoiceRoomLine[]): InvoiceStayItem[] {
+  const order: string[] = [];
+  const map = new Map<string, InvoiceRoomLine[]>();
+  for (const r of rooms) {
+    const key = invoiceStayItemKey(r);
+    if (!map.has(key)) {
+      order.push(key);
+      map.set(key, []);
     }
+    map.get(key)!.push(r);
   }
-  const syncPeers = matchIds.size > 1;
+  return order.map((key) => {
+    const list = map.get(key)!;
+    const head = list[0]!;
+    const sumAmt = list.reduce((n, r) => n + Math.max(0, Math.round(r.amount || 0)), 0);
+    const perRoom = list.length ? Math.round(sumAmt / list.length) : 0;
+    // Prefer shared matrix when every room already matches; else seed from per-room average.
+    const seed = cellsOf(head);
+    const allMatch =
+      seed.length > 0 &&
+      list.every((r) => {
+        const c = cellsOf(r);
+        return c.length === seed.length && c.every((x, i) => x.date === seed[i]!.date && x.amount === seed[i]!.amount);
+      });
+    const nightAmounts = allMatch
+      ? seed
+      : redistributeIssuanceNights(head.checkIn, head.nights, perRoom);
+    return {
+      key,
+      typeId: head.typeId,
+      typeLabel: head.typeLabel,
+      bookingIds: list.map((r) => r.bookingId),
+      rooms: list.length,
+      checkIn: head.checkIn,
+      nights: head.nights,
+      guestCount: list.reduce((n, r) => n + Math.max(0, r.guestCount || 0), 0),
+      nightAmounts,
+    };
+  });
+}
 
+/** Apply 1실 night cells to every booking in the stay item (amount = Σ). */
+export function applyInvoiceStayItemRates(
+  rooms: InvoiceRoomLine[],
+  bookingIds: string[],
+  cells: IssuanceNightCell[],
+): InvoiceRoomLine[] {
+  const ids = new Set(bookingIds);
+  const nightAmounts = cells.map((c) => ({ date: c.date, amount: Math.max(0, Math.round(c.amount || 0)) }));
+  const amount = sumIssuanceNightCells(nightAmounts);
+  const unitRate = unitRateFromCells(nightAmounts, amount, nightAmounts.length) || undefined;
   return rooms.map((r) => {
-    if (!matchIds.has(r.bookingId)) return r;
-    const base = cellsOf(r);
-    if (!base.length) return r;
-    const idx = base.findIndex((c) => c.date === date);
-    if (idx < 0) return r;
-    if (!syncPeers) {
-      const keep = r.amount;
-      const nightAmounts = patchIssuanceNightCell(base, idx, amt, keep);
-      return {
-        ...r,
-        nightAmounts,
-        unitRate: unitRateFromCells(nightAmounts, keep, r.nights) || undefined,
-        amount: keep,
-      };
-    }
-    const nightAmounts = base.map((c, i) => (i === idx ? { ...c, amount: amt } : { ...c }));
-    const nextAmt = sumIssuanceNightCells(nightAmounts);
+    if (!ids.has(r.bookingId)) return r;
     return {
       ...r,
-      nightAmounts,
-      amount: nextAmt,
-      unitRate: unitRateFromCells(nightAmounts, nextAmt, r.nights) || undefined,
+      nightAmounts: nightAmounts.map((c) => ({ ...c })),
+      amount,
+      unitRate,
+      nights: nightAmounts.length || r.nights,
+      checkIn: nightAmounts[0]?.date || r.checkIn,
     };
   });
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   issuanceNightCells,
+  issuanceNightWeekdayTotal,
   patchIssuanceNightCell,
   quoteAmountFromNightCells,
   redistributeIssuanceNights,
@@ -49,4 +50,19 @@ test("quoteAmountFromNightCells = rooms × Σ nights", () => {
     { date: "2026-11-06", amount: 120_000 },
   ];
   assert.equal(quoteAmountFromNightCells(2, cells), 440_000);
+});
+
+test("issuanceNightWeekdayTotal: 목·금 label + ×rooms", () => {
+  const { weekdays, perRoom, grand, label } = issuanceNightWeekdayTotal({
+    cells: [
+      { date: "2026-11-05", amount: 100_000 },
+      { date: "2026-11-06", amount: 120_000 },
+    ],
+    rooms: 2,
+  });
+  assert.equal(weekdays, "목·금");
+  assert.equal(perRoom, 220_000);
+  assert.equal(grand, 440_000);
+  assert.match(label, /목·금/);
+  assert.match(label, /2실/);
 });
