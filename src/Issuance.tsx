@@ -32,6 +32,7 @@ import {
   HOTEL_DOC_KIND_LABEL,
   HOTEL_DOC_KINDS,
   ISSUANCE_COPY,
+  hotelDocFailMessage,
   hotelDocHubCopy,
   isHotelDocKind,
   type HotelDocKind,
@@ -569,7 +570,13 @@ function VaultSection({
       if (fileRef.current) fileRef.current.value = "";
       notify(ISSUANCE_COPY.uploadOk);
     } catch (e) {
-      notify(e instanceof Error ? e.message : "업로드에 실패했어요", { ms: 6000 });
+      const body = hotelDocFailMessage(e, ISSUANCE_COPY.uploadFail);
+      await askConfirm({
+        title: ISSUANCE_COPY.uploadFailTitle,
+        body,
+        confirmLabel: "확인",
+        cancelLabel: "닫기",
+      });
     } finally {
       setBusy(false);
     }
@@ -580,7 +587,12 @@ function VaultSection({
       const url = await docs.signedUrl(doc, 300);
       setViewer({ doc, url });
     } catch (e) {
-      notify(e instanceof Error ? `${ISSUANCE_COPY.openFail}: ${e.message}` : ISSUANCE_COPY.openFail, { ms: 6000 });
+      await askConfirm({
+        title: ISSUANCE_COPY.openFail,
+        body: hotelDocFailMessage(e, ISSUANCE_COPY.openFail),
+        confirmLabel: "확인",
+        cancelLabel: "닫기",
+      });
     }
   };
 
@@ -596,7 +608,12 @@ function VaultSection({
       a.click();
       a.remove();
     } catch (e) {
-      notify(e instanceof Error ? e.message : ISSUANCE_COPY.openFail, { ms: 6000 });
+      await askConfirm({
+        title: ISSUANCE_COPY.openFail,
+        body: hotelDocFailMessage(e, ISSUANCE_COPY.openFail),
+        confirmLabel: "확인",
+        cancelLabel: "닫기",
+      });
     }
   };
 
@@ -613,7 +630,12 @@ function VaultSection({
       if (viewer?.doc.id === doc.id) setViewer(null);
       notify(ISSUANCE_COPY.deleteOk);
     } catch (e) {
-      notify(e instanceof Error ? e.message : "삭제에 실패했어요", { ms: 6000 });
+      await askConfirm({
+        title: ISSUANCE_COPY.deleteFail,
+        body: hotelDocFailMessage(e, ISSUANCE_COPY.deleteFail),
+        confirmLabel: "확인",
+        cancelLabel: "닫기",
+      });
     }
   };
 
