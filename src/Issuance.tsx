@@ -48,14 +48,20 @@ import {
 import { QUOTE_COPY, type QuoteDoc } from "../shared/quoteDoc";
 import { planQuoteTypeHoldBookings } from "../shared/quoteBookings";
 import { findLinkedQuote } from "../shared/quoteVariance";
-import { INVOICE_COPY, type InvoiceDoc } from "../shared/invoiceDoc";
+import { INVOICE_COPY, resolveInvoicePick, type InvoiceDoc } from "../shared/invoiceDoc";
 import { DAMAGE_COPY, type DamageDoc } from "../shared/damageDoc";
 import { STAY_CONFIRM_COPY, businessDate, dayLabel, stayStatusLabel, type Booking } from "../shared/ledger";
 import { groupSummaries } from "../shared/group";
-import { emptyGroupInfo } from "../shared/settle";
+import { type GroupInfo } from "../shared/settle";
 import { parseGuestQuery, textMatchesGuest } from "../shared/guestSearch";
 import { ensureHotelBizReady } from "./hotelBizGate";
 import { lookups } from "./ui";
+
+type InvoiceTarget = {
+  members: Booking[];
+  groupId: string | null;
+  groupInfo: GroupInfo | null;
+};
 
 type Panel = "home" | "vault" | "floor" | "quote" | "invoice" | "damage" | "confirm";
 type PickMode = "confirm" | "invoice" | "damage";
@@ -105,8 +111,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
   const [damageView, setDamageView] = useState<DamageDoc | null>(null);
   const [pickMode, setPickMode] = useState<PickMode | null>(null);
   const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
-  const [invoiceGroupId, setInvoiceGroupId] = useState<string | null>(null);
-  const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
+  const [invoiceTarget, setInvoiceTarget] = useState<InvoiceTarget | null>(null);
   const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
@@ -525,26 +530,29 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
           roomLabel={L.stayRoomLabel}
           onClose={() => {
             setPickMode(null);
-            if (panel === "confirm") goPanel("home");
+            if (panel === "confirm" || panel === "invoice" || panel === "damage") goPanel("home");
           }}
           onPickBooking={(b) => {
             setPickMode(null);
             if (pickMode === "confirm") setStayConfirm(b);
             else if (pickMode === "damage") setDamageBooking(b);
-            else if (pickMode === "invoice") {
-              if (b.groupId) {
-                setInvoiceGroupId(b.groupId);
-                setInvoiceBooking(null);
-              } else {
-                setInvoiceBooking(b);
-                setInvoiceGroupId(null);
-              }
-            }
           }}
-          onPickGroup={(groupId) => {
+          onConfirmInvoice={(selection) => {
+            const bookingsById = new Map(data.bookings.map((b) => [b.id, b]));
+            const groupMembers = new Map<string, Booking[]>();
+            for (const g of groups.values()) groupMembers.set(g.groupId, g.members);
+            const resolved = resolveInvoicePick({
+              selection,
+              bookingsById,
+              groupMembers,
+              groupInfos: data.groups,
+            });
+            if (!resolved.members.length) {
+              notify(ISSUANCE_COPY.invoicePickNeedOne);
+              return;
+            }
             setPickMode(null);
-            setInvoiceGroupId(groupId);
-            setInvoiceBooking(null);
+            setInvoiceTarget(resolved);
           }}
         />
       ) : null}
@@ -562,18 +570,18 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
         />
       ) : null}
 
-      {invoiceGroupId && groups.get(invoiceGroupId) ? (
+      {invoiceTarget && invoiceTarget.members.length > 0 ? (
         <InvoiceLetter
           hotelName={hotel.name}
           s={s}
           today={today || businessDate()}
-          members={groups.get(invoiceGroupId)!.members}
-          groupId={invoiceGroupId}
-          groupInfo={data.groups.get(invoiceGroupId) ?? emptyGroupInfo(invoiceGroupId)}
+          members={invoiceTarget.members}
+          groupId={invoiceTarget.groupId}
+          groupInfo={invoiceTarget.groupInfo}
           linkedQuote={(() => {
             const q = findLinkedQuote(quotes.list, {
-              groupId: invoiceGroupId,
-              bookingIds: groups.get(invoiceGroupId)!.members.map((m) => m.id),
+              groupId: invoiceTarget.groupId,
+              bookingIds: invoiceTarget.members.map((m) => m.id),
             });
             return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
           })()}
@@ -588,36 +596,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
             }
           }}
           onClose={() => {
-            setInvoiceGroupId(null);
-            if (panel === "invoice") goPanel("home");
-          }}
-        />
-      ) : null}
-
-      {invoiceBooking && !invoiceGroupId ? (
-        <InvoiceLetter
-          hotelName={hotel.name}
-          s={s}
-          today={today || businessDate()}
-          members={[invoiceBooking]}
-          groupId={null}
-          groupInfo={null}
-          linkedQuote={(() => {
-            const q = findLinkedQuote(quotes.list, { bookingIds: [invoiceBooking.id] });
-            return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
-          })()}
-          busy={invoiceBusy}
-          notify={(m) => notify(m)}
-          onIssue={async (args) => {
-            setInvoiceBusy(true);
-            try {
-              return await invoices.issue(args);
-            } finally {
-              setInvoiceBusy(false);
-            }
-          }}
-          onClose={() => {
-            setInvoiceBooking(null);
+            setInvoiceTarget(null);
             if (panel === "invoice") goPanel("home");
           }}
         />
@@ -656,7 +635,7 @@ function IssuancePickModal({
   roomLabel,
   onClose,
   onPickBooking,
-  onPickGroup,
+  onConfirmInvoice,
 }: {
   mode: PickMode;
   bookings: Booking[];
@@ -664,9 +643,12 @@ function IssuancePickModal({
   roomLabel: (b: Booking) => string | null;
   onClose: () => void;
   onPickBooking: (b: Booking) => void;
-  onPickGroup: (groupId: string) => void;
+  onConfirmInvoice: (selection: { groupIds: string[]; bookingIds: string[] }) => void;
 }) {
   const [q, setQ] = useState("");
+  const [selGroups, setSelGroups] = useState<Set<string>>(() => new Set());
+  const [selBookings, setSelBookings] = useState<Set<string>>(() => new Set());
+  const multi = mode === "invoice";
   const title =
     mode === "confirm"
       ? ISSUANCE_COPY.stayConfirmPick
@@ -685,6 +667,8 @@ function IssuancePickModal({
     return bookings
       .filter((b) => b.kind === "stay" && b.status !== "cancelled")
       .filter((b) => {
+        // 청구 멀티: 단체 전체는 위 섹션에서 — 숙박 목록은 단실(+검색 히트)
+        if (multi && b.groupId && !query) return false;
         if (!query) return true;
         const room = roomLabel(b) ?? "";
         return (
@@ -693,9 +677,9 @@ function IssuancePickModal({
           (b.guestPhone ?? "").includes(q.trim())
         );
       })
-      .sort((a, b) => b.checkIn.localeCompare(a.checkIn) || b.createdAt.localeCompare(a.createdAt))
+      .sort((a, b) => b.checkIn.localeCompare(a.checkIn) || (b.createdAt || "").localeCompare(a.createdAt || ""))
       .slice(0, 80);
-  }, [bookings, q, roomLabel]);
+  }, [bookings, multi, q, roomLabel]);
 
   const groupList = useMemo(() => {
     if (mode !== "invoice") return [] as { id: string; name: string; checkIn: string; rooms: number; members: Booking[] }[];
@@ -710,16 +694,50 @@ function IssuancePickModal({
           g.members.some((m) => textMatchesGuest(query, m.guestName, m.guestPhone, g.name));
         if (!hit) continue;
       }
-      rows.push({ id: g.groupId, name: g.name || lead.guestName || ISSUANCE_COPY.pickGroupTag, checkIn: g.checkIn, rooms: g.rooms || g.members.length, members: g.members });
+      rows.push({
+        id: g.groupId,
+        name: g.name || lead.guestName || ISSUANCE_COPY.pickGroupTag,
+        checkIn: g.checkIn,
+        rooms: g.rooms || g.members.length,
+        members: g.members,
+      });
     }
     rows.sort((a, b) => b.checkIn.localeCompare(a.checkIn));
     return rows.slice(0, 40);
   }, [groups, mode, q]);
 
+  const selectedCount = selGroups.size + selBookings.size;
+
+  const toggleGroup = (id: string) => {
+    setSelGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleBooking = (id: string) => {
+    setSelBookings((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const confirmInvoice = () => {
+    if (!selectedCount) return;
+    onConfirmInvoice({
+      groupIds: [...selGroups],
+      bookingIds: [...selBookings],
+    });
+  };
+
   return (
     <div className="dim iss-pick-dim" role="presentation" onClick={onClose}>
       <div
-        className="modal iss-pick-modal"
+        className={`modal iss-pick-modal${multi ? " multi" : ""}`}
         role="dialog"
         aria-labelledby="iss-pick-title"
         onClick={(e) => e.stopPropagation()}
@@ -742,17 +760,39 @@ function IssuancePickModal({
           {mode === "invoice" && groupList.length > 0 ? (
             <div className="iss-pick-sec">
               <h3 className="iss-pick-h">{ISSUANCE_COPY.pickGroupTag}</h3>
-              <ul className="iss-pick-list">
-                {groupList.map((g) => (
-                  <li key={g.id}>
-                    <button type="button" className="iss-pick-row" onClick={() => onPickGroup(g.id)}>
-                      <span className="iss-pick-t">
-                        {g.name} <span className="tag">{g.rooms}실</span>
-                      </span>
-                      <span className="muted sm">{dayLabel(g.checkIn)}</span>
-                    </button>
-                  </li>
-                ))}
+              <ul className="iss-pick-list" role={multi ? "group" : undefined}>
+                {groupList.map((g) => {
+                  const on = selGroups.has(g.id);
+                  return (
+                    <li key={g.id}>
+                      {multi ? (
+                        <button
+                          type="button"
+                          className={`iss-pick-row check${on ? " on" : ""}`}
+                          aria-pressed={on}
+                          onClick={() => toggleGroup(g.id)}
+                        >
+                          <span className="iss-pick-check" aria-hidden>
+                            <input type="checkbox" tabIndex={-1} checked={on} readOnly />
+                          </span>
+                          <span className="iss-pick-main">
+                            <span className="iss-pick-t">
+                              {g.name} <span className="tag">{g.rooms}실</span>
+                            </span>
+                            <span className="muted sm">{dayLabel(g.checkIn)}</span>
+                          </span>
+                        </button>
+                      ) : (
+                        <button type="button" className="iss-pick-row" onClick={() => onConfirmInvoice({ groupIds: [g.id], bookingIds: [] })}>
+                          <span className="iss-pick-t">
+                            {g.name} <span className="tag">{g.rooms}실</span>
+                          </span>
+                          <span className="muted sm">{dayLabel(g.checkIn)}</span>
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}
@@ -764,18 +804,42 @@ function IssuancePickModal({
               <ul className="iss-pick-list">
                 {stayList.map((b) => {
                   const room = roomLabel(b);
+                  const on = selBookings.has(b.id);
                   return (
                     <li key={b.id}>
-                      <button type="button" className="iss-pick-row" onClick={() => onPickBooking(b)}>
-                        <span className="iss-pick-t">
-                          {b.guestName || "이름 없음"}
-                          {room ? ` · ${room}호` : " · 미배정"}
-                          {b.groupId ? <span className="tag">{ISSUANCE_COPY.pickGroupTag}</span> : null}
-                        </span>
-                        <span className="muted sm">
-                          {dayLabel(b.checkIn)} · {stayStatusLabel(b)}
-                        </span>
-                      </button>
+                      {multi ? (
+                        <button
+                          type="button"
+                          className={`iss-pick-row check${on ? " on" : ""}`}
+                          aria-pressed={on}
+                          onClick={() => toggleBooking(b.id)}
+                        >
+                          <span className="iss-pick-check" aria-hidden>
+                            <input type="checkbox" tabIndex={-1} checked={on} readOnly />
+                          </span>
+                          <span className="iss-pick-main">
+                            <span className="iss-pick-t">
+                              {b.guestName || "이름 없음"}
+                              {room ? ` · ${room}호` : " · 미배정"}
+                              {b.groupId ? <span className="tag">{ISSUANCE_COPY.pickGroupTag}</span> : null}
+                            </span>
+                            <span className="muted sm">
+                              {dayLabel(b.checkIn)} · {stayStatusLabel(b)}
+                            </span>
+                          </span>
+                        </button>
+                      ) : (
+                        <button type="button" className="iss-pick-row" onClick={() => onPickBooking(b)}>
+                          <span className="iss-pick-t">
+                            {b.guestName || "이름 없음"}
+                            {room ? ` · ${room}호` : " · 미배정"}
+                            {b.groupId ? <span className="tag">{ISSUANCE_COPY.pickGroupTag}</span> : null}
+                          </span>
+                          <span className="muted sm">
+                            {dayLabel(b.checkIn)} · {stayStatusLabel(b)}
+                          </span>
+                        </button>
+                      )}
                     </li>
                   );
                 })}
@@ -783,6 +847,22 @@ function IssuancePickModal({
             )}
           </div>
         </div>
+        {multi ? (
+          <div className="iss-pick-foot noprint">
+            <span className="iss-pick-count" aria-live="polite">
+              {selectedCount}
+              {ISSUANCE_COPY.invoicePickSelected}
+            </span>
+            <button
+              type="button"
+              className="btn stop"
+              disabled={selectedCount === 0}
+              onClick={confirmInvoice}
+            >
+              {ISSUANCE_COPY.invoicePickConfirm}
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

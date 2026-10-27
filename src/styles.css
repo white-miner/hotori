@@ -2693,9 +2693,10 @@ label.ck input[type="checkbox"] {
 .quote-notes { font-size: 13px; color: var(--ink2); margin: 8px 0; }
 .invoice-form { padding: 0 16px 8px; }
 
-/* 발급 hub — 예약/단체 고르기 */
+/* 발급 hub — 예약/단체 고르기 (청구 = multi checkbox + footer) */
 .modal.iss-pick-modal { width: min(480px, 96vw); max-height: min(88vh, 640px); display: flex; flex-direction: column; }
 .iss-pick-body { padding: 0 16px 16px; display: grid; gap: 12px; overflow: auto; min-height: 0; }
+.modal.iss-pick-modal.multi .iss-pick-body { padding-bottom: 8px; }
 .iss-pick-sec { display: grid; gap: 6px; }
 .iss-pick-h { margin: 0; font-size: 12px; font-weight: 800; color: var(--ink3); letter-spacing: -0.01em; }
 .iss-pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
@@ -2705,7 +2706,27 @@ label.ck input[type="checkbox"] {
   cursor: pointer; font: inherit;
 }
 .iss-pick-row:hover { border-color: var(--ink2); }
+.iss-pick-row.check {
+  flex-direction: row; align-items: flex-start; gap: 10px;
+}
+.iss-pick-row.check.on {
+  border-color: var(--ink);
+  background: var(--panel);
+}
+.iss-pick-check {
+  display: inline-flex; align-items: center; padding-top: 2px; flex-shrink: 0;
+}
+.iss-pick-check input[type="checkbox"] {
+  width: 1.15em; height: 1.15em; margin: 0; accent-color: var(--ink); pointer-events: none;
+}
+.iss-pick-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .iss-pick-t { font-size: 14px; font-weight: 750; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.iss-pick-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-top: 1px solid var(--line); background: #fff; flex-shrink: 0;
+}
+.iss-pick-count { font-size: 13.5px; font-weight: 750; color: var(--ink2); }
+.iss-pick-foot .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .inv-title-block { text-align: right; }
 .inv-no { font-size: 12.5px; font-weight: 750; color: var(--ink2); margin-top: 4px; }
 .inv-watermark {

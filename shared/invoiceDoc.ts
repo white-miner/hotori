@@ -3,7 +3,7 @@ import { groupLeadBooking } from "./group";
 import type { PrintLang } from "./hotelBiz";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
 import { PAYMENT_METHOD_LABEL, paidOf, type PaymentMethod } from "./payment";
-import { type GroupInfo, settle, type Settlement } from "./settle";
+import { emptyGroupInfo, type GroupInfo, settle, type Settlement } from "./settle";
 import type { QuoteCompare } from "./quoteVariance";
 
 export type InvoiceStatus = "draft" | "issued";
@@ -433,4 +433,117 @@ export function validateInvoicePayer(payerName: string, payerPhone: string): str
   if (payerName.length > INVOICE_PAYER_MAX) return `청구처는 ${INVOICE_PAYER_MAX}자까지예요.`;
   if (payerPhone.length > INVOICE_PHONE_MAX) return `연락처는 ${INVOICE_PHONE_MAX}자까지예요.`;
   return null;
+}
+
+/**
+ * 여러 단체/단실을 한 청구서로 묶을 때 GroupInfo 합치기.
+ * extras·payments 합산 · payer는 첫 비어 있지 않은 값 · payMode는 후불 우선.
+ * settle/buildInvoiceSnapshot에 그대로 넘겨 줄·합계를 한 스냅샷으로 고정.
+ */
+export function mergeInvoiceGroupInfo(
+  infos: Array<GroupInfo | null | undefined>,
+  syntheticId = "combined",
+): GroupInfo {
+  const base = emptyGroupInfo(syntheticId);
+  const list = infos.filter((x): x is GroupInfo => !!x);
+  if (!list.length) return base;
+  let payMode = list[0]!.payMode;
+  let dueOn = list[0]!.dueOn;
+  let payerCompany: string | null = null;
+  let payerName: string | null = null;
+  let payerPhone: string | null = null;
+  const extras: GroupInfo["extras"] = [];
+  const payments: GroupInfo["payments"] = [];
+  const rates: Record<string, number> = {};
+  for (const info of list) {
+    if (info.payMode === "postpaid") {
+      payMode = "postpaid";
+      if (info.dueOn) dueOn = info.dueOn;
+    }
+    if (!payerCompany && info.payerCompany?.trim()) payerCompany = info.payerCompany;
+    if (!payerName && info.payerName?.trim()) payerName = info.payerName;
+    if (!payerPhone && info.payerPhone?.trim()) payerPhone = info.payerPhone;
+    for (const x of info.extras ?? []) extras.push({ ...x });
+    for (const p of info.payments ?? []) payments.push({ ...p });
+    if (info.rates) {
+      for (const [k, v] of Object.entries(info.rates)) {
+        if (rates[k] == null) rates[k] = v;
+      }
+    }
+  }
+  return {
+    ...base,
+    payMode,
+    dueOn,
+    payerCompany,
+    payerName,
+    payerPhone,
+    rates: Object.keys(rates).length ? rates : null,
+    extras,
+    payments,
+    badgeColor: list[0]!.badgeColor,
+  };
+}
+
+export type InvoicePickSelection = {
+  /** 고른 단체 id */
+  groupIds: string[];
+  /** 고른 단실(또는 단체 일부) booking id — 단체 전체 선택과 중복돼도 OK */
+  bookingIds: string[];
+};
+
+/**
+ * 픽 모달 선택 → 청구서 members + 합친 GroupInfo + 발급 groupId.
+ * 형제 방 줄·settle 합을 한 스냅샷으로 묶음 (중복 booking id 제거).
+ */
+export function resolveInvoicePick(opts: {
+  selection: InvoicePickSelection;
+  bookingsById: Map<string, Booking>;
+  groupMembers: Map<string, Booking[]>;
+  groupInfos: Map<string, GroupInfo | undefined>;
+}): {
+  members: Booking[];
+  groupId: string | null;
+  groupInfo: GroupInfo | null;
+} {
+  const ids = new Set<string>();
+  const infoIds = new Set<string>();
+  for (const gid of opts.selection.groupIds) {
+    infoIds.add(gid);
+    for (const m of opts.groupMembers.get(gid) ?? []) ids.add(m.id);
+  }
+  for (const bid of opts.selection.bookingIds) {
+    ids.add(bid);
+    const b = opts.bookingsById.get(bid);
+    if (b?.groupId) infoIds.add(b.groupId);
+  }
+  const members = [...ids]
+    .map((id) => opts.bookingsById.get(id))
+    .filter((b): b is Booking => !!b)
+    .sort(
+      (a, b) =>
+        a.checkIn.localeCompare(b.checkIn) || (a.createdAt || "").localeCompare(b.createdAt || ""),
+    );
+
+  const infos = [...infoIds].map((id) => opts.groupInfos.get(id) ?? emptyGroupInfo(id));
+  const memberGroupIds = new Set(
+    members.map((m) => m.groupId).filter((id): id is string => !!id),
+  );
+  const hasUngrouped = members.some((m) => !m.groupId);
+  /** 한 단체만·단실 없음 → 그 groupId로 발급. 합산(복수 단체·단실 섞임)은 null */
+  const soleGroup = !hasUngrouped && memberGroupIds.size === 1 ? [...memberGroupIds][0]! : null;
+  const groupInfo =
+    infos.length === 0
+      ? null
+      : infos.length === 1 && soleGroup
+        ? infos[0]!
+        : infos.length >= 1
+          ? mergeInvoiceGroupInfo(infos, soleGroup ?? "combined")
+          : null;
+
+  return {
+    members,
+    groupId: soleGroup,
+    groupInfo,
+  };
 }
