@@ -32,6 +32,7 @@ import {
   remaining,
   mergeViewBookings,
   stockGlanceDates,
+  stockGlanceNight,
   stockLevel,
   stockTable,
   validateBooking,
@@ -175,11 +176,13 @@ test("오버부킹 전부 세기 (탭의 빨간 숫자)", async () => {
   assert.deepEqual(allOverbookings(S, stockTable(S, [], dates), dates), []);
 });
 
-test("주·월 글랜스 날짜: 오늘+만 · 전부 과거면 그대로", () => {
+test("타입 재고 칩 숙박일: 항상 하룻밤 (오늘 → 첫 오늘+ → 과거창 마지막)", () => {
   const month = ["2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27", "2026-11-02"];
-  assert.deepEqual(stockGlanceDates(month, "2026-10-27"), ["2026-10-27", "2026-11-02"]);
-  assert.deepEqual(stockGlanceDates(["2026-10-20", "2026-10-21"], "2026-10-27"), ["2026-10-20", "2026-10-21"]);
-  assert.deepEqual(stockGlanceDates(["2026-11-02"], "2026-10-27"), ["2026-11-02"]);
+  assert.equal(stockGlanceNight(month, "2026-10-27"), "2026-10-27");
+  assert.equal(stockGlanceNight(["2026-11-01", "2026-11-02"], "2026-10-27"), "2026-11-01");
+  assert.equal(stockGlanceNight(["2026-10-20", "2026-10-21"], "2026-10-27"), "2026-10-21");
+  assert.equal(stockGlanceNight(["2026-11-02"], "2026-10-27"), "2026-11-02");
+  assert.deepEqual(stockGlanceDates(month, "2026-10-27"), ["2026-10-27"], "호환 배열도 길이 1");
 });
 
 test("stockTable: 퇴실 고스트 + 같은 방 같은 밤 라이브는 1만 차감 (#125)", () => {

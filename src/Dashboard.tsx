@@ -158,7 +158,7 @@ import {
   orderedFloors,
   stayEnd,
   stockTable,
-  stockGlanceDates,
+  stockGlanceNight,
   mergeViewBookings,
   typeLabel,
   typeTotals,
@@ -430,11 +430,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return mergeViewBookings(old.list, bookings);
   }, [needOld, old, oldKey, bookings]);
   const viewTable = useMemo(() => stockTable(s, viewBookings, viewDates, scopeId), [s, viewBookings, viewDates, scopeId]);
-  /** 주·월·기간: 오늘+ 숙박일만 오버부킹 집계 (과거 밤 min/건수가 거짓 부족으로 안 보이게) */
-  const viewGlanceDates = useMemo(() => stockGlanceDates(viewDates, today), [viewDates, today]);
+  /** 타입 재고·오버부킹 칩 = 하룻밤만 (주·월 집계 금지) */
+  const viewGlanceNight = useMemo(() => stockGlanceNight(viewDates, today), [viewDates, today]);
   const viewOvers = useMemo(
-    () => allOverbookings(s, viewTable, viewGlanceDates),
-    [s, viewTable, viewGlanceDates],
+    () => allOverbookings(s, viewTable, [viewGlanceNight]),
+    [s, viewTable, viewGlanceNight],
   );
   // 넓은 표(월·긴 기간): 오늘이 들어 있으면 오늘 열이 보이게 옆으로 밀어 둬요
   const wideRef = useRef<HTMLDivElement>(null);
@@ -1903,8 +1903,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {period === "range" ? `${viewDates.length}일` : null}
         {viewLoading ? " 불러오는 중…" : null}
       </span>
-      {viewOvers.length && !(period === "d14" && view.from === today) ? (
-        <span className="rnav-o">이 기간 오버부킹 {viewOvers.length}건</span>
+      {viewOvers.length ? (
+        <span className="rnav-o">
+          {dayLabel(viewGlanceNight)} 오버부킹 {viewOvers.length}건
+        </span>
       ) : null}
     </div>
   );

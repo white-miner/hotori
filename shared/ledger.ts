@@ -1045,13 +1045,21 @@ export function nightsOverlap(
 export type StockTable = Map<string, Map<string, number>>; // typeId -> date -> remaining
 
 /**
- * 판매 캘린더 주·월·기간 글랜스/오버부킹: 오늘 이전 숙박일은 빼고 집계해요.
- * (과거 밤을 min에 넣으면 퇴실+같은 밤 재배정·과거 초과가 주/월 칩에 거짓 −N으로 보여요.)
- * 창이 전부 과거면 역사 조회용으로 dates 그대로.
+ * 타입 재고·오버부킹 칩용 숙박일 — **항상 하룻밤만**.
+ * 주·월·기간 min/건수 집계 금지 (거짓 −N · 「11/2 패밀리VIP −1」 오인).
+ * 우선순위: 오늘(창에 있으면) → 창의 첫 오늘+ → 전부 과거면 창의 마지막(오늘과 가장 가까운 밤).
  */
-export function stockGlanceDates(dates: readonly string[], today: string): string[] {
+export function stockGlanceNight(dates: readonly string[], today: string): string {
+  if (!dates.length) return today;
+  if (dates.includes(today)) return today;
   const fwd = dates.filter((d) => d >= today);
-  return fwd.length ? fwd : [...dates];
+  if (fwd.length) return fwd[0]!;
+  return dates[dates.length - 1]!;
+}
+
+/** @deprecated 칩은 stockGlanceNight 한 밤만. 호환: 길이 1 배열. */
+export function stockGlanceDates(dates: readonly string[], today: string): string[] {
+  return [stockGlanceNight(dates, today)];
 }
 
 /**

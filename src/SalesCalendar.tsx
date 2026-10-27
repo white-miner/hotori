@@ -15,7 +15,7 @@ import {
   weekday,
   weekStart,
   won,
-  stockGlanceDates,
+  stockGlanceNight,
 } from "../shared/ledger";
 import {
   applyBulkTypeDates,
@@ -154,26 +154,23 @@ export default function SalesCalendar({
     onFocusConsumed?.();
   }, [focusCell, onFocusConsumed, onOverbook, readOnly, s.overbookSubs, viewTable]);
 
-  /** 주·월 글랜스: 오늘+ 숙박일만 min (과거 밤을 넣으면 거짓 초과) · 카드 셀은 viewDates 전체 */
-  const glanceDates = useMemo(() => stockGlanceDates(viewDates, today), [viewDates, today]);
+  /** 타입 재고 칩 = 하룻밤만 (주·월 min 집계 금지) · 카드 셀은 viewDates 전체 */
+  const glanceNight = useMemo(() => stockGlanceNight(viewDates, today), [viewDates, today]);
 
-  /** 타입별 창 안 최소 판매가능 칸 — 한눈에 */
+  /** 타입별 그 숙박일 판매가능 칸 */
   const glance = useMemo(() => {
-    const m = new Map<string, { min: number; stopped: number; total: number }>();
+    const m = new Map<string, { rem: number; stopped: boolean; total: number }>();
     for (const t of types) {
-      let min = Infinity;
-      let stopped = 0;
-      for (const d of glanceDates) {
-        const rem = viewTable.get(t.id)?.get(d) ?? 0;
-        const st = isStopSell(s, t.id, d);
-        if (st) stopped += 1;
-        const sell = sellableRemaining(rem, st);
-        if (sell < min) min = sell;
-      }
-      m.set(t.id, { min: Number.isFinite(min) ? min : 0, stopped, total: totals.get(t.id) ?? 0 });
+      const rem = viewTable.get(t.id)?.get(glanceNight) ?? 0;
+      const st = isStopSell(s, t.id, glanceNight);
+      m.set(t.id, {
+        rem: sellableRemaining(rem, st),
+        stopped: st,
+        total: totals.get(t.id) ?? 0,
+      });
     }
     return m;
-  }, [types, glanceDates, viewTable, s, totals]);
+  }, [types, glanceNight, viewTable, s, totals]);
 
   function toggleDate(d: string) {
     if (readOnly) return;
@@ -252,35 +249,37 @@ export default function SalesCalendar({
           </div>
         </div>
 
-        <div className="sales-glance" aria-label="타입별 재고">
+        <div className="sales-glance" aria-label={`${md(glanceNight)} 타입별 재고`}>
           {types.map((t) => {
             const g = glance.get(t.id)!;
-            const overNight =
-              glanceDates.find((d) => (viewTable.get(t.id)?.get(d) ?? 0) < 0) ??
-              glanceDates.find((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d));
-            const openOver = !readOnly && !!onOverbook && !!overNight;
+            const rawRem = viewTable.get(t.id)?.get(glanceNight) ?? 0;
+            const openOver =
+              !readOnly &&
+              !!onOverbook &&
+              (rawRem < 0 || hasSubsForNight(s.overbookSubs ?? [], t.id, glanceNight));
+            const subSrc =
+              rawRem >= 0 &&
+              (s.overbookSubs ?? []).some((x) => x.fromTypeId === t.id && x.date === glanceNight);
+            const subRelieved = hasSubsForNight(s.overbookSubs ?? [], t.id, glanceNight);
             return (
               <TypeStockChip
                 key={t.id}
                 t={t}
-                rem={g.min}
+                rem={g.rem}
                 total={g.total}
                 lowThreshold={s.lowThreshold}
-                subSrc={glanceDates.some((d) => {
-                  const rem = viewTable.get(t.id)?.get(d) ?? 0;
-                  return rem >= 0 && (s.overbookSubs ?? []).some((x) => x.fromTypeId === t.id && x.date === d);
-                })}
-                subRelieved={glanceDates.some((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d))}
+                subSrc={subSrc}
+                subRelieved={subRelieved}
                 small={
                   <>
-                    칸~ · {g.total}실{g.stopped ? ` · 마감 ${g.stopped}` : ""}
+                    {md(glanceNight)} · {g.total}실{g.stopped ? " · 마감" : ""}
                   </>
                 }
                 onClick={
                   readOnly
                     ? undefined
                     : () => {
-                        if (openOver && overNight) onOverbook!(t.id, overNight);
+                        if (openOver) onOverbook!(t.id, glanceNight);
                         else setTypeEdit(t.id);
                       }
                 }
