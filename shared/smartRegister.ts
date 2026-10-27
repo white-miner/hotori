@@ -534,6 +534,7 @@ const EXTRA_NESTED_CHANNEL_ALIASES = [
   "트립닷컴",
   "trip.com",
   "씨트립",
+  "ctrip",
   "호텔타임",
   "타이드스퀘어",
   "프리비아",
@@ -541,6 +542,15 @@ const EXTRA_NESTED_CHANNEL_ALIASES = [
   "지마켓",
   "이베이",
   "ebay",
+];
+
+/**
+ * Same-OTA display names (hub paste vs Settings).
+ * `씨트립` (야놀자 재판매 라벨) ↔ Settings `트립닷컴` / Trip.com — substring fuzzy alone misses.
+ * Aligns with `shared/platform.ts` KNOWN_COLOR/ABBR group.
+ */
+const PLATFORM_LABEL_EQUIV: readonly (readonly string[])[] = [
+  ["트립닷컴", "trip.com", "tripcom", "씨트립", "ctrip"],
 ];
 
 function normalizePasteLine(line: string): string {
@@ -585,10 +595,29 @@ export function isOccupancyOrPlanChrome(line: string): boolean {
   return false;
 }
 
+/**
+ * Phone / 안심번호 line after guest on 야놀자 vertical cards.
+ * Ctrip/intl often uses `+82269178710(818157)` — parentheses break a digits-only regex
+ * and used to steal `typeRaw` → empty type → 「수정필요」.
+ */
+export function looksLikeYanoljaCardPhoneLine(raw: string): boolean {
+  const s = normalizePasteLine(raw);
+  if (!s) return false;
+  if (/안심번호/.test(s)) return true;
+  // Classic KR / masked: 010-… · 0507-… · 010****9999 · +82-10-…
+  if (/^[\d+\-*]+$/.test(s)) return true;
+  if (/^0\d/.test(s)) return true;
+  // Intl +CC… with optional (ext): +82269178710(818157)
+  if (/^\+\d[\d\-]*(\(\d+\))?$/.test(s)) return true;
+  // Digits + parenthetical ext (no +): 82269178710(818157)
+  if (/^\d[\d\-]*\(\d+\)$/.test(s)) return true;
+  return false;
+}
+
 function hardRejectNestedChannelLine(raw: string): boolean {
   if (!raw || raw.length > 40) return true;
   if (YANOLJA_CARD_RES_ID.test(raw)) return true;
-  if (/^[\d+\-]+$/.test(raw) || /^0\d/.test(raw)) return true;
+  if (looksLikeYanoljaCardPhoneLine(raw)) return true;
   if (/^\d{4}[./-]/.test(raw)) return true;
   if (/[ㅣ|]/.test(raw)) return true;
   if (/^\/\s*\d+\s*박/.test(raw)) return true;
@@ -692,6 +721,30 @@ export function isKnownNestedChannelLabel(
   return false;
 }
 
+/** Expand hub/Settings aliases for one OTA (씨트립 ↔ 트립닷컴 …). */
+function expandPlatformLabelVariants(label: string): string[] {
+  const raw = label.trim();
+  if (!raw) return [];
+  const key = normChannelKey(raw);
+  const n = normHeader(raw);
+  const out = new Set<string>();
+  if (key) out.add(key);
+  if (n) out.add(n);
+  for (const group of PLATFORM_LABEL_EQUIV) {
+    const inGroup = group.some(
+      (g) => channelKeyHitsLabel(key, g) || normHeader(g) === n || normChannelKey(g) === key,
+    );
+    if (!inGroup) continue;
+    for (const g of group) {
+      const gk = normChannelKey(g);
+      const gn = normHeader(g);
+      if (gk) out.add(gk);
+      if (gn) out.add(gn);
+    }
+  }
+  return [...out];
+}
+
 /** Resolve nested channel label → Hotori Settings platform (fuzzy name/abbr / profile keywords). */
 export function matchPlatformByLabel(
   label: string,
@@ -701,8 +754,9 @@ export function matchPlatformByLabel(
   if (!raw) return null;
   const n = normHeader(raw);
   const key = normChannelKey(raw);
+  const variants = expandPlatformLabelVariants(raw);
   const plats = s.platforms ?? [];
-  // 1) Exact / fuzzy on hotel platform name or abbr (underscore/space/- normalize)
+  // 1) Exact / fuzzy on hotel platform name or abbr (underscore/space/- normalize · equiv aliases)
   for (const p of plats) {
     const name = normHeader(p.name ?? "");
     const abbr = normHeader(p.abbr ?? "");
@@ -714,13 +768,24 @@ export function matchPlatformByLabel(
     if (channelKeyHitsLabel(key, p.name ?? "") || (abbr.length > 1 && channelKeyHitsLabel(key, p.abbr ?? ""))) {
       return { id: p.id, name: p.name };
     }
+    for (const v of variants) {
+      if (!v) continue;
+      if (name === v || (abbr.length > 1 && abbr === v)) return { id: p.id, name: p.name };
+      if (name && v.length >= 2 && (name.includes(v) || v.includes(name))) {
+        return { id: p.id, name: p.name };
+      }
+      if (channelKeyHitsLabel(v, p.name ?? "") || (abbr.length > 1 && channelKeyHitsLabel(v, p.abbr ?? ""))) {
+        return { id: p.id, name: p.name };
+      }
+    }
   }
   // 2) Label hits a seed profile → that profile's hotoriPlatformMatch against settings
   for (const prof of PLATFORM_PROFILES) {
     const hit =
       channelKeyHitsLabel(key, prof.label) ||
-      prof.hotoriPlatformMatch.some((k) => channelKeyHitsLabel(key, k)) ||
-      prof.detectHints.some((k) => channelKeyHitsLabel(key, k));
+      variants.some((v) => channelKeyHitsLabel(v, prof.label)) ||
+      prof.hotoriPlatformMatch.some((k) => channelKeyHitsLabel(key, k) || variants.some((v) => channelKeyHitsLabel(v, k))) ||
+      prof.detectHints.some((k) => channelKeyHitsLabel(key, k) || variants.some((v) => channelKeyHitsLabel(v, k)));
     if (!hit) continue;
     const id = matchPlatformId(prof, s);
     if (id) {
@@ -809,7 +874,7 @@ function parseYanoljaCardBlock(
     if (/안심번호/.test(phoneOrSafe)) {
       guestPhone = "";
       i += 1;
-    } else if (/^[\d+\-*]+$/.test(phoneOrSafe) || /^0\d/.test(phoneOrSafe)) {
+    } else if (looksLikeYanoljaCardPhoneLine(phoneOrSafe)) {
       guestPhone = phoneOrSafe;
       i += 1;
     }
@@ -1270,6 +1335,22 @@ export function typeRawForAliasMatch(raw: string): string {
   return s;
 }
 
+/**
+ * Hub bilingual product line `English|한글` / `Englishㅣ한글` → Korean (right) segment.
+ * Ctrip via 야놀자: `Standardㅣ스탠다드` should hit alias/fuzzy `스탠다드`.
+ */
+export function typeRawBilingualTail(raw: string): string {
+  const s = typeRawForAliasMatch(raw);
+  if (!s) return "";
+  // Latin/digit left · pipe · rest (Hangul or mixed). Avoid eating `Family Room|VIP`.
+  const m = s.match(/^[\sA-Za-z0-9.'+\-_]+(?:\s+[\sA-Za-z0-9.'+\-_]+)*\s*[|ㅣ]\s*(.+)$/u);
+  if (!m?.[1]) return "";
+  const tail = m[1].trim();
+  // Prefer tails that include Hangul (Standard|스탠다드); skip pure-Latin VIP tags
+  if (!/[\uac00-\ud7a3]/.test(tail)) return "";
+  return tail;
+}
+
 /** True when paste key equals alias, or alias is a prefix before amenity `(`. */
 function aliasMatchesTypeKey(key: string, aliasKey: string): boolean {
   if (!aliasKey || !key) return false;
@@ -1280,9 +1361,20 @@ function aliasMatchesTypeKey(key: string, aliasKey: string): boolean {
   return next === "(" || next === "" || next === " " || next === "|";
 }
 
+function aliasKeysForPasteType(platformTypeName: string): string[] {
+  const fullKey = normTypeName(platformTypeName);
+  const strippedKey = normTypeName(typeRawForAliasMatch(platformTypeName));
+  const bilingualKey = normTypeName(typeRawBilingualTail(platformTypeName));
+  const keys: string[] = [];
+  for (const k of [fullKey, strippedKey, bilingualKey]) {
+    if (k && !keys.includes(k)) keys.push(k);
+  }
+  return keys;
+}
+
 /**
  * Alias lookup: platformId + normalized name → typeId (if type still usable).
- * Exact, strip amenity/`객실 타입 ID`, or longest alias prefix before `(`.
+ * Exact, strip amenity/`객실 타입 ID`, bilingual `En|한글` tail, or longest alias prefix before `(`.
  */
 export function lookupTypeAlias(
   aliases: TypeAlias[] | undefined,
@@ -1291,9 +1383,8 @@ export function lookupTypeAlias(
   typeIds?: ReadonlySet<string>,
 ): string | null {
   if (!platformId || !aliases?.length) return null;
-  const fullKey = normTypeName(platformTypeName);
-  const strippedKey = normTypeName(typeRawForAliasMatch(platformTypeName));
-  if (!fullKey && !strippedKey) return null;
+  const keys = aliasKeysForPasteType(platformTypeName);
+  if (!keys.length) return null;
 
   let best: { typeId: string; len: number; idx: number } | null = null;
   for (let i = 0; i < aliases.length; i++) {
@@ -1301,9 +1392,7 @@ export function lookupTypeAlias(
     if (a.platformId !== platformId) continue;
     const aliasKey = normTypeName(a.platformTypeName);
     if (!aliasKey) continue;
-    const hit =
-      aliasMatchesTypeKey(fullKey, aliasKey) ||
-      (strippedKey !== fullKey && aliasMatchesTypeKey(strippedKey, aliasKey));
+    const hit = keys.some((k) => aliasMatchesTypeKey(k, aliasKey));
     if (!hit) continue;
     if (typeIds && !typeIds.has(a.typeId)) continue;
     // longest alias wins; same length → later entry (overwrite semantics)
@@ -1349,18 +1438,15 @@ export function lookupTypeAliasAnyPlatform(
   typeIds?: ReadonlySet<string>,
 ): string | null {
   if (!aliases?.length) return null;
-  const fullKey = normTypeName(platformTypeName);
-  const strippedKey = normTypeName(typeRawForAliasMatch(platformTypeName));
-  if (!fullKey && !strippedKey) return null;
+  const keys = aliasKeysForPasteType(platformTypeName);
+  if (!keys.length) return null;
 
   let best: { typeId: string; len: number; idx: number } | null = null;
   for (let i = 0; i < aliases.length; i++) {
     const a = aliases[i]!;
     const aliasKey = normTypeName(a.platformTypeName);
     if (!aliasKey) continue;
-    const hit =
-      aliasMatchesTypeKey(fullKey, aliasKey) ||
-      (strippedKey !== fullKey && aliasMatchesTypeKey(strippedKey, aliasKey));
+    const hit = keys.some((k) => aliasMatchesTypeKey(k, aliasKey));
     if (!hit) continue;
     if (typeIds && !typeIds.has(a.typeId)) continue;
     if (!best || aliasKey.length > best.len || (aliasKey.length === best.len && i >= best.idx)) {
@@ -1404,19 +1490,25 @@ export function matchTypeId(
     if (anyHit) return anyHit;
   }
 
-  const n = normTypeName(raw);
+  const candidates = [normTypeName(raw), normTypeName(typeRawBilingualTail(raw))].filter(
+    (k, i, arr) => !!k && arr.indexOf(k) === i,
+  );
   // exact label
-  for (const t of types) {
-    if (normTypeName(typeLabel(t)) === n) return t.id;
+  for (const n of candidates) {
+    for (const t of types) {
+      if (normTypeName(typeLabel(t)) === n) return t.id;
+    }
   }
-  // includes either way
+  // includes either way (prefer longer overlap; bilingual tail helps Standard|스탠다드)
   let best: { id: string; score: number } | null = null;
-  for (const t of types) {
-    const lab = normTypeName(typeLabel(t));
-    if (!lab) continue;
-    let score = 0;
-    if (n.includes(lab) || lab.includes(n)) score = Math.min(n.length, lab.length);
-    if (score > 0 && (!best || score > best.score)) best = { id: t.id, score };
+  for (const n of candidates) {
+    for (const t of types) {
+      const lab = normTypeName(typeLabel(t));
+      if (!lab) continue;
+      let score = 0;
+      if (n.includes(lab) || lab.includes(n)) score = Math.min(n.length, lab.length);
+      if (score > 0 && (!best || score > best.score)) best = { id: t.id, score };
+    }
   }
   return best?.id ?? null;
 }
@@ -1931,6 +2023,15 @@ export const YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH = new URL(
 /** Hub resale: `이베이_G마켓` after reservation id (marketplace slug). */
 export const YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-nested-gmarket-card.txt",
+  import.meta.url,
+);
+
+/**
+ * Hub resale: `씨트립` after reservation id + intl phone `+82…(ext)`.
+ * Phone must not steal typeRaw; Settings `트립닷컴` matches via equiv aliases.
+ */
+export const YANOLJA_NESTED_CTRIP_CARD_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-nested-ctrip-card.txt",
   import.meta.url,
 );
 

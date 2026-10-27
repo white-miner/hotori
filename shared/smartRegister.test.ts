@@ -14,6 +14,7 @@ import {
   YANOLJA_CANCEL_MISS_CARD_FIXTURE_PATH,
   YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH,
+  YANOLJA_NESTED_CTRIP_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_GMARKET_CARD_FIXTURE_PATH,
   YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH,
   YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH,
@@ -31,6 +32,7 @@ import {
   isOccupancyOrPlanChrome,
   looksLikeGuestNameLine,
   looksLikeYanoljaCardPaste,
+  looksLikeYanoljaCardPhoneLine,
   lookupTypeAlias,
   mapColumns,
   matchPlatformByLabel,
@@ -39,6 +41,7 @@ import {
   matchTypeIdNested,
   normalizeRow,
   normTypeName,
+  typeRawBilingualTail,
   typeRawForAliasMatch,
   parseAmount,
   parseLooseDate,
@@ -1066,4 +1069,82 @@ test("yanolja 「트리플」 chrome: guest=CHOISANGYEON not occupancy badge", (
   assert.equal(preview[0]!.nights, 1);
   assert.equal(preview[0]!.amount, 160000);
   assert.notEqual(preview[0]!.guestName, "트리플");
+});
+
+test("looksLikeYanoljaCardPhoneLine: Ctrip intl +82…(ext)", () => {
+  assert.equal(looksLikeYanoljaCardPhoneLine("+82269178710(745613)"), true);
+  assert.equal(looksLikeYanoljaCardPhoneLine("+82269178710(818157)"), true);
+  assert.equal(looksLikeYanoljaCardPhoneLine("0507-0418-4303"), true);
+  assert.equal(looksLikeYanoljaCardPhoneLine("010-1234-5678"), true);
+  assert.equal(looksLikeYanoljaCardPhoneLine("안심번호 만료"), true);
+  assert.equal(looksLikeYanoljaCardPhoneLine("Standardㅣ스탠다드"), false);
+  assert.equal(looksLikeYanoljaCardPhoneLine("2026.10.29(목) 16:00"), false);
+  assert.equal(looksLikeYanoljaCardPhoneLine("JIWOONG KIM"), false);
+});
+
+test("typeRawBilingualTail: Standard|스탠다드 · skip Family Room|VIP", () => {
+  assert.equal(typeRawBilingualTail("Standardㅣ스탠다드(공기청정기ㅣ스타일러)"), "스탠다드");
+  assert.equal(typeRawBilingualTail("Standardㅣ스탠다드 스타일러(공기청정기)"), "스탠다드 스타일러");
+  assert.equal(typeRawBilingualTail("Family RoomㅣVIP(퀸베드1)"), "");
+  assert.equal(
+    lookupTypeAlias(
+      [{ id: "a", platformId: "p-ya", platformTypeName: "스탠다드", typeId: "std" }],
+      "p-ya",
+      "Standardㅣ스탠다드(공기청정기ㅣ스타일러)",
+    ),
+    "std",
+  );
+});
+
+test("yanolja nested 씨트립: intl phone → type · 트립닷컴 platform · alias", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_NESTED_CTRIP_CARD_FIXTURE_PATH), "utf8");
+  const card = parseYanoljaCardPaste(raw)!;
+  assert.equal(card.rows[0]![1], "JIWOONG KIM");
+  assert.equal(card.rows[0]![2], "+82269178710(745613)");
+  assert.match(card.rows[0]![3]!, /^Standard/);
+  assert.equal(card.rows[0]![9], "씨트립");
+
+  // Hotel registered as 트립닷컴 (not literal 씨트립) + 야놀자 alias 스탠다드
+  const withTrip = normalizeSettings({
+    ...settings,
+    platforms: [
+      ...settings.platforms,
+      { id: "p-ct", name: "트립닷컴", abbr: "트" },
+    ],
+    typeAliases: [
+      {
+        id: "ta-std",
+        platformId: "p-ct",
+        platformTypeName: "스탠다드",
+        typeId: "std",
+      },
+      {
+        id: "ta-std-styler",
+        platformId: "p-ct",
+        platformTypeName: "스탠다드 스타일러",
+        typeId: "std",
+      },
+    ],
+  });
+  assert.equal(matchPlatformByLabel("씨트립", withTrip)?.id, "p-ct");
+  assert.equal(matchPlatformByLabel("씨트립", settings), null);
+
+  const preview = buildPreviewRows(parsePasteTable(raw)!, profileById("yanolja")!, withTrip, [], "p-ya");
+  assert.equal(preview[0]!.guestName, "JIWOONG KIM");
+  assert.equal(preview[0]!.guestPhone, "+82269178710(745613)");
+  assert.match(preview[0]!.typeRaw, /^Standard/);
+  assert.equal(preview[0]!.typeId, "std");
+  assert.equal(preview[0]!.platformId, "p-ct");
+  assert.equal(preview[0]!.platformLabel, "트립닷컴");
+  assert.equal(preview[0]!.nestedChannelRaw, "씨트립");
+  assert.equal(preview[0]!.nestedChannelUnmatched, false);
+  assert.equal(preview[0]!.rowStatus, "ok");
+  assert.equal(previewRowStatusLabel(preview[0]!), "신규");
+
+  // Without 트립닷컴 in Settings: still parse phone/type (not 수정필요 from type); 플랫폼 미등록 chip
+  const noTrip = buildPreviewRows(parsePasteTable(raw)!, profileById("yanolja")!, settings, [], "p-ya");
+  assert.equal(noTrip[0]!.nestedChannelUnmatched, true);
+  assert.equal(noTrip[0]!.platformId, "p-ya");
+  assert.equal(noTrip[0]!.typeId, "std"); // fuzzy / any-platform
+  assert.equal(noTrip[0]!.rowStatus, "ok");
 });
