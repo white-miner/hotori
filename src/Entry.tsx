@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, FileText, Minus, Plus, Undo2, X } from "lucide-react";
 import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
 import { DAMAGE_COPY } from "../shared/damageDoc";
@@ -178,6 +178,11 @@ import {
 } from "../shared/longstay";
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
+import OpenStayToggle from "./OpenStayToggle";
+import NightRatesTable from "./NightRatesTable";
+import RoomClashNote from "./RoomClashNote";
+import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
+import { groupDrafts, hashGroupBadgeColor } from "../shared/group";
 import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
@@ -236,6 +241,20 @@ function TimePick({ value, label, onPick }: { value: string; label: string; onPi
   );
 }
 
+/** 새 예약에서는 자주 안 쓰는 칸을 접어 둬요 — 고치는 예약은 그대로 펼쳐 보여요 */
+function AdvWrap({ on, label, children }: { on: boolean; label: string; children: ReactNode }) {
+  return on ? (
+    <details className="adv">
+      <summary>
+        {label} <span className="muted sm">· 필요할 때만</span>
+      </summary>
+      {children}
+    </details>
+  ) : (
+    <>{children}</>
+  );
+}
+
 export default function Entry({ data, today, req, onClose, onSaved, onBoardMove, notify, undoEarlyOut, onOpenSimple }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
@@ -249,6 +268,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 단체 예약: 신규 등록할 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
   const [addGroup, setAddGroup] = useState(false);
+  // 이용 기간 미정(∞) · 추가 객실(신규 숙박 여러 방) — 새 예약에서만 고르고, 고치는 예약은 저장된 값을 그대로 이어요
+  const [openOn, setOpenOn] = useState(base?.openEnded === true);
+  const [openHold, setOpenHold] = useState(base?.holdAhead ?? OPEN_HOLD_DEFAULT);
+  const [extraRooms, setExtraRooms] = useState<string[]>([]);
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
@@ -1188,6 +1211,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     groupId: base?.groupId ?? null,
     groupName: base?.groupName ?? null,
     nightRates: kind === "stay" && !long ? nightRates : null,
+    ...(openOn && kind === "stay" && !long ? { openEnded: true, holdAhead: openHold } : {}),
     guests,
     extraFee: long ? null : extraFee || null,
     earlyIn: kind === "stay" && earlyIn ? earlyIn : null,
@@ -1359,12 +1383,49 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       : long
         ? `${guestName} 님 미수 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 잔액 ${won(left)}원` : " · 정산됨"}`
         : `${guestName} 님 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : " · 완납"}`;
+  /** 새 숙박 저장: 방이 여러 개면 한 단체로 묶어 저장 (방마다 같은 판매금 · 박별 요금 그대로) */
+  const nRooms = isNew && kind === "stay" && !long ? 1 + extraRooms.length : 1;
+  const saveNewDraft = async (d: Booking): Promise<Booking> => {
+    if (!isNew || d.kind !== "stay" || !d.roomId || !extraRooms.length) return data.saveBooking(d, true);
+    const groupId = crypto.randomUUID();
+    const drafts = groupDrafts({
+      groupId,
+      groupName: d.guestName,
+      platformId: d.platformId,
+      checkIn: d.checkIn,
+      nights: d.nights ?? 1,
+      roomIds: [d.roomId, ...extraRooms],
+      prices: [d.price, ...extraRooms.map(() => d.price)],
+      s,
+      guestsOf: () => d.guests ?? 1,
+      arrived: !!d.arrived,
+    }).map((g) => ({
+      ...d,
+      ...g,
+      id: g.id,
+      price: d.price,
+      nightRates: d.nightRates ?? g.nightRates,
+      memo: d.memo,
+    }));
+    const list = await data.saveGroup(drafts, {
+      id: groupId,
+      payMode: "prepaid",
+      dueOn: null,
+      payerCompany: null,
+      payerName: d.guestName,
+      payerPhone: d.guestPhone ?? null,
+      rates: null,
+      extras: [],
+      badgeColor: hashGroupBadgeColor(groupId),
+    });
+    return list[0] ?? (await data.saveBooking(d, true));
+  };
   const recordPay = async (kind: PayKind) => {
     if (payBusy || busy) return;
     const amount = Number(recv.amount || 0);
     const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
-    if (!long && kind === "deposit" && amount > draftBase.price) return setPayErr("선금이 판매 가격보다 커요.");
+    if (!long && kind === "deposit" && amount > draftBase.price * nRooms) return setPayErr("선금이 판매 가격보다 커요.");
     // 신규: 저장과 같은 턴에 결제 내역 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
@@ -1379,7 +1440,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       }
       const bv = validateBooking(draft, s);
       if (bv) return setPayErr(bv);
-      if (roomBusy && isActive(draft))
+      if (roomBusy && isActive(draft) && String(draft.kind) !== "stay")
         return setPayErr(
           draft.kind === "stay" && busyLegs.length
             ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
@@ -1388,7 +1449,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setPayBusy(true);
       setPayErr(null);
       try {
-        const saved = await data.saveBooking(draft, true);
+        const saved = await saveNewDraft(draft);
         let payTail = "";
         if (isActive(saved)) {
           try {
@@ -1464,7 +1525,29 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     [s, data.bookings, draft.id, kind, checkIn, nights, firstNights, startTime, endTime, roomId],
   );
   /** 배치도: 단실 토글 · 호실 타입 → typeId 동기(Path B) · 숙박 신규·대실 공용 */
+  const multiPick = isNew && kind === "stay" && !long;
   const toggleFloorRoom = (id: string) => {
+    if (multiPick) {
+      // 새 숙박: 여러 방을 한 예약(단체)으로 — 어떤 방이든 고를 수 있어요 (겹치면 아래에 안내)
+      if (extraRooms.includes(id)) return setExtraRooms((x) => x.filter((r) => r !== id));
+      if (roomId === id) {
+        if (extraRooms.length) {
+          const [first, ...rest] = extraRooms;
+          setExtraRooms(rest);
+          setRoomId(first);
+          const ft = L.rooms.get(first)?.typeId;
+          if (ft) setTypeId(ft);
+          return;
+        }
+        return pickRoom(null);
+      }
+      if (!roomId) {
+        const r = L.rooms.get(id);
+        if (r?.typeId) setTypeId(r.typeId);
+        return pickRoom(id);
+      }
+      return setExtraRooms((x) => [...x, id]);
+    }
     if (roomId === id) {
       if (kind === "dayuse") return; // 대실은 호실 필수 · 해제 금지
       pickRoom(null);
@@ -1477,8 +1560,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   };
   // 날짜 바뀌어 불가해진 신규 선택 호실 정리 (간단 예약과 동일)
   useEffect(() => {
+    // 겹쳐도 방을 지우지 않아요 — RoomClashNote가 알려 줘요 (조용히 사라지지 않게)
     if (!isNew || kind !== "stay" || !roomId) return;
-    if (!free.has(roomId)) pickRoom(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [free, roomId, isNew, kind]);
   // 객실 이동: k박째부터 끝까지 비어 있는 방
@@ -1538,7 +1621,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // 신규 현장 progressive: 선금 액수 검증 (판매금은 validateBooking)
     if (createOnsitePay) {
       const depErr = validateOnsiteCreateDeposit(createPayMode, {
-        saleTotal: Number(draft.price || 0),
+        saleTotal: Number(draft.price || 0) * nRooms,
         depAmt: createDepAmt,
         depMethod: createDepMethod,
         bizDate: today,
@@ -1565,7 +1648,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       base.startTime !== draft.startTime ||
       base.endTime !== draft.endTime ||
       base.kind !== draft.kind;
-    if (roomBusy && isActive(draft) && slotChanged)
+    if (roomBusy && isActive(draft) && slotChanged && !(isNew && kind === "stay"))
       return setErr(
         kind === "stay" && busyLegs.length
           ? `${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호(${md(l.checkIn)}~${md(addDays(l.checkIn, l.nights))})`).join(", ")}는 그 기간에 다른 예약이 있어요.`
@@ -1583,7 +1666,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (typeOver && (!override || override === "active")) {
       const overOk = await askConfirm({
         title: "타입 재고 부족",
-        body: "타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요? · 물리 방 겹침은 막혀 있어요.",
+        body: "타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?",
         confirmLabel: "저장",
       });
       if (!overOk) return;
@@ -1599,7 +1682,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setBusy(true);
     setErr(null);
     try {
-      const saved = await data.saveBooking(draft, isNew);
+      const saved = isNew ? await saveNewDraft(draft) : await data.saveBooking(draft, isNew);
       let payTail = "";
       if (
         isNew &&
@@ -1609,7 +1692,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         isOnsite(s.platforms.find((x) => x.id === saved.platformId))
       ) {
         const plan = planOnsiteCreatePay(createPayMode, {
-          saleTotal: saved.price,
+          saleTotal: saved.price * nRooms,
           depAmt: createDepAmt,
           depMethod: createDepMethod,
         });
@@ -1631,7 +1714,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       const hold =
         kind === "stay" && isActive(saved) && !saved.roomId
           ? ` · ${t?.name ?? "타입"} ${saved.nights}박 · 재고 반영 · 호실 미정`
-          : "";
+          : nRooms > 1
+            ? ` · ${nRooms}실 한 예약(단체)`
+            : "";
       const stockTail =
         !hold && kind === "stay" && isActive(saved) && savePreview[0]
           ? ` · ${L.types.get(savePreview[0].typeId)?.name} 잔여 객실 ${savePreview[0].after}`
@@ -2553,6 +2638,20 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 </div>
               </div>
             ) : null}
+            {!long ? (
+              <div className="fld">
+                <label>이용 기간</label>
+                <OpenStayToggle
+                  on={openOn}
+                  hold={openHold}
+                  onChange={(on, h) => {
+                    setOpenOn(on);
+                    setOpenHold(h);
+                    if (on && isNew) applyStayNights(openStayNights(checkIn, today, h));
+                  }}
+                />
+              </div>
+            ) : null}
             {showNightPick ? (
               <div className="fld">
                 {stayDateUx === "night-pick" ? <label>이용 날짜</label> : null}
@@ -2563,7 +2662,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   roomId={roomId}
                   excludeId={base?.id ?? "__draft__"}
                   today={today}
-                  onPick={(cin, n) => applyStayNights(n, { checkIn: cin })}
+                  onPick={(cin, n) => applyStayNights(isNew && openOn ? openStayNights(cin, today, openHold) : n, { checkIn: cin })}
                   onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
                   nightAmounts={nightRates?.nights ?? null}
                   onEditNight={editNightAmount}
@@ -2891,15 +2990,29 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 s={s}
                 L={L}
                 free={free}
-                selectedIds={roomId ? [roomId] : []}
+                selectedIds={roomId ? [roomId, ...extraRooms] : []}
+                allowBusy={multiPick}
                 candidateTypeIds={typeId ? [typeId] : []}
                 buildingFilter={buildingFilter}
                 onBuildingFilter={setBuildingFilter}
                 onToggle={toggleFloorRoom}
               />
+              {multiPick && roomId ? (
+                <RoomClashNote
+                  data={data}
+                  today={today}
+                  picked={[roomId, ...extraRooms]}
+                  checkIn={checkIn}
+                  nights={nights}
+                  onSwap={(from, to) => {
+                    if (from === roomId) setRoomId(to);
+                    else setExtraRooms((x) => x.map((y) => (y === from ? to : y)));
+                  }}
+                />
+              ) : null}
               <div className="muted sm mfp-sum">
                 {roomId
-                  ? `${L.roomLabel(roomId) ?? "?"}호`
+                  ? `${[roomId, ...extraRooms].map((r) => `${L.roomLabel(r) ?? "?"}호`).join(" · ")}${extraRooms.length ? ` · ${extraRooms.length + 1}실 한 예약(단체)으로 묶어요` : ""}`
                   : kind === "dayuse"
                     ? "배치도에서 호실을 골라 주세요"
                     : !isNew && kind === "stay"
@@ -3020,6 +3133,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         </div>
 
         {kind === "stay" ? (
+          <AdvWrap on={isNew} label="시간 · 얼리체크인 · 레이트">
           <div className="fld tfld">
             <label>시간</label>
             <div className="payb">
@@ -3097,9 +3211,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               ))}
             </div>
           </div>
+          </AdvWrap>
         ) : null}
 
         {pk ? (
+          <AdvWrap on={isNew} label="주차">
           <div className="fld pfld">
             <label>주차</label>
             <div className="payb">
@@ -3180,6 +3296,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               ) : null}
             </div>
           </div>
+          </AdvWrap>
         ) : null}
 
         {/* 신규 현장: 완납/후불/선금 → 결제수단(원형) → 판매금 (간단과 동일) */}
@@ -3243,7 +3360,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <label>
               {kind === "stay" ? (
                 <>
-                  판매금<em>*</em>
+                  판매금{nRooms > 1 ? " (객실당)" : ""}<em>*</em>
                 </>
               ) : (
                 <>
@@ -3362,6 +3479,28 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   />
                 </PriceInp>
               )}
+              {kind === "stay" && !long && nights >= 1 && nights <= 60 ? (
+                <NightRatesTable
+                  checkIn={checkIn}
+                  nights={nights}
+                  rates={nightRates}
+                  fallback={Number(rateStr || 0) || 0}
+                  hideTotal
+                  addons={stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff })}
+                  onChange={(r) => {
+                    setNightRates(r);
+                    if (r.flat) setRateStr(String(r.flat));
+                    setPrice(
+                      String(
+                        priceFromNightMatrix(
+                          r,
+                          stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff }),
+                        ),
+                      ),
+                    );
+                  }}
+                />
+              ) : null}
               {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (
                 <div className="muted sm">
                   {hasFullNightMatrix(checkIn, nights, nightRates)
@@ -3538,6 +3677,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         )}
 
         {feeOn ? (
+          <AdvWrap on={isNew} label="쿠폰 · 플랫폼 입금">
           <div className="fld cfld">
             <label>쿠폰 · 입금</label>
             <div className="payb">
@@ -3618,6 +3758,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               ) : null}
             </div>
           </div>
+          </AdvWrap>
         ) : null}
 
         {!isNew && kind === "stay" && nights >= 2 && roomId ? (
@@ -3820,7 +3961,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {isNew ? "취소" : "닫기"}
           </button>
           <button type="submit" className={isNew && kind === "stay" ? "btn stop" : "btn red"} disabled={busy}>
-            {busy ? "저장 중…" : isNew && kind === "stay" ? "저장하기" : "저장"}{" "}
+            {busy ? "저장 중…" : isNew && kind === "stay" ? (nRooms > 1 ? `${nRooms}실 저장하기` : "저장하기") : "저장"}{" "}
             <span className="num kbdh">Enter</span>
           </button>
           {isNew && kind === "stay" ? (

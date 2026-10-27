@@ -5797,3 +5797,12 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .ost-hint { flex-basis: 100%; }
 .gpp-nrt { grid-column: 1 / -1; }
 .gline-night { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line, #eee); }
+
+/* 상세 예약: 접어 둔 고급 칸 · 겹치는 방(막지 않고 점선) */
+.adv { margin: 4px 0; border: 1px dashed var(--line, #d8d8d8); border-radius: 12px; padding: 0 10px; }
+.adv > summary { cursor: pointer; padding: 10px 0; font-weight: 700; font-size: 14px; list-style: none; min-height: 44px; display: flex; align-items: center; gap: 6px; }
+.adv > summary::-webkit-details-marker { display: none; }
+.adv > summary::before { content: "＋"; font-weight: 800; }
+.adv[open] > summary::before { content: "－"; }
+.adv[open] { padding-bottom: 8px; }
+.mfp-block.clash { border-style: dashed; opacity: .85; }

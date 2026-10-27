@@ -19,6 +19,7 @@ export default function NightRatesTable({
   defaultOpen = false,
   disabled,
   addons = 0,
+  hideTotal,
 }: {
   checkIn: string;
   nights: number;
@@ -31,6 +32,8 @@ export default function NightRatesTable({
   disabled?: boolean;
   /** 객실료 말고 더해지는 금액 (표시용) */
   addons?: number;
+  /** 총액 칸은 부모 화면에 이미 있을 때 숨겨요 */
+  hideTotal?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const rows = tableRows(checkIn, nights, rates, fallback);
@@ -39,7 +42,7 @@ export default function NightRatesTable({
   return (
     <div className="nrt" aria-label={label ? `${label} 박별 요금` : "박별 요금"}>
       <div className="nrt-top">
-        <label className="nrt-total">
+        {hideTotal ? <span className="muted sm">총액 ⇄ 박별 · 한쪽을 고치면 다른 쪽이 맞춰져요</span> : <label className="nrt-total">
           <span>{label ? `${label} 총액` : "총액"}</span>
           <input
             className="num"
@@ -51,7 +54,7 @@ export default function NightRatesTable({
             onChange={(e) => onChange(withTotal(checkIn, nights, num(e.target.value)))}
           />
           <span>원</span>
-        </label>
+        </label>}
         <button type="button" className="nrt-tg" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           {open ? "박별 접기" : "박별 요금"}
         </button>

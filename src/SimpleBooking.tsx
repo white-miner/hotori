@@ -58,6 +58,7 @@ import type { StayNightRates } from "../shared/nightrates";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import AutoNightRates from "./AutoNightRates";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
+import RoomClashNote from "./RoomClashNote";
 import OnsitePayModeFields from "./OnsitePayModeFields";
 
 /** 플랫폼 판매금 입력: 박당 = rate×박 · 총액 = OTA 총액 그대로 (기본) */
@@ -373,7 +374,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   }
 
   function pickRoom(id: string) {
-    if (!free.has(id)) return;
+    // 겹치는 방도 고를 수 있어요 — 막지 않고 아래 겹침 안내로 알려 줘요
     // 하늘색 칸 탭 = 그 호실만 토글 (타입 실수 자동 채움 없음)
     setRoomIds((prev) => {
       const next = prev.includes(id)
@@ -397,11 +398,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   // 날짜 바뀌어 불가해진 선택 호실 정리
   useEffect(() => {
     if (!roomIds.length) return;
-    const kept = roomIds.filter((id) => free.has(id));
-    if (kept.length !== roomIds.length) {
-      setRoomIds(kept);
-      syncCountsFromRooms(kept);
-    }
+    // 고른 방은 조용히 지우지 않아요 (겹치면 RoomClashNote가 알려요)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [free]);
 
@@ -478,8 +475,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     };
     const v = validateBooking(ready, s);
     if (v) return setErr(v);
-    if (busyLegs.length)
-      return setErr(`${busyLegs.map((l) => `${L.roomLabel(l.roomId)}호`).join(", ")}는 그 기간에 다른 예약이 있어요.`);
+    // 겹침은 안내만 — 저장은 막지 않아요 (RoomClashNote · 확인 필요 함에서 다시 볼 수 있어요)
 
     for (const tid of [...new Set(saveTypeIds)]) {
       const stopped = stopSellDatesForStay(s, tid, checkIn, nights);
@@ -846,6 +842,21 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               buildingFilter={buildingFilter}
               onBuildingFilter={setBuildingFilter}
               onToggle={pickRoom}
+              allowBusy
+            />
+            <RoomClashNote
+              data={data}
+              today={today}
+              picked={roomIds}
+              checkIn={checkIn}
+              nights={nights}
+              onSwap={(from, to) => {
+                setRoomIds((x) => {
+                  const next = x.map((y) => (y === from ? to : y));
+                  syncCountsFromRooms(next);
+                  return next;
+                });
+              }}
             />
             <div className={`muted sm mfp-sum${typeOver ? " tred" : ""}`}>
               {roomIds.length

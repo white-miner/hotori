@@ -28,6 +28,8 @@ interface Props {
   buildingFilter: BuildingFilter;
   onBuildingFilter: (id: BuildingFilter) => void;
   onToggle: (roomId: string) => void;
+  /** 겹치는 방도 고를 수 있게 (막지 않고 겹침 안내로 알려 줘요) — 이미 겹치는 칸은 점선으로 보여요 */
+  allowBusy?: boolean;
 }
 
 export default function MiniFloorPlan({
@@ -39,6 +41,7 @@ export default function MiniFloorPlan({
   buildingFilter,
   onBuildingFilter,
   onToggle,
+  allowBusy = false,
 }: Props) {
   const multi = isMultiBuilding(s);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -81,7 +84,8 @@ export default function MiniFloorPlan({
             </div>
             <div className="mfp-rooms">
               {f.rooms.map((r) => {
-                const ok = free.has(r.id);
+                const free1 = free.has(r.id);
+                const ok = free1 || allowBusy;
                 const on = selected.has(r.id);
                 const cand = ok && !on && !!r.typeId && candidates.has(r.typeId);
                 const tip = typeLabel(L.types.get(r.typeId ?? "")) || "타입 미정";
@@ -89,10 +93,10 @@ export default function MiniFloorPlan({
                   <button
                     key={r.id}
                     type="button"
-                    className={`mfp-block${on ? " on" : ""}${cand ? " cand" : ""}${ok ? "" : " busy"}`}
+                    className={`mfp-block${on ? " on" : ""}${cand ? " cand" : ""}${free1 ? "" : allowBusy ? " clash" : " busy"}`}
                     disabled={!ok}
                     aria-pressed={on}
-                    aria-label={`${r.no}호 ${tip}${ok ? (cand ? " · 타입 후보" : "") : " · 예약 불가"}`}
+                    aria-label={`${r.no}호 ${tip}${free1 ? (cand ? " · 타입 후보" : "") : allowBusy ? " · 겹치는 예약 있음" : " · 예약 불가"}`}
                     data-tip={tip}
                     title={tip}
                     onClick={() => ok && onToggle(r.id)}
