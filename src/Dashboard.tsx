@@ -1,4 +1,4 @@
-import { changesFor, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
+import { changesFor, extendSummary, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
 import ChangeLogSheet from "./ChangeLogSheet";
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
@@ -113,6 +113,8 @@ import {
   extendOverlaps,
   nightRate,
   planOpsExtend,
+  planThroughToday,
+  throughOverlaps,
   type OpsExtendInput,
 } from "../shared/extend";
 import {
@@ -2911,6 +2913,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         nightRates: planned.draft.nightRates ?? live.nightRates ?? null,
       };
       const saved = await data.saveBooking(next, false);
+      void data.logChange({
+        kind: "stay",
+        groupId: live.groupId ?? null,
+        bookingId: live.id,
+        effectiveOn: addDays(live.checkIn, planned.draft.nights),
+        summary: extendSummary({ roomNo: (live.roomId ? L.roomLabel(live.roomId) : "") || "?", fromNights: live.nights ?? 0, toNights: planned.draft.nights }),
+      });
       let collected = false;
       if (planned.collectAmount > 0 && planned.payMethod) {
         try {
@@ -2934,6 +2943,52 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setExtendNight(null);
     } catch (e) {
       notify(saveFailMessage(e, "1박 연장을 저장하지 못했어요"));
+    } finally {
+      setExtendNightBusy(false);
+    }
+  };
+
+  /** 오늘까지 연장 · 한 번 탭 · 퇴실 예정일이 오늘 이전이면 오늘 밤까지 박수를 늘려요 (결제는 따로) */
+  const extendThroughToday = async (bk: Booking) => {
+    if (readOnly || extendNightBusy) return;
+    const live = data.bookings.find((x) => x.id === bk.id) ?? bk;
+    const plan = planThroughToday(live, today);
+    if (!plan) return;
+    const lab = (live.roomId ? L.roomLabel(live.roomId) : "") ?? "";
+    const hits = throughOverlaps(bookings, live, plan);
+    if (hits.length) {
+      const names = hits.map((h) => h.guestName).join(", ");
+      const ok = await askConfirm({
+        title: "이 객실에 예약이 있습니다",
+        body: `${lab}호는 연장하는 밤에 ${names} 예약이 겹쳐요. 그래도 ${plan.add}박 연장할까요? (겹침은 확인 필요로 남아요)`,
+        cancelLabel: "취소",
+        confirmLabel: "그래도 연장",
+        danger: false,
+      });
+      if (!ok) return;
+    }
+    setExtendNightBusy(true);
+    try {
+      await data.saveBooking(
+        {
+          ...live,
+          nights: plan.draft.nights,
+          price: plan.draft.price,
+          segments: plan.draft.segments,
+          nightRates: plan.draft.nightRates ?? live.nightRates ?? null,
+        },
+        false,
+      );
+      void data.logChange({
+        kind: "stay",
+        groupId: live.groupId ?? null,
+        bookingId: live.id,
+        effectiveOn: plan.checkOut,
+        summary: extendSummary({ roomNo: lab || "?", fromNights: live.nights ?? 0, toNights: plan.draft.nights, throughDate: today }),
+      });
+      notify(`${live.guestName} 님 ${lab ? `${lab}호 ` : ""}오늘 밤까지 ${plan.add}박 연장 · 1박 ${won(plan.rate)}원 (결제는 결제 등록에서)`);
+    } catch (e) {
+      notify(saveFailMessage(e, "오늘까지 연장을 저장하지 못했어요"));
     } finally {
       setExtendNightBusy(false);
     }
@@ -3197,7 +3252,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           }
         : null;
     const amount = nowAmountGlance(b, plat, groupCtx);
-    const amountTone = nowAmountTone(b, plat, groupCtx);
+    const amountTone = nowAmountTone(b, plat, groupCtx, today);
     // 하이브리드 완납: 최근 1줄 수단만 · 잔금 라벨이면 prefix null
     const payMethod = nowPayMethodPrefix(amount, nowLatestPayMethodLabel(b, groupCtx?.info?.payments));
     const grpGlance =
@@ -3588,6 +3643,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : "";
                 setExtendNight({ booking: bk, roomLabel: lab || "호실" });
               }}
+              onExtendThrough={(bk) => void extendThroughToday(bk)}
               allBookings={bookings}
               onConnectStay={(bk) => {
                 const lab = bk.roomId

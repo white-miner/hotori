@@ -14,6 +14,9 @@ import {
   planExtend,
   planOpsExtend,
   planGroupExtend,
+  planThroughToday,
+  skippedNote,
+  throughOverlaps,
   repriceForNights,
   roomNightRate,
   stayAddons,
@@ -235,6 +238,59 @@ test("단체 연장: 타입 요금으로 방마다 가산, 겹치면 막음", ()
     assert.equal(ok.ok.members[0].draft.price, 170000);
   }
   const blocker = bk({ id: "x", checkIn: "2026-10-19", nights: 1, roomId: "r301" });
-  const bad = planGroupExtend(s, [m1, m2, blocker], [m1, m2], { s: 70000 });
-  assert.ok("err" in bad);
+  // 한 방만 겹치면 그 방만 건너뛰고 나머지는 연장해요
+  const part = planGroupExtend(s, [m1, m2, blocker], [m1, m2], { s: 70000 });
+  assert.ok("ok" in part);
+  if ("ok" in part) {
+    assert.deepEqual(part.ok.members.map((m) => m.id), ["g2"]);
+    assert.equal(part.ok.totalRate, 70000);
+    assert.deepEqual(part.ok.skipped.map((k) => k.id), ["g1"]);
+    assert.match(skippedNote(s, part.ok.skipped), /301호/);
+  }
+  // 전부 못 하면 안내
+  const none = planGroupExtend(s, [m1, blocker], [m1], { s: 70000 });
+  assert.ok("err" in none);
+});
+
+test("단체 연장: 조기 퇴실·객실 이동한 방은 건너뛰고 나머지 연장", () => {
+  const s = S();
+  const a = bk({ id: "a", groupId: "g", roomId: "r301", nights: 2, price: 200000, checkIn: "2026-10-18" });
+  const e = bk({ id: "e", groupId: "g", roomId: "r302", nights: 2, price: 200000, checkIn: "2026-10-18", earlyOut: "2026-10-19" });
+  const r = planGroupExtend(s, [a, e], [a, e], { s: 100000 });
+  assert.ok("ok" in r);
+  if ("ok" in r) {
+    assert.deepEqual(r.ok.members.map((m) => m.id), ["a"]);
+    assert.deepEqual(r.ok.skipped, [{ id: "e", roomId: "r302", reason: "조기 퇴실" }]);
+  }
+});
+
+test("오늘까지 연장: 퇴실일이 오늘 이전이면 오늘 밤까지 박수·가격을 늘림", () => {
+  const b = bk({ checkIn: "2026-10-20", nights: 3, price: 270000 }); // ~10/23 퇴실
+  const p = planThroughToday(b, "2026-10-27")!;
+  assert.equal(p.add, 5); // 10/23~10/27 밤 5개
+  assert.equal(p.draft.nights, 8);
+  assert.equal(p.rate, 90000);
+  assert.equal(p.draft.price, 270000 + 5 * 90000);
+  assert.equal(p.checkOut, "2026-10-28");
+  assert.equal(p.draft.rate, 450000);
+});
+test("오늘까지 연장: 오늘이 퇴실일이면 +1박, 아직 남았으면 null, 박별 요금은 마지막 박 기준, 366 상한", () => {
+  const b = bk({ checkIn: "2026-10-26", nights: 2, price: 200000 });
+  assert.equal(planThroughToday(b, "2026-10-28")!.add, 1);
+  assert.equal(planThroughToday(b, "2026-10-27"), null);
+  const r = bk({ checkIn: "2026-10-20", nights: 2, price: 150000, nightRates: { nights: { "2026-10-20": 50000, "2026-10-21": 100000 } } as never });
+  assert.equal(planThroughToday(r, "2026-10-22")!.rate, 100000);
+  assert.equal(planThroughToday(r, "2026-10-22", 80000)!.rate, 80000);
+  const big = bk({ checkIn: "2025-01-01", nights: 360, price: 3600000 });
+  const cap = planThroughToday(big, "2026-10-28")!;
+  assert.equal(cap.draft.nights, 366);
+  assert.equal(planThroughToday(bk({ nights: 366 }), "2030-01-01"), null);
+});
+test("오늘까지 연장: 같은 방 겹침은 안내용으로 찾아줌 · 조기 퇴실은 불가", () => {
+  const b = bk({ checkIn: "2026-10-20", nights: 3, price: 270000 });
+  const other = bk({ checkIn: "2026-10-25", nights: 2, roomId: "r301" });
+  const p = planThroughToday(b, "2026-10-27")!;
+  assert.deepEqual(throughOverlaps([b, other], b, p).map((x) => x.id), [other.id]);
+  assert.equal(throughOverlaps([b], b, p).length, 0);
+  assert.equal(planThroughToday(bk({ checkIn: "2026-10-20", nights: 3, earlyOut: "2026-10-21" }), "2026-10-27"), null);
 });

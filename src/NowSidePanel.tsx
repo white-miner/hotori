@@ -46,7 +46,7 @@ import {
 import { groupSettleGlance, type GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
-import { EXTEND_COPY, canExtend } from "../shared/extend";
+import { EXTEND_COPY, canExtend, planThroughToday } from "../shared/extend";
 import {
   CONNECT_STAY_COPY,
   canConnectPrior,
@@ -141,6 +141,8 @@ interface Props {
   onLateOut?: (b: Booking) => void;
   /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
   onExtendNight?: (b: Booking) => void;
+  /** 오늘까지 연장 (퇴실 예정일이 오늘 이전·오늘일 때 한 번 탭) */
+  onExtendThrough?: (b: Booking) => void;
   /** 연박 연결 · 다른 이름 예약 B → 이 투숙 A (succeeds) */
   onConnectStay?: (b: Booking) => void;
   /** 호텔 전체 예약 (연결 글랜스 · prior/successor) */
@@ -208,6 +210,7 @@ export default function NowSidePanel({
   notes,
   onLateOut,
   onExtendNight,
+  onExtendThrough,
   onConnectStay,
   allBookings = [],
   onEarlyIn,
@@ -482,12 +485,14 @@ export default function NowSidePanel({
     !isLongStay(b) &&
     !!f &&
     (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
+  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today) : null;
+  const showExtendThrough = !!throughPlan;
   const showConnectStay =
     !readOnly &&
     !!onConnectStay &&
     !!b &&
     canConnectPrior(b, today, nowOpts);
-  const showInOutCtas = showEarlyIn || showLateOut || showExtendNight;
+  const showInOutCtas = showEarlyIn || showLateOut || showExtendNight || showExtendThrough;
   const succList = b && allBookings.length ? successorsOf(b.id, allBookings) : [];
   const priorBk = b && allBookings.length ? priorOf(b, allBookings) : null;
 
@@ -696,10 +701,23 @@ export default function NowSidePanel({
                             {LATE_OUT_CTA}
                           </button>
                         ) : null}
+                        {showExtendThrough && throughPlan ? (
+                          <button
+                            type="button"
+                            className="btn sm dark nsel-through"
+                            disabled={moving}
+                            onClick={() => onExtendThrough?.(b)}
+                            aria-label="오늘까지 연장"
+                            title={`오늘 밤까지 묵는 것으로 ${throughPlan.add}박 늘려요`}
+                          >
+                            <CalendarPlus size={14} strokeWidth={2.2} aria-hidden />
+                            오늘까지 연장 (+{throughPlan.add}박)
+                          </button>
+                        ) : null}
                         {showExtendNight ? (
                           <button
                             type="button"
-                            className="btn sm dark"
+                            className={`btn sm ${showExtendThrough ? "line" : "dark"}`}
                             disabled={moving}
                             onClick={() => onExtendNight?.(b)}
                             aria-label={EXTEND_COPY}

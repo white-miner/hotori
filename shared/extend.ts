@@ -132,7 +132,7 @@ export function unusedNightRefund(
   return roomNightRate(b, typeRate) * unused;
 }
 
-/** 활성 숙박 · 조기 퇴실 아님 · 90박 미만 */
+/** 활성 숙박 · 조기 퇴실 아님 · 366박 미만 */
 export function canExtend(b: Pick<Booking, "status" | "kind" | "checkIn" | "nights" | "earlyOut">): boolean {
   return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < STAY_NIGHTS_MAX && !isEarlyOut(b);
 }
@@ -174,6 +174,45 @@ export function applyExtend(
   };
 }
 
+export interface ThroughPlan {
+  /** 늘어나는 박수 */
+  add: number;
+  /** 연장 후 퇴실일 */
+  checkOut: string;
+  /** 1박 요금(마지막 박 기준) */
+  rate: number;
+  draft: ExtendDraft;
+}
+
+/**
+ * 오늘까지 연장 — 퇴실 예정일이 오늘 이전·오늘이면 "오늘 밤까지 묵는 것"으로 박수를 늘려요.
+ * 요금은 마지막 박(없으면 1박 평균) 그대로. 결제는 따로(연장과 분리). 366박 상한은 넘지 않아요.
+ */
+export function planThroughToday(b: Booking, today: string, rateOverride?: number | null): ThroughPlan | null {
+  if (!canExtend(b)) return null;
+  const nights0 = b.nights ?? 0;
+  const want = Math.min(STAY_NIGHTS_MAX, daysBetween(b.checkIn, today) + 1);
+  const add = want - nights0;
+  if (add < 1) return null;
+  const rate = Math.max(0, Math.round(rateOverride ?? lastNightRate(b)));
+  let cur: Pick<Booking, "checkIn" | "nights" | "price" | "roomId" | "segments" | "nightRates"> = b;
+  let last: ExtendDraft | null = null;
+  for (let i = 0; i < add; i++) {
+    last = applyExtend(cur, rate);
+    cur = { ...cur, nights: last.nights, price: last.price, segments: last.segments, nightRates: last.nightRates ?? cur.nightRates };
+  }
+  const d = last!;
+  return { add, checkOut: d.checkOut, rate, draft: { ...d, rate: rate * add } };
+}
+
+/** 마지막 박 요금: 박별 요금이 있으면 그 마지막 박, 없으면 방별 flat → 판매가 ÷ 박수 */
+export function lastNightRate(b: Pick<Booking, "checkIn" | "price" | "nights" | "nightRates">): number {
+  const n = b.nights ?? 0;
+  const last = n > 0 ? b.nightRates?.nights?.[addDays(b.checkIn, n - 1)] : undefined;
+  if (typeof last === "number" && last > 0) return Math.round(last);
+  return nightRate(b, null);
+}
+
 /** 연장 충돌 경고 모달 제목 (Entry · 운영패널 → Entry) */
 export const EXTEND_OVERLAP_TITLE = "이 객실에 예약이 있습니다";
 
@@ -201,6 +240,17 @@ export function extendOverlaps(bookings: Booking[], b: Booking, rate: number): B
   });
 }
 
+/** 오늘까지 연장 후 같은 방·새 밤에 겹치는 다른 활성 예약 (막지 않고 안내만) */
+export function throughOverlaps(bookings: Booking[], b: Booking, plan: ThroughPlan): Booking[] {
+  const draft: Booking = { ...b, nights: plan.draft.nights, price: plan.draft.price, segments: plan.draft.segments };
+  const mine = legsOf(draft).filter((l) => l.roomId);
+  if (!mine.length) return [];
+  return bookings.filter((x) => {
+    if (x.id === b.id || !occupiesRoom(x) || x.kind !== "stay") return false;
+    return legsOf(x).some((o) => !!o.roomId && mine.some((m) => legsClash(m, o)));
+  });
+}
+
 /** 연장 가능·금액만 검사. 방 겹침은 extendOverlaps + 모달 (단체는 아래 planGroupExtend가 막음). */
 export function extendBlock(
   s: HotelSettings,
@@ -213,7 +263,7 @@ export function extendBlock(
     if (isEarlyOut(b)) return "조기 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요.";
     if (b.status !== "active") return "취소·노쇼 예약은 1박 연장할 수 없어요.";
     if (b.kind !== "stay") return "숙박만 1박 연장할 수 있어요.";
-    if ((b.nights ?? 0) >= 90) return "박수가 너무 많아요 (90박까지).";
+    if ((b.nights ?? 0) >= STAY_NIGHTS_MAX) return `박수가 너무 많아요 (${STAY_NIGHTS_MAX}박까지).`;
     return "1박 연장할 수 없어요.";
   }
   if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 입력해 주세요.";
@@ -322,39 +372,65 @@ export function groupMemberRate(
 export interface GroupExtendPlan {
   members: { id: string; guestName: string; roomId: string | null; typeId: string; draft: ExtendDraft }[];
   totalRate: number;
+  /** 건너뛴 방 (조기 퇴실·객실 이동·다른 예약과 겹침) — 나머지만 연장해요 */
+  skipped: { id: string; roomId: string | null; reason: string }[];
 }
 
-/** 활성 방만 +1박 · 가격 가산. 막히면 null + block에 문구 */
+/** 활성 방만 +1박 · 가격 가산. 연장할 수 없는 방은 건너뛰고 나머지를 연장해요 (아무 방도 못 하면 err) */
 export function planGroupExtend(
   s: HotelSettings,
   bookings: Booking[],
   members: Booking[],
   rates: Record<string, number> | null | undefined,
 ): { ok: GroupExtendPlan } | { err: string } {
-  const act = members.filter((b) => isActive(b) && canExtend(b));
-  if (!act.length) return { err: "연장할 수 있는 방이 없어요." };
-  if (members.some((b) => isActive(b) && isEarlyOut(b))) return { err: "조기 퇴실한 방이 있어서 한 번에 연장할 수 없어요. 방마다 예약 창에서 해 주세요." };
-  if (members.some((b) => isActive(b) && b.segments?.length)) return { err: "객실 이동한 방이 있어서 한 번에 연장할 수 없어요. 방마다 예약 창에서 해 주세요." };
+  const live = members.filter((b) => isActive(b));
+  const skipped: GroupExtendPlan["skipped"] = [];
   const membersOut: GroupExtendPlan["members"] = [];
   let totalRate = 0;
   // 같은 단체의 다른 방은 서로 겹치지 않으니, 연장 초안을 순차로 반영해 겹침을 봐요
   let working = bookings.map((x) => ({ ...x }));
-  for (const b of act) {
+  for (const b of live) {
+    const skip = (reason: string) => skipped.push({ id: b.id, roomId: b.roomId, reason });
+    if (isEarlyOut(b)) {
+      skip("조기 퇴실");
+      continue;
+    }
+    if (!canExtend(b)) {
+      skip((b.nights ?? 0) >= STAY_NIGHTS_MAX ? `${STAY_NIGHTS_MAX}박까지` : "연장 불가");
+      continue;
+    }
+    if (b.segments?.length) {
+      skip("객실 이동함");
+      continue;
+    }
     const rate = groupMemberRate(b, rates);
     const block = extendBlock(s, working, b, rate);
-    if (block) return { err: block };
+    if (block) {
+      skip(block);
+      continue;
+    }
     const hits = extendOverlaps(working, b, rate);
     if (hits.length) {
       const d = applyExtend(b, rate);
-      const rooms = [...new Set(hits.map((x) => `${roomLabel(s, x.roomId) ?? "?"}호`))].join(", ");
-      return { err: `${rooms}는 ${dayLabel(d.extraNight)} 밤에 다른 예약이 있어요. 방을 옮기거나 비운 뒤 연장해 주세요.` };
+      skip(`${dayLabel(d.extraNight)} 밤에 다른 예약`);
+      continue;
     }
     const draft = applyExtend(b, rate);
     membersOut.push({ id: b.id, guestName: b.guestName, roomId: b.roomId, typeId: b.typeId, draft });
     totalRate += draft.rate;
     working = working.map((x) => (x.id === b.id ? { ...x, nights: draft.nights, price: draft.price, segments: draft.segments } : x));
   }
-  return { ok: { members: membersOut, totalRate } };
+  if (!membersOut.length) {
+    const why = skipped[0] ? `${roomLabel(s, skipped[0].roomId) ?? "?"}호: ${skipped[0].reason}` : "";
+    return { err: `연장할 수 있는 방이 없어요.${why ? ` (${why})` : ""}` };
+  }
+  return { ok: { members: membersOut, totalRate, skipped } };
+}
+
+/** 건너뛴 방 안내 한 줄 (없으면 빈 문자열) */
+export function skippedNote(s: HotelSettings, skipped: GroupExtendPlan["skipped"]): string {
+  if (!skipped.length) return "";
+  return `건너뜀 ${skipped.map((k) => `${roomLabel(s, k.roomId) ?? "?"}호(${k.reason})`).join(", ")}`;
 }
 
 /** 알림용 짧은 줄 */

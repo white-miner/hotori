@@ -65,7 +65,7 @@ import {
 } from "../shared/payment";
 import { STAY_CREDIT_COPY, listOpenCredits } from "../shared/stayCredit";
 import StayCreditsModal from "./StayCreditsModal";
-import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights } from "../shared/extend";
+import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights, skippedNote } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
@@ -548,7 +548,15 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
       } else if (planned.ok.totalRate > 0) {
         payNote = ` · 잔금 +${won(planned.ok.totalRate)}원`;
       }
-      notify(`단체 ${g.name} 전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${payNote}`);
+      const skipTxt = skippedNote(data.hotel!.settings, planned.ok.skipped);
+      void data.logChange({
+        kind: "stay",
+        groupId: g.groupId,
+        bookingId: null,
+        effectiveOn: null,
+        summary: `전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${skipTxt ? ` (${skipTxt})` : ""}`.slice(0, 300),
+      });
+      notify(`단체 ${g.name} 전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${skipTxt ? ` · ${skipTxt}` : ""}${payNote}`);
       setGExt(null);
     } catch (e) {
       notify(saveFailMessage(e));
@@ -685,8 +693,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   return (
                     <>
                       <span className="muted sm">
-                        활성 {planned.ok.members.length}실 +1박 · 요금 합 {won(planned.ok.totalRate)}원 (타입/방 단가)
+                        {planned.ok.members.length}실 +1박 · 요금 합 {won(planned.ok.totalRate)}원 (타입/방 단가)
                       </span>
+                      {planned.ok.skipped.length ? (
+                        <span className="muted sm">{skippedNote(data.hotel!.settings, planned.ok.skipped)}</span>
+                      ) : null}
                       <span className="chips">
                         <button type="button" className={`chip ${gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: true })}>
                           즉시 수납

@@ -3,6 +3,7 @@ import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { PAYMENT_METHOD_LABEL, payState, type Payment, type PaymentMethod } from "./payment";
 import { type GroupInfo, settle } from "./settle";
+import { groupLedger } from "./groupLedger";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /**
@@ -383,8 +384,20 @@ export function nowAmountTone(
   b: Booking,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
   group?: NowPayGroupCtx | null,
+  /** 영업일을 주면 단체 색은 "오늘 밤까지" 기준: 미수금 있으면 빨강 · 오늘까지는 냈고 앞으로 남았으면 파랑 · 다 냈으면 검정 */
+  today?: string,
 ): NowAmountTone {
   if (b.priceUnset) return "neutral";
+  if (today && group && b.groupId && b.stayMode !== "long_stay" && group.members.length > 0) {
+    const g = groupLedger(group.members, (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
+      extras: (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+    });
+    if (g.roomCount > 0) {
+      if (g.owed > 0) return "due";
+      if (g.due > g.paid) return "partial";
+      return "paid";
+    }
+  }
   const ps = nowPaySnap(b, plat, group);
   if (ps.tracked && ps.left > 0 && ps.paid > 0) return "partial";
   if (ps.tracked && ps.left > 0) return "due";
