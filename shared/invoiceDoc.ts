@@ -2,11 +2,21 @@
 import { groupLeadBooking } from "./group";
 import type { PrintLang } from "./hotelBiz";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
+import {
+  issuanceNightCells,
+  unitRateFromCells,
+  type IssuanceNightCell,
+} from "./issuanceNightDetail";
 import { PAYMENT_METHOD_LABEL, paidOf, type PaymentMethod } from "./payment";
 import { emptyGroupInfo, type GroupInfo, settle, type Settlement } from "./settle";
 import type { QuoteCompare } from "./quoteVariance";
 
 export type InvoiceStatus = "draft" | "issued";
+
+export type InvoiceNightCell = {
+  date: string;
+  amount: number;
+};
 
 export type InvoiceRoomLine = {
   bookingId: string;
@@ -20,6 +30,10 @@ export type InvoiceRoomLine = {
   /** 판매가 (revenueOf) */
   amount: number;
   paid: number;
+  /** 1박 단가(표시 · 평균 또는 flat) */
+  unitRate?: number;
+  /** 날짜당 단가 상세 (Σ = amount · 인쇄 라인) */
+  nightAmounts?: InvoiceNightCell[];
   excluded?: boolean;
 };
 
@@ -84,6 +98,9 @@ export const INVOICE_COPY = {
   room: "객실",
   period: "숙박",
   amount: "판매가",
+  unitRate: "1박",
+  nightDetail: "날짜별 단가",
+  redistribute: "총액 균등 분배",
   paid: "받은",
   left: "잔금",
   total: "합계",
@@ -101,6 +118,7 @@ export const INVOICE_COPY = {
   reprint: "다시 인쇄",
   tip: "발급하면 금액이 고정돼요. 예약·결제를 고친 뒤엔 새 버전으로 재발급하세요.",
   tipLive: "미리보기는 지금 예약·정산과 같아요. 발급 시 스냅샷으로 얼려요.",
+  tipNights: "총액만 있어도 날짜별 단가를 나눠 적을 수 있어요. 합계는 판매가와 맞춰요.",
   needNights: "실제 숙박(입실·퇴실)이 있는 예약이 필요해요.",
   notDamage: "손해·파손은 「손해내역서」로 따로 발급해요.",
   saveOk: "청구서를 저장했어요.",
@@ -132,6 +150,8 @@ export type InvoicePrintStrings = {
   room: string;
   period: string;
   amount: string;
+  unitRate: string;
+  nightDetail: string;
   paid: string;
   left: string;
   total: string;
@@ -173,6 +193,8 @@ const INVOICE_PRINT_KO: InvoicePrintStrings = {
   room: INVOICE_COPY.room,
   period: INVOICE_COPY.period,
   amount: INVOICE_COPY.amount,
+  unitRate: INVOICE_COPY.unitRate,
+  nightDetail: INVOICE_COPY.nightDetail,
   paid: INVOICE_COPY.paid,
   left: INVOICE_COPY.left,
   total: INVOICE_COPY.total,
@@ -214,6 +236,8 @@ const INVOICE_PRINT_EN: InvoicePrintStrings = {
   room: "Room",
   period: "Stay",
   amount: "Sale",
+  unitRate: "Per night",
+  nightDetail: "Nightly rates",
   paid: "Paid",
   left: "Balance",
   total: "Total",
@@ -327,6 +351,18 @@ export type BuildInvoiceOpts = {
 function roomLineOf(b: Booking, s: HotelSettings, excluded: boolean): InvoiceRoomLine {
   const room = roomLabel(s, b.roomId);
   const type = typeLabel(s.types.find((t) => t.id === b.typeId));
+  const amount = excluded ? 0 : revenueOf(b);
+  const nights = b.nights ?? 0;
+  const nightAmounts: IssuanceNightCell[] =
+    excluded || nights <= 0
+      ? []
+      : issuanceNightCells({
+          checkIn: b.checkIn,
+          nights,
+          total: amount,
+          nightRates: b.nightRates ?? null,
+        });
+  const unitRate = unitRateFromCells(nightAmounts, amount, nights);
   return {
     bookingId: b.id,
     roomNo: room || "미배정",
@@ -334,12 +370,32 @@ function roomLineOf(b: Booking, s: HotelSettings, excluded: boolean): InvoiceRoo
     guestName: b.guestName || "",
     checkIn: b.checkIn,
     checkOut: checkOut(b),
-    nights: b.nights ?? 0,
+    nights,
     guestCount: b.guests ?? 0,
-    amount: excluded ? 0 : revenueOf(b),
+    amount,
     paid: excluded ? 0 : paidOf(b),
+    unitRate: unitRate || undefined,
+    nightAmounts: nightAmounts.length ? nightAmounts : undefined,
     excluded: excluded || undefined,
   };
+}
+
+/** Staff night-detail overrides → snapshot rooms (amount SoT 유지 · 상세만 교체) */
+export function applyInvoiceNightOverrides(
+  rooms: InvoiceRoomLine[],
+  overrides: Record<string, IssuanceNightCell[]>,
+): InvoiceRoomLine[] {
+  return rooms.map((r) => {
+    const cells = overrides[r.bookingId];
+    if (!cells?.length) return r;
+    const nightAmounts = cells.map((c) => ({ date: c.date, amount: Math.max(0, Math.round(c.amount || 0)) }));
+    return {
+      ...r,
+      nightAmounts,
+      unitRate: unitRateFromCells(nightAmounts, r.amount, r.nights) || undefined,
+      amount: r.amount,
+    };
+  });
 }
 
 /**

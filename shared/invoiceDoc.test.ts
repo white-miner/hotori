@@ -86,6 +86,12 @@ test("buildInvoiceSnapshot matches settle totals", () => {
   assert.equal(snap.isMidStay, true);
   assert.equal(snap.rooms.length, 1);
   assert.equal(snap.rooms[0]!.roomNo, "301");
+  assert.ok(snap.rooms[0]!.nightAmounts?.length === 2);
+  assert.equal(
+    snap.rooms[0]!.nightAmounts!.reduce((n, c) => n + c.amount, 0),
+    200_000,
+  );
+  assert.equal(snap.rooms[0]!.unitRate, 100_000);
 });
 
 test("defaultInvoicePayer prefers company", () => {
