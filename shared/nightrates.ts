@@ -1,6 +1,6 @@
 // 표준 숙박: 방별 1박 + 점유 밤(날짜)별 요금 행렬. 총액 = Σ 밤 금액 (+ 가산분).
 // 장기 booking_night_charges 원장과 별축 — 확정 LOS 스냅샷.
-import { addDays } from "./ledger";
+import { STAY_NIGHTS_MAX, addDays } from "./ledger";
 import { isPeakNight } from "./surcharge";
 
 const PAY_MAX = 100_000_000;
@@ -22,7 +22,7 @@ export interface StayNightRates {
 }
 
 export function occupiedNightDates(checkIn: string, nights: number): string[] {
-  const n = Math.max(0, Math.min(90, Math.round(nights)));
+  const n = Math.max(0, Math.min(STAY_NIGHTS_MAX, Math.round(nights)));
   return Array.from({ length: n }, (_, i) => addDays(checkIn, i));
 }
 

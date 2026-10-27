@@ -47,7 +47,7 @@ import {
   validateHotelDocFile,
   validateHotelDocumentDraft,
 } from "../shared/hotelDocuments";
-import { type BookPayMethod, type PayKind, type Payment, type PaymentMethod, isBookPayMethod, isPaymentMethod } from "../shared/payment";
+import { type BookPayMethod, type PayKind, type Payment, type PaymentEdit, type PaymentMethod, isBookPayMethod, isPaymentMethod } from "../shared/payment";
 import {
   type StayCredit,
   type ApplyStayCreditPlan,
@@ -143,6 +143,8 @@ interface PaymentRow {
   note?: string | null;
   night_date?: string | null;
   period_nights?: number | null;
+  created_by?: string | null;
+  edited_at?: string | null;
 }
 interface StayCreditRow {
   id: string;
@@ -183,7 +185,7 @@ interface ChargeRow {
   amount: number;
   created_at: string;
 }
-const PAY_COLS = "id,booking_id,group_id,kind,method,amount,biz_date,created_at,note,night_date,period_nights";
+const PAY_COLS = "id,booking_id,group_id,kind,method,amount,biz_date,created_at,note,night_date,period_nights,created_by,edited_at";
 const CHARGE_COLS = "id,booking_id,night_date,amount,created_at";
 const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
@@ -197,6 +199,8 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   note: r.note?.trim() ? r.note.trim().slice(0, 80) : null,
   nightDate: r.night_date ?? null,
   periodNights: r.period_nights ?? null,
+  createdBy: r.created_by ?? null,
+  editedAt: r.edited_at ?? null,
 });
 const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
   id: r.id,
@@ -573,7 +577,7 @@ export function useHotelData(hotelId: string) {
   const patchBooking = useCallback(
     async (
       id: string,
-      patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt" | "nights" | "price" | "segments" | "openEnded" | "holdAhead">>,
+      patch: Partial<Pick<Booking, "arrived" | "roomId" | "status" | "tentative" | "noClean" | "checkedOutAt" | "nights" | "price" | "segments" | "openEnded" | "holdAhead" | "checkIn" | "nightRates">>,
     ) => {
       const row: Record<string, unknown> = {};
       if (patch.arrived !== undefined) row.arrived = patch.arrived;
@@ -584,6 +588,8 @@ export function useHotelData(hotelId: string) {
       if (patch.holdAhead !== undefined) row.hold_ahead = Math.max(0, Math.min(30, Math.round(patch.holdAhead)));
       if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
       if (patch.nights !== undefined) row.nights = patch.nights;
+      if (patch.checkIn !== undefined) row.check_in = patch.checkIn;
+      if (patch.nightRates !== undefined) row.night_rates = stayNightRatesToJson(patch.nightRates);
       if (patch.price !== undefined) row.price = Math.round(patch.price);
       if (patch.segments !== undefined) {
         row.room_segments = patch.segments?.map((x) => ({ room: x.roomId, nights: x.nights })) ?? null;
@@ -658,6 +664,89 @@ export function useHotelData(hotelId: string) {
     if (error) throw error;
     setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
   }, []);
+  /** 결제 줄 정정: 한 줄을 통째로 고쳐요 (금액·수단·결제일·객실/단체·기간·메모). 객실↔단체로 옮겨도 한 번에 */
+  const updatePayment = useCallback(
+    async (payId: string, e: PaymentEdit): Promise<Payment> => {
+      if (e.groupId && !groups.has(e.groupId)) {
+        const r = await supabase.from("booking_groups").upsert({ id: e.groupId, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
+        if (r.error) throw r.error;
+      }
+      const toGroup = !e.bookingId && !!e.groupId;
+      const row = {
+        booking_id: e.bookingId || null,
+        group_id: e.bookingId ? null : e.groupId || null,
+        kind: e.kind,
+        method: e.method,
+        amount: Math.round(e.amount),
+        biz_date: e.bizDate,
+        note: e.note?.trim() ? e.note.trim().slice(0, 80) : null,
+        night_date: toGroup ? null : e.nightDate ?? null,
+        period_nights: toGroup || !e.nightDate ? null : e.periodNights ?? null,
+      };
+      const { data, error } = await supabase.from("booking_payments").update(row).eq("id", payId).select(PAY_COLS).single();
+      if (error) throw error;
+      const saved = payFromRow(data as PaymentRow);
+      placePayment(saved);
+      return saved;
+    },
+    [groups, hotelId],
+  );
+  /** 지운 결제 되살리기 (되돌리기): 같은 내용으로 새 줄을 적어요 (결제 시각은 지금으로 다시 기록돼요) */
+  const restorePayment = useCallback(
+    async (p: Payment): Promise<Payment> => {
+      if (p.groupId && !p.bookingId && !groups.has(p.groupId)) {
+        const r = await supabase.from("booking_groups").upsert({ id: p.groupId, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
+        if (r.error) throw r.error;
+      }
+      const { data, error } = await supabase
+        .from("booking_payments")
+        .insert({
+          booking_id: p.bookingId || null,
+          group_id: p.bookingId ? null : p.groupId ?? null,
+          kind: p.kind,
+          method: p.method,
+          amount: p.amount,
+          biz_date: p.bizDate,
+          note: p.note ?? null,
+          night_date: p.bookingId ? p.nightDate ?? null : null,
+          period_nights: p.bookingId && p.nightDate ? p.periodNights ?? null : null,
+        })
+        .select(PAY_COLS)
+        .single();
+      if (error) throw error;
+      const saved = payFromRow(data as PaymentRow);
+      placePayment(saved);
+      return saved;
+    },
+    [groups, hotelId],
+  );
+  /** 결제 한 줄을 화면 상태의 제 자리(객실 또는 단체)로 옮겨 놓기 · 옛 자리에서는 빼요 */
+  const placePayment = (saved: Payment) => {
+    const byTime = (a: Payment, b: Payment) => a.createdAt.localeCompare(b.createdAt);
+    setBookingsLocal((list) =>
+      list.map((x) => {
+        const has = (x.payments ?? []).some((y) => y.id === saved.id);
+        const mine = !!saved.bookingId && saved.bookingId === x.id;
+        if (!has && !mine) return x;
+        const rest = (x.payments ?? []).filter((y) => y.id !== saved.id);
+        return { ...x, payments: mine ? [...rest, saved].sort(byTime) : rest };
+      }),
+    );
+    setGroups((m) => {
+      let n: Map<string, GroupInfo> | null = null;
+      const ids = new Set([...m.keys(), ...(saved.groupId && !saved.bookingId ? [saved.groupId] : [])]);
+      for (const gid of ids) {
+        const g = m.get(gid) ?? emptyGroupInfo(gid);
+        const has = g.payments.some((y) => y.id === saved.id);
+        const mine = !saved.bookingId && saved.groupId === gid;
+        if (!has && !mine) continue;
+        const rest = g.payments.filter((y) => y.id !== saved.id);
+        n = n ?? new Map(m);
+        n.set(gid, { ...g, payments: mine ? [...rest, { ...saved, groupId: gid }].sort(byTime) : rest });
+      }
+      return n ?? m;
+    });
+  };
   /** 잔액 보관 생성 (조기 퇴실 keep 경로 · refund_amount와 무관) */
   const createStayCredit = useCallback(
     async (input: {
@@ -1131,6 +1220,8 @@ export function useHotelData(hotelId: string) {
     setEarlyOut,
     addPayment,
     deletePayment,
+    updatePayment,
+    restorePayment,
     deleteBooking,
     saveHotel,
     saveGroup,

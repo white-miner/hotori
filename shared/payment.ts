@@ -44,6 +44,22 @@ export interface Payment {
   /** 기간 결제: 이 결제가 덮는 첫 박 + 박수 (둘 다 있을 때만 기간 결제 · 없으면 맨 앞 미결제 박부터 채움) */
   nightDate?: string | null;
   periodNights?: number | null;
+  /** 처리한 직원 (auth user id · 이름은 없어요) */
+  createdBy?: string | null;
+  /** 기록 정정으로 마지막에 고친 시각 (없으면 고친 적 없음) */
+  editedAt?: string | null;
+}
+/** 결제 줄 정정 입력 (한 줄 전체) */
+export interface PaymentEdit {
+  bookingId: string | null;
+  groupId: string | null;
+  kind: PayKind;
+  method: PaymentMethod;
+  amount: number;
+  bizDate: string;
+  note?: string | null;
+  nightDate?: string | null;
+  periodNights?: number | null;
 }
 export const PAY_MAX = 100_000_000;
 

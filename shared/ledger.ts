@@ -441,6 +441,11 @@ function zonedDate(instant: Date, timeZone = HOTEL_TIME_ZONE): string {
   const g = (t: string) => parts.find((p) => p.type === t)!.value;
   return `${g("year")}-${g("month")}-${g("day")}`;
 }
+/** 시각(ISO) → 호텔 시간대의 달력 날짜 (영업일 아님) */
+export function calendarDateOf(iso: string): string {
+  const t = new Date(iso);
+  return Number.isNaN(t.getTime()) ? iso.slice(0, 10) : zonedDate(t);
+}
 /** 영업일: 자정~새벽 6시 전 도착은 전날 밤 숙박으로 쳐요. */
 export function businessDate(now: Date = new Date(), cutoffHour = BUSINESS_DAY_CUTOFF_HOUR): string {
   return zonedDate(new Date(now.getTime() - cutoffHour * 3600000));
