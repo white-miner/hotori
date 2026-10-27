@@ -240,6 +240,7 @@ export default function QuoteLetter({
           </button>
         </div>
 
+        <div className="quote-scroll">
         {!locked ? (
           <div className="quote-form noprint">
             <div className="iss-form">
@@ -299,15 +300,6 @@ export default function QuoteLetter({
                   <Plus size={14} /> {QUOTE_COPY.addLine}
                 </button>
               </div>
-              <div className="quote-line quote-line-head" aria-hidden>
-                <span>{QUOTE_COPY.label}</span>
-                <span>{QUOTE_COPY.rooms}</span>
-                <span>박</span>
-                <span>{QUOTE_COPY.pax}</span>
-                <span>{QUOTE_COPY.rate}</span>
-                <span>{QUOTE_COPY.amount}</span>
-                <span />
-              </div>
               {draft.lines.map((l) => (
                 <div className="quote-line-block" key={l.id}>
                   <div className="chips wrap quote-type-chips" role="group" aria-label={QUOTE_COPY.type}>
@@ -322,59 +314,91 @@ export default function QuoteLetter({
                       </button>
                     ))}
                   </div>
-                  <div className="quote-line">
-                    <input
-                      className="inp"
-                      placeholder={QUOTE_COPY.label}
-                      aria-label={QUOTE_COPY.label}
-                      value={l.label}
-                      onChange={(e) => setLine(l.id, { label: e.target.value })}
-                    />
-                    <input
-                      className="inp"
-                      inputMode="numeric"
-                      aria-label={QUOTE_COPY.rooms}
-                      value={l.rooms || ""}
-                      onChange={(e) => setLine(l.id, { rooms: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                    />
-                    <input
-                      className="inp"
-                      inputMode="numeric"
-                      aria-label={QUOTE_COPY.nights}
-                      value={l.nights || ""}
-                      onChange={(e) => setLine(l.id, { nights: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                    />
-                    <input
-                      className="inp"
-                      inputMode="numeric"
-                      aria-label={QUOTE_COPY.pax}
-                      value={l.pax || ""}
-                      onChange={(e) => setLine(l.id, { pax: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                    />
-                    <input
-                      className="inp price"
-                      inputMode="numeric"
-                      aria-label={QUOTE_COPY.rate}
-                      value={l.rate || ""}
-                      onChange={(e) => setLine(l.id, { rate: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                    />
-                    <input
-                      className="inp price"
-                      inputMode="numeric"
-                      aria-label={QUOTE_COPY.amount}
-                      value={l.amount || ""}
-                      onChange={(e) => setLine(l.id, { amount: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                    />
-                    <button
-                      type="button"
-                      className="btn line sm"
-                      aria-label={QUOTE_COPY.delete}
-                      disabled={draft.lines.length <= 1}
-                      onClick={() => setDraft((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== l.id) }))}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {/* thead glued to inputs — no legend under row */}
+                  <table className="quote-edit-tbl">
+                    <thead>
+                      <tr>
+                        <th scope="col">{QUOTE_COPY.label}</th>
+                        <th scope="col">{QUOTE_COPY.rooms}</th>
+                        <th scope="col">{QUOTE_COPY.nights}</th>
+                        <th scope="col">{QUOTE_COPY.pax}</th>
+                        <th scope="col">{QUOTE_COPY.rate}</th>
+                        <th scope="col">{QUOTE_COPY.amount}</th>
+                        <th scope="col" className="quote-edit-act">
+                          <span className="sr-only">{QUOTE_COPY.delete}</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="quote-edit-inputs">
+                        <td data-lab={QUOTE_COPY.label}>
+                          <input
+                            className="inp"
+                            placeholder="—"
+                            aria-label={QUOTE_COPY.label}
+                            value={l.label}
+                            onChange={(e) => setLine(l.id, { label: e.target.value })}
+                          />
+                        </td>
+                        <td data-lab={QUOTE_COPY.rooms}>
+                          <input
+                            className="inp"
+                            inputMode="numeric"
+                            aria-label={QUOTE_COPY.rooms}
+                            value={l.rooms || ""}
+                            onChange={(e) => setLine(l.id, { rooms: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                          />
+                        </td>
+                        <td data-lab={QUOTE_COPY.nights}>
+                          <input
+                            className="inp"
+                            inputMode="numeric"
+                            aria-label={QUOTE_COPY.nights}
+                            value={l.nights || ""}
+                            onChange={(e) => setLine(l.id, { nights: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                          />
+                        </td>
+                        <td data-lab={QUOTE_COPY.pax}>
+                          <input
+                            className="inp"
+                            inputMode="numeric"
+                            aria-label={QUOTE_COPY.pax}
+                            value={l.pax || ""}
+                            onChange={(e) => setLine(l.id, { pax: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                          />
+                        </td>
+                        <td data-lab={QUOTE_COPY.rate}>
+                          <input
+                            className="inp price"
+                            inputMode="numeric"
+                            aria-label={QUOTE_COPY.rate}
+                            value={l.rate || ""}
+                            onChange={(e) => setLine(l.id, { rate: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                          />
+                        </td>
+                        <td data-lab={QUOTE_COPY.amount}>
+                          <input
+                            className="inp price"
+                            inputMode="numeric"
+                            aria-label={QUOTE_COPY.amount}
+                            value={l.amount || ""}
+                            onChange={(e) => setLine(l.id, { amount: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                          />
+                        </td>
+                        <td className="quote-edit-act">
+                          <button
+                            type="button"
+                            className="btn line sm"
+                            aria-label={QUOTE_COPY.delete}
+                            disabled={draft.lines.length <= 1}
+                            onClick={() => setDraft((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== l.id) }))}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                   <label className="quote-room-opt">
                     <span className="muted sm">{QUOTE_COPY.roomNos} (선택)</span>
                     <input
@@ -501,8 +525,9 @@ export default function QuoteLetter({
             </div>
           </div>
         </div>
+        </div>
 
-        <div className="mf noprint">
+        <div className="mf noprint quote-foot">
           {err ? <p className="warn sm">{err}</p> : null}
           <p className="fine">{locked ? QUOTE_COPY.tip : hotelBizHasAny(biz) ? QUOTE_COPY.tip : "설정에 사업자 정보를 넣으면 헤더에 같이 인쇄돼요."}</p>
           <div className="keys acts">
