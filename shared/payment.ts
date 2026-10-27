@@ -130,10 +130,10 @@ export function validateGuestPhone(
   return "현장·전화 채널은 연락처가 필요해요.";
 }
 
-/** 간단 예약 기본 채널: 프리셋 → 첫 OTA(비현장) → 첫 플랫폼. 현장이 맨 위여도 OTA 빈 연락처 저장이 기본 경로. */
+/** 간단 예약 기본 채널: 프리셋 → 첫 현장·전화 채널 → 첫 플랫폼. (OTA는 칩에서 바로 바꿔요) */
 export function defaultBookingPlatformId(platforms: IdPlat[], presetId?: string | null): string {
   if (presetId && platforms.some((p) => p.id === presetId)) return presetId;
-  return platforms.find((p) => !isOnsite(p))?.id ?? platforms[0]?.id ?? "";
+  return platforms.find((p) => isOnsite(p))?.id ?? platforms[0]?.id ?? "";
 }
 
 export const paidOf = (b: Pick<Booking, "payments">) => (b.payments ?? []).reduce((n, x) => n + x.amount, 0);

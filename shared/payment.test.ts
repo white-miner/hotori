@@ -96,16 +96,19 @@ test("바로 입실 표시명: M/D · prefix 감지", () => {
   assert.equal(isWalkInPlaceholderName("김손님"), false);
 });
 
-test("간단 예약 기본 채널: 현장이 맨 위여도 첫 OTA를 고름", () => {
+test("간단 예약 기본 채널: 현장·전화가 기본, 프리셋이 있으면 프리셋", () => {
   const plats = [
-    { id: "p-walk", name: "현장·전화" },
     { id: "p-ya", name: "야놀자" },
+    { id: "p-walk", name: "현장·전화" },
     { id: "p-ag", name: "아고다" },
   ];
-  assert.equal(defaultBookingPlatformId(plats), "p-ya");
+  assert.equal(defaultBookingPlatformId(plats), "p-walk");
   assert.equal(defaultBookingPlatformId(plats, "p-ag"), "p-ag");
-  assert.equal(defaultBookingPlatformId(plats, "missing"), "p-ya");
+  assert.equal(defaultBookingPlatformId(plats, "missing"), "p-walk");
   assert.equal(defaultBookingPlatformId([{ id: "p-walk", name: "현장·전화" }]), "p-walk");
+  // 현장 채널이 없으면 첫 플랫폼
+  assert.equal(defaultBookingPlatformId([{ id: "p-ya", name: "야놀자" }, { id: "p-ag", name: "아고다" }]), "p-ya");
+  assert.equal(defaultBookingPlatformId([]), "");
 });
 
 test("현장 예약: 선금 50,000 받으면 잔금 100,000, 잔금 받으면 완납", () => {
