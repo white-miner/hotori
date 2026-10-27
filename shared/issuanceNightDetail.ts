@@ -2,7 +2,7 @@
  * 발급 서류용 객실×날짜 단가 상세.
  * 예약에 night_rates 행렬이 있으면 그대로 · 총액만 있으면 균등(나머지 마지막 박) 분배.
  */
-import { dayLabel, md } from "./ledger";
+import { dayLabel, md, weekday, won } from "./ledger";
 import {
   hasFullNightMatrix,
   nightRatesFromTotal,
@@ -134,4 +134,56 @@ export function quoteLineNightCells(opts: {
 
 export function quoteAmountFromNightCells(rooms: number, cells: IssuanceNightCell[]): number {
   return Math.max(0, Math.round(rooms) * sumIssuanceNightCells(cells));
+}
+
+/** Record map for NightPickCalendar nightAmounts prop */
+export function issuanceCellsToAmountMap(cells: IssuanceNightCell[] | null | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of cells ?? []) {
+    if (!c.date || c.date.startsWith("N")) continue;
+    out[c.date] = Math.max(0, Math.round(c.amount || 0));
+  }
+  return out;
+}
+
+export function issuanceCellsFromAmountMap(
+  checkIn: string,
+  nights: number,
+  amounts: Record<string, number> | null | undefined,
+): IssuanceNightCell[] {
+  const dates = occupiedNightDates(checkIn, nights);
+  return dates.map((date) => ({
+    date,
+    amount: Math.max(0, Math.round(amounts?.[date] || 0)),
+  }));
+}
+
+/**
+ * FO-style summary: weekday labels + 1실 합 (+ ×실수 총액).
+ * e.g. `목·금 · 1실 ₩300,000 · 2실 ₩600,000`
+ */
+export function issuanceNightWeekdayTotal(opts: {
+  cells: IssuanceNightCell[];
+  rooms?: number;
+  lang?: "ko" | "en";
+}): { weekdays: string; perRoom: number; grand: number; label: string } {
+  const cells = opts.cells.filter((c) => c.date && !c.date.startsWith("N"));
+  const perRoom = sumIssuanceNightCells(cells);
+  const rooms = Math.max(1, Math.round(opts.rooms ?? 1));
+  const grand = perRoom * rooms;
+  const lang = opts.lang ?? "ko";
+  const wdParts: string[] = [];
+  for (const c of cells) {
+    try {
+      wdParts.push(lang === "en" ? c.date.slice(5) : weekday(c.date));
+    } catch {
+      wdParts.push(md(c.date));
+    }
+  }
+  const weekdays = wdParts.length ? [...new Set(wdParts)].join(lang === "en" ? ", " : "·") : "—";
+  const label =
+    lang === "en"
+      ? `${weekdays} · 1 room ${won(perRoom)}${rooms > 1 ? ` · ${rooms} rooms ${won(grand)}` : ""}`
+      : `${weekdays} 총액 · 1실 ${won(perRoom)}${rooms > 1 ? ` · ${rooms}실 ${won(grand)}` : ""}`;
+  return { weekdays, perRoom, grand, label };
 }

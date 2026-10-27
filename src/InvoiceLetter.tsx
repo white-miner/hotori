@@ -1,6 +1,7 @@
 /**
  * 청구서 미리보기·발급·인쇄 (P1.2a) — 실이용 settle 스냅샷
- * 페이지 슬라이드 + 객실×날짜 단가 상세
+ * FO형 타입×실수×캘린더 날짜 요금 편집 · 페이지 슬라이드
+ * 「중간 청구」워터마크 없음
  */
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { FileDown, Printer, X } from "lucide-react";
@@ -9,24 +10,22 @@ import {
   type InvoiceRoomLine,
   type InvoiceSnapshot,
   INVOICE_COPY,
-  applyInvoiceNightCellAcross,
+  applyInvoiceStayItemRates,
   buildInvoiceSnapshot,
   defaultInvoicePayer,
+  groupInvoiceRoomsAsStayItems,
   invoiceEligible,
   invoiceIsMidStay,
   invoicePayLabel,
   invoicePrintStrings,
   invoiceRoomDisplay,
   invoiceSurchargeLabel,
-  redistributeInvoiceRoomsEven,
   validateInvoicePayer,
-  withInvoiceRoomAmount,
   withInvoiceRoomMoney,
 } from "../shared/invoiceDoc";
 import {
   formatIssuanceNightDate,
-  redistributeIssuanceNights,
-  sumIssuanceNightCells,
+  type IssuanceNightCell,
 } from "../shared/issuanceNightDetail";
 import { chunkIssuanceLines } from "../shared/issuancePages";
 import {
@@ -45,6 +44,7 @@ import { type GroupInfo, emptyGroupInfo } from "../shared/settle";
 import { buildQuoteCompare, type QuoteCompare } from "../shared/quoteVariance";
 import { askConfirm } from "./ConfirmDialog";
 import IssuancePager, { ISS_PAGER_EN, ISS_PAGER_KO } from "./IssuancePager";
+import IssuanceStayItemEditor from "./IssuanceStayItemEditor";
 import { lookups } from "./ui";
 
 interface Props {
@@ -115,9 +115,8 @@ export default function InvoiceLetter({
   const [err, setErr] = useState<string | null>(null);
   const [lang, setLang] = useState<PrintLang>("ko");
   const [page, setPage] = useState(0);
-  /** Staff room-line edits (amount + nights). null = live from bookings. */
+  /** Staff room-line edits (calendar rates). null = live from bookings. */
   const [roomEdits, setRoomEdits] = useState<InvoiceRoomLine[] | null>(null);
-  const [openNights, setOpenNights] = useState<Record<string, boolean>>({});
   const t = invoicePrintStrings(lang);
   const locked = doc?.status === "issued" && !!doc.snapshot;
 
@@ -144,7 +143,6 @@ export default function InvoiceLetter({
     return { ...base, quoteCompare };
   }, [locked, doc, s, members, info, plat, payerName, payerPhone, linkedQuote]);
 
-  // Members / settle change → drop stale edits (booking ids or count mismatch)
   useEffect(() => {
     if (locked) return;
     setRoomEdits((prev) => {
@@ -161,10 +159,19 @@ export default function InvoiceLetter({
     return withInvoiceRoomMoney(baseSnap, roomEdits);
   }, [locked, baseSnap, roomEdits]);
 
-  const roomsWorking = (): InvoiceRoomLine[] => roomEdits ?? baseSnap.rooms.map((r) => ({ ...r, nightAmounts: r.nightAmounts?.map((c) => ({ ...c })) }));
+  const roomsWorking = (): InvoiceRoomLine[] =>
+    roomEdits ?? baseSnap.rooms.map((r) => ({ ...r, nightAmounts: r.nightAmounts?.map((c) => ({ ...c })) }));
+
+  const stayItems = useMemo(
+    () => (locked ? [] : groupInvoiceRoomsAsStayItems(roomsWorking())),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- roomsWorking is derived from roomEdits/baseSnap
+    [locked, roomEdits, baseSnap.rooms],
+  );
 
   const roomChunks = useMemo(() => chunkIssuanceLines(liveSnap.rooms, 5), [liveSnap.rooms]);
-  const pageCount = roomChunks.length;
+  /** page 0 = FO compose when draft; then preview chunks */
+  const composePages = locked ? 0 : 1;
+  const pageCount = composePages + Math.max(1, roomChunks.length);
   useEffect(() => {
     if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
   }, [page, pageCount]);
@@ -172,33 +179,13 @@ export default function InvoiceLetter({
   const eligible = invoiceEligible(members);
   const mid = locked ? !!liveSnap.isMidStay : invoiceIsMidStay(members.filter((b) => b.status !== "cancelled"));
   const fileTitle = `${trade}_${t.title}_${liveSnap.issueNumber || payerName || (lang === "en" ? "Invoice" : "청구")}`;
-  const isLast = page >= pageCount - 1;
-  const chunk = roomChunks[page] ?? [];
+  const onCompose = !locked && page === 0;
+  const previewChunkIdx = locked ? page : page - 1;
+  const previewChunk = previewChunkIdx >= 0 ? roomChunks[previewChunkIdx] ?? [] : [];
+  const isLastPreview = previewChunkIdx >= 0 && previewChunkIdx === Math.max(0, roomChunks.length - 1);
 
-  const setRoomAmount = (bookingId: string, amount: number) => {
-    setRoomEdits(
-      roomsWorking().map((r) => (r.bookingId === bookingId ? withInvoiceRoomAmount(r, amount) : r)),
-    );
-  };
-
-  const setNightCell = (bookingId: string, date: string, amount: number) => {
-    setRoomEdits(applyInvoiceNightCellAcross(roomsWorking(), bookingId, date, amount));
-    setOpenNights((p) => ({ ...p, [bookingId]: true }));
-  };
-
-  const redistributeNights = (bookingId: string) => {
-    setRoomEdits(
-      roomsWorking().map((r) => {
-        if (r.bookingId !== bookingId) return r;
-        const nightAmounts = redistributeIssuanceNights(r.checkIn, r.nights, r.amount);
-        return { ...r, nightAmounts };
-      }),
-    );
-    setOpenNights((p) => ({ ...p, [bookingId]: true }));
-  };
-
-  const redistributeRooms = () => {
-    setRoomEdits(redistributeInvoiceRoomsEven(roomsWorking()));
+  const applyItemRates = (bookingIds: string[], cells: IssuanceNightCell[]) => {
+    setRoomEdits(applyInvoiceStayItemRates(roomsWorking(), bookingIds, cells));
   };
 
   const issue = async () => {
@@ -300,7 +287,7 @@ export default function InvoiceLetter({
     </dl>
   );
 
-  const roomTable = (rooms: typeof chunk, opts: { showTail: boolean; editable: boolean }) => (
+  const roomTable = (rooms: typeof previewChunk, opts: { showTail: boolean }) => (
     <table className="quote-tbl inv-tbl">
       <thead>
         <tr>
@@ -313,17 +300,9 @@ export default function InvoiceLetter({
       </thead>
       <tbody>
         {rooms.map((r) => {
-          const cells = r.nightAmounts?.length
-            ? r.nightAmounts
-            : r.nights > 0
-              ? redistributeIssuanceNights(r.checkIn, r.nights, r.amount)
-              : [];
-          const toggled = openNights[r.bookingId];
-          const uneven =
-            cells.length > 1 && cells.some((c) => c.amount !== cells[0]!.amount);
-          const showDetail =
-            cells.length > 0 &&
-            (toggled === true || (toggled !== false && (opts.editable ? r.nights > 1 : uneven || r.nights > 1)));
+          const cells = r.nightAmounts ?? [];
+          const uneven = cells.length > 1 && cells.some((c) => c.amount !== cells[0]!.amount);
+          const showDetail = cells.length > 1 && (uneven || r.nights > 1);
           return (
             <Fragment key={r.bookingId}>
               <tr>
@@ -337,85 +316,22 @@ export default function InvoiceLetter({
                   {printDateLabel(lang, r.checkIn, dayLabel)} ~ {printDateLabel(lang, r.checkOut, dayLabel)} ·{" "}
                   {t.nights(r.nights)}
                 </td>
-                <td>
-                  {won(r.unitRate ?? 0)}
-                  {cells.length > 1 ? (
-                    <button
-                      type="button"
-                      className="btn line sm noprint inv-night-toggle"
-                      onClick={() =>
-                        setOpenNights((p) => ({
-                          ...p,
-                          [r.bookingId]: !(p[r.bookingId] ?? showDetail),
-                        }))
-                      }
-                    >
-                      {t.nightDetail}
-                    </button>
-                  ) : null}
-                </td>
-                <td>
-                  {opts.editable && !locked ? (
-                    <input
-                      className="inp price sm"
-                      inputMode="numeric"
-                      aria-label={t.amount}
-                      value={r.amount || ""}
-                      onChange={(e) =>
-                        setRoomAmount(r.bookingId, Number(e.target.value.replace(/\D/g, "")) || 0)
-                      }
-                    />
-                  ) : (
-                    won(r.amount)
-                  )}
-                </td>
+                <td>{won(r.unitRate ?? 0)}</td>
+                <td>{won(r.amount)}</td>
                 <td>{won(r.paid)}</td>
               </tr>
               {showDetail ? (
                 <tr className="inv-night-row">
                   <td colSpan={5}>
                     <div className="inv-night-detail">
-                      <div className="inv-night-h noprint">
-                        <span className="muted sm">{t.nightDetail}</span>
-                        {opts.editable && !locked ? (
-                          <button
-                            type="button"
-                            className="btn line sm"
-                            onClick={() => redistributeNights(r.bookingId)}
-                          >
-                            {INVOICE_COPY.redistribute}
-                          </button>
-                        ) : null}
-                      </div>
                       <ul className="inv-night-list">
                         {cells.map((c) => (
                           <li key={c.date}>
                             <span>{formatIssuanceNightDate(c.date, lang)}</span>
-                            {opts.editable && !locked ? (
-                              <input
-                                className="inp price sm"
-                                inputMode="numeric"
-                                aria-label={`${t.nightDetail} ${c.date}`}
-                                value={c.amount || ""}
-                                onChange={(e) =>
-                                  setNightCell(
-                                    r.bookingId,
-                                    c.date,
-                                    Number(e.target.value.replace(/\D/g, "")) || 0,
-                                  )
-                                }
-                              />
-                            ) : (
-                              <strong>{won(c.amount)}</strong>
-                            )}
+                            <strong>{won(c.amount)}</strong>
                           </li>
                         ))}
                       </ul>
-                      {opts.editable && !locked && sumIssuanceNightCells(cells) !== r.amount ? (
-                        <p className="warn sm noprint">
-                          날짜 합 {won(sumIssuanceNightCells(cells))} · 판매가 {won(r.amount)} (마지막 박 자동 맞춤)
-                        </p>
-                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -551,7 +467,6 @@ export default function InvoiceLetter({
         <div className="mh noprint">
           <h2 id="invoice-title">{t.title}</h2>
           {locked ? <span className="tag">{INVOICE_COPY.issued}</span> : null}
-          {mid ? <span className="tag warn">{t.midWatermark}</span> : null}
           <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
             <button
               type="button"
@@ -577,54 +492,86 @@ export default function InvoiceLetter({
           </button>
         </div>
 
-        {!locked ? (
-          <div className="invoice-form noprint iss-sticky-meta">
-            <div className="iss-form">
-              <label>
-                {INVOICE_COPY.payer}
-                <input className="inp" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
-              </label>
-              <label>
-                {INVOICE_COPY.payerPhone}
-                <input className="inp" value={payerPhone} onChange={(e) => setPayerPhone(e.target.value)} />
-              </label>
-            </div>
-            {liveSnap.rooms.length > 1 ? (
-              <div className="iss-form-acts">
-                <button type="button" className="btn line sm" onClick={redistributeRooms}>
-                  {INVOICE_COPY.redistributeRooms}
-                </button>
+        <div className={`invoice-slide noprint${lang === "en" ? " en" : ""}`}>
+          {onCompose ? (
+            <div className="invoice-form">
+              <div className="iss-form">
+                <label>
+                  {INVOICE_COPY.payer}
+                  <input className="inp" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
+                </label>
+                <label>
+                  {INVOICE_COPY.payerPhone}
+                  <input className="inp" value={payerPhone} onChange={(e) => setPayerPhone(e.target.value)} />
+                </label>
               </div>
-            ) : null}
-            {!eligible ? <p className="warn sm">{INVOICE_COPY.needNights}</p> : null}
-            <p className="muted sm">{INVOICE_COPY.tipNights}</p>
-          </div>
-        ) : null}
+              {!eligible ? <p className="warn sm">{INVOICE_COPY.needNights}</p> : null}
+              <p className="muted sm">{INVOICE_COPY.tipNights}</p>
 
-        {/* Screen: paged slide */}
-        <div className={`invoice-slide noprint${mid ? " mid" : ""}${lang === "en" ? " en" : ""}`}>
-          {mid ? <div className="inv-watermark">{t.midWatermark}</div> : null}
-          {page === 0 ? (
-            <>
-              {headBlock}
-              {payerDl}
-            </>
+              <div className="quote-lines">
+                <div className="quote-lines-h">
+                  <strong>{INVOICE_COPY.stayItems}</strong>
+                </div>
+                {stayItems.map((item) => {
+                  const roomTypes = s.types.filter((ty) => ty.id === item.typeId);
+                  const typesForItem =
+                    roomTypes.length > 0
+                      ? roomTypes
+                      : [{ id: item.typeId, name: item.typeLabel || item.typeId, short: item.typeLabel || "?" } as (typeof s.types)[0]];
+                  return (
+                    <div className="quote-line-block" key={item.key}>
+                      <IssuanceStayItemEditor
+                        types={typesForItem}
+                        typeId={item.typeId}
+                        rooms={item.rooms}
+                        checkIn={item.checkIn}
+                        nights={item.nights}
+                        nightAmounts={item.nightAmounts}
+                        today={today}
+                        locked
+                        onTypeRooms={() => {}}
+                        onStay={() => {}}
+                        onNightAmounts={(cells) => applyItemRates(item.bookingIds, cells)}
+                      />
+                      {item.guestCount > 0 ? (
+                        <p className="muted sm">
+                          {t.guests(item.guestCount)} · {item.rooms}실
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+                <div className="quote-total-bar">
+                  <strong>
+                    {t.total} {won(liveSnap.total)}
+                  </strong>
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="iss-slide-cont muted sm">
-              {t.title}
-              {liveSnap.payerName ? ` · ${liveSnap.payerName}` : ""} · {page + 1}/{pageCount}
+            <div className={`invoice-print-slide${lang === "en" ? " en" : ""}`}>
+              {previewChunkIdx === 0 ? (
+                <>
+                  {headBlock}
+                  {payerDl}
+                </>
+              ) : (
+                <div className="iss-slide-cont muted sm">
+                  {t.title}
+                  {liveSnap.payerName ? ` · ${liveSnap.payerName}` : ""} · {page + 1}/{pageCount}
+                </div>
+              )}
+              {roomTable(previewChunk, { showTail: isLastPreview })}
+              {isLastPreview ? tailBlocks : <p className="muted sm iss-more-hint">다음 페이지에 이어져요</p>}
             </div>
           )}
-          {roomTable(chunk, { showTail: isLast, editable: !locked })}
-          {isLast ? tailBlocks : <p className="muted sm iss-more-hint">다음 페이지에 이어져요</p>}
         </div>
 
-        {/* Print: full document (hidden on screen) */}
-        <div className={`invoice-print iss-print-src${mid ? " mid" : ""}${lang === "en" ? " en" : ""}`} aria-hidden>
-          {mid ? <div className="inv-watermark">{t.midWatermark}</div> : null}
+        {/* Print: full document (hidden on screen) — no mid watermark */}
+        <div className={`invoice-print iss-print-src${lang === "en" ? " en" : ""}`} aria-hidden>
           {headBlock}
           {payerDl}
-          {roomTable(liveSnap.rooms, { showTail: true, editable: false })}
+          {roomTable(liveSnap.rooms, { showTail: true })}
           {tailBlocks}
         </div>
 

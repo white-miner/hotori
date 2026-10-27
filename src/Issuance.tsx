@@ -214,7 +214,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
         kind: "invoice",
         id: inv.id,
         title: inv.issueNumber ? `${inv.issueNumber} · ${inv.payerName || INVOICE_COPY.title}` : inv.payerName || INVOICE_COPY.title,
-        tag: inv.isMidStay ? INVOICE_COPY.midWatermark : INVOICE_COPY.issued,
+        tag: INVOICE_COPY.issued,
         at: inv.issuedAt || inv.createdAt,
         doc: inv,
       });
@@ -326,7 +326,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
                       {d.issueNumber ? `${d.issueNumber} · ` : ""}
                       {d.payerName || INVOICE_COPY.title}
                     </span>
-                    <span className="tag">{d.isMidStay ? INVOICE_COPY.midWatermark : INVOICE_COPY.issued}</span>
+                    <span className="tag">{INVOICE_COPY.issued}</span>
                     {d.snapshot?.quoteCompare ? <span className="tag">{INVOICE_COPY.quoteCompare}</span> : null}
                     <span className="muted sm">{dayLabel((d.issuedAt || d.createdAt).slice(0, 10))}</span>
                   </button>
