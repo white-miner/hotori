@@ -32,6 +32,7 @@ import {
   HOTEL_DOC_KIND_LABEL,
   HOTEL_DOC_KINDS,
   ISSUANCE_COPY,
+  hotelDocDisplayTitle,
   hotelDocFailMessage,
   hotelDocHubCopy,
   hotelDocPageTitle,
@@ -161,7 +162,13 @@ export default function Issuance({ data, hotelId, today, notify, onGoLedger }: P
   const recent = useMemo(() => {
     const items: RecentItem[] = [];
     for (const d of docs.list ?? []) {
-      items.push({ kind: "vault", id: d.id, title: d.title, tag: HOTEL_DOC_KIND_LABEL[d.kind], at: d.createdAt });
+      items.push({
+        kind: "vault",
+        id: d.id,
+        title: hotelDocDisplayTitle(d.title),
+        tag: HOTEL_DOC_KIND_LABEL[d.kind],
+        at: d.createdAt,
+      });
     }
     for (const q of quotes.list ?? []) {
       items.push({
@@ -536,12 +543,31 @@ function VaultSection({
   const [notes, setNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [viewer, setViewer] = useState<{ doc: HotelDocument; url: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (filterKind) setKind(filterKind);
   }, [filterKind]);
+
+  const openUpload = () => {
+    setKind(filterKind ?? "fire_insurance");
+    setUploadOpen(true);
+  };
+
+  const closeUpload = () => {
+    if (busy) return;
+    setUploadOpen(false);
+  };
+
+  const resetUploadForm = () => {
+    setTitle("");
+    setIssuedOn("");
+    setNotes("");
+    setFiles([]);
+    if (fileRef.current) fileRef.current.value = "";
+  };
 
   const filtered = useMemo(() => {
     const all = docs.list ?? [];
@@ -592,11 +618,8 @@ function VaultSection({
         );
         uploaded += 1;
       }
-      setTitle("");
-      setIssuedOn("");
-      setNotes("");
-      setFiles([]);
-      if (fileRef.current) fileRef.current.value = "";
+      resetUploadForm();
+      setUploadOpen(false);
       notify(hotelDocUploadOkMessage(uploaded));
     } catch (e) {
       const body =
@@ -636,7 +659,7 @@ function VaultSection({
       const url = await docs.signedUrl(doc, 120);
       const a = document.createElement("a");
       a.href = url;
-      a.download = doc.title || "document";
+      a.download = hotelDocDisplayTitle(doc.title) || "document";
       a.target = "_blank";
       a.rel = "noopener";
       document.body.appendChild(a);
@@ -655,7 +678,7 @@ function VaultSection({
   const removeDoc = async (doc: HotelDocument) => {
     const ok = await askConfirm({
       title: ISSUANCE_COPY.confirmDeleteTitle,
-      body: `${doc.title}\n${ISSUANCE_COPY.confirmDeleteBody}`,
+      body: `${hotelDocDisplayTitle(doc.title)}\n${ISSUANCE_COPY.confirmDeleteBody}`,
       confirmLabel: ISSUANCE_COPY.delete,
       danger: true,
     });
@@ -693,15 +716,22 @@ function VaultSection({
     setTimeout(tryPrint, 1200);
   };
 
+  const viewerTitle = viewer ? hotelDocDisplayTitle(viewer.doc.title) : "";
+
   return (
     <section className="iss-vault" aria-labelledby="iss-vault-h">
       <div className="iss-sec-row">
         <h2 id="iss-vault-h" className="iss-sec-h">
           {ISSUANCE_COPY.vaultHeading}
         </h2>
-        <button type="button" className="btn line sm" onClick={onBack}>
-          서류 종류
-        </button>
+        <div className="iss-sec-acts">
+          <button type="button" className="btn dark sm" onClick={openUpload}>
+            <Upload size={14} aria-hidden /> {ISSUANCE_COPY.upload}
+          </button>
+          <button type="button" className="btn line sm" onClick={onBack}>
+            서류 종류
+          </button>
+        </div>
       </div>
 
       <div className="iss-kind-filters" role="tablist" aria-label={ISSUANCE_COPY.kind}>
@@ -728,82 +758,6 @@ function VaultSection({
         ))}
       </div>
 
-      <div className="iss-upload card">
-        <h3>
-          <Upload size={16} aria-hidden /> {ISSUANCE_COPY.upload}
-        </h3>
-        <div className="iss-form">
-          <label>
-            <span>{ISSUANCE_COPY.kind}</span>
-            <select className="inp sm" value={kind} onChange={(e) => setKind(e.target.value as HotelDocKind)}>
-              {HOTEL_DOC_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {HOTEL_DOC_KIND_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>{ISSUANCE_COPY.title}</span>
-            <input
-              className="inp sm"
-              value={title}
-              maxLength={80}
-              placeholder={HOTEL_DOC_KIND_LABEL[kind]}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
-          <label className="wide">
-            <span>
-              {ISSUANCE_COPY.file}
-              <span className="muted"> · {ISSUANCE_COPY.fileMultiHint}</span>
-            </span>
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
-              onChange={(e) => addFiles(e.target.files)}
-            />
-          </label>
-          {files.length > 0 ? (
-            <ul className="iss-file-queue wide" aria-label={ISSUANCE_COPY.file}>
-              {files.map((f, i) => (
-                <li key={`${f.name}-${f.size}-${f.lastModified}-${i}`}>
-                  <span className="iss-file-name">
-                    {i + 1}. {f.name}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn line sm"
-                    disabled={busy}
-                    onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
-                  >
-                    {ISSUANCE_COPY.removeFile}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <label>
-            <span>{ISSUANCE_COPY.issuedOn}</span>
-            <input className="inp sm" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
-          </label>
-          <label className="wide">
-            <span>{ISSUANCE_COPY.notes}</span>
-            <input className="inp sm" value={notes} maxLength={280} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-        </div>
-        <div className="iss-upload-acts">
-          <button type="button" className="btn line sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-            {ISSUANCE_COPY.addMoreFiles}
-          </button>
-          <button type="button" className="btn dark sm" disabled={busy || files.length === 0} onClick={() => void submit()}>
-            {busy ? "올리는 중…" : files.length > 1 ? `${ISSUANCE_COPY.upload} (${files.length})` : ISSUANCE_COPY.upload}
-          </button>
-        </div>
-      </div>
-
       {docs.error ? <p className="warn sm">{docs.error}</p> : null}
       {!docs.list ? (
         <p className="muted sm">불러오는 중…</p>
@@ -813,10 +767,11 @@ function VaultSection({
         <ul className="iss-vault-list">
           {filtered.map((d) => {
             const badge = hotelDocExpiryBadge(d.expiresOn, today);
+            const listTitle = hotelDocDisplayTitle(d.title);
             return (
               <li key={d.id} className="iss-vault-row">
                 <div className="iss-vault-main">
-                  <strong>{d.title}</strong>
+                  <strong>{listTitle}</strong>
                   <span className="chips">
                     <span className="tag">{HOTEL_DOC_KIND_LABEL[d.kind]}</span>
                     {badge === "expired" ? <span className="tag danger">{ISSUANCE_COPY.expired}</span> : null}
@@ -848,23 +803,123 @@ function VaultSection({
         </ul>
       )}
 
+      {uploadOpen ? (
+        <div className="dim iss-upload-dim" role="presentation" onClick={closeUpload}>
+          <div
+            className="modal iss-upload-modal"
+            role="dialog"
+            aria-labelledby="iss-upload-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mh">
+              <h2 id="iss-upload-title">
+                <Upload size={18} aria-hidden /> {ISSUANCE_COPY.upload}
+              </h2>
+              <button type="button" className="x" onClick={closeUpload} aria-label="닫기" disabled={busy}>
+                ×
+              </button>
+            </div>
+            <div className="iss-form iss-upload-form">
+              <label>
+                <span>{ISSUANCE_COPY.kind}</span>
+                <select className="inp sm" value={kind} onChange={(e) => setKind(e.target.value as HotelDocKind)}>
+                  {HOTEL_DOC_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {HOTEL_DOC_KIND_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>{ISSUANCE_COPY.title}</span>
+                <input
+                  className="inp sm"
+                  value={title}
+                  maxLength={80}
+                  placeholder={HOTEL_DOC_KIND_LABEL[kind]}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </label>
+              <label className="wide">
+                <span>
+                  {ISSUANCE_COPY.file}
+                  <span className="muted"> · {ISSUANCE_COPY.fileMultiHint}</span>
+                </span>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => addFiles(e.target.files)}
+                />
+              </label>
+              {files.length > 0 ? (
+                <ul className="iss-file-queue wide" aria-label={ISSUANCE_COPY.file}>
+                  {files.map((f, i) => (
+                    <li key={`${f.name}-${f.size}-${f.lastModified}-${i}`}>
+                      <span className="iss-file-name">
+                        {i + 1}. {f.name}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn line sm"
+                        disabled={busy}
+                        onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))}
+                      >
+                        {ISSUANCE_COPY.removeFile}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <label>
+                <span>{ISSUANCE_COPY.issuedOn}</span>
+                <input className="inp sm" type="date" value={issuedOn} onChange={(e) => setIssuedOn(e.target.value)} />
+              </label>
+              <label className="iss-notes">
+                <span>{ISSUANCE_COPY.notes}</span>
+                <textarea
+                  className="inp sm iss-notes-inp"
+                  value={notes}
+                  maxLength={280}
+                  rows={2}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </label>
+            </div>
+            <div className="mf iss-upload-acts">
+              <button type="button" className="btn line sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+                {ISSUANCE_COPY.addMoreFiles}
+              </button>
+              <span className="sp" />
+              <button type="button" className="btn line sm" disabled={busy} onClick={closeUpload}>
+                닫기
+              </button>
+              <button type="button" className="btn dark sm" disabled={busy || files.length === 0} onClick={() => void submit()}>
+                {busy ? "올리는 중…" : files.length > 1 ? `${ISSUANCE_COPY.upload} (${files.length})` : ISSUANCE_COPY.upload}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {viewer ? (
         <div className="dim iss-viewer-dim" role="presentation" onClick={() => setViewer(null)}>
-          <div className="modal iss-viewer" role="dialog" aria-label={viewer.doc.title} onClick={(e) => e.stopPropagation()}>
+          <div className="modal iss-viewer" role="dialog" aria-label={viewerTitle} onClick={(e) => e.stopPropagation()}>
             <div className="mh">
-              <h2>{viewer.doc.title}</h2>
+              <h2>{viewerTitle}</h2>
               <button type="button" className="x" onClick={() => setViewer(null)} aria-label="닫기">
                 ×
               </button>
             </div>
             <div className="iss-viewer-body">
               {viewer.doc.mime === "application/pdf" ? (
-                <iframe title={viewer.doc.title} src={viewer.url} />
+                <iframe title={viewerTitle} src={viewer.url} />
               ) : (
-                <img src={viewer.url} alt={viewer.doc.title} />
+                <img src={viewer.url} alt={viewerTitle} />
               )}
             </div>
-            <div className="mf">
+            <div className="mf iss-viewer-foot">
               <div className="keys acts">
                 <button type="button" className="btn line sm" onClick={printViewer}>
                   <Printer size={14} /> {ISSUANCE_COPY.print}

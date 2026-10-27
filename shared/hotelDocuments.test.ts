@@ -4,6 +4,7 @@ import {
   HOTEL_DOC_KIND_LABEL,
   HOTEL_DOC_KINDS,
   ISSUANCE_COPY,
+  hotelDocDisplayTitle,
   hotelDocExpiryBadge,
   hotelDocFailMessage,
   hotelDocHubCopy,
@@ -43,6 +44,9 @@ describe("hotelDocuments", () => {
     assert.equal(hotelDocPageTitle("화재보험증서", 0, 1), "화재보험증서");
     assert.equal(hotelDocPageTitle("화재보험증서", 0, 3), "화재보험증서 (1/3)");
     assert.equal(hotelDocPageTitle("화재보험증서", 2, 3), "화재보험증서 (3/3)");
+    assert.equal(hotelDocDisplayTitle("영업신고서"), "영업신고증");
+    assert.equal(hotelDocDisplayTitle("영업신고서 (1/2)"), "영업신고증 (1/2)");
+    assert.equal(hotelDocDisplayTitle("영업신고증"), "영업신고증");
     assert.equal(hotelDocUploadOkMessage(1), ISSUANCE_COPY.uploadOk);
     assert.equal(hotelDocUploadOkMessage(3), "증서 3장을 올렸어요.");
     assert.ok(!ISSUANCE_COPY.emptyVault.includes("영업신고서"));
