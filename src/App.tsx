@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Bell, BookOpen, ClipboardList, FileStack, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { AlertTriangle, Bell, BookOpen, ClipboardList, FileStack, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData, useHotelNotices, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
@@ -13,6 +13,9 @@ import AuthScreen from "./Auth";
 import Dashboard from "./Dashboard";
 import Entry from "./Entry";
 import HandoverAlertsPanel from "./HandoverAlertsPanel";
+import TangleInbox from "./TangleInbox";
+import { useTangles } from "./useTangles";
+import { applyCheckoutMany, applyTangleFix } from "./tangleFix";
 import NoticesHubPanel, { type NoticesHubTab } from "./NoticesHubPanel";
 import SimpleBooking from "./SimpleBooking";
 import { ExpensesPage } from "./Expenses";
@@ -127,6 +130,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [tangleOpen, setTangleOpen] = useState(false);
   const [noticesTab, setNoticesTab] = useState<NoticesHubTab | null>(null);
   /** `/` → 장부 통합 이용내역 검색 포커스 */
   const ledgerSearchRef = useRef<HTMLInputElement>(null);
@@ -175,6 +179,11 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
     setToast({ m, opt, n });
     setTimeout(() => setToast((x) => (x?.n === n ? null : x)), opt?.ms ?? 2600);
   }, []);
+  const tangles = useTangles(data, hotelId, today, notify);
+  const tangleLabel = useCallback(
+    (id: string | null | undefined) => (id && data.hotel?.settings ? lookups(data.hotel.settings).roomLabel(id) ?? id : "?"),
+    [data.hotel?.settings],
+  );
   const openNew = useCallback((preset?: Partial<Booking>) => setEntry({ preset, n: Date.now() }), []);
   const openSimple = useCallback(
     (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) =>
@@ -292,6 +301,21 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
             </button>
             <button
               type="button"
+              className={`top-alert-btn top-notice-btn${tangles.visible.length ? " has" : ""}`}
+              aria-label={tangles.visible.length ? `확인 필요 ${tangles.visible.length}건` : "확인 필요"}
+              title="확인 필요"
+              onClick={() => {
+                setIssuesOpen(false);
+                setNoticesTab(null);
+                setTangleOpen(true);
+              }}
+            >
+              <AlertTriangle size={18} strokeWidth={2.2} aria-hidden />
+              <span className="top-notice-label">확인 필요</span>
+              {tangles.visible.length ? <span className="top-alert-badge tng">{badgeCountLabel(tangles.visible.length)}</span> : null}
+            </button>
+            <button
+              type="button"
               className={`top-alert-btn${view === "settings" ? " has" : ""}`}
               aria-label="설정"
               title="설정"
@@ -402,6 +426,36 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           onSaved={(m, again) => {
             notify(m);
             setEntry(again ? { preset: again, n: Date.now() } : null);
+          }}
+        />
+      ) : null}
+      {tangleOpen ? (
+        <TangleInbox
+          tangles={tangles.visible}
+          ignoredCount={tangles.ignoredCount}
+          onClose={() => setTangleOpen(false)}
+          onIgnore={(l) => void tangles.ignore(l)}
+          onRestore={() => void tangles.restoreAll()}
+          onFix={async (t) => {
+            try {
+              const done = await applyTangleFix(data, t, data.bookings, tangleLabel, notify);
+              if (!done) {
+                const b = data.bookings.find((x) => x.id === t.ids[0]);
+                if (b) {
+                  setTangleOpen(false);
+                  setEntry({ booking: b });
+                }
+              }
+            } catch (e) {
+              notify(e instanceof Error ? e.message : "고치지 못했어요");
+            }
+          }}
+          onFixMany={async (l) => {
+            try {
+              await applyCheckoutMany(data, l, notify);
+            } catch (e) {
+              notify(e instanceof Error ? e.message : "일부를 처리하지 못했어요");
+            }
           }}
         />
       ) : null}

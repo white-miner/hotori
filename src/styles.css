@@ -5690,3 +5690,18 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nsel-notes { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; margin: 6px 0; border: 1px dashed var(--line, #d0d0d0); border-radius: 10px; background: transparent; cursor: pointer; font-size: 14px; min-height: 40px; }
 .nsel-notes.has { background: #fff8e1; border-style: solid; border-color: #f0d98a; }
 .nsel-notes-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 확인 필요 함 */
+.tng-panel { max-width: 560px; }
+.tng-note { margin: -6px 0 12px; font-size: 13px; }
+.tng-row { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; background: #fff; }
+.tng-row.high { border-color: var(--badge-danger); }
+.tng-row.bulk { background: #faf8f4; }
+.tng-title { font-weight: 800; font-size: 15px; line-height: 1.35; }
+.tng-detail { font-size: 13px; margin-top: 3px; }
+.tng-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.tng-acts .btn:not(.sm) { min-height: 44px; }
+.tng-hint { font-size: 12px; margin-top: 6px; }
+.tng-preview { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.tng-restore { display: block; margin: 8px auto 0; background: none; border: 0; color: var(--ink2); text-decoration: underline; font-size: 13px; cursor: pointer; padding: 8px; }
+.top-alert-badge.tng { background: var(--badge-warn-border); }

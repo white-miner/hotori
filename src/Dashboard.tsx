@@ -1,4 +1,3 @@
-import { findTangles, newTangles, type Tangle } from "../shared/tangles";
 import { changesFor, extendSummary, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
 import ChangeLogSheet from "./ChangeLogSheet";
 import { parkingMark } from "../shared/parking";
@@ -511,16 +510,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
   const [extendNight, setExtendNight] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [extendNightBusy, setExtendNightBusy] = useState(false);
-  // 겹침·중복은 막지 않고, 새로 생겼을 때 한 번만 알려요 (처음 불러온 상태는 기준선)
-  const tangleBase = useRef<Tangle[] | null>(null);
-  useEffect(() => {
-    const now = findTangles(data.bookings, (id) => (id ? L.roomLabel(id) ?? id : "?"));
-    const prev = tangleBase.current;
-    tangleBase.current = now;
-    if (!prev) return;
-    const fresh = newTangles(prev, now);
-    if (fresh.length) notify(`${fresh[0]!.title}${fresh.length > 1 ? ` 외 ${fresh.length - 1}건` : ""} · 저장은 그대로 됐어요`);
-  }, [data.bookings, L, notify]);
   /** 연박 연결 · 다른 이름 B → prior A */
   const [connectStay, setConnectStay] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [connectStayBusy, setConnectStayBusy] = useState(false);
