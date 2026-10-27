@@ -36,6 +36,8 @@ import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import AutoAssignModal from "./AutoAssignModal";
+import { useBoardDrag } from "./useBoardDrag";
+import { resolveDrop } from "../shared/dragTarget";
 import { revalidateItem, type AutoAssignItem } from "../shared/autoAssign";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import DayuseSaleModal from "./DayuseSaleModal";
@@ -1203,6 +1205,64 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const mvAttr = mvB ? (mvOk ? { role: "button" as const, tabIndex: 0, "aria-label": `${r.no}호로 옮기기` } : { "aria-disabled": true }) : act;
     return { mvSwap, mvOk, mvSame, mvCls, mvClick, mvAttr };
   };
+  // ---------- 끌어서 옮기기 (마우스 끌기 · 터치 꾹 누르고 끌기) → 기존 옮기기 모드로 ----------
+  const dropNow = (roomId: string | null) => {
+    if (!mvB) return;
+    const r = resolveDrop({
+      roomId,
+      from: mvFrom,
+      targets,
+      swapTargets,
+      bookedTypeId: mvB.typeId,
+      typeOf: (id) => L.rooms.get(id)?.typeId ?? null,
+    });
+    if (r.kind === "none") return onMoveEnd(); // 놓을 수 없는 곳 = 취소
+    if (r.kind === "swap") return requestSwap(swapTargets.get(r.roomId)!);
+    if (r.confirm) return setPick(r.roomId); // 다른 타입은 기존 「이동할까요?」 확인
+    void doMove({ to: r.roomId });
+  };
+  const dropRef = useRef(dropNow);
+  dropRef.current = dropNow;
+  const pendingDrop = useRef<{ roomId: string | null } | null>(null);
+  useEffect(() => {
+    if (mvB && pendingDrop.current) {
+      const d = pendingDrop.current;
+      pendingDrop.current = null;
+      dropRef.current(d.roomId);
+    }
+  }, [mvB]);
+  useBoardDrag(!readOnly && (tab === "now" || tab === "rooms"), {
+    getStart: (roomId) => {
+      if (readOnly || mvB || moving || assignBusy || assigning || autoTargets) return null;
+      if (tab === "now") {
+        const b = nowBoardMap.get(roomId);
+        return b && isActive(b) && b.kind === "stay" ? { id: b.id, night: b.checkIn, tab: "now" } : null;
+      }
+      const b = board.byRoom.get(roomId);
+      return b && isActive(b) && (b.kind === "stay" || b.kind === "dayuse") && !b.checkedOutAt ? { id: b.id, night: selDate } : null;
+    },
+    onStart: (m) => {
+      setAssigningMode(null);
+      if (m.tab === "now") setSideMode("room");
+      onMoveStart(m);
+    },
+    onDrop: (roomId) => {
+      if (mvBRef.current) dropRef.current(roomId);
+      else pendingDrop.current = { roomId };
+    },
+    onCancel: () => onMoveEnd(),
+    isValid: (id) => targetsRef.current.has(id) || swapTargetsRef.current.has(id),
+    ghostLabel: (roomId) => {
+      const b = tab === "now" ? nowBoardMap.get(roomId) : board.byRoom.get(roomId);
+      return `${b?.guestName || "손님"} · ${L.roomLabel(roomId) ?? ""}호`;
+    },
+  });
+  const mvBRef = useRef(mvB);
+  mvBRef.current = mvB;
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
+  const swapTargetsRef = useRef(swapTargets);
+  swapTargetsRef.current = swapTargets;
   const mvBar =
     mvB && mvNight ? (
       <div className={`mvbar ${pick ? "ask" : ""}`} role="status">

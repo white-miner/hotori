@@ -5504,3 +5504,13 @@ body.bulking .toast { bottom: 96px; }
   .aa-row { grid-template-columns: 22px minmax(0, 1fr) minmax(88px, 120px); }
   .aa-arrow { display: none; }
 }
+
+/* 끌어서 옮기기 — 이름표 · 놓을 수 있는 칸 표시 */
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 400; pointer-events: none; padding: 7px 12px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13.5px; font-weight: 800; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28); white-space: nowrap; }
+body.dragging-move { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+body.dragging-move .cell { cursor: grabbing; }
+/* 끄는 중엔 안내 막대가 자리를 밀지 않게 위에 띄워요 (놓은 뒤엔 원래대로) */
+body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; max-width: 640px; margin: 0 auto; pointer-events: none; opacity: 0.94; }
+.board-page .cell[data-drag-over="ok"] { outline: 3px solid var(--mv, #0b7a3b); outline-offset: 2px; }
+.board-page .cell[data-drag-over="no"] { outline: 2px dashed var(--ink3); outline-offset: 2px; cursor: not-allowed; }
+@media (pointer: fine) { .board-page .cell.bk:not(.ro):not(.mvt):not(.mvoff):not(.mvsrc) { cursor: grab; } }
