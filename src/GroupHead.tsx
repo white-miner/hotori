@@ -2,6 +2,8 @@ import { CircleDollarSign, Plus } from "lucide-react";
 import { md } from "../shared/ledger";
 import { type GroupLedger, balanceLabel, groupTone, paidThroughLabel, unpaidTodayLabel, coverLabel } from "../shared/groupLedger";
 import { receiptNextAction } from "../shared/receipt";
+import type { PayLine } from "../shared/recordTimeline";
+import PayEvidence from "./PayEvidence";
 
 /**
  * 단체 머리글 — 지금 상태 한눈에 + 다음 행동 큰 버튼 하나.
@@ -14,6 +16,7 @@ export default function GroupHead({
   readOnly,
   onPay,
   onJoin,
+  record,
 }: {
   ledger: GroupLedger;
   today: string;
@@ -21,6 +24,8 @@ export default function GroupHead({
   readOnly?: boolean;
   onPay: () => void;
   onJoin?: () => void;
+  /** 결제 내역 + 기록 정정 열기 */
+  record?: { lines: PayLine[]; onOpen: () => void } | null;
 }) {
   const tone = groupTone(ledger);
   const next = receiptNextAction(ledger, today);
@@ -49,6 +54,7 @@ export default function GroupHead({
           ) : null}
         </div>
       ) : null}
+      {record ? <PayEvidence title={name || "단체"} lines={record.lines} ledger={ledger} readOnly={readOnly} onOpen={record.onOpen} /> : null}
     </section>
   );
 }

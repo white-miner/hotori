@@ -65,6 +65,8 @@ import {
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import GroupHead from "./GroupHead";
+import PayEvidence from "./PayEvidence";
+import type { PayLine } from "../shared/recordTimeline";
 import type { GroupLedger } from "../shared/groupLedger";
 import { PlatBadge, lookups } from "./ui";
 import type { CleanRequestChoice } from "../shared/cleanRequest";
@@ -136,6 +138,8 @@ interface Props {
   onGroupPay?: (() => void) | null;
   /** 단체 머리글(결제 현황 + 큰 버튼) — 단체 객실을 골랐을 때 */
   groupHead?: { ledger: GroupLedger; name?: string | null; onJoin?: () => void } | null;
+  /** 결제 내역(증거) + 기록 정정 열기 — 단체면 머리글 안에, 개인이면 결제 이력 자리에 */
+  record?: { title: string; lines: PayLine[]; ledger: GroupLedger | null; onOpen: () => void } | null;
   /** 메모 · 기록 한 줄 (고정 메모 미리보기 + 열기) */
   notes?: { pinned: string | null; count: number; onOpen: () => void } | null;
   /** 늦은 퇴실 (숙박 lateOut · 대실 종료 연장) · Entry 금지 */
@@ -210,6 +214,7 @@ export default function NowSidePanel({
   onPaymentDesk,
   onGroupPay,
   groupHead,
+  record,
   notes,
   onLateOut,
   onExtendNight,
@@ -546,7 +551,7 @@ export default function NowSidePanel({
                 </div>
               </div>
               {groupHead && onGroupPay ? (
-                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} onPay={onGroupPay} onJoin={groupHead.onJoin} />
+                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} onPay={onGroupPay} onJoin={groupHead.onJoin} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} />
               ) : null}
               {b && notes ? (
                 <button type="button" className={`nsel-notes${notes.pinned ? " has" : ""}`} onClick={notes.onOpen} aria-label="메모 · 기록 열기">
@@ -619,7 +624,10 @@ export default function NowSidePanel({
                       </span>
                     </div>
                   ) : null}
-                  {payHist.length > 0 ? (
+                  {record && !groupHead ? (
+                    <PayEvidence title={record.title} lines={record.lines} ledger={record.ledger} showBalance readOnly={readOnly} onOpen={record.onOpen} />
+                  ) : null}
+                  {record ? null : payHist.length > 0 ? (
                     <div className="nsel-payhist" aria-label="결제 이력">
                       <div className="nsel-payhist-h">결제 이력</div>
                       <ul className="nsel-payhist-list">

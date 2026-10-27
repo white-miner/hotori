@@ -5722,3 +5722,70 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rcn-r li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .chip.warn,.groom.clash{border-color:#e0a63a;background:#fff7e6;color:#8a5a00}
 .groom.clash.on{background:#f5b94a;color:#3a2600}
+
+/* ===== 박별 요금표 (총액 ⇄ 박별) ===== */
+.nrt { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.nrt-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nrt-total { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 180px; min-height: 44px; padding: 0 12px; border-radius: 12px; background: var(--panel); font-size: 13px; color: var(--ink2); }
+.nrt-total input { flex: 1; min-width: 0; height: 36px; border: 0; background: transparent; text-align: right; font-weight: 800; font-size: 16px; color: var(--ink); }
+.nrt-tg, .nrt-same { min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line, #e7e7ea); background: #fff; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.nrt-same { min-height: 36px; align-self: flex-start; font-weight: 600; color: var(--ink2); }
+.nrt-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; }
+.nrt-row { display: flex; align-items: center; gap: 6px; padding: 4px 10px; min-height: 44px; border-radius: 12px; border: 1px solid var(--line, #e7e7ea); background: #fff; }
+.nrt-row.peak { background: #fff8ec; }
+.nrt-d { font-weight: 700; font-size: 13px; min-width: 62px; }
+.nrt-d small { color: var(--ink3); font-weight: 500; margin-left: 2px; }
+.nrt-row input { flex: 1; min-width: 0; height: 34px; border: 0; border-radius: 8px; background: var(--panel); padding: 0 8px; text-align: right; font-weight: 750; font-size: 15px; }
+.nrt-u { font-size: 12px; color: var(--ink3); }
+.nrt-sum { padding-left: 2px; }
+
+/* ===== 기록 정정 ===== */
+.rec-modal .mb { display: flex; flex-direction: column; gap: 10px; }
+.rec-sum { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; background: var(--panel); }
+.rec-sum b { font-size: 18px; }
+.rec-ok { padding: 8px 12px; border-radius: 10px; background: #eef8f0; color: #1d6b34; font-size: 13px; font-weight: 600; }
+.rec-undo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: 10px; background: #fff4e5; font-size: 13px; font-weight: 600; }
+.rec-add { min-height: 48px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.rec-adv { list-style: none; margin: 0; padding: 8px 12px; border-radius: 10px; background: #fafaf7; font-size: 12.5px; color: var(--ink2); display: flex; flex-direction: column; gap: 4px; }
+.rec-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rec-row { border: 1px solid var(--line, #e7e7ea); border-radius: 14px; background: #fff; overflow: hidden; }
+.rec-row.on { border-color: var(--ink); }
+.rec-row.fut { background: #fafafc; border-style: dashed; }
+.rec-row.k-fix { background: #f6f6f8; }
+.rec-hd { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 12px; border: 0; background: transparent; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.rec-hd:disabled { cursor: default; }
+.rec-d { display: flex; flex-direction: column; min-width: 40px; font-weight: 800; font-size: 14px; }
+.rec-d small { font-weight: 500; font-size: 11px; color: var(--ink3); }
+.rec-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rec-t b { font-size: 14px; }
+.rec-t small { font-size: 12px; }
+.rec-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--panel); color: var(--ink2); }
+.rec-edit { font-size: 12px; font-weight: 700; color: var(--ink2); }
+.k-pay .rec-d { color: #0b6b3a; }
+.k-move .rec-d, .k-checkout .rec-d { color: #8a4b00; }
+.rec-ed { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 14px; border-top: 1px solid var(--line, #e7e7ea); background: #fcfcfd; }
+.rec-modal > .mb > .rec-ed { border: 1px solid var(--ink); border-radius: 14px; }
+.rec-ed-h { font-weight: 800; font-size: 14px; }
+.rec-fld { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); }
+.rec-fld.col { flex-direction: column; align-items: stretch; gap: 6px; }
+.rec-fld input[type="date"] { min-height: 44px; border: 1px solid var(--line, #e7e7ea); border-radius: 10px; padding: 0 10px; font: inherit; background: #fff; }
+.rec-per { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.rec-per input[type="date"] { min-height: 44px; border: 1px solid var(--line, #e7e7ea); border-radius: 10px; padding: 0 10px; font: inherit; }
+.rec-more { font-size: 13px; }
+.rec-more summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; color: var(--ink2); }
+.rec-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.rec-acts .btn { min-height: 44px; }
+.rec-acts .danger { color: #b3261e; margin-right: auto; }
+.rec-empty { padding: 12px; text-align: center; }
+
+/* ===== 결제 내역 카드 ===== */
+.pev { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
+.pev-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; }
+.pev-bal { display: flex; flex-direction: column; gap: 1px; }
+.pev-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pev-li { display: flex; flex-direction: column; gap: 1px; }
+.pev-main { font-size: 14px; }
+.pev-sub { font-size: 12px; }
+.pev-more { font-size: 11.5px; }
+.pev-f { display: flex; gap: 6px; flex-wrap: wrap; }
+.pev-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line, #e7e7ea); background: #fff; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }

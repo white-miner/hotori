@@ -404,6 +404,15 @@ export function useHotelData(hotelId: string) {
   const [stayCredits, setStayCredits] = useState<StayCredit[]>([]);
   /** 메모 + 변경 기록 (표가 없으면 빈 목록 — 예약 화면은 그대로) */
   const [changes, setChanges] = useState<Change[]>([]);
+  /** 지금 로그인한 직원 (결제 「처리자」 표시용) */
+  const [meId, setMeId] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void supabase.auth.getSession().then((r) => live && setMeId(r.data.session?.user.id ?? null)).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const busy = useRef(false);
   const again = useRef(false);
   /** 로컬 저장이 in-flight refresh 결과를 덮어쓰지 않게 (판매 캘린더 굳음 방지) */
@@ -1209,6 +1218,7 @@ export function useHotelData(hotelId: string) {
     syncedAt,
     refresh,
     changes,
+    meId,
     logChange,
     pinChange,
     fetchFreshAround,

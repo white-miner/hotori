@@ -60,6 +60,8 @@ import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
 import GroupReceiptSheet from "./GroupReceiptSheet";
 import GroupJoinSheet from "./GroupJoinSheet";
+import RecordSheet from "./RecordSheet";
+import { payLines, type PayLine } from "../shared/recordTimeline";
 import GroupLeaveSheet from "./GroupLeaveSheet";
 import { groupLedger } from "../shared/groupLedger";
 import {
@@ -502,6 +504,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 단체 「기간 결제」 시트 (뱃지·패널에서 열림) */
   const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
   const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
+  /** 기록 정정 시트 (단체면 groupId, 개인이면 bookingId) */
+  const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null } | null>(null);
   const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
   /** 메모 · 기록 시트 (단체 또는 예약 하나) */
   const [logScope, setLogScope] = useState<{ groupId: string | null; bookingIds: string[]; title: string } | null>(null);
@@ -943,6 +947,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       onJoin: () => setJoinGroupId(gid),
     };
   }, [selectedSettle, bookings, data.groups, today]);
+  /** 결제 내역(증거) — 선택한 칸의 단체 또는 개인 예약 */
+  const selectedRecord = useMemo(() => {
+    const firstMember = selectedSettle.members[0];
+    const solo = selectedRoomIds.length === 1 && selectedRoomId ? nowBoardMap.get(selectedRoomId) : undefined;
+    const base = firstMember ?? (solo && solo.kind === "stay" ? solo : null);
+    if (!base) return null;
+    const gid = base.groupId ?? null;
+    const members = gid ? data.bookings.filter((x) => x.groupId === gid && x.status !== "cancelled") : [base];
+    const info = gid ? data.groups.get(gid) : undefined;
+    const roomName = (bid: string) => {
+      const bk = members.find((x) => x.id === bid);
+      return bk?.roomId ? `${L.roomLabel(bk.roomId) ?? "?"}호` : "미배정";
+    };
+    const lines: PayLine[] = payLines([...members.flatMap((m) => m.payments ?? []), ...(info?.payments ?? [])], { roomName, meId: data.meId });
+    const peers = members.filter((m) => m.status === "active" && m.kind === "stay");
+    return {
+      title: (gid ? base.groupName : null) ?? base.guestName,
+      lines,
+      ledger: peers.length ? groupLedger(members, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }) : null,
+      onOpen: () => setRecordFor({ groupId: gid, bookingId: gid ? null : base.id }),
+    };
+  }, [selectedSettle, selectedRoomIds, selectedRoomId, nowBoardMap, data.bookings, data.groups, data.meId, today, L]);
   /** 선택한 칸의 메모 · 기록 범위 (단체면 단체 전체, 아니면 그 예약) */
   const selectedNotes = useMemo(() => {
     const m = selectedSettle.members;
@@ -1760,6 +1786,27 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           setJoinGroupId(null);
           notify(m);
         }}
+      />
+    );
+  };
+
+  const renderRecord = () => {
+    if (!recordFor) return null;
+    const members = recordFor.groupId
+      ? data.bookings.filter((x) => x.groupId === recordFor.groupId && x.status !== "cancelled")
+      : data.bookings.filter((x) => x.id === recordFor.bookingId);
+    if (!members.length) return null;
+    const first = members[0]!;
+    return (
+      <RecordSheet
+        data={data}
+        today={today}
+        members={members}
+        groupId={recordFor.groupId}
+        name={(recordFor.groupId ? first.groupName : null) ?? first.guestName}
+        readOnly={readOnly}
+        onClose={() => setRecordFor(null)}
+        onSaved={(m) => notify(m)}
       />
     );
   };
@@ -3656,6 +3703,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : null
               }
               groupHead={selectedGroupHead}
+              record={selectedRecord}
               notes={selectedNotes}
               onLateOut={(bk) => {
                 const lab = bk.roomId
@@ -3902,6 +3950,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
       {periodPay ? renderPeriodPay(periodPay.groupId) : null}
       {joinGroupId ? renderJoin(joinGroupId) : null}
+      {renderRecord()}
       {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderChangeLog()}
       {renderChangeLog()}
@@ -4320,6 +4369,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     {renderOverbookSubModal()}
     {periodPay ? renderPeriodPay(periodPay.groupId) : null}
     {joinGroupId ? renderJoin(joinGroupId) : null}
+    {renderRecord()}
     {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderAssignModals()}
     </>
