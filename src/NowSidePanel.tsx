@@ -63,6 +63,8 @@ import {
 } from "../shared/roomHold";
 import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
+import GroupHead from "./GroupHead";
+import type { GroupLedger } from "../shared/groupLedger";
 import { PlatBadge, lookups } from "./ui";
 import type { CleanRequestChoice } from "../shared/cleanRequest";
 
@@ -131,6 +133,8 @@ interface Props {
   onPaymentDesk?: (b?: Booking) => void;
   /** 다실 단체 「기간 결제」 시트 열기 (null이면 버튼 없음) */
   onGroupPay?: (() => void) | null;
+  /** 단체 머리글(결제 현황 + 큰 버튼) — 단체 객실을 골랐을 때 */
+  groupHead?: { ledger: GroupLedger; name?: string | null; onJoin?: () => void } | null;
   /** 늦은 퇴실 (숙박 lateOut · 대실 종료 연장) · Entry 금지 */
   onLateOut?: (b: Booking) => void;
   /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
@@ -198,6 +202,7 @@ export default function NowSidePanel({
   ncxBusy = null,
   onPaymentDesk,
   onGroupPay,
+  groupHead,
   onLateOut,
   onExtendNight,
   onConnectStay,
@@ -527,6 +532,9 @@ export default function NowSidePanel({
                         : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
                 </div>
               </div>
+              {groupHead && onGroupPay ? (
+                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} onPay={onGroupPay} onJoin={groupHead.onJoin} />
+              ) : null}
               {b ? (
                 <div className="nsel-body">
                   <div className="nsel-row">
@@ -706,7 +714,7 @@ export default function NowSidePanel({
                         </button>
                       </div>
                     ) : null}
-                    {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk || onGroupPay) ? (
+                    {!readOnly && !multiGroup && ((b.kind === "stay" && onSetNoClean) || showPaymentDesk || (onGroupPay && !groupHead)) ? (
                       <div className="nsel-act-sec nsel-act-row" role="group" aria-label="숙박 운영">
                         {b.kind === "stay" && onSetNoClean ? (
                           <button
@@ -721,7 +729,7 @@ export default function NowSidePanel({
                             {ncxBusy === b.id ? "저장 중…" : CLEAN_REQUEST_COPY}
                           </button>
                         ) : null}
-                        {onGroupPay && !readOnly ? (
+                        {onGroupPay && !groupHead && !readOnly ? (
                           <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
                             <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
                             기간 결제
@@ -851,7 +859,7 @@ export default function NowSidePanel({
                     </div>
                   ) : null}
                   <div className="nsel-acts">
-                    {onGroupPay && !readOnly ? (
+                    {onGroupPay && !groupHead && !readOnly ? (
                       <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
                         <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
                         기간 결제

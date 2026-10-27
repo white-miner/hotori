@@ -186,3 +186,16 @@ test("합계 보존: 어떤 입력이든 저장 합 = 입력 금액", () => {
     }
   }
 });
+
+test("큰 버튼: 결제 등록 · N박 금액 — 3박 결제 후엔 다음 3박을 제안해요", async () => {
+  const { receiptNextAction } = await import("./receipt");
+  const a = [room("r602", 70_000, 30), room("r501", 80_000, 30), room("r301", 80_000, 30)];
+  const L0 = ledgerOf(a, 0, "2026-10-28");
+  assert.equal(receiptNextAction(L0, "2026-10-28").label, "결제 등록 · 1박 230,000원");
+  const p = receiptPlan({ ledger: L0, roomIds: null, period: { kind: "nights", nights: 3 } }, "2026-10-28");
+  const { rooms } = apply(a, p);
+  const nx = receiptNextAction(ledgerOf(rooms, 0, "2026-10-28"), "2026-10-28");
+  assert.equal(nx.nights, 3);
+  assert.equal(nx.amount, 690_000);
+  assert.equal(nx.label, "결제 등록 · 3박 690,000원");
+});

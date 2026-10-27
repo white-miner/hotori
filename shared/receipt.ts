@@ -171,7 +171,7 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
     const extra = amount - window;
     if (extra > 0) {
       lump = { amount: extra, note: `선수금(단체 잔액) · ${range}` .slice(0, 80) };
-      notes.push(suggestedWindow > 0 ? `제안보다 ${won(extra)}원 더 받았어요 · 선수금으로 두고 다음 박에 반영해요` : `${range}은(는) 이미 결제된 기간이에요 · ${won(extra)}원은 선수금으로 둬요`);
+      notes.push(suggestedWindow > 0 ? `제안보다 ${won(extra)}원 더 결제했어요 · 선수금으로 두고 다음 박에 반영해요` : `${range}은(는) 이미 결제된 기간이에요 · ${won(extra)}원은 선수금으로 둬요`);
     } else if (window < suggestedWindow) {
       notes.push(`제안보다 ${won(suggestedWindow - window)}원 적어요 · 일부 결제로 등록하고 나머지는 미수금으로 남아요`);
     }
@@ -204,4 +204,12 @@ export function receiptHeadline(plan: ReceiptPlan, period: ReceiptPeriod): strin
   const same = act.length > 0 && act.every((r) => r.nights === plan.nights);
   const base = same ? `${plan.nights}박 × ${roomsN}객실` : `${plan.nights}박 · ${roomsN}객실`;
   return `${base} = ${won(plan.total)}원`;
+}
+
+/** 단체 머리글의 큰 버튼: `결제 등록 · 3박 690,000원` — 열면 같은 값으로 채워져 있어요. 제안할 금액이 없으면 그냥 `결제 등록` */
+export function receiptNextAction(ledger: GroupLedger, today: string): { label: string; nights: number; amount: number } {
+  const nights = receiptDefaultNights(ledger);
+  const plan = receiptPlan({ ledger, roomIds: null, period: { kind: "nights", nights } }, today);
+  if (!plan.suggested) return { label: "결제 등록", nights, amount: 0 };
+  return { label: `결제 등록 · ${nights}박 ${won(plan.suggested)}원`, nights, amount: plan.suggested };
 }
