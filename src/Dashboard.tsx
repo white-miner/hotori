@@ -60,6 +60,8 @@ import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
 import GroupReceiptSheet from "./GroupReceiptSheet";
 import GroupJoinSheet from "./GroupJoinSheet";
+import MoveScheduleSheet from "./MoveScheduleSheet";
+import { type PendingMove, cancelScheduledMove, moveDoneSummary, moveDueToday, moveLabel, nextMove } from "../shared/scheduledMove";
 import RecordSheet from "./RecordSheet";
 import { payLines, type PayLine } from "../shared/recordTimeline";
 import GroupLeaveSheet from "./GroupLeaveSheet";
@@ -504,6 +506,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 단체 「기간 결제」 시트 (뱃지·패널에서 열림) */
   const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
   const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
+  const [moveSchedFor, setMoveSchedFor] = useState<Booking | null>(null);
   /** 기록 정정 시트 (단체면 groupId, 개인이면 bookingId) */
   const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null } | null>(null);
   const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
@@ -1773,6 +1776,41 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!readOnly) setPeriodPay({ groupId });
   };
 
+  /** 이동일 「이동 완료」 — 손님이 새 객실로 옮겼다고 기록해요 (객실 배치는 이미 이동일부터 새 객실이에요) */
+  const finishMove = async (bk: Booking, m: PendingMove) => {
+    const ch = await data.logChange({
+      kind: "room",
+      summary: moveDoneSummary(m, L.roomLabel(m.fromRoomId) ?? "", L.roomLabel(m.toRoomId) ?? ""),
+      groupId: bk.groupId ?? null,
+      bookingId: bk.id,
+      effectiveOn: m.date,
+    });
+    notify(ch ? `${L.roomLabel(m.toRoomId)}호로 이동 완료` : "기록하지 못했어요. 다시 눌러 주세요");
+  };
+  const cancelMove = async (bk: Booking, m: PendingMove) => {
+    const segs = cancelScheduledMove(bk, m.idx);
+    const before = placementOf(bk);
+    try {
+      await data.setPlacement(bk.id, { roomId: segs ? segs[0]!.roomId : bk.roomId, segments: segs });
+      void data.logChange({ kind: "room", summary: `객실 이동 예약 취소 · ${L.roomLabel(m.toRoomId)}호 (${md(m.date)})`, groupId: bk.groupId ?? null, bookingId: bk.groupId ? null : bk.id, effectiveOn: m.date });
+      notify("이동 예약을 취소했어요", { ms: 6000, action: { label: "되돌리기", run: () => void data.setPlacement(bk.id, before).catch(() => notify("되돌리지 못했어요")) } });
+    } catch {
+      notify("취소하지 못했어요. 다시 해 주세요");
+    }
+  };
+  const renderMoveSched = () =>
+    moveSchedFor ? (
+      <MoveScheduleSheet
+        data={data}
+        today={today}
+        booking={data.bookings.find((x) => x.id === moveSchedFor.id) ?? moveSchedFor}
+        onClose={() => setMoveSchedFor(null)}
+        onSaved={(m, undo) => {
+          setMoveSchedFor(null);
+          notify(m, undo ? { ms: 6000, action: { label: "되돌리기", run: undo } } : undefined);
+        }}
+      />
+    ) : null;
   const renderJoin = (groupId: string) => {
     const peers = data.bookings.filter((x) => x.groupId === groupId && x.status !== "cancelled");
     if (!peers.length) return null;
@@ -3423,6 +3461,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: b.openEnded && b.status === "active" }}
             group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
+          {((mvDue, mvNext) =>
+            mvDue ? (
+              <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
+                {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
+              </div>
+            ) : mvNext ? (
+              <div className="nowmove" title="객실 이동 예약">
+                {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
+              </div>
+            ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
           {amount || payMethod ? (
             <div className={`nowamt tone-${amountTone}`} title={f.longStay ? "미수" : "요금·잔금"}>
               {payMethod ? <span className="nowpay">{payMethod}</span> : null}
@@ -3693,6 +3741,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onEndDayuse={(bk) => void doEndDayuse(bk)}
               onMemo={setMemoRoomId}
               onRoomMove={startOpsRoomMove}
+              changes={data.changes}
+              onScheduleMove={(bk) => setMoveSchedFor(bk)}
+              onMoveDone={(bk, m) => void finishMove(bk, m)}
+              onCancelMove={(bk, m) => void cancelMove(bk, m)}
               onAddRoom={(bk) => {
                 void data.groupify(bk).then(
                   (gid) => setJoinGroupId(gid),
@@ -3956,6 +4008,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
       {periodPay ? renderPeriodPay(periodPay.groupId) : null}
       {joinGroupId ? renderJoin(joinGroupId) : null}
+{renderMoveSched()}
       {renderRecord()}
       {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderChangeLog()}
@@ -4375,6 +4428,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     {renderOverbookSubModal()}
     {periodPay ? renderPeriodPay(periodPay.groupId) : null}
     {joinGroupId ? renderJoin(joinGroupId) : null}
+{renderMoveSched()}
     {renderRecord()}
     {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderAssignModals()}

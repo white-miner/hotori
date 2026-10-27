@@ -5806,3 +5806,18 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .adv[open] > summary::before { content: "－"; }
 .adv[open] { padding-bottom: 8px; }
 .mfp-block.clash { border-style: dashed; opacity: .85; }
+
+/* 객실 이동 예약 */
+.nowmove{font-size:11px;font-weight:700;color:#0b5cab;background:#e8f1fb;border-radius:6px;padding:2px 6px;margin-top:2px;line-height:1.35;word-break:keep-all}
+.nowmove.due{color:#fff;background:#d63a2f}
+.nsel-move{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.nsel-move-done{width:100%;min-height:48px;font-size:15px}
+.nsel-move-next{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.mvs .mb{display:flex;flex-direction:column;gap:12px}
+.mvs-k{font-weight:800;font-size:14px;margin-bottom:6px}
+.mvs-dates{display:flex;flex-wrap:wrap;gap:6px}
+.mvs-legs{list-style:none;margin:0;padding:8px 10px;border-radius:8px;background:#f5f6f8;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.mvs-rate label{display:flex;align-items:center;gap:6px}
+.mvs-rate input{width:120px}
+.mvs .mf{padding:10px 14px;display:flex}
+.mvs .mf .btn{width:100%}

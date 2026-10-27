@@ -66,6 +66,8 @@ import type { OpenMemoGlance } from "../shared/roomMemo";
 import CleanRequestModal from "./CleanRequestModal";
 import GroupHead from "./GroupHead";
 import PayEvidence from "./PayEvidence";
+import { type PendingMove, moveDueToday, moveLabel, nextMove } from "../shared/scheduledMove";
+import type { Change } from "../shared/changes";
 import type { PayLine } from "../shared/recordTimeline";
 import type { GroupLedger } from "../shared/groupLedger";
 import { PlatBadge, lookups } from "./ui";
@@ -129,6 +131,14 @@ interface Props {
   onRoomMove?: () => void;
   /** 혼자 묵는 예약에 객실을 더해요 (한 단체로 묶고 객실 추가 창을 열어요) */
   onAddRoom?: (b: Booking) => void;
+  /** 객실 이동 예약 (이동일 + 어떤 객실이든) */
+  onScheduleMove?: (b: Booking) => void;
+  /** 이동일에 「이동 완료」 */
+  onMoveDone?: (b: Booking, m: PendingMove) => void;
+  /** 이동 예약 취소 (idx번째 구간을 앞 방으로 합쳐요) */
+  onCancelMove?: (b: Booking, m: PendingMove) => void;
+  /** 「이동 완료」 기록을 찾으려고 */
+  changes?: Change[];
   /** 이동 모드 중이면 CTA 비활성 */
   moving?: boolean;
   /** 청소 요청 팝업 확정 → patchBooking({ noClean }) */
@@ -211,6 +221,10 @@ export default function NowSidePanel({
   onMemo,
   onRoomMove,
   onAddRoom,
+  onScheduleMove,
+  onMoveDone,
+  onCancelMove,
+  changes = [],
   moving = false,
   onSetNoClean,
   ncxBusy = null,
@@ -500,6 +514,8 @@ export default function NowSidePanel({
   const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, b.openEnded ? b.holdAhead ?? 1 : 0) : null;
   const showExtendThrough = !!throughPlan;
   const showOpenEnded = !readOnly && !!onOpenEnded && !!b && b.kind === "stay" && b.status === "active" && b.arrived && !b.checkedOutAt && !isLongStay(b) && !isEarlyOut(b);
+  const moveDue = b && !readOnly ? moveDueToday(b, today, changes) : null;
+  const moveNext = b && !readOnly ? nextMove(b, today) : null;
   const showConnectStay =
     !readOnly &&
     !!onConnectStay &&
@@ -668,6 +684,25 @@ export default function NowSidePanel({
                   </div>
                   {dayuseList}
                   <div className="nsel-acts">
+                    {!readOnly && !multiGroup && b && b.kind === "stay" && (moveDue || moveNext) ? (
+                      <div className="nsel-act-sec nsel-move" role="group" aria-label="객실 이동 예약">
+                        {moveDue ? (
+                          <button type="button" className="btn dark nsel-move-done" disabled={moving} onClick={() => onMoveDone?.(b, moveDue)} aria-label="이동 완료">
+                            이동 완료 · {L.roomLabel(moveDue.fromRoomId)}호 → {L.roomLabel(moveDue.toRoomId)}호
+                          </button>
+                        ) : null}
+                        {moveNext && !moveDue ? (
+                          <div className="nsel-move-next">
+                            <span className="nowmove">{moveLabel(moveNext, (id) => L.roomLabel(id) ?? "")}</span>
+                            {onCancelMove ? (
+                              <button type="button" className="linkish" disabled={moving} onClick={() => onCancelMove(b, moveNext)}>
+                                이동 예약 취소
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {/* 판매: 숙박(빨강·아이콘 없음) → 대실(파랑) · selection-first */}
                     {!readOnly && (dayuseCtaLabel || showStaySell) ? (
                       <div className="nsel-act-sec" role="group" aria-label="판매">
@@ -836,6 +871,12 @@ export default function NowSidePanel({
                           >
                             <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
                             {moving ? "이동 중…" : "객실 이동"}
+                          </button>
+                        ) : null}
+                        {onScheduleMove && b.kind === "stay" && isActive(b) && (b.nights ?? 0) >= 2 && !b.checkedOutAt ? (
+                          <button type="button" className="btn sm line" disabled={moving} onClick={() => onScheduleMove(b)} aria-label="객실 이동 예약">
+                            <ArrowRightLeft size={14} strokeWidth={2.2} aria-hidden />
+                            이동 예약
                           </button>
                         ) : null}
                         {onAddRoom && b.kind === "stay" && !b.groupId && isActive(b) ? (
