@@ -55,14 +55,14 @@ function expandSlots(lines: QuoteLine[]): Slot[] {
 }
 
 export function validateQuoteForBookings(draft: QuoteDraft, s: HotelSettings): string | null {
-  if (!draft.checkIn) return "입실 예정일을 적어 주세요. (발급 시 미배정 예약이 만들어져요)";
+  if (!draft.checkIn) return "입실 예정일을 입력해 주세요. (발급 시 미배정 예약이 만들어져요)";
   const types = new Set(usableTypes(s.types).map((t) => t.id));
   const usable = draft.lines.filter((l) => Math.round(l.rooms) > 0);
   if (!usable.length) return QUOTE_COPY.emptyLines;
   for (const l of usable) {
     if (!l.typeId || !types.has(l.typeId)) return "객실 타입을 골라 주세요. (발급 시 타입 홀드 예약용)";
     if ((Math.round(l.nights) || 0) <= 0 && (Math.round(draft.nights) || 0) <= 0) {
-      return "박수를 적어 주세요.";
+      return "박수를 입력해 주세요.";
     }
   }
   if (!quotePlatformId(s)) return "설정에 플랫폼(현장·전화)이 필요해요.";

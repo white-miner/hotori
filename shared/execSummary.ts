@@ -107,7 +107,7 @@ export type MethodSales = {
   shop: { card: number; cash: number; none: number; total: number };
 };
 
-/** 객실 받은 돈 + 매점 카드·현금. 이체·잔액사용은 예약만. */
+/** 객실 수납액 + 매점 카드·현금. 이체·잔액사용은 예약만. */
 export function methodSales(
   booking: Pick<Record<BookPayMethod, number>, "card" | "cash" | "transfer"> & { credit?: number; total?: number },
   shop: PaySplit | null | undefined,
@@ -169,7 +169,7 @@ const UNKNOWN_PLAT_ID = "__unknown__";
 export type PlatformResolve = (p: { bookingId: string; groupId?: string | null }) => { id: string; name: string } | null;
 
 /**
- * 플랫폼 × 카드/현금/이체 매트릭스 (받은 날 기준).
+ * 플랫폼 × 카드/현금/이체 매트릭스 (수납일 기준).
  * 잔액 사용(credit)은 합계.credit만 · 칸/합계 금액에는 안 넣음.
  * 매점은 맨 아래 「매점」행(이체 0). 설정 플랫폼 순서 유지 · 금액 0인 설정 플랫폼은 생략.
  */

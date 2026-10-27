@@ -1,4 +1,4 @@
-// 숫자 칸: 적는 동안에는 글자 그대로 들고 있고, 칸을 벗어날 때만 범위를 맞춰요.
+// 숫자 칸: 입력하는 동안에는 글자 그대로 들고 있고, 칸을 벗어날 때만 범위를 맞춰요.
 // (예전에는 글자를 칠 때마다 잘라 맞춰서 '10'을 치면 '1'이 앞에 붙어 110 → 99처럼 튀었어요)
 export interface DraftOpts {
   min: number;
@@ -6,14 +6,14 @@ export interface DraftOpts {
   /** 소수점 허용 (수수료율 %) */
   decimal?: boolean;
 }
-/** 적는 중인 글자에서 숫자 · 소수점만 (쉼표는 빼요) */
+/** 입력 중인 글자에서 숫자 · 소수점만 (쉼표는 빼요) */
 export function cleanDraft(raw: string, decimal = false): string {
   const s = raw.replace(decimal ? /[^\d.]/g : /\D/g, "");
   if (!decimal) return s.slice(0, 12);
   const i = s.indexOf(".");
   return (i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, "")).slice(0, 12);
 }
-/** 적는 중: 범위 안의 숫자일 때만 바로 반영 (범위 밖이면 반영하지 않고 글자는 그대로) */
+/** 입력 중: 범위 안의 숫자일 때만 바로 반영 (범위 밖이면 반영하지 않고 글자는 그대로) */
 export function liveValue(raw: string, o: DraftOpts): number | null {
   const s = cleanDraft(raw, o.decimal);
   if (s === "" || s === ".") return null;

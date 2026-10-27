@@ -73,7 +73,7 @@ test("입금 예정일 = 퇴실일 + N일 (중도 퇴실이면 떠난 날 · 대
   assert.equal(payoutOf(bk({ kind: "dayuse", nights: null }), { payoutDays: 0 }).dueOn, "2026-10-19");
   assert.equal(payoutOf(bk({}), Y).dueOn, null);
 });
-test("입금 확인: 실제 입금액 (안 적으면 예정가) · 차이", () => {
+test("입금 확인: 실제 입금액 (안 입력하면 예정가) · 차이", () => {
   const a = payoutOf(bk({ payoutOk: true }), Y);
   assert.deepEqual([a.ok, a.received, a.diff], [true, 63000, 0]);
   const b = payoutOf(bk({ payoutOk: true, payoutAmount: 62500 }), Y);

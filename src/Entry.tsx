@@ -245,7 +245,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const isNew = !base;
   const initKind: Kind = base?.kind ?? p.kind ?? "stay";
   const [kind, setKind] = useState<Kind>(initKind);
-  // 단체 예약: 새로 적을 때만 '단체'로 바꿔서 여러 방을 한 번에
+  // 단체 예약: 신규 등록할 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
   const [addGroup, setAddGroup] = useState(false);
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
@@ -269,7 +269,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   useEffect(() => {
     if (long || kind !== "stay") setStayTab("period");
   }, [long, kind]);
-  // 대실 시간: 적는 중인 글자(raw)는 그대로 두고, 알아볼 수 있으면 HH:MM으로 저장해요
+  // 대실 시간: 입력 중인 글자(raw)는 그대로 두고, 알아볼 수 있으면 HH:MM으로 저장해요
   // 신규: 설정 dayuseDefaults 우선 (수정·preset 값은 유지)
   const [startRaw, setStartRaw] = useState(
     () => base?.startTime ?? p.startTime ?? (isNew && initKind === "dayuse" ? s.dayuseDefaults.startTime : ""),
@@ -382,7 +382,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       return left > 0 ? String(left) : "";
     }
     const plat = s.platforms.find((p) => p.id === base.platformId);
-    // OTA는 잔금 없음 (payState와 동일 · 결제 줄이 있어도 현장 결제만 따짐)
+    // OTA는 잔금 없음 (payState와 동일 · 결제 내역이 있어도 현장 결제만 따짐)
     if (!isOnsite(plat)) return "";
     const left = Math.max(0, revenueOf(base) - paid);
     return left > 0 ? String(left) : "";
@@ -412,7 +412,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const live = base ? (data.bookings.find((x) => x.id === base.id) ?? base) : null;
   const eoNow = !!live && isEarlyOut(live) && live.status === "active";
   const eoToday = !!live && canEarlyOutToday(live, today);
-  // 지난 숙박 바로잡기: 이미 끝난 2박 이상 숙박은 아래 단추로 날짜를 골라 적어요
+  // 지난 숙박 바로잡기: 이미 끝난 2박 이상 숙박은 아래 버튼으로 날짜를 선택해 입력해요
   const eoPast = !!live && !eoNow && !eoToday && live.status === "active" && live.kind === "stay" && (live.nights ?? 0) >= 2 && today >= checkOut(live);
   // 1박 연장: 박수+1 · 오늘 요금 가산 · 수납 또는 잔금
   const groupRates = live?.groupId ? (data.groups.get(live.groupId)?.rates ?? null) : null;
@@ -675,7 +675,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         } catch (e) {
           onClose();
           notify(
-            `${surchargeNotifyLine(saved.guestName, as.reason, amount, false, planned.draft.lateOut)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${surchargeNotifyLine(saved.guestName, as.reason, amount, false, planned.draft.lateOut)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           return;
         }
@@ -764,7 +764,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         } catch (e) {
           onClose();
           notify(
-            `${extendNotifyLine(saved.guestName, plan.draft, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${extendNotifyLine(saved.guestName, plan.draft, false)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           return;
         }
@@ -930,7 +930,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       if (plan.asGroup) {
         const gid = sameGroupId(members);
         if (!gid) {
-          setInErr("같은 단체만 한 번에 받을 수 있어요.");
+          setInErr("같은 단체만 한 번에 수납할 수 있어요.");
           setCheckedOutAt(null);
           return;
         }
@@ -1162,7 +1162,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     status,
     platformId,
     price: draftPrice,
-    // Entry에서 판매가를 적으면 금액미정 해제
+    // Entry에서 판매가를 입력하면 금액미정 해제
     priceUnset: !!(base?.priceUnset && !(Number(draftPrice) > 0)),
     guestName: guestName.trim() || guestName,
     guestPhone: guestPhone || null,
@@ -1309,7 +1309,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     () => matchOpenCredits(data.stayCredits, guestName || live?.guestName, guestPhone || live?.guestPhone),
     [data.stayCredits, guestName, guestPhone, live?.guestName, live?.guestPhone],
   );
-  // 현장 결제·장기만 잔금 UI. OTA는 결제 줄이 있어도 「플랫폼에서 결제 · 잔금 없음」.
+  // 현장 결제·장기만 잔금 UI. OTA는 결제 내역이 있어도 「플랫폼에서 결제 · 잔금 없음」.
   const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
   /** 라벨 * · HTML required · save validateGuestPhone 동일 SoT (바로입실 빈 연락처 수정 완화) */
@@ -1356,15 +1356,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         ? `${guestName} 님 선수 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수 ${won(left)}원` : ""}`
         : `${guestName} 님 선금 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : ""}`
       : long
-        ? `${guestName} 님 미수 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[method]})${left ? ` · 남은 미수 ${won(left)}원` : " · 정산됨"}`
-        : `${guestName} 님 ${won(amount)}원 받음 (${BOOK_PAY_LABEL[method]})${left ? ` · 남은 잔금 ${won(left)}원` : " · 완납"}`;
+        ? `${guestName} 님 미수 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 잔액 ${won(left)}원` : " · 정산됨"}`
+        : `${guestName} 님 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : " · 완납"}`;
   const recordPay = async (kind: PayKind) => {
     if (payBusy || busy) return;
     const amount = Number(recv.amount || 0);
     const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
     if (!long && kind === "deposit" && amount > draftBase.price) return setPayErr("선금이 판매 가격보다 커요.");
-    // 신규: 저장과 같은 턴에 결제 줄 기록 (선금·당일 완납)
+    // 신규: 저장과 같은 턴에 결제 내역 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
       {
@@ -1408,7 +1408,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       }
       return;
     }
-    if (!isActive(live ?? base)) return setPayErr("정상 예약만 받을 수 있어요.");
+    if (!isActive(live ?? base)) return setPayErr("정상 예약만 수납할 수 있어요.");
     setPayBusy(true);
     setPayErr(null);
     try {
@@ -1425,9 +1425,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const delPay = async (id: string) => {
     if (!base || payBusy) return;
     const delOk = await askConfirm({
-      title: "결제 줄 삭제",
-      body: long ? "이 결제 줄을 지울까요? 미수가 다시 늘어나요." : "이 결제 줄을 지울까요? 잔금이 다시 늘어나요.",
-      confirmLabel: "지우기",
+      title: "결제 내역 삭제",
+      body: long ? "이 결제 내역을 삭제할까요? 미수금이 다시 늘어나요." : "이 결제 내역을 삭제할까요? 잔금이 다시 늘어나요.",
+      confirmLabel: "삭제",
       danger: true,
     });
     if (!delOk) return;
@@ -1436,7 +1436,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     try {
       await data.deletePayment(base.id, id);
     } catch (e) {
-      setPayErr(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+      setPayErr(e instanceof Error ? `삭제하지 못했어요: ${e.message}` : "삭제하지 못했어요");
     } finally {
       setPayBusy(false);
     }
@@ -1528,7 +1528,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       if (phoneErr) return setErr(phoneErr);
     }
     if (walkInImmediate && draft.kind === "stay" && !draft.roomId) return setErr("바로 입실은 호실을 골라 주세요.");
-    if (!walkInImmediate && !draft.guestName.trim()) return setErr("이름을 적어 주세요.");
+    if (!walkInImmediate && !draft.guestName.trim()) return setErr("이름을 입력해 주세요.");
     if (draft.kind === "stay" && draft.stayMode === "long_stay") {
       const rv = validateLongStayRate(draft.longStayRate);
       if (rv) return setErr(rv);
@@ -1633,15 +1633,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           : "";
       const stockTail =
         !hold && kind === "stay" && isActive(saved) && savePreview[0]
-          ? ` · ${L.types.get(savePreview[0].typeId)?.name} 남은 객실 ${savePreview[0].after}`
+          ? ` · ${L.types.get(savePreview[0].typeId)?.name} 잔여 객실 ${savePreview[0].after}`
           : hold;
       const tail = `${stockTail}${payTail}`;
       const revived = override === "active" && !!base && !isActive(base);
       onSaved(
         override === "cancelled"
-          ? `${saved.guestName} 님 예약을 취소했어요 · 남은 객실이 늘었어요`
+          ? `${saved.guestName} 님 예약을 취소했어요 · 잔여 객실이 늘었어요`
           : override === "noshow"
-            ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 금액은 매출에 남고 남은 객실이 늘었어요`
+            ? `${saved.guestName} 님 노쇼로 표시했어요 · 수납액은 매출에 남고 잔여 객실이 늘었어요`
             : revived
               ? `${saved.guestName} 님 예약을 되살렸어요${tail}`
               : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
@@ -1658,9 +1658,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setBusy(true);
     try {
       await data.deleteBooking(base.id);
-      onSaved(`${base.guestName} 님 예약을 지웠어요`);
+      onSaved(`${base.guestName} 님 예약을 삭제했어요`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "지우지 못했어요");
+      setErr(e instanceof Error ? e.message : "삭제하지 못했어요");
       setBusy(false);
     }
   }
@@ -1910,7 +1910,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </button>
             ) : null}
             {isActive(base) && live && isLongStay(live) && canExtend(live) ? (
-              <button type="button" className="beo" disabled={winBusy} onClick={() => void confirmWinExtend()} title="재고 확정 창을 7박 늘리고 원장에 줄을 쌓아요">
+              <button type="button" className="beo" disabled={winBusy} onClick={() => void confirmWinExtend()} title="재고 확정 창을 7박 늘리고 원장에 내역을 추가해요">
                 <CalendarPlus size={17} />
                 <b>{winBusy ? "연장 중…" : `재고 창 +${WINDOW_EXTEND_DEFAULT}`}</b>
               </button>
@@ -1938,11 +1938,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             ) : null}
             {confirmDel ? (
               <button type="button" className="beo danger" onClick={() => void remove()}>
-                <b>정말 지울까요?</b>
+                <b>정말 삭제할까요?</b>
               </button>
             ) : (
               <button type="button" className="beo danger" onClick={() => setConfirmDel(true)}>
-                <b>예약 지우기</b>
+                <b>예약 삭제</b>
               </button>
             )}
           </div>
@@ -1977,7 +1977,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       (c) => c.sourceBookingId === live.id && c.status !== "void",
                     );
                     return kept
-                      ? ` · ${STAY_CREDIT_COPY.keep} ${won(kept.amountOriginal)}원${kept.amountRemaining < kept.amountOriginal ? ` (남음 ${won(kept.amountRemaining)})` : ""}`
+                      ? ` · ${STAY_CREDIT_COPY.keep} ${won(kept.amountOriginal)}원${kept.amountRemaining < kept.amountOriginal ? ` (잔액 ${won(kept.amountRemaining)})` : ""}`
                       : " · 환불 없음";
                   })()}
             </span>
@@ -2074,7 +2074,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </label>
               <small>
                 저장 후 판매 {won(live.price + Number(as.amount || 0))}원
-                {Number(as.amount || 0) === 0 ? " · 0원이면 기록만 (받기 없음)" : ""}
+                {Number(as.amount || 0) === 0 ? " · 0원이면 기록만 (수납 없음)" : ""}
               </small>
             </div>
             <div className="eoc-r">
@@ -2094,7 +2094,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <label>수납</label>
                   <div className="chips">
                     <button type="button" className={`chip ${as.collect ? "on" : ""}`} onClick={() => setAs({ ...as, collect: true })}>
-                      지금 받기
+                      즉시 수납
                     </button>
                     <button type="button" className={`chip ${!as.collect ? "on" : ""}`} onClick={() => setAs({ ...as, collect: false })}>
                       후불
@@ -2127,7 +2127,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 취소
               </button>
               <button type="button" className="btn dark" disabled={asBusy} onClick={() => void confirmAs()}>
-                {asBusy ? "저장 중…" : Number(as.amount || 0) > 0 && as.collect ? "지금 받기" : "확정"}
+                {asBusy ? "저장 중…" : Number(as.amount || 0) > 0 && as.collect ? "즉시 수납" : "확정"}
               </button>
             </div>
           </div>
@@ -2143,8 +2143,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </b>
               <span>
                 {isLongStay(live)
-                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수 받기」로"
-                  : "판매 가격에 오늘 요금을 더하고, 지금 받거나 후불로 남겨 둬요"}
+                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수금 수납」으로"
+                  : "판매 가격에 오늘 요금을 더하고, 즉시 수납하거나 후불로 처리해요"}
                 {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
               </span>
             </div>
@@ -2178,7 +2178,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <label>수납</label>
                   <div className="chips">
                     <button type="button" className={`chip ${ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: true })}>
-                      지금 받기
+                      즉시 수납
                     </button>
                     <button type="button" className={`chip ${!ex.collect ? "on" : ""}`} onClick={() => setEx({ ...ex, collect: false })}>
                       후불
@@ -2198,7 +2198,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   </div>
                 ) : (
                   <div className="muted sm" style={{ marginTop: -4 }}>
-                    가격만 올리고 후불이 생겨요 · 나중에 「받기」로 적어요
+                    가격만 인상하고 후불(미수금)이 생겨요 · 나중에 「수납」으로 등록해요
                   </div>
                 )}
               </>
@@ -2287,7 +2287,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </div>
             ) : null}
             <div className="eoc-d">
-              <label>남은 돈</label>
+              <label>잔액</label>
               <div className="chips">
                 <button
                   type="button"
@@ -2365,7 +2365,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     원
                   </label>
                   <small>
-                    기본 = 받은 돈 {won(paidOf(live))} − 이용분 · 수정 가능 · 현금 환불과 별개
+                    기본 = 수납액 {won(paidOf(live))} − 이용분 · 수정 가능 · 현금 환불과 별개
                   </small>
                 </div>
                 <div className="eoc-r">
@@ -2433,7 +2433,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               객실 타입<em>*</em>
             </label>
             <div className="payb">
-              {kind === "stay" ? <div className="muted sm">호텔 전체 남은 재고 (미배정도 차감)</div> : null}
+              {kind === "stay" ? <div className="muted sm">호텔 전체 잔여 재고 (미배정도 차감)</div> : null}
               <div className="chips scroll">
                 {pickTypes.map((t, k) => {
                   const r = minRemain(t.id);
@@ -2445,7 +2445,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       </span>
                       {kind === "stay" ? (
                         <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                          남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                          잔여 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
                           {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
                         </span>
                       ) : k < 9 ? (
@@ -2495,7 +2495,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     }
                   }}
                   aria-label="입실"
-                  title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+                  title="눌러서 달력에서 고르거나, 숫자로 바로 입력해도 돼요"
                 />
               </label>
             </div>
@@ -2535,7 +2535,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             </div>
             {stayDateUx === "period-tabs" ? (
               <div className="fld">
-                <label>기간 고치기</label>
+                <label>기간 수정</label>
                 <div>
                   <div className="seg wide staytabs" role="tablist" aria-label="숙박 기간 입력 방식">
                     <button type="button" role="tab" aria-selected={stayTab === "period"} className={stayTab === "period" ? "on" : ""} onClick={() => setStayTab("period")}>
@@ -2598,7 +2598,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                           }
                         }}
                         aria-label="입실"
-                        title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+                        title="눌러서 달력에서 고르거나, 숫자로 바로 입력해도 돼요"
                       />
                     </label>
                   </div>
@@ -2726,7 +2726,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <div className="nwarn" role="status">
                 <AlertTriangle size={16} />
                 <span>
-                  박수가 늘었는데 판매 가격은 그대로예요. 아래 총액을 고쳐 주세요
+                  박수가 늘었는데 판매 가격은 그대로예요. 아래 총액을 수정해 주세요
                   {canEx ? ` · 하룻밤만 더하려면 「${EXTEND_COPY}」` : ""}.
                 </span>
               </div>
@@ -2749,7 +2749,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   onChange={(e) => setStartRaw(e.target.value)}
                   onBlur={() => startTime && setStartRaw(startTime)}
                   aria-label="시작 시간"
-                  title="1330처럼 숫자만 적어도 돼요"
+                  title="1330처럼 숫자만 입력해도 돼요"
                 />
                 <TimePick value={startTime} label="시작 시간 고르기" onPick={(v) => setStartRaw(v)} />
               </span>
@@ -2815,7 +2815,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               ) : endRaw && dur == null && !parseTime(endRaw) ? (
                 <span className="bad">끝 시간을 알아볼 수 없어요. 예: 15:30</span>
               ) : (
-                <span>시작 시간을 적고 이용 시간을 누르면 끝 시간이 저절로 들어가요</span>
+                <span>시작 시간을 입력하고 이용 시간을 누르면 끝 시간이 저절로 들어가요</span>
               )}
             </div>
           </div>
@@ -2840,7 +2840,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               {/* 신규·대실·미배정 수정: MiniFloorPlan OK */}
               {(isNew && kind === "stay") || kind === "dayuse" ? (
                 <div className="mfp-types">
-                  <div className="muted sm">{kind === "stay" ? "타입 · 남은 수" : "타입"}</div>
+                  <div className="muted sm">{kind === "stay" ? "타입 · 잔여 수" : "타입"}</div>
                   <div className="chips scroll">
                     {pickTypes.map((t, k) => {
                       const r = minRemain(t.id);
@@ -2858,7 +2858,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                           </span>
                           {kind === "stay" ? (
                             <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                              남은 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
+                              잔여 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
                               {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
                             </span>
                           ) : k < 9 ? (
@@ -3124,7 +3124,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     </button>
                   </div>
                 ) : null}
-                {!arrival ? <span className="muted sm">안 정해도 돼요 · 다시 누르면 지워져요</span> : null}
+                {!arrival ? <span className="muted sm">안 정해도 돼요 · 다시 누르면 삭제돼요</span> : null}
               </div>
               {arrival === "car" ? (
                 <div className="plates">
@@ -3215,11 +3215,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 <span className="muted">{(draftBase.charges ?? []).length}박 · 스케줄 적용</span>
               </div>
               <div className="payrow">
-                <b>받은 돈</b>
+                <b>수납액</b>
                 <span className="num">{won(payPaid)}원</span>
               </div>
               <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
-                받을 돈(미수) <b className="num">{won(payLeft)}원</b>
+                미수금 <b className="num">{won(payLeft)}원</b>
                 <span className="muted"> · {settleHint(settleCycle, payLeft)}</span>
                 <button type="button" className="btn sm line" onClick={() => setShowLedger((v) => !v)}>
                   {showLedger ? "내역 닫기" : "내역"}
@@ -3409,27 +3409,27 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     <div className="payrow" key={x.id} title={x.note?.trim() || undefined}>
                       <b>{payLineMain(x.method, x.amount)}</b>
                       <span className="muted">{payLineSub(x.kind, x.bizDate, x.note, long)}</span>
-                      <button type="button" className="ic" aria-label="이 결제 지우기" disabled={payBusy} onClick={() => void delPay(x.id)}>
+                      <button type="button" className="ic" aria-label="이 결제 삭제" disabled={payBusy} onClick={() => void delPay(x.id)}>
                         <X size={14} />
                       </button>
                     </div>
                   ))}
-                  {livePays.length > 0 ? <div className="muted sm paysplit">받은 돈 {splitLine(paySplit(livePays))}</div> : null}
+                  {livePays.length > 0 ? <div className="muted sm paysplit">수납액 {splitLine(paySplit(livePays))}</div> : null}
                   <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                     {payLeft > 0 ? (
                       <>
                         {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
                         <span className="muted">
                           {" "}
-                          = {long ? "청구 합계" : "판매"} {won(payDue)} − 받은 {won(payPaid)}
+                          = {long ? "청구 합계" : "판매"} {won(payDue)} − 수납 {won(payPaid)}
                         </span>
                       </>
                     ) : payPaid > 0 ? (
                       <>
-                        <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 받은 돈 {won(payPaid)}원</span>
+                        <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 수납액 {won(payPaid)}원</span>
                       </>
                     ) : (
-                      <span className="muted">{long ? "요금표를 적으면 미수가 보여요" : "판매 가격을 적으면 잔금이 보여요"}</span>
+                      <span className="muted">{long ? "요금표를 입력하면 미수가 보여요" : "판매 가격을 입력하면 잔금이 보여요"}</span>
                     )}
                   </div>
                   <div className="paytake">
@@ -3444,7 +3444,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         className="num"
                         inputMode="numeric"
                         placeholder={payLeft > 0 ? won(payLeft) : "0"}
-                        aria-label="받은 금액"
+                        aria-label="수납 금액"
                         value={recv.amount ? won(Number(recv.amount)) : ""}
                         onChange={(e) => setRecv({ ...recv, amount: e.target.value.replace(/\D/g, "").slice(0, 9) })}
                         onKeyDown={(e) => {
@@ -3459,7 +3459,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     <input
                       className="inp sm"
                       type="date"
-                      aria-label="받은 날"
+                      aria-label="수납일"
                       value={recv.date}
                       onChange={(e) => e.target.value && setRecv({ ...recv, date: e.target.value })}
                     />
@@ -3468,21 +3468,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         type="button"
                         className="btn sm dark"
                         disabled={payBusy || payLeft <= 0}
-                        title={payLeft <= 0 ? (long ? "받을 미수가 없어요" : "받을 잔금이 없어요") : undefined}
+                        title={payLeft <= 0 ? (long ? "수납할 미수금이 없어요" : "수납할 잔금이 없어요") : undefined}
                         onClick={() => void recordPay("balance")}
                       >
-                        {payBusy ? "저장 중…" : long ? "미수 받기" : "받기"}
+                        {payBusy ? "저장 중…" : long ? "미수금 수납" : "수납"}
                       </button>
                       <button type="button" className="btn sm line" disabled={payBusy} onClick={() => void recordPay("deposit")}>
                         {long ? "선수" : "선금"}
                       </button>
                     </div>
                   </div>
-                  {!base ? <div className="muted sm">아직 저장 전이에요 · 받기·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선금을 누르면 예약과 함께 저장돼요</div> : null}
                   {base && entryOpenCredits.length > 0 ? (
                     <div className="paytake" style={{ marginTop: 8 }}>
                       <span className="muted sm">
-                        {STAY_CREDIT_COPY.balance} {entryOpenCredits.length}건 · 남음{" "}
+                        {STAY_CREDIT_COPY.balance} {entryOpenCredits.length}건 · 잔액{" "}
                         {won(entryOpenCredits.reduce((n, c) => n + c.amountRemaining, 0))}원
                       </span>
                       <button
@@ -3561,7 +3561,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     <input type="checkbox" checked={c.hotel} aria-label={`쿠폰 ${i + 1} 숙소 부담`} onChange={(e) => setCoupons((l) => l.map((x, j) => (j === i ? { ...x, hotel: e.target.checked } : x)))} />
                     숙소 부담
                   </label>
-                  <button type="button" className="ic" aria-label={`쿠폰 ${i + 1} 지우기`} onClick={() => setCoupons((l) => l.filter((_, j) => j !== i))}>
+                  <button type="button" className="ic" aria-label={`쿠폰 ${i + 1} 삭제`} onClick={() => setCoupons((l) => l.filter((_, j) => j !== i))}>
                     <X size={14} />
                   </button>
                 </div>
@@ -3572,7 +3572,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                     <Plus size={13} /> 쿠폰
                   </button>
                 ) : null}
-                {!coupons.length ? <span className="muted sm">쿠폰을 썼으면 금액을 적어 주세요 · 판매 가격은 그대로예요</span> : null}
+                {!coupons.length ? <span className="muted sm">쿠폰을 사용했으면 금액을 입력해 주세요 · 판매 가격은 그대로예요</span> : null}
               </div>
               {poLine ? (
                 <div className="poline">
@@ -3737,12 +3737,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
 
         <div className="pv">
           {kind === "dayuse" ? (
-            <div className="pt">대실은 남은 객실에 포함되지 않아요. 이용 시간만 따로 보여 줘요.</div>
+            <div className="pt">대실은 잔여 객실에 포함되지 않아요. 이용 시간만 따로 보여 줘요.</div>
           ) : !isActive(draft) ? (
             <div className="pt">
               {status === "noshow"
-                ? "노쇼는 결제한 금액을 매출에 그대로 남기고, 방과 남은 객실은 다시 비워요."
-                : "취소는 전액 환불로 보고 장부에 줄을 그어 남겨요. 매출에서 빠지고 남은 객실은 다시 늘어나요."}
+                ? "노쇼는 결제한 금액을 매출에 그대로 남기고, 방과 잔여 객실은 다시 비워요."
+                : "취소는 전액 환불로 보고 장부에 취소선으로 남겨요. 매출에서 빠지고 잔여 객실은 다시 늘어나요."}
             </div>
           ) : preview.length ? (
             <>
@@ -3754,7 +3754,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   <div className="pvr" key={`${r.typeId}${r.date}`}>
                     <span className="d">{dayLabel(r.date)}</span>
                     <TypeBadge t={t} />
-                    <span className="pn">{t?.name} 남은 객실</span>
+                    <span className="pn">{t?.name} 잔여 객실</span>
                     <span className="v">
                       <s>{r.before}</s>
                       <ArrowRight size={16} />
@@ -3773,7 +3773,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               {preview.length > 4 ? <div className="pt more">외 {preview.length - 4}박도 함께 바뀌어요</div> : null}
             </>
           ) : (
-            <div className="pt">남은 객실 숫자는 그대로예요.</div>
+            <div className="pt">잔여 객실 숫자는 그대로예요.</div>
           )}
         </div>
 
@@ -3800,7 +3800,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             <div className="keys acts">
               {isActive(draft) ? (
                 <button type="button" className="btn line sm" title="지난 숙박을 바로잡아요: 떠난 날을 고르면 그 뒤 밤은 비워요" onClick={() => (eo ? setEo(null) : openEo())}>
-                  중도 퇴실 적기
+                  조기 퇴실 처리
                 </button>
               ) : (
                 <button

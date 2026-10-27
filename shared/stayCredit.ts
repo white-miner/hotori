@@ -41,7 +41,7 @@ export interface StayCreditApplication {
   createdAt: string;
 }
 
-/** 결제 줄 method — 카드/현금/이체와 구분 · 시재 제외 */
+/** 결제 내역 method — 카드/현금/이체와 구분 · 시재 제외 */
 export const STAY_CREDIT_PAY_METHOD = "credit" as const;
 export type StayCreditPayMethod = typeof STAY_CREDIT_PAY_METHOD;
 
@@ -59,7 +59,7 @@ export function payMethodLabel(method: string): string {
 
 export type EarlyOutDisposition = "none" | "refund" | "keep";
 
-/** 이용분(earned) = 판매가 − 미사용박×단가 제안. 보관 기본 = max(0, 받은돈 − earned) */
+/** 이용분(earned) = 판매가 − 미사용박×단가 제안. 보관 기본 = max(0, 수납액 − earned) */
 export function earnedForEarlyOut(
   b: Pick<
     Booking,
@@ -113,16 +113,16 @@ export function validateKeepCreditAmount(
   paid: number,
   maxCap: number = PAY_MAX,
 ): string | null {
-  if (!Number.isInteger(amount) || amount <= 0) return "보관 금액을 적어 주세요.";
+  if (!Number.isInteger(amount) || amount <= 0) return "보관 금액을 입력해 주세요.";
   if (amount > maxCap) return "금액이 너무 커요 (1억 원까지).";
-  if (amount > paid) return `보관 금액은 받은 돈(${won(paid)}원)보다 클 수 없어요.`;
+  if (amount > paid) return `보관 금액은 수납액(${won(paid)}원)보다 클 수 없어요.`;
   return null;
 }
 
 export function validatePreferredRecheckinDate(date: string | null | undefined, today: string): string | null {
   if (!date) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "희망 재입실일을 확인해 주세요.";
-  if (date < today) return "희망 재입실일은 오늘 이후로 적어 주세요.";
+  if (date < today) return "희망 재입실일은 오늘 이후로 입력해 주세요.";
   return null;
 }
 
@@ -151,7 +151,7 @@ export function planCreateStayCredit(input: CreateStayCreditInput): {
   }
   const guestName = input.guestName?.trim() ?? "";
   if (!guestName) return { err: "손님 이름이 필요해요." };
-  if (!Number.isInteger(input.amount) || input.amount <= 0) return { err: "보관 금액을 적어 주세요." };
+  if (!Number.isInteger(input.amount) || input.amount <= 0) return { err: "보관 금액을 입력해 주세요." };
   if (input.amount > PAY_MAX) return { err: "금액이 너무 커요 (1억 원까지)." };
   const prefErr = validatePreferredRecheckinDate(input.preferredRecheckinDate, input.today);
   if (prefErr) return { err: prefErr };
@@ -244,14 +244,14 @@ export interface ApplyStayCreditPlan {
 export function planApplyStayCredit(input: ApplyStayCreditInput): ApplyStayCreditPlan | { err: string } {
   const { credit } = input;
   if (credit.status !== "open") return { err: "이미 쓰였거나 무효인 보관 잔액이에요." };
-  if (credit.amountRemaining <= 0) return { err: "남은 보관 잔액이 없어요." };
+  if (credit.amountRemaining <= 0) return { err: "보관 잔액이 없어요." };
   if (credit.expiresOn && input.bizDate > credit.expiresOn) return { err: "만료된 보관 잔액이에요." };
-  if (!Number.isInteger(input.amount) || input.amount <= 0) return { err: "사용할 금액을 적어 주세요." };
+  if (!Number.isInteger(input.amount) || input.amount <= 0) return { err: "사용할 금액을 입력해 주세요." };
   if (input.amount > PAY_MAX) return { err: "금액이 너무 커요 (1억 원까지)." };
   if (input.amount > credit.amountRemaining) {
-    return { err: `남은 보관 잔액(${won(credit.amountRemaining)}원)보다 클 수 없어요.` };
+    return { err: `보관 잔액(${won(credit.amountRemaining)}원)보다 클 수 없어요.` };
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bizDate)) return { err: "받은 날짜를 골라 주세요." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.bizDate)) return { err: "수납일을 선택해 주세요." };
   if (!input.bookingId) return { err: "적용할 예약이 없어요." };
   const remainingAfter = credit.amountRemaining - input.amount;
   return {
@@ -278,6 +278,6 @@ export function keepCreditNotifyLine(guestName: string, amount: number, preferre
 }
 
 export function applyCreditNotifyLine(guestName: string, amount: number, remaining: number): string {
-  const left = remaining > 0 ? ` · 남은 ${STAY_CREDIT_COPY.balance} ${won(remaining)}원` : ` · ${STAY_CREDIT_COPY.balance} 소진`;
+  const left = remaining > 0 ? ` · ${STAY_CREDIT_COPY.balance} 잔액 ${won(remaining)}원` : ` · ${STAY_CREDIT_COPY.balance} 소진`;
   return `${guestName} 님 ${STAY_CREDIT_COPY.use} ${won(amount)}원${left}`;
 }

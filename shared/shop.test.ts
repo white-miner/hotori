@@ -116,8 +116,8 @@ test("Free는 물품 10개까지 (판매 시 PRO_GATES_ENABLED=true일 때)", as
 test("물품 만들기·바로 등록 검사", () => {
   const it = makeShopItem({ id: "i-1", name: "  컵라면  ", price: 3500.6, category: " 면 " });
   assert.deepEqual(it, { id: "i-1", name: "컵라면", price: 3501, category: "면", hidden: false });
-  assert.equal(validateShopDraft({ name: "", price: 1000 }), "물품 이름을 적어 주세요");
-  assert.equal(validateShopDraft({ name: "생수", price: 0 }), "가격을 적어 주세요");
+  assert.equal(validateShopDraft({ name: "", price: 1000 }), "물품 이름을 입력해 주세요");
+  assert.equal(validateShopDraft({ name: "생수", price: 0 }), "가격을 입력해 주세요");
   assert.equal(validateShopDraft({ name: "생수", price: 1000 }), null);
 });
 

@@ -27,7 +27,7 @@ export const PAYMENT_DESK_CTA = "결제 / 납입";
 export { BOOK_PAY_METHODS as PAYMENT_DESK_METHODS, BOOK_PAY_LABEL as PAYMENT_DESK_METHOD_LABEL };
 export { SURCHARGE_REASONS as PAYMENT_DESK_SURCHARGE_REASONS, SURCHARGE_REASON_LABEL };
 
-export type PaymentDeskKind = PayKind; // balance=받기 · deposit=선금
+export type PaymentDeskKind = PayKind; // balance=수납 · deposit=선금
 
 export interface PaymentDeskGlance {
   tracked: boolean;
@@ -109,7 +109,7 @@ export interface PaymentDeskPayPlan {
 export function validatePaymentDeskPay(glance: PaymentDeskGlance, input: PaymentDeskPayInput): string | null {
   if (glance.priceUnset) return "금액미정 예약이 있어요. 판매가를 먼저 확정해 주세요.";
   if (!isBookPayMethod(input.method)) return "카드 · 현금 · 이체 중에 골라 주세요.";
-  if (input.kind !== "balance" && input.kind !== "deposit") return "받기 · 선금 중에 골라 주세요.";
+  if (input.kind !== "balance" && input.kind !== "deposit") return "수납 · 선금 중에 골라 주세요.";
   const pv = validatePayment(input.amount, input.method, input.bizDate);
   if (pv) return pv;
   // OTA 등 잔금 미추적: 선금/받기는 허용(기록)하되 left 검증 생략
@@ -160,10 +160,10 @@ export function paymentDeskNotifyLine(
   leftAfter: number | null,
   group?: boolean,
 ): string {
-  const verb = kind === "deposit" ? "선금" : "받기";
+  const verb = kind === "deposit" ? "선금" : "수납";
   const scope = group ? "단체 " : "";
   const left =
-    leftAfter == null ? "" : leftAfter > 0 ? ` · 남은 금액 ${won(leftAfter)}원` : " · 정산 완료";
+    leftAfter == null ? "" : leftAfter > 0 ? ` · 잔액 ${won(leftAfter)}원` : " · 정산 완료";
   return `${scope}${guestName} 님 ${verb} · ${BOOK_PAY_LABEL[method]} ${won(amount)}원${left}`;
 }
 
@@ -171,7 +171,7 @@ export function canOpenPaymentDesk(b: Pick<Booking, "status" | "kind"> | null | 
   return !!b && b.status === "active" && b.kind === "stay";
 }
 
-/** 오잔금 제거: 판매가를 받은 돈(+환불)에 맞춰 left=0. 결제 줄은 유지(void/adjust). 장기 제외.
+/** 오잔금 제거: 판매가를 수납액(+환불)에 맞춰 left=0. 결제 내역은 유지(void/adjust). 장기 제외.
  * 늦은 퇴실 auto 시간료(기본 1만)가 판매가에 들어간 오잔금도 이 경로로 맞춤 → timeFee=0(서비스) 유지·lateOut 유지. */
 export function planClearResidualBalance(
   b: Booking,
@@ -198,7 +198,7 @@ export function planClearResidualBalance(
 }
 
 export function clearResidualConfirmLine(cleared: number, newPrice: number): string {
-  return `오잔금 ${won(cleared)}원을 없애고 판매가를 ${won(newPrice)}원으로 맞출까요?\n결제 내역은 그대로 두고, 청구액만 조정해요. (늦은 퇴실 시간은 유지 · 시간료 0원)`;
+  return `오잔금 ${won(cleared)}원을 정정하고 판매가를 ${won(newPrice)}원으로 맞출까요?\n결제 내역은 그대로 두고, 청구액만 조정해요. (늦은 퇴실 시간은 유지 · 시간료 0원)`;
 }
 
 export type DeskPayLine =

@@ -13,7 +13,7 @@ test("팝업 게이트: 금액·방법 검증 · 서비스는 0원", () => {
   assert.equal(validateEarlyInPay({ amount: 10000, method: "cash", bizDate: "2026-10-22" }), null);
   assert.equal(validateEarlyInPay({ amount: 50000, method: "service", bizDate: "2026-10-22" }), null);
   assert.match(validateEarlyInPay({ amount: -1, method: "card", bizDate: "2026-10-22" })!, /금액/);
-  assert.match(validateEarlyInPay({ amount: 10000, method: "card", bizDate: "bad" })!, /날짜/);
+  assert.match(validateEarlyInPay({ amount: 10000, method: "card", bizDate: "bad" })!, /수납일/);
 });
 
 test("서비스=0: effective · plan은 결제/가격 델타 없음", () => {

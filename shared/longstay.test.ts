@@ -79,7 +79,7 @@ test("창 밤 목록 · 누락 줄 계획 · 창 밖 삭제", () => {
   assert.equal(drop[0]!.nightDate, "2026-10-13");
 });
 
-test("미수 = 누적 − 받은 돈 · 정산 후에도 누적 유지", () => {
+test("미수 = 누적 − 수납액 · 정산 후에도 누적 유지", () => {
   const charges = [
     { id: "1", bookingId: "b", nightDate: "2026-10-11", amount: 80000, createdAt: "" },
     { id: "2", bookingId: "b", nightDate: "2026-10-12", amount: 80000, createdAt: "" },

@@ -503,7 +503,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
               }}
             />
             {guestLive ? (
-              <button type="button" className="guest-search-x" aria-label="검색 지우기" onClick={clearGuest}>
+              <button type="button" className="guest-search-x" aria-label="검색어 지우기" onClick={clearGuest}>
                 <X size={14} strokeWidth={2.4} aria-hidden />
               </button>
             ) : null}
@@ -663,7 +663,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
       <p className="stock-hint">
         {readOnly
           ? "보기 전용 · 막대는 숙박(퇴실일 칸은 비어요) · 점은 대실 · 색은 플랫폼 · 진한 테두리는 입실 완료"
-          : "막대를 누르면 예약을 고치고, 빈 칸을 누르면 그 방·그날로 새 예약을 적어요 · 점은 대실 · 색은 플랫폼 · 진한 테두리는 입실 완료"}
+          : "막대를 누르면 예약을 수정하고, 빈 칸을 누르면 그 방·그날로 새 예약을 등록해요 · 점은 대실 · 색은 플랫폼 · 진한 테두리는 입실 완료"}
       </p>
     </>
   );

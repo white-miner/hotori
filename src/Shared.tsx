@@ -40,7 +40,7 @@ export default function SharedView({ token }: { token: string }) {
     return (
       <div className="center-msg">
         <b>이 링크는 지금 쓸 수 없어요</b>
-        <span className="muted">공유가 꺼졌거나 새 링크로 바뀌었어요. 호텔에 새 링크를 받아 주세요.</span>
+        <span className="muted">공유가 꺼졌거나 새 링크로 바뀌었어요. 호텔에 새 링크를 요청해 주세요.</span>
       </div>
     );
 

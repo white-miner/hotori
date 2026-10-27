@@ -373,7 +373,7 @@ export function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 /**
- * 날짜 칩: 눌러서 달력(showPicker)으로 고르거나 숫자로 적어요. Esc는 칸만 빠져나가요 (창은 그대로).
+ * 날짜 칩: 눌러서 달력(showPicker)으로 고르거나 숫자로 입력해요. Esc는 칸만 빠져나가요 (창은 그대로).
  * 예약 기록의 '날짜 고르기'와 같은 방식이에요.
  */
 export function DateChip({ value, onChange, label, min, max }: { value: string; onChange: (v: string) => void; label: string; min?: string; max?: string }) {
@@ -394,7 +394,7 @@ export function DateChip({ value, onChange, label, min, max }: { value: string; 
         max={max ?? "2099-12-31"}
         value={value}
         aria-label={label}
-        title="눌러서 달력에서 고르거나, 숫자로 바로 적어도 돼요"
+        title="눌러서 달력에서 고르거나, 숫자로 바로 입력해도 돼요"
         onChange={(e) => e.target.value && onChange(e.target.value)}
         onClick={(e) => open(e.currentTarget)}
         onKeyDown={(e) => {

@@ -222,7 +222,7 @@ interface Props {
   move?: BoardMove | null;
   onMoveStart?: (m: BoardMove) => void;
   onMoveEnd?: () => void;
-  /** 현황 공유 링크: 보기만 해요 (고치기·입실 완료·방 배정·가격 없음) */
+  /** 현황 공유 링크: 보기만 해요 (수정·입실 완료·방 배정·가격 없음) */
   readOnly?: boolean;
   /** 공유 보기에서 고를 수 있는 날짜 범위 */
   minDate?: string;
@@ -1325,7 +1325,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <main className="page">
         <div className="empty-setup">
           <h1>먼저 우리 호텔 객실을 등록해 주세요</h1>
-          <p>설정에서 층, 방 번호, 객실 타입, 플랫폼을 한 번만 적으면 바로 장부를 쓸 수 있어요.</p>
+          <p>설정에서 층, 방 번호, 객실 타입, 플랫폼을 한 번만 등록하면 바로 장부를 쓸 수 있어요.</p>
           {readOnly ? null : (
             <a className="btn red" href="#/settings">
               설정으로 가기
@@ -2080,7 +2080,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             }}
           />
           {guestQueryLive ? (
-            <button type="button" className="guest-search-x" aria-label="검색 지우기" onClick={clearGuestSearch}>
+            <button type="button" className="guest-search-x" aria-label="검색어 지우기" onClick={clearGuestSearch}>
               <X size={14} strokeWidth={2.4} aria-hidden />
             </button>
           ) : null}
@@ -2193,7 +2193,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         } catch (e) {
           setEarlyPay(null);
           notify(
-            `${earlyInPayNotifyLine(b.guestName, { ...plan, collectAmount: 0, method: null, payNote: null }, method)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${earlyInPayNotifyLine(b.guestName, { ...plan, collectAmount: 0, method: null, payNote: null }, method)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           return;
         }
@@ -2268,7 +2268,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (plan.asGroup) {
         const gid = sameGroupId(members);
         if (!gid) {
-          notify("같은 단체만 한 번에 받을 수 있어요.");
+          notify("같은 단체만 한 번에 수납할 수 있어요.");
           return;
         }
         await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
@@ -2403,7 +2403,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           collected = true;
         } catch (e) {
           notify(
-            `${dayuseSaleNotifyLine(saved.guestName, dayuseSale?.roomLabel ?? "", saved.price, false, null)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${dayuseSaleNotifyLine(saved.guestName, dayuseSale?.roomLabel ?? "", saved.price, false, null)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           setDayuseSale(null);
           return;
@@ -2435,7 +2435,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       if (plan.asGroup) {
         const gid = sameGroupId(members);
         if (!gid) {
-          notify("같은 단체만 한 번에 받을 수 있어요.");
+          notify("같은 단체만 한 번에 수납할 수 있어요.");
           return;
         }
         await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
@@ -2690,7 +2690,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             collected = true;
           } catch (e) {
             notify(
-              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
             );
             setAddTime(null);
             return;
@@ -2717,7 +2717,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             collected = true;
           } catch (e) {
             notify(
-              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+              `${addTimeNotifyLine(saved.guestName, planned, false)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
             );
             setAddTime(null);
             return;
@@ -2810,7 +2810,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           collected = true;
         } catch (e) {
           notify(
-            `${extendNotifyLine(saved.guestName, planned.draft, false)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${extendNotifyLine(saved.guestName, planned.draft, false)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           setExtendNight(null);
           return;
@@ -2867,9 +2867,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setPayDeskBusy(true);
     try {
       await data.deletePayment(bookingId, payId);
-      notify("결제 줄을 지웠어요");
+      notify("결제 내역을 삭제했어요");
     } catch (e) {
-      notify(saveFailMessage(e, "결제 줄을 지우지 못했어요"));
+      notify(saveFailMessage(e, "결제 내역을 삭제하지 못했어요"));
     } finally {
       setPayDeskBusy(false);
     }
@@ -2880,15 +2880,15 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setPayDeskBusy(true);
     try {
       await data.deleteGroupPayment(groupId, payId);
-      notify("단체 결제 줄을 지웠어요");
+      notify("단체 결제 내역을 삭제했어요");
     } catch (e) {
-      notify(saveFailMessage(e, "단체 결제 줄을 지우지 못했어요"));
+      notify(saveFailMessage(e, "단체 결제 내역을 삭제하지 못했어요"));
     } finally {
       setPayDeskBusy(false);
     }
   };
 
-  /** 오잔금: 판매가=받은돈(+환불) 조정 · 결제 줄 유지 · 시간료 0(서비스) */
+  /** 오잔금: 판매가=수납액(+환불) 조정 · 결제 내역 유지 · 시간료 0(서비스) */
   const commitDeskClearResidual = async (b: Booking, newPrice: number) => {
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
@@ -2945,7 +2945,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           collected = true;
         } catch (e) {
           notify(
-            `${surchargeNotifyLine(saved.guestName, input.reason, input.amount, false, planned.draft.lateOut)} · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`,
+            `${surchargeNotifyLine(saved.guestName, input.reason, input.amount, false, planned.draft.lateOut)} · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`,
           );
           setPayDesk(null);
           return;
@@ -3000,7 +3000,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           aria-label={
             openN
               ? `${r.no} 미해결 특이사항 ${openN}건: ${glance!.preview}`
-              : `${r.no} 특이사항 적기`
+              : `${r.no} 특이사항 등록`
           }
           title={openN ? glance!.title : "특이사항"}
           onClick={(e) => {

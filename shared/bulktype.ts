@@ -21,7 +21,7 @@ export function floorRange(s: HotelSettings, a: string, b: string): string[] {
 }
 export type PickState = { bulk: boolean; sel: ReadonlySet<string>; last: string | null };
 /**
- * 방 클릭 한 번 (Shift · Ctrl/⌘). null이면 평소 클릭(방 고치기)이에요.
+ * 방 클릭 한 번 (Shift · Ctrl/⌘). null이면 평소 클릭(방 수정)이에요.
  * - 모드가 꺼져 있어도 Shift·Ctrl/⌘ 클릭은 여러 개 선택을 켜요. 방금 눌러 둔 방(last)도 같이 골라져요.
  * - Shift: last와 같은 층이면 그 사이 전부, 층이 다르면 그 방만 더해요 (501 → Shift 601 = 2개).
  * - Ctrl/⌘ 또는 모드 안의 그냥 클릭: 그 방 하나만 넣었다 뺐다.

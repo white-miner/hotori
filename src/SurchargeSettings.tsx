@@ -29,7 +29,7 @@ export function TierSettings({ s, update, notify }: { s: HotelSettings; update: 
           </label>
           <button
             className="ic"
-            aria-label="객실 종류 지우기"
+            aria-label="객실 종류 삭제"
             onClick={() => {
               if (s.surchargeTiers.length <= 1) return notify("객실 종류는 하나 이상 있어야 해요");
               if (s.types.some((y) => y.tierId === t.id)) return notify(`'${tierLabel(t)}'을 쓰는 객실 타입이 있어요. 객실 타입에서 먼저 바꿔 주세요`);

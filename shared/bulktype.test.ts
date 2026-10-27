@@ -62,7 +62,7 @@ test("알림 글: '605–608호 4개를 스탠다드 2PC로 바꿨어요'", () =
 
 test("Shift·Ctrl 클릭: 모드가 꺼져 있어도 켜지고, Shift는 같은 층만 범위 · 다른 층은 그 방만", () => {
   const off = { bulk: false, sel: new Set<string>(), last: null };
-  // 평소 클릭은 그대로 (방 고치기)
+  // 평소 클릭은 그대로 (방 수정)
   assert.equal(pickRoom(S, off, "r501", {}), null);
   // 사용자가 한 그대로: 501 (평소 클릭) → Shift 601 은 층이 달라서 둘만
   let st = pickRoom(S, { ...off, last: "r501" }, "r605", { shift: true })!;

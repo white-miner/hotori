@@ -90,7 +90,7 @@ function HotelGate({ session }: { session: Session }) {
 
 export interface EntryRequest {
   booking?: Booking; // 수정
-  preset?: Partial<Booking>; // 새로 적기
+  preset?: Partial<Booking>; // 신규 등록
   n?: number;
   night?: string; // 객실 배치에서 열었으면 그 밤 (위에 '객실 이동' 단추)
   /** 「현황」 빠른 액션: 예약 창을 열고 1박 연장 패널을 바로 펴요 */

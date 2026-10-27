@@ -70,7 +70,7 @@ function SeasonRow({
           autoFocus={draft}
           onChange={(e) => patch({ name: e.target.value.slice(0, SEASON_NAME_MAX) })}
         />
-        <button className="ic" aria-label="시즌 지우기" onClick={onRemove}>
+        <button className="ic" aria-label="시즌 삭제" onClick={onRemove}>
           <Trash2 size={14} />
         </button>
       </div>
@@ -98,7 +98,7 @@ function SeasonRow({
       {err && touched ? (
         <div className="rs-err" role="alert">
           {err}
-          {!draft ? " · 고칠 때까지 이전 값이 그대로 쓰여요" : " · 다 채우면 저장돼요"}
+          {!draft ? " · 수정할 때까지 이전 값이 그대로 쓰여요" : " · 다 채우면 저장돼요"}
         </div>
       ) : d.from && d.to && d.from <= d.to ? (
         <div className="muted sm">{span(d.from, d.to)}</div>
@@ -151,7 +151,7 @@ export function WeekendDaysSettings({ s, update, notify }: { s: HotelSettings; u
   };
   return (
     <div className="rs-weekend">
-      <div className="rs-label">주말 요금을 받는 밤</div>
+      <div className="rs-label">주말 요금 적용 밤</div>
       <div className="rs-days" role="group" aria-label="주말 요일">
         {[...DOW_KO].map((w, i) => (
           <button key={w} type="button" className={`rs-day ${days.includes(i) ? "on" : ""}`} aria-pressed={days.includes(i)} onClick={() => toggle(i)}>
@@ -220,7 +220,7 @@ export function RateSettings({ s, update, notify }: { s: HotelSettings; update: 
       <WeekendDaysSettings s={s} update={update} notify={notify} />
       {!hasAny ? (
         <div className="rs-hint" role="status">
-          아직 요금이 없어요. 평일·주말 요금을 적으면 간단 예약에서 박마다 계산해 채워 줘요. 비워 두면 지금처럼 직접 적으면 돼요.
+          아직 요금이 없어요. 평일·주말 요금을 입력하면 간단 예약에서 박마다 계산해 채워 줘요. 비워 두면 지금처럼 직접 입력하면 돼요.
         </div>
       ) : null}
       {types.map((t) => {

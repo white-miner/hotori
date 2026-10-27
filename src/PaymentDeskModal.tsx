@@ -47,7 +47,7 @@ type SurchargeInput = {
  * 「현황」결제/납입 데스크 — Entry 우회.
  * 단실 Option A · 동일 groupId 복수는 합산 + addGroupPayment.
  * 할증(늦은 퇴실 등)은 사유 칩으로 흡수(단실만).
- * 내역: 결제 줄 삭제(confirm) · 단실 오잔금 → 판매가 조정(confirm).
+ * 내역: 결제 내역 삭제(confirm) · 단실 오잔금 → 판매가 조정(confirm).
  */
 export default function PaymentDeskModal({
   s,
@@ -180,9 +180,9 @@ export default function PaymentDeskModal({
     if (busy) return;
     void (async () => {
       const ok = await askConfirm({
-        title: "결제 줄 삭제",
-        body: "이 결제 줄을 지울까요? 잔금이 다시 늘어날 수 있어요.",
-        confirmLabel: "지우기",
+        title: "결제 내역 삭제",
+        body: "이 결제 내역을 삭제할까요? 잔금이 다시 늘어날 수 있어요.",
+        confirmLabel: "삭제",
         danger: true,
       });
       if (!ok) return;
@@ -196,9 +196,9 @@ export default function PaymentDeskModal({
     if (busy || !single || !onClearResidual || !clearOk) return;
     void (async () => {
       const ok = await askConfirm({
-        title: "잔금 없애기",
+        title: "잔금 조정",
         body: clearResidualConfirmLine(clearOk.cleared, clearOk.newPrice),
-        confirmLabel: "잔금 없애기",
+        confirmLabel: "잔금 조정",
         danger: true,
       });
       if (!ok) return;
@@ -234,20 +234,20 @@ export default function PaymentDeskModal({
           </p>
           <div className="payment-desk-glance" aria-label="잔금">
             <span>
-              받을 <b>{won(glance.due)}</b>
+              청구 <b>{won(glance.due)}</b>
             </span>
             <span>
-              받은 <b>{won(glance.paid)}</b>
+              수납 <b>{won(glance.paid)}</b>
             </span>
             <span className={glance.tracked && glance.left > 0 ? "left" : ""}>
-              남은 <b>{glance.tracked ? won(glance.left) : "—"}</b>
+              잔액 <b>{glance.tracked ? won(glance.left) : "—"}</b>
             </span>
           </div>
           {!glance.tracked ? <p className="muted sm">플랫폼 선결제 · 잔금 추적 없음 (기록만 가능)</p> : null}
-          {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 받아 주세요.</p> : null}
+          {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 수납해 주세요.</p> : null}
           {clearOk ? (
             <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
-              잔금 없애기 · {won(clearOk.cleared)}원 맞춤 (오청구·시간료)
+              잔금 조정 · {won(clearOk.cleared)}원 감액 (오청구·시간료)
             </button>
           ) : null}
 
@@ -262,7 +262,7 @@ export default function PaymentDeskModal({
                 setErr(null);
               }}
             >
-              받기 · 선금
+              수납 · 선금
             </Chip>
             {canSurcharge ? (
               <Chip
@@ -326,9 +326,9 @@ export default function PaymentDeskModal({
                     }}
                   />
                 </PriceInp>
-                <ChipGroup role="group" aria-label="받기 종류">
+                <ChipGroup role="group" aria-label="수납 종류">
                   <Chip sm active={kind === "balance"} disabled={busy} onClick={() => setKind("balance")}>
-                    받기
+                    수납
                   </Chip>
                   <Chip sm active={kind === "deposit"} disabled={busy} onClick={() => setKind("deposit")}>
                     선금
@@ -443,9 +443,9 @@ export default function PaymentDeskModal({
                     onChange={(e) => setAmount(e.target.value.replace(/\D/g, "").slice(0, 9))}
                   />
                 </PriceInp>
-                <ChipGroup role="group" aria-label="지금 받기">
+                <ChipGroup role="group" aria-label="즉시 수납">
                   <Chip sm active={collect} disabled={busy || Number(amount || 0) <= 0} onClick={() => setCollect(true)}>
-                    지금 받기
+                    즉시 수납
                   </Chip>
                   <Chip sm active={!collect} disabled={busy} onClick={() => setCollect(false)}>
                     잔금으로
@@ -481,7 +481,7 @@ export default function PaymentDeskModal({
                         <button
                           type="button"
                           className="ic"
-                          aria-label="이 결제 지우기"
+                          aria-label="이 결제 삭제"
                           disabled={busy}
                           onClick={() => removeLine(line)}
                         >
@@ -498,7 +498,7 @@ export default function PaymentDeskModal({
                 <p className="muted sm">{clearErr}</p>
               ) : null}
               {glance.tracked && glance.left > 0 && !canClear && !single ? (
-                <p className="muted sm">단체는 내역에서 줄을 지우거나, 단실로 「잔금 없애기」를 써 주세요.</p>
+                <p className="muted sm">단체는 내역에서 결제 내역을 삭제하거나, 단실로 「잔금 조정」를 써 주세요.</p>
               ) : null}
             </div>
           ) : null}

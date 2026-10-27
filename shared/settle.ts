@@ -21,7 +21,7 @@ export interface GroupInfo {
   payerCompany: string | null;
   payerName: string | null;
   payerPhone: string | null;
-  /** 타입별 1박 요금 (만들 때 적은 값, 보여 주기용) */
+  /** 타입별 1박 요금 (만들 때 입력한 값, 보여 주기용) */
   rates: Record<string, number> | null;
   extras: GroupExtra[];
   payments: Payment[];
@@ -61,7 +61,7 @@ export interface SettleLine {
   typeId: string;
   rooms: number;
   nights: number; // 방마다 박수 합
-  rate: number; // 1박 요금 (적은 값, 없으면 평균)
+  rate: number; // 1박 요금 (입력값, 없으면 평균)
   subtotal: number; // 판매 가격 합 (추가 인원 뺀)
   noshow: number;
 }
@@ -76,7 +76,7 @@ export interface Settlement {
   cancelled: { rooms: number; amount: number }; // 빠진 것 (청구 안 함)
   noshowRooms: number;
   total: number; // 최종 결제액
-  paid: number; // 받은 돈 (단체 + 방마다 받은 선금)
+  paid: number; // 수납액 (단체 + 방마다 받은 선금)
   left: number;
   settled: boolean;
   /** 잔금을 따지나요: 후불이거나 현장 결제 플랫폼일 때 (OTA 선결제는 잔금 없음) */
@@ -118,7 +118,7 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
   const extras = (info?.extras ?? []).reduce((a, x) => a + Math.max(0, x.amount), 0);
   const total = Math.max(0, roomSum + extraGuests + extraTime + parking + extras - refunds);
   const paid = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0) + counted.reduce((a, b) => a + paidOf(b), 0);
-  // 후불·현장 결제만 잔금. OTA 선결제(prepaid)는 결제 줄·추가항목이 있어도 플랫폼 선결제 → 잔금 없음.
+  // 후불·현장 결제만 잔금. OTA 선결제(prepaid)는 결제 내역·추가항목이 있어도 플랫폼 선결제 → 잔금 없음.
   const tracked = info?.payMode === "postpaid" || isOnsite(plat);
   const left = tracked ? Math.max(0, total - paid) : 0;
   return {
@@ -138,7 +138,7 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
     tracked,
   };
 }
-/** 장부 단체 줄의 작은 글자: '정산 대기 9,360,000' · '잔금 …' · '정산 완료' */
+/** 장부 단체 내역의 작은 글자: '정산 대기 9,360,000' · '잔금 …' · '정산 완료' */
 export function settleBadge(st: Settlement, info: GroupInfo | null | undefined): { text: string; due: boolean } | null {
   if (!st.tracked || st.total <= 0) return null;
   if (st.settled) return { text: "정산 완료", due: false };
@@ -146,7 +146,7 @@ export function settleBadge(st: Settlement, info: GroupInfo | null | undefined):
   return { text: info?.payMode === "postpaid" ? `정산 대기 ${v}` : `잔금 ${v}`, due: true };
 }
 
-/** P1 글랜스 뱃지: 단체 줄만 → 단체납 · 한 방 대납 완납 → 대납 · 방마다(S1) → 없음 */
+/** P1 글랜스 뱃지: 단체 내역만 → 단체납 · 한 방 대납 완납 → 대납 · 방마다(S1) → 없음 */
 export type GroupSettlePayBadge = "단체납" | "대납";
 
 /**
@@ -205,7 +205,7 @@ export function groupSettleGlance(
   const strip =
     k === 0
       ? `단체 · ${n}실 완납`
-      : `단체 · ${paidRooms}실 완납 / ${k}실 잔금 · 남은 ₩${won(st.left)}`;
+      : `단체 · ${paidRooms}실 완납 / ${k}실 잔금 · 잔액 ₩${won(st.left)}`;
   const compact = k === 0 ? `${n}완` : `${paidRooms}완/${k}잔`;
 
   return {
@@ -221,8 +221,8 @@ export function groupSettleGlance(
   };
 }
 export function validateExtra(x: GroupExtra): string | null {
-  if (!x.name.trim()) return "항목 이름을 적어 주세요.";
+  if (!x.name.trim()) return "항목 이름을 입력해 주세요.";
   if (x.name.trim().length > EXTRA_NAME_MAX) return `항목 이름은 ${EXTRA_NAME_MAX}글자까지예요.`;
-  if (!Number.isInteger(x.amount) || x.amount <= 0 || x.amount > 100_000_000) return "금액을 적어 주세요.";
+  if (!Number.isInteger(x.amount) || x.amount <= 0 || x.amount > 100_000_000) return "금액을 입력해 주세요.";
   return null;
 }

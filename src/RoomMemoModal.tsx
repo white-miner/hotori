@@ -96,8 +96,8 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
   async function erase(m: RoomMemo) {
     const ok = await askConfirm({
       title: "특이사항 삭제",
-      body: `이 특이사항을 지울까요?\n${m.body}`,
-      confirmLabel: "지우기",
+      body: `이 특이사항을 삭제할까요?\n${m.body}`,
+      confirmLabel: "삭제",
       danger: true,
     });
     if (!ok) return;
@@ -109,9 +109,9 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
         setBody("");
         setKind("issue");
       }
-      notify("특이사항을 지웠어요");
+      notify("특이사항을 삭제했어요");
     } catch (e) {
-      notify(e instanceof Error ? e.message : "지우지 못했어요");
+      notify(e instanceof Error ? e.message : "삭제하지 못했어요");
     } finally {
       setBusy(false);
     }
@@ -160,7 +160,7 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
                 onChange={(e) => setBody(e.target.value.slice(0, ROOM_MEMO_BODY_MAX))}
               />
               <button type="submit" className="btn red sm" disabled={busy}>
-                {busy ? "…" : editId ? "고치기" : "추가"}
+                {busy ? "…" : editId ? "수정" : "추가"}
               </button>
               {editId ? (
                 <button
@@ -183,7 +183,7 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
         ) : null}
 
         <div className="rmemo-list">
-          {!rows.length ? <div className="lempty">이 방 특이사항이 없어요 · 화이트보드처럼 짧게 적어 보세요</div> : null}
+          {!rows.length ? <div className="lempty">이 방 특이사항이 없어요 · 간단히 입력해 보세요</div> : null}
           {rows.map((m) => (
             <div key={m.id} className={`rmemo-item ${m.status === "resolved" ? "done" : ""}`}>
               <div className="rmemo-main">
@@ -200,7 +200,7 @@ export default function RoomMemoModal({ roomId, roomLabel, list, readOnly, onClo
                     수정
                   </button>
                   <button type="button" className="btn sm danger" disabled={busy} onClick={() => void erase(m)}>
-                    지우기
+                    삭제
                   </button>
                 </div>
               ) : null}

@@ -26,7 +26,7 @@ export const NIGHT_CHIPS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
 export function stepNights(nights: number, delta: number): number {
   return clampStayNights((Number.isFinite(nights) ? nights : STAY_NIGHTS_MIN) + delta);
 }
-/** 칸에 적은 박수 글자 → 박수 (비었거나 숫자가 아니면 null) */
+/** 칸에 입력한 박수 글자 → 박수 (비었거나 숫자가 아니면 null) */
 export function parseNightsInput(raw: string): number | null {
   const t = raw.trim();
   if (!/^\d{1,3}$/.test(t)) return null;

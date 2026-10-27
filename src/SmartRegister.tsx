@@ -283,14 +283,14 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       kind === "fix"
         ? [
             summaryBits.length ? summaryBits.join(" · ") : null,
-            `수정필요 ${fixBlockingCount}건을 고치거나 「건너뛰기」한 뒤 올려 주세요.`,
+            `수정필요 ${fixBlockingCount}건을 수정하거나 「건너뛰기」한 뒤 올려 주세요.`,
             "붙여넣기를 비우려면 「새 작성」을 눌러 주세요.",
           ]
         : [
             summaryBits.length ? summaryBits.join(" · ") : null,
             "올릴 신규·예약취소가 없어요.",
             fixLabelCount
-              ? "수정필요 행은 타입·날짜 등을 고치거나 「건너뛰기」한 뒤 다시 올려 주세요."
+              ? "수정필요 행은 타입·날짜 등을 수정하거나 「건너뛰기」한 뒤 다시 올려 주세요."
               : "이미 Hotori에 있는 예약이거나 중복스킵만 있어요.",
             "붙여넣기를 비우려면 「새 작성」을 눌러 주세요.",
           ];

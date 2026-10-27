@@ -96,10 +96,10 @@ export default function NowGlancePanel({
         type="button"
         className={`now-vacancy-stat left${occFilter === "left" ? " on" : ""}`}
         aria-pressed={occFilter === "left"}
-        title="남은 호수만 강조"
+        title="잔여 객실만 강조"
         onClick={() => tapOcc("left")}
       >
-        남음 <span className="num">{left}</span>
+        잔여 <span className="num">{left}</span>
       </button>
     </div>
   );
@@ -134,7 +134,7 @@ export default function NowGlancePanel({
         ) : null}
       </div>
     ) : (
-      <span className="now-vacancy-none">남은 호수 없음</span>
+      <span className="now-vacancy-none">잔여 객실 없음</span>
     );
 
   let body: ReactNode = null;

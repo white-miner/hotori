@@ -190,7 +190,7 @@ function TypeAliasSettings({
   const rows = s.typeAliases.filter((a) => a.platformId === activePlatformId);
   const add = () => {
     const name = draftName.trim();
-    if (!name) return notify("OTA 타입 이름을 적어 주세요.");
+    if (!name) return notify("OTA 타입 이름을 입력해 주세요.");
     if (!activePlatformId || !activeTypeId) return notify("플랫폼과 Hotori 타입을 골라 주세요.");
     update((x) => ({
       ...x,
@@ -206,13 +206,13 @@ function TypeAliasSettings({
   const del = (id: string, label: string) => {
     void askConfirm({
       title: "타입 매칭 삭제",
-      body: `「${label}」 매칭을 지울까요?`,
+      body: `「${label}」 매칭을 삭제할까요?`,
       confirmLabel: "삭제",
       danger: true,
     }).then((ok) => {
       if (!ok) return;
       update((x) => ({ ...x, typeAliases: removeTypeAlias(x.typeAliases, id) }));
-      notify("지웠어요");
+      notify("삭제했어요");
     });
   };
   return (
@@ -240,7 +240,7 @@ function TypeAliasSettings({
             →
           </span>
           <span className="type-alias-hotori">{typeLabel(s.types.find((t) => t.id === a.typeId)) || "(없는 타입)"}</span>
-          <button type="button" className="ic" aria-label="매칭 지우기" onClick={() => del(a.id, a.platformTypeName)}>
+          <button type="button" className="ic" aria-label="매칭 삭제" onClick={() => del(a.id, a.platformTypeName)}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -446,10 +446,10 @@ export default function Settings({ data, email, notify }: Props) {
     }
     if (sold && !hidden) {
       setShop(id, { hidden: true });
-      return notify("판매 기록이 있어서 지우지 않고 숨겼어요. 한 번 더 누르면 목록에서 지워요");
+      return notify("판매 기록이 있어서 삭제하지 않고 숨겼어요. 한 번 더 누르면 목록에서 삭제해요");
     }
     update((x) => ({ ...x, shopItems: x.shopItems.filter((y) => y.id !== id) }));
-    if (sold) notify("목록에서 지웠어요. 지난 매출은 그대로 남아요");
+    if (sold) notify("목록에서 삭제했어요. 지난 매출은 그대로 남아요");
   };
   const typeOf = (id: string | null) => s.types.find((t) => t.id === id) ?? null;
 
@@ -499,7 +499,7 @@ export default function Settings({ data, email, notify }: Props) {
     setSelBuilding(id);
     setSelFloor(null);
     setSelRoom(null);
-    notify(`${defaultBuildingName(s.buildings.length)}을 추가했어요. 이름을 적고 층에 방을 추가해 주세요`);
+    notify(`${defaultBuildingName(s.buildings.length)}을 추가했어요. 이름을 입력하고 층에 방을 추가해 주세요`);
   };
   const setBuilding = (bid: string, fn: (b: Building) => Building) =>
     update((x) => ({ ...x, buildings: x.buildings.map((b) => (b.id === bid ? fn(b) : b)) }));
@@ -513,7 +513,7 @@ export default function Settings({ data, email, notify }: Props) {
       <div className="ph">
         <div>
           <h1>설정</h1>
-          <div className="sub">처음 한 번만 등록하면 돼요. 화이트보드처럼 층과 방 번호를 적고, 방마다 타입을 정해요.</div>
+          <div className="sub">처음 한 번만 등록하면 돼요. 화이트보드처럼 층과 방 번호를 입력하고, 방마다 타입을 정해요.</div>
         </div>
         <div className="chips">
           <span className={`save-st ${saving}`}>
@@ -547,7 +547,7 @@ export default function Settings({ data, email, notify }: Props) {
             객실 배치 <span className="tag">총 {roomTotal}실{hotel.isDemo ? " · 예시 배정" : ""}</span>
           </h3>
           <div className="sub">
-            층 줄의 +를 눌러 방을 추가하고(예: <b>601~610</b>), 층 이름을 누르면 번호줄 색을 바꿀 수 있어요.
+            층 행의 +를 눌러 방을 추가하고(예: <b>601~610</b>), 층 이름을 누르면 호실 번호 색상을 바꿀 수 있어요.
           </div>
           <div className="stools">
             <span className="push" />
@@ -619,7 +619,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <div className="sbh">
                   <button
                     className={`sbn ${selBuilding === bd.id ? "on" : ""}`}
-                    title="건물 이름·순서 고치기"
+                    title="건물 이름·순서 수정"
                     onClick={() => (setSelBuilding(selBuilding === bd.id ? null : bd.id), setSelFloor(null), setSelRoom(null))}
                   >
                     <Building2 size={14} />
@@ -733,7 +733,7 @@ export default function Settings({ data, email, notify }: Props) {
           {building ? (
             <div className="editor">
               <div className="ed-h">
-                <b>건물 고치기</b>
+                <b>건물 수정</b>
                 <button className="ic" aria-label="닫기" onClick={() => setSelBuilding(null)}>
                   <X size={16} />
                 </button>
@@ -764,9 +764,9 @@ export default function Settings({ data, email, notify }: Props) {
                     void (async () => {
                       if (n) {
                         const ok = await askConfirm({
-                          title: "건물 지우기",
-                          body: `${buildingName(s, building.id)}${josa(buildingName(s, building.id), "과", "와")} 층 ${fl.length}개, 방 ${n}개를 지울까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
-                          confirmLabel: "지우기",
+                          title: "건물 삭제",
+                          body: `${buildingName(s, building.id)}${josa(buildingName(s, building.id), "과", "와")} 층 ${fl.length}개, 방 ${n}개를 삭제할까요? 그 방의 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
+                          confirmLabel: "삭제",
                           danger: true,
                         });
                         if (!ok) return;
@@ -776,17 +776,17 @@ export default function Settings({ data, email, notify }: Props) {
                     })();
                   }}
                 >
-                  <Trash2 size={14} />건물 지우기
+                  <Trash2 size={14} />건물 삭제
                 </button>
               </div>
-              <p className="fine">건물마다 같은 방 번호를 써도 돼요 (예: 본관 201 · 별관 201). 남은 객실은 건물과 상관없이 타입별로 합쳐서 계산해요.</p>
+              <p className="fine">건물마다 같은 방 번호를 써도 돼요 (예: 본관 201 · 별관 201). 잔여 객실은 건물과 상관없이 타입별로 합쳐서 계산해요.</p>
             </div>
           ) : null}
 
           {floor ? (
             <div className="editor">
               <div className="ed-h">
-                <b>층 고치기</b>
+                <b>층 수정</b>
                 <button className="ic" aria-label="닫기" onClick={() => setSelFloor(null)}>
                   <X size={16} />
                 </button>
@@ -808,9 +808,9 @@ export default function Settings({ data, email, notify }: Props) {
                     void (async () => {
                       if (floor.rooms.length) {
                         const ok = await askConfirm({
-                          title: "층 지우기",
-                          body: `${floor.name}${josa(floor.name, "과", "와")} 방 ${floor.rooms.length}개를 지울까요? 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
-                          confirmLabel: "지우기",
+                          title: "층 삭제",
+                          body: `${floor.name}${josa(floor.name, "과", "와")} 방 ${floor.rooms.length}개를 삭제할까요? 기존 예약은 '방 미배정 숙박'으로 옮겨져요.`,
+                          confirmLabel: "삭제",
                           danger: true,
                         });
                         if (!ok) return;
@@ -820,7 +820,7 @@ export default function Settings({ data, email, notify }: Props) {
                     })();
                   }}
                 >
-                  <Trash2 size={14} />층 지우기
+                  <Trash2 size={14} />층 삭제
                 </button>
               </div>
               {multi ? (
@@ -847,7 +847,7 @@ export default function Settings({ data, email, notify }: Props) {
                 </div>
               ) : null}
               <div className="ed-row">
-                <label>번호줄 색</label>
+                <label>호실 번호 색상</label>
                 <Swatches value={floor.color} onChange={(c) => setFloor(floor.id, (f) => ({ ...f, color: c }))} />
               </div>
             </div>
@@ -856,7 +856,7 @@ export default function Settings({ data, email, notify }: Props) {
           {room ? (
             <div className="editor">
               <div className="ed-h">
-                <b>{multi ? `${buildingName(s, room.f.buildingId)} ` : ""}{room.r.no}호 고치기</b>
+                <b>{multi ? `${buildingName(s, room.f.buildingId)} ` : ""}{room.r.no}호 수정</b>
                 <button className="ic" aria-label="닫기" onClick={() => setSelRoom(null)}>
                   <X size={16} />
                 </button>
@@ -890,7 +890,7 @@ export default function Settings({ data, email, notify }: Props) {
                     setSelRoom(null);
                   }}
                 >
-                  <Trash2 size={14} />방 지우기
+                  <Trash2 size={14} />방 삭제
                 </button>
               </div>
               <div className="ed-row">
@@ -936,7 +936,7 @@ export default function Settings({ data, email, notify }: Props) {
                   const g = typeGuests(t);
                   const setG = (patch: { baseGuests?: number; maxGuests?: number }) =>
                     update((x) => ({ ...x, types: x.types.map((y) => (y.id === t.id ? { ...y, ...patch } : y)) }));
-                  // 적는 동안은 글자 그대로 (칸을 벗어날 때만 1~99로 맞춰요). 기본 > 최대여도 값은 안 바꾸고 안내만
+                  // 입력하는 동안은 글자 그대로 (칸을 벗어날 때만 1~99로 맞춰요). 기본 > 최대여도 값은 안 바꾸고 안내만
                   const rawMax = t.maxGuests != null && Number.isInteger(t.maxGuests) && t.maxGuests >= 1 ? Math.min(GUESTS_MAX, t.maxGuests) : g.base + 2;
                   const warn = guestRangeMsg(g.base, rawMax);
                   return (
@@ -972,9 +972,9 @@ export default function Settings({ data, email, notify }: Props) {
               </button>
               <button
                 className="ic"
-                aria-label="타입 지우기"
+                aria-label="타입 삭제"
                 onClick={() => {
-                  if (used.t.has(t.id)) return notify("예약에 쓰인 타입은 지울 수 없어요. 이름을 바꿔 주세요.");
+                  if (used.t.has(t.id)) return notify("예약에 쓰인 타입은 삭제할 수 없어요. 이름을 바꿔 주세요.");
                   update((x) => ({
                     ...x,
                     types: x.types.filter((y) => y.id !== t.id),
@@ -1107,7 +1107,7 @@ export default function Settings({ data, email, notify }: Props) {
               {s.parking.enabled ? "켜짐" : "꺼짐"}
             </button>
           </h3>
-          <div className="sub">켜면 예약 창에 도보 · 차량, 차량 대수 · 번호를 적고, 현황판에 주차 현황이 생겨요. 공유 화면에는 차량번호와 요금이 안 보여요.</div>
+          <div className="sub">켜면 예약 창에 도보 · 차량, 차량 대수 · 번호를 입력하고, 현황판에 주차 현황이 생겨요. 공유 화면에는 차량번호와 요금이 안 보여요.</div>
           {s.parking.enabled ? (
             <>
               <div className="stimes">
@@ -1149,7 +1149,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             플랫폼 <span className="tag">{s.platforms.length}개</span>
           </h3>
-          <div className="sub">동그라미 속 한 글자는 화이트보드 메모처럼 방 칸에 보여요. 위에서부터 단축키 1~9가 붙어요. '현장 결제'를 켠 플랫폼만 잔금을 따지고, 나머지는 플랫폼이 받은 걸로 봐요.</div>
+          <div className="sub">동그라미 속 한 글자는 화이트보드 메모처럼 방 칸에 보여요. 위에서부터 단축키 1~9가 붙어요. '현장 결제'를 켠 플랫폼만 잔금을 따지고, 나머지는 플랫폼에서 결제한 것으로 처리해요.</div>
           {s.platforms.map((p, i) => (
             <div className="trow" key={p.id}>
               <span className="ord">
@@ -1196,7 +1196,7 @@ export default function Settings({ data, email, notify }: Props) {
                 type="button"
                 className={`chip sm onsite ${isOnsite(p) ? "on" : ""}`}
                 aria-pressed={isOnsite(p)}
-                title="켜면 이 플랫폼 예약은 현장에서 받는 돈(선금·잔금)을 따져요. 끄면 플랫폼이 받은 걸로 봐요"
+                title="켜면 이 플랫폼 예약은 현장 수납(선금·잔금)을 관리해요. 끄면 플랫폼에서 결제한 것으로 처리해요"
                 onClick={() => update((x) => ({ ...x, platforms: x.platforms.map((y) => (y.id === p.id ? { ...y, onsite: !isOnsite(y) } : y)) }))}
               >
                 현장 결제
@@ -1204,9 +1204,9 @@ export default function Settings({ data, email, notify }: Props) {
               {i < 9 ? <span className="k">{i + 1}</span> : null}
               <button
                 className="ic"
-                aria-label="플랫폼 지우기"
+                aria-label="플랫폼 삭제"
                 onClick={() => {
-                  if (used.p.has(p.id)) return notify("예약에 쓰인 플랫폼은 지울 수 없어요. 이름을 바꿔 주세요.");
+                  if (used.p.has(p.id)) return notify("예약에 쓰인 플랫폼은 삭제할 수 없어요. 이름을 바꿔 주세요.");
                   update((x) => ({
                     ...x,
                     platforms: x.platforms.filter((y) => y.id !== p.id),
@@ -1251,7 +1251,7 @@ export default function Settings({ data, email, notify }: Props) {
 
         <section className="card wide" id="set-fees">
           <h3>수수료 · 입금</h3>
-          <div className="sub">플랫폼마다 수수료를 적으면 예약 창과 장부에 플랫폼이 넣어 줄 입금 예정가가 보여요.</div>
+          <div className="sub">플랫폼마다 수수료를 입력하면 예약 창과 장부에 플랫폼 입금 예정가가 보여요.</div>
           <FeeSettings s={s} update={update} />
         </section>
 
@@ -1309,7 +1309,7 @@ export default function Settings({ data, email, notify }: Props) {
               {s.shopItems.length}개{!hasProAccess(hotel.plan) ? ` / ${FREE_SHOP_ITEM_LIMIT}개` : ""}
             </span>
           </h3>
-          <div className="sub">매점 화면에 이 순서대로 큰 칸으로 보여요. 분류를 적으면 같은 분류끼리 묶어요. 가격을 바꿔도 지난 매출은 그대로예요.</div>
+          <div className="sub">매점 화면에 이 순서대로 큰 칸으로 보여요. 분류를 입력하면 같은 분류끼리 묶어요. 가격을 바꿔도 지난 매출은 그대로예요.</div>
           {s.shopItems.map((it, i) => (
             <div className={`trow shrow ${it.hidden ? "off" : ""}`} key={it.id}>
               <span className="ord">
@@ -1351,7 +1351,7 @@ export default function Settings({ data, email, notify }: Props) {
               >
                 {it.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
-              <button className="ic" aria-label="물품 지우기" onClick={() => void removeShop(it.id, it.hidden)}>
+              <button className="ic" aria-label="물품 삭제" onClick={() => void removeShop(it.id, it.hidden)}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -1370,7 +1370,7 @@ export default function Settings({ data, email, notify }: Props) {
           <h3>
             지출 분류 <span className="tag">{s.expenseCategories.filter((c) => c.name.trim()).length}개</span>
           </h3>
-          <div className="sub">상단 「지출」·장부 › 지출에서 이 순서대로 골라요. 기본은 수리·비품구매 등이에요. 이름을 바꾸거나 지워도 지난 지출은 그때 이름 그대로 남아요.</div>
+          <div className="sub">상단 「지출」·장부 › 지출에서 이 순서대로 골라요. 기본은 수리·비품구매 등이에요. 이름을 바꾸거나 삭제해도 지난 지출은 그때 이름 그대로 남아요.</div>
           {s.expenseCategories.map((c, i) => (
             <div className="trow exrow" key={c.id}>
               <span className="ord">
@@ -1393,7 +1393,7 @@ export default function Settings({ data, email, notify }: Props) {
                   update((x) => ({ ...x, expenseCategories: x.expenseCategories.map((y) => (y.id === c.id ? { ...y, name } : y)) }));
                 }}
               />
-              <button className="ic" aria-label="분류 지우기" onClick={() => update((x) => ({ ...x, expenseCategories: x.expenseCategories.filter((y) => y.id !== c.id) }))}>
+              <button className="ic" aria-label="분류 삭제" onClick={() => update((x) => ({ ...x, expenseCategories: x.expenseCategories.filter((y) => y.id !== c.id) }))}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -1421,7 +1421,7 @@ export default function Settings({ data, email, notify }: Props) {
                 <li>여러 기기 동시 사용 (PC·태블릿·휴대폰)</li>
                 <li>장부 최근 3개월</li>
                 <li>매점 물품 {FREE_SHOP_ITEM_LIMIT}개까지 · 하루 매출</li>
-                <li>지출 기록 · 남은 금액 · 현금 시재</li>
+                <li>지출 기록 · 순수익 · 현금 시재</li>
               </ul>
             </div>
             <div className={hotel.plan === "pro" ? "now" : ""}>
@@ -1439,7 +1439,7 @@ export default function Settings({ data, email, notify }: Props) {
           </div>
           <div className="opt">
             <span>
-              남은 객실 '적음' 기준 <b>{s.lowThreshold}실 이하</b>
+              잔여 객실 '적음' 기준 <b>{s.lowThreshold}실 이하</b>
             </span>
             <div className="step mini">
               <button className="sb" aria-label="줄이기" onClick={() => update((x) => ({ ...x, lowThreshold: Math.max(0, x.lowThreshold - 1) }))}>

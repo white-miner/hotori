@@ -50,7 +50,7 @@ test("취소 빼고 · 노쇼 넣고 · 중도 퇴실 환불 빼고 · 추가 �
   assert.equal(st.total, 5400000 + 3320000 + 60000 + 45000 - 250000);
 });
 
-test("나눠 받기: 현장 결제면 받은 돈이 쌓이고 0이면 정산 완료 · OTA는 결제 줄이 있어도 잔금 없음", () => {
+test("나눠 받기: 현장 결제면 수납액이 쌓이고 0이면 정산 완료 · OTA는 결제 내역이 있어도 잔금 없음", () => {
   const m = members();
   m[3] = { ...m[3], payments: [{ ...pay(360000, "cash"), kind: "deposit" }] };
   const walk = { name: "현장·전화" };
@@ -69,7 +69,7 @@ test("나눠 받기: 현장 결제면 받은 돈이 쌓이고 0이면 정산 완
   assert.equal(settleBadge(otaPart, info({ payMode: "prepaid" })), null);
 });
 
-test("선결제 OTA 단체(받은 돈 없음)는 남은 금액을 따지지 않아요 · 현장 결제면 잔금", () => {
+test("선결제 OTA 단체(수납액 없음)는 남은 금액을 따지지 않아요 · 현장 결제면 잔금", () => {
   const st = settle(members(), info({ payMode: "prepaid" }), OTA);
   assert.equal(st.tracked, false);
   assert.equal(st.left, 0);
@@ -103,7 +103,7 @@ test("P1 단체 글랜스: S1 방마다 · S2 대납 · 단체납 · 부분 단�
     assert.equal(g?.k, 2);
     assert.equal(g?.paidRooms, 0);
     assert.equal(g?.badge, null);
-    assert.equal(g?.strip, "단체 · 0실 완납 / 2실 잔금 · 남은 ₩200,000");
+    assert.equal(g?.strip, "단체 · 0실 완납 / 2실 잔금 · 잔액 ₩200,000");
     assert.equal(g?.compact, "0완/2잔");
   }
   // 단체만 일부: 전원 K=N · 단체납 (허위 완납 금지)
@@ -112,7 +112,7 @@ test("P1 단체 글랜스: S1 방마다 · S2 대납 · 단체납 · 부분 단�
     assert.equal(g?.k, 2);
     assert.equal(g?.badge, "단체납");
     assert.match(g!.strip, /2실 잔금/);
-    assert.match(g!.strip, /남은 ₩150,000/);
+    assert.match(g!.strip, /잔액 ₩150,000/);
   }
   // S1: 한 방만 완납 → K=1 · 뱃지 없음
   {
@@ -141,7 +141,7 @@ test("P1 단체 글랜스: S1 방마다 · S2 대납 · 단체납 · 부분 단�
     assert.equal(g?.strip, "단체 · 2실 완납");
     assert.equal(g?.compact, "2완");
   }
-  // 단체 줄 완납 → K=0 · 단체납
+  // 단체 내역 완납 → K=0 · 단체납
   {
     const g = groupSettleGlance(two(), info({ payMode: "prepaid", payments: [pay(200000)] }), walk);
     assert.equal(g?.k, 0);

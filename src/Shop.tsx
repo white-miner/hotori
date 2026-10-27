@@ -197,7 +197,7 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
     notify(`${it.name} 1개 +${won(it.price)}원 · ${PAY_LABEL[m]}`);
     shop.sell(it, day, m).catch((e) => notify(`저장하지 못했어요: ${e instanceof Error ? e.message : "연결을 확인해 주세요"}`));
   };
-  // − 는 그 결제 방법으로 판 것 중 가장 최근 1건만 지워요
+  // − 는 그 결제 방법으로 판 것 중 가장 최근 1건만 삭제해요
   const undo = (id: string, name: string, m: PayMethod) => {
     const last = lastSaleOf(sales, id, day, m);
     if (!last) return;
@@ -287,7 +287,7 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
         {head}
         <div className="empty-setup">
           <h1>매점 물품을 먼저 등록해 주세요</h1>
-          <p>컵라면, 음료처럼 파는 물건과 가격을 적으면, 여기서 한 번 눌러 바로 기록할 수 있어요.</p>
+          <p>컵라면, 음료처럼 파는 물건과 가격을 입력하면, 여기서 한 번 눌러 바로 기록할 수 있어요.</p>
           <button type="button" className="btn red" onClick={openAdd}>
             <Plus size={16} strokeWidth={2.4} />
             물품 추가
@@ -432,7 +432,7 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
         </section>
       ) : null}
       <p className="shop-hint muted">
-        현금·카드 줄의 + 를 누르면 그 방법으로 1개 팔린 걸로 바로 기록돼요. 잘못 눌렀으면 같은 줄의 − 를 눌러 주세요.{" "}
+        현금·카드 항목의 + 를 누르면 해당 결제수단으로 1개 판매가 바로 등록돼요. 잘못 눌렀으면 같은 항목의 − 를 눌러 주세요.{" "}
         <a href="#/settings/shop">설정에서 물품 관리</a>
       </p>
       {modal}

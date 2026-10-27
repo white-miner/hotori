@@ -69,11 +69,11 @@ export const seasonsOverlap = (a: Pick<RateSeason, "from" | "to">, b: Pick<RateS
 
 /** 시즌 하나 검사: 문제가 있으면 한국어 안내, 없으면 null. others = 같은 타입의 다른 시즌 */
 export function validateSeason(season: RateSeason, others: readonly RateSeason[]): string | null {
-  if (!season.name.trim()) return "시즌 이름을 적어 주세요";
+  if (!season.name.trim()) return "시즌 이름을 입력해 주세요";
   if (!isIsoDate(season.from) || !isIsoDate(season.to)) return "시작일과 끝나는 날을 골라 주세요";
   if (season.from > season.to) return "끝나는 날이 시작일보다 빨라요";
   if (dayNum(season.to) - dayNum(season.from) > 365) return "시즌은 최대 1년까지예요";
-  if (season.weekday == null && season.weekend == null) return "평일 또는 주말 요금을 적어 주세요";
+  if (season.weekday == null && season.weekend == null) return "평일 또는 주말 요금을 입력해 주세요";
   for (const o of others) {
     if (o.id === season.id) continue;
     if (seasonsOverlap(season, o)) return `‘${o.name || "다른 시즌"}’(${rangeText(o.from, o.to)})과 기간이 겹쳐요. 날짜를 겹치지 않게 바꿔 주세요`;

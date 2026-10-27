@@ -53,16 +53,16 @@ export function nightAmount(rate: LongStayRate | null | undefined, nightDate: st
 }
 
 export function validateLongStayRate(rate: LongStayRate | null | undefined): string | null {
-  if (!rate) return "장기 요금표를 적어 주세요.";
+  if (!rate) return "장기 요금표를 입력해 주세요.";
   if (rate.kind === "flat") {
-    if (rate.flatAmount == null || !Number.isInteger(rate.flatAmount) || rate.flatAmount < 0) return "매일 단가를 적어 주세요.";
+    if (rate.flatAmount == null || !Number.isInteger(rate.flatAmount) || rate.flatAmount < 0) return "매일 단가를 입력해 주세요.";
     if (rate.flatAmount > PAY_MAX) return "단가가 너무 커요 (1억 원까지).";
     return null;
   }
   if (rate.kind === "dow") {
     for (let d = 0; d <= 6; d++) {
       const a = rate.dowAmounts?.[d as 0 | 1 | 2 | 3 | 4 | 5 | 6];
-      if (a == null || !Number.isInteger(a) || a < 0) return "요일별 단가를 모두 적어 주세요.";
+      if (a == null || !Number.isInteger(a) || a < 0) return "요일별 단가를 모두 입력해 주세요.";
       if (a > PAY_MAX) return "단가가 너무 커요 (1억 원까지).";
     }
     return null;
@@ -80,7 +80,7 @@ export function accruedOf(b: Pick<Booking, "charges"> | { charges?: NightCharge[
   return (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
 }
 
-/** 미수 = max(0, 누적 − 받은 돈). 과입금은 0 클램프 */
+/** 미수 = max(0, 누적 − 수납액). 과입금은 0 클램프 */
 export function balanceDue(b: Pick<Booking, "charges" | "payments">): number {
   const paid = (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
   return Math.max(0, accruedOf(b) - paid);
@@ -170,7 +170,7 @@ export interface WindowExtendDraft {
 /** 재고 창 +N · 원장 줄 초안 (충돌·한도는 호출 측에서 extendBlock 반복) */
 export function planWindowExtend(b: Booking, addNights: number, rate: LongStayRate): WindowExtendDraft | { err: string } {
   const add = Math.round(addNights);
-  if (!Number.isInteger(add) || add < 1) return { err: "늘릴 박수를 적어 주세요." };
+  if (!Number.isInteger(add) || add < 1) return { err: "늘릴 박수를 입력해 주세요." };
   if (!canExtend(b)) return { err: "재고 창을 늘릴 수 없어요." };
   if ((b.nights ?? 0) + add > 90) return { err: "박수가 너무 많아요 (90박까지)." };
   const rv = validateLongStayRate(rate);

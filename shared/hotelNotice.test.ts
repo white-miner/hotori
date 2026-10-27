@@ -22,8 +22,8 @@ const notice = (p: Partial<HotelNotice> & Pick<HotelNotice, "body">): HotelNotic
 });
 
 test("validateHotelNoticeDraft", () => {
-  assert.equal(validateHotelNoticeDraft({ body: "" }), "공지를 적어 주세요");
-  assert.equal(validateHotelNoticeDraft({ body: "   " }), "공지를 적어 주세요");
+  assert.equal(validateHotelNoticeDraft({ body: "" }), "공지를 입력해 주세요");
+  assert.equal(validateHotelNoticeDraft({ body: "   " }), "공지를 입력해 주세요");
   assert.equal(validateHotelNoticeDraft({ body: "겨울 대비 난방 확인" }), null);
   assert.equal(validateHotelNoticeDraft({ body: "x".repeat(281) }), "공지는 280자까지예요");
 });

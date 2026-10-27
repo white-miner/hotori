@@ -128,9 +128,9 @@ test("되돌리기: 비운 밤이 비어 있으면 되고, 다른 예약이 그 
   assert.match(msg!, /10\/20\(화\) 밤 305호에 새손님 님 예약/);
   // 새 예약을 다른 방으로 옮기면 되돌릴 수 있어요
   assert.equal(earlyOutUndoBlock(S, [b, { ...resold, roomId: "r306" }], b), null);
-  // 방 미배정으로 팔려서 그 밤 남은 객실이 모자라면 막아요 (방 3개 중 3개가 그 밤에 팔림)
+  // 방 미배정으로 팔려서 그 밤 잔여 객실이 모자라면 막아요 (방 3개 중 3개가 그 밤에 팔림)
   const others = [bk({ checkIn: "2026-10-20", nights: 1, roomId: "r306" }), bk({ checkIn: "2026-10-20", nights: 1, roomId: "r307" }), bk({ checkIn: "2026-10-20", nights: 1, roomId: null })];
-  assert.match(earlyOutUndoBlock(S, [b, ...others], b)!, /남은 객실이 없어서/);
+  assert.match(earlyOutUndoBlock(S, [b, ...others], b)!, /잔여 객실이 없어서/);
   // 되돌린 뒤 모양: 원래 3박 그대로
   const back = { ...b, earlyOut: null, refund: null };
   assert.equal(usedNights(back), 3);

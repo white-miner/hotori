@@ -50,7 +50,7 @@ export function validateRoomMemoDraft(d: RoomMemoDraft): string | null {
     return "방을 확인해 주세요";
   }
   const body = d.body?.trim() ?? "";
-  if (!body) return kind === "delivery" ? "전달사항을 적어 주세요" : "특이사항을 적어 주세요";
+  if (!body) return kind === "delivery" ? "전달사항을 입력해 주세요" : "특이사항을 입력해 주세요";
   if (body.length > ROOM_MEMO_BODY_MAX) {
     return kind === "delivery" ? `전달사항은 ${ROOM_MEMO_BODY_MAX}자까지예요` : `특이사항은 ${ROOM_MEMO_BODY_MAX}자까지예요`;
   }

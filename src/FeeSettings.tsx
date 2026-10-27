@@ -5,7 +5,7 @@ import NumInput from "./NumInput";
 import { isOnsite } from "../shared/payment";
 import { PlatBadge } from "./ui";
 
-/** 수수료율 칸: 적는 동안 글자 그대로 ('9.5'도), 칸을 벗어날 때 0.01~50으로. 비우면 없음 */
+/** 수수료율 칸: 입력하는 동안 글자 그대로 ('9.5'도), 칸을 벗어날 때 0.01~50으로. 비우면 없음 */
 export function RateInput({ value, label, onChange }: { value: number | null | undefined; label: string; onChange: (v: number | null) => void }) {
   return (
     <span className="inp rate">
@@ -74,14 +74,14 @@ export default function FeeSettings({ s, update }: { s: HotelSettings; update: (
         {!s.platforms.length ? <div className="muted sm">플랫폼을 먼저 추가해 주세요</div> : null}
       </div>
       <div className="sub stimes-f">
-        입금 예정가 = 판매가 − 수수료 − 숙소 부담 쿠폰. 수수료율을 비우면 수수료가 없어요. 정산 주기를 적으면 입금 예정일이 보여요. 공유 화면에는 안 보여요.
+        입금 예정가 = 판매가 − 수수료 − 숙소 부담 쿠폰. 수수료율을 비우면 수수료가 없어요. 정산 주기를 입력하면 입금 예정일이 보여요. 공유 화면에는 안 보여요.
       </div>
       <div className="cardfee">
         <label>
           <span>카드 수수료율</span>
           <RateInput value={s.cardFeeRate} label="카드 수수료율" onChange={(v) => update((x) => ({ ...x, cardFeeRate: v }))} />
         </label>
-        <span className="sub">HOTORI에 적은 현장 카드 결제(선금 · 잔금 · 단체 · 매점 카드)에만 붙어요. 플랫폼에서 결제한 예약에는 안 붙어요.</span>
+        <span className="sub">HOTORI에 등록한 현장 카드 결제(선금 · 잔금 · 단체 · 매점 카드)에만 붙어요. 플랫폼에서 결제한 예약에는 안 붙어요.</span>
       </div>
     </>
   );

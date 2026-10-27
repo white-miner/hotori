@@ -102,7 +102,7 @@ export function validateAddTime(b: Booking, input: AddTimeInput): string | null 
 }
 
 /**
- * 숙박: lateOut += N · price/timeFee += amount(서비스=0) · 후불=잔금 · 그 외 수단=지금 받기.
+ * 숙박: lateOut += N · price/timeFee += amount(서비스=0) · 후불=잔금 · 그 외 수단=즉시 수납.
  */
 export function planAddTimeStay(b: Booking, input: AddTimeInput): AddTimeStayPlan | { err: string } {
   const err = validateAddTime(b, input);

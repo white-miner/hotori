@@ -23,7 +23,7 @@ const memo = (p: Partial<RoomMemo> & Pick<RoomMemo, "body"> & { roomId?: string 
 });
 
 test("validateRoomMemoDraft: 빈 본문·길이", () => {
-  assert.equal(validateRoomMemoDraft({ roomId: "r601", body: "" }), "특이사항을 적어 주세요");
+  assert.equal(validateRoomMemoDraft({ roomId: "r601", body: "" }), "특이사항을 입력해 주세요");
   assert.equal(validateRoomMemoDraft({ roomId: "", body: "인터넷 안됨" }), "방을 확인해 주세요");
   assert.equal(validateRoomMemoDraft({ roomId: "r601", body: "인터넷 안됨" }), null);
   assert.equal(validateRoomMemoDraft({ roomId: "r601", body: "x".repeat(121) }), "특이사항은 120자까지예요");
@@ -33,7 +33,7 @@ test("validateRoomMemoDraft: 인수인계는 호실 없이 OK", () => {
   assert.equal(validateRoomMemoDraft({ body: "계란주문", kind: "delivery" }), null);
   assert.equal(validateRoomMemoDraft({ roomId: null, body: "우유주문", kind: "delivery" }), null);
   assert.equal(validateRoomMemoDraft({ roomId: "r601", body: "청소기 고장", kind: "delivery" }), null);
-  assert.equal(validateRoomMemoDraft({ body: "", kind: "delivery" }), "전달사항을 적어 주세요");
+  assert.equal(validateRoomMemoDraft({ body: "", kind: "delivery" }), "전달사항을 입력해 주세요");
 });
 
 test("badgeCountLabel", () => {

@@ -140,7 +140,7 @@ test("내역 카피: 이체 주 + 추가금 보조", () => {
 
 test("메모 접두 · 알림 줄 · canAddSurcharge", () => {
   assert.equal(mergeSurchargeMemo("기존", "late_out", "합의"), "기존\n[추가금·늦은 퇴실] 합의");
-  assert.match(surchargeNotifyLine("김", "late_out", 30000, true, 3), /\+추가금.*늦은 퇴실.*3시간.*받음/);
+  assert.match(surchargeNotifyLine("김", "late_out", 30000, true, 3), /\+추가금.*늦은 퇴실.*3시간.*수납/);
   assert.equal(canAddSurcharge(bk()), true);
   assert.equal(canAddSurcharge(bk({ earlyOut: "2026-10-19" })), false);
   assert.equal(canAddSurcharge(bk({ status: "cancelled" })), false);

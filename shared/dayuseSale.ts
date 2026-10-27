@@ -25,7 +25,7 @@ export interface DayuseSaleInput {
   guestName: string;
   guestPhone?: string | null;
   platformId: string;
-  /** 금액>0이면 지금 받기 */
+  /** 금액>0이면 즉시 수납 */
   collect: boolean;
   method: BookPayMethod;
   bizDate: string;
@@ -46,7 +46,7 @@ export function validateDayuseSale(s: HotelSettings, input: DayuseSaleInput): st
   if (!input.roomId) return "호실을 골라 주세요.";
   if (!input.typeId || !s.types.some((t) => t.id === input.typeId)) return "객실 타입이 없어요.";
   if (!s.platforms.some((p) => p.id === input.platformId)) return "플랫폼을 골라 주세요.";
-  if (!Number.isFinite(input.price) || input.price < 0) return "판매가를 적어 주세요.";
+  if (!Number.isFinite(input.price) || input.price < 0) return "판매가를 입력해 주세요.";
   const name = input.guestName.trim() || walkInDisplayName(input.checkIn);
   const draft = buildDayuseSaleBooking(s, { ...input, guestName: name });
   const v = validateBooking(draft, s);

@@ -45,7 +45,7 @@ export default function GroupPeriodPaySheet({
   /** 단체 활성 숙박 예약(퇴실한 방 포함) · 최신 데이터 */
   members: Booking[];
   groupName?: string | null;
-  /** 예전 방식(단체 일괄)으로 받은 돈 — 방별 박에는 배정되지 않아요 */
+  /** 예전 방식(단체 일괄)으로 수납한 금액 — 방별 박에는 배정되지 않아요 */
   groupLump: number;
   leadId: string | null;
   leadPinned: boolean;
@@ -98,7 +98,7 @@ export default function GroupPeriodPaySheet({
     if (busy || readOnly || !lines.length) return;
     const bad = validatePayment(total, method, today);
     if (bad) return setErr(bad);
-    if (total > groupLeft) return setErr(`남은 금액(${won(groupLeft)}원)보다 많이 받을 수 없어요.`);
+    if (total > groupLeft) return setErr(`잔액(${won(groupLeft)}원)을 초과해 수납할 수 없어요.`);
     setBusy(true);
     setErr(null);
     try {
@@ -205,7 +205,7 @@ export default function GroupPeriodPaySheet({
                   </Chip>
                 ))}
                 <Chip active={!custom && nights >= plan.maxNights && plan.maxNights > 0 && !PRESETS.includes(plan.maxNights as 1)} disabled={busy || plan.maxNights < 1} onClick={() => { setCustom(false); pickNights(plan.maxNights); }}>
-                  남은 {plan.maxNights}박 전부
+                  잔여 {plan.maxNights}박 전부
                 </Chip>
                 <Chip active={custom} disabled={busy} onClick={() => setCustom(true)}>
                   직접
@@ -253,9 +253,9 @@ export default function GroupPeriodPaySheet({
               </ul>
 
               <div className="payment-desk-glance gpp-glance" aria-label="단체 합계">
-                <span>받은 <b>{won(groupPaid)}</b></span>
-                <span>받을 <b>{won(groupDue)}</b></span>
-                <span className={groupLeft > 0 ? "left" : ""}>남은 <b>{won(groupLeft)}</b></span>
+                <span>수납 <b>{won(groupPaid)}</b></span>
+                <span>청구 <b>{won(groupDue)}</b></span>
+                <span className={groupLeft > 0 ? "left" : ""}>잔액 <b>{won(groupLeft)}</b></span>
                 {next.total > 0 ? (
                   <span>
                     이 기간 다음 {next.nights}박({md(next.start!)}~) <b>{won(next.total)}</b>
@@ -263,16 +263,16 @@ export default function GroupPeriodPaySheet({
                 ) : null}
               </div>
               {groupLump > 0 ? (
-                <p className="muted sm">예전 방식으로 단체에 한꺼번에 받은 {won(groupLump)}원은 방별 박에는 나뉘지 않고 합계에만 반영돼요.</p>
+                <p className="muted sm">예전 방식으로 단체에 일괄 수납한 {won(groupLump)}원은 방별 박에는 나뉘지 않고 합계에만 반영돼요.</p>
               ) : null}
 
               {editTotal != null ? (
                 <PriceInp sm>
-                  <span className="pl">받을 금액</span>
+                  <span className="pl">수납 금액</span>
                   <input
                     className="num"
                     inputMode="numeric"
-                    aria-label="받을 금액 직접 입력"
+                    aria-label="수납 금액 직접 입력"
                     value={editTotal ? won(Number(editTotal)) : ""}
                     onChange={(e) => { setEditTotal(e.target.value.replace(/\D/g, "").slice(0, 9)); setErr(null); }}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
@@ -341,12 +341,12 @@ export default function GroupPeriodPaySheet({
             <>
               {onOpenDesk ? (
                 <button type="button" className="btn line gpp-desk" disabled={busy} onClick={onOpenDesk}>
-                  금액 직접 받기
+                  금액 직접 수납
                 </button>
               ) : null}
               {!nothing && editTotal == null ? (
                 <button type="button" className="btn line" disabled={busy} onClick={() => setEditTotal(String(plan.total))}>
-                  금액 고치기
+                  금액 수정
                 </button>
               ) : null}
               <button type="button" className="btn dark gpp-go" disabled={busy || readOnly || nothing || total <= 0} onClick={() => void submit()} autoFocus>

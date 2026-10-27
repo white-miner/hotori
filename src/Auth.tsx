@@ -33,7 +33,7 @@ export default function AuthScreen() {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
         if (error) throw error;
       } else {
-        if (!hotel.trim()) throw new Error("호텔 이름을 적어 주세요.");
+        if (!hotel.trim()) throw new Error("호텔 이름을 입력해 주세요.");
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password: pw,
@@ -54,7 +54,7 @@ export default function AuthScreen() {
       <form className="auth-card" onSubmit={submit}>
         <Brand />
         <h1>{mode === "login" ? "호토리 로그인" : "우리 호텔 장부 만들기"}</h1>
-        <p className="sub">여러 플랫폼 예약을 한 장부에 적고, 남은 객실을 한눈에 봐요.</p>
+        <p className="sub">여러 플랫폼 예약을 한 장부에 기록하고, 잔여 객실을 한눈에 봐요.</p>
         <div className="seg wide">
           <button type="button" className={mode === "login" ? "on" : ""} onClick={() => setMode("login")}>
             로그인

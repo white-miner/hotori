@@ -72,7 +72,7 @@ export const DAMAGE_COPY = {
   room: "객실",
   notes: "메모",
   lines: "손해 내역",
-  addLine: "줄 추가",
+  addLine: "항목 추가",
   item: "항목",
   description: "내용",
   amount: "금액",
@@ -89,14 +89,14 @@ export const DAMAGE_COPY = {
   delete: "삭제",
   tip: "발급하면 내용이 고정돼요. 고친 뒤엔 새 버전으로 재발급하세요.",
   tipLive: "미리보기는 지금 입력과 같아요. 발급 시 스냅샷으로 얼려요.",
-  needLines: "손해 항목을 한 줄 이상 적어 주세요.",
-  needItem: "항목 이름을 적어 주세요.",
+  needLines: "손해 항목을 1개 이상 입력해 주세요.",
+  needItem: "항목 이름을 입력해 주세요.",
   saveOk: "손해내역서를 저장했어요.",
   issueOk: "손해내역서를 발급했어요.",
   confirmIssueTitle: "손해내역서를 발급할까요?",
   confirmIssueBody: "내용이 고정돼요. 이미 건넨 PDF와 맞춰 재인쇄할 수 있어요.",
   confirmDeleteTitle: "손해내역서를 삭제할까요?",
-  confirmDeleteBody: "발급 기록에서 지워져요. 되돌릴 수 없어요.",
+  confirmDeleteBody: "발급 기록에서 삭제돼요. 되돌릴 수 없어요.",
   recentEmpty: "최근 손해내역서가 없어요.",
   fromStay: "숙박에서 발급",
 } as const;
@@ -236,7 +236,7 @@ export function validateDamageDraft(draft: DamageDraft): string | null {
     if (l.item.length > DAMAGE_ITEM_MAX) return `항목은 ${DAMAGE_ITEM_MAX}자까지예요.`;
     if (l.description.length > DAMAGE_DESC_MAX) return `내용은 ${DAMAGE_DESC_MAX}자까지예요.`;
   }
-  if (draft.lines.length > DAMAGE_LINES_MAX) return `줄은 ${DAMAGE_LINES_MAX}개까지예요.`;
+  if (draft.lines.length > DAMAGE_LINES_MAX) return `항목은 ${DAMAGE_LINES_MAX}개까지예요.`;
   return null;
 }
 

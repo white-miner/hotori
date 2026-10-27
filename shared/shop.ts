@@ -106,9 +106,9 @@ export function makeShopItem(opts: { id: string; name?: string; price?: number; 
 
 /** 매점 화면에서 바로 등록할 때: 이름·가격이 있어야 팔 수 있어요 */
 export function validateShopDraft(d: { name: string; price: number }): string | null {
-  if (!d.name.trim()) return "물품 이름을 적어 주세요";
+  if (!d.name.trim()) return "물품 이름을 입력해 주세요";
   if (!Number.isFinite(d.price) || d.price < 0) return "가격을 확인해 주세요";
-  if (d.price === 0) return "가격을 적어 주세요";
+  if (d.price === 0) return "가격을 입력해 주세요";
   return null;
 }
 

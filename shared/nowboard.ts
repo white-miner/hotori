@@ -6,7 +6,7 @@ import { type GroupInfo, settle } from "./settle";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /**
- * 단체 칸/정산: PaymentDesk `addGroupPayment`는 단체 줄에만 쌓이므로
+ * 단체 칸/정산: PaymentDesk `addGroupPayment`는 단체 내역에만 쌓이므로
  * 방 `payState`만 보면 완납 후에도 「잔금」이 남음 → settle 스냅샷 사용.
  */
 export type NowPayGroupCtx = {
@@ -437,7 +437,7 @@ export function nowDateLine(b: Pick<Booking, "checkIn" | "nights" | "kind" | "ea
 }
 
 /**
- * 최근 결제 1줄: 방 payments ∪ extra(단체 줄) · `createdAt` desc · 동률 `bizDate` desc.
+ * 최근 결제 1줄: 방 payments ∪ extra(단체 내역) · `createdAt` desc · 동률 `bizDate` desc.
  * 「현황」완납 칸 · 운영 「최근」과 동일 시계열.
  */
 export function latestPaymentOf(
@@ -456,10 +456,10 @@ export function latestPaymentOf(
 /**
  * 칸 금액 글랜스 (하이브리드).
  * tracked · left>0 → `잔금 ₩X` (1순위 · 잔금 숨기지 않음).
- * tracked · left=0 · 결제 줄 있음 → 최근 1줄 금액 `₩amount`(판매가 대체 · 수단은 prefix).
+ * tracked · left=0 · 결제 내역 있음 → 최근 1줄 금액 `₩amount`(판매가 대체 · 수단은 prefix).
  * tracked · left=0 · 결제 없음 → `₩price` 폴백.
  * OTA(tracked=false): 항상 `₩price` · 최근 현장수납 강조 금지.
- * 단체: settle left + 최근 후보에 단체 줄 포함.
+ * 단체: settle left + 최근 후보에 단체 내역 포함.
  * 장기: `미수 ₩X` (0이면 생략).
  * 색은 nowAmountTone · 수단은 nowPayMethodPrefix (`이체 잔금` 합침 금지).
  */
@@ -586,7 +586,7 @@ export function nowCheckoutMark(
 
 /**
  * 칸 결제수단 글랜스: 받은 결제 기준 · 최신→고유 라벨 · `카드` / `카드·이체`.
- * 단체 줄(`group.payments`)도 합쳐 완납 후 수단이 보이게.
+ * 단체 내역(`group.payments`)도 합쳐 완납 후 수단이 보이게.
  * 시계열 = latestPaymentOf와 동일(createdAt · bizDate).
  */
 export function nowPayMethodGlance(

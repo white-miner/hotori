@@ -17,7 +17,7 @@ type Props = {
   maxPerType?: number;
   /** 전체 실수 합 상한 */
   maxTotal?: number;
-  /** 재고 힌트 (간단예약 남은 수) — 없으면 숨김 */
+  /** 재고 힌트 (간단예약 잔여 수) — 없으면 숨김 */
   leftByType?: Record<string, number>;
   /** true면 스테퍼 비활성(청구서: 예약에서 온 실수) */
   locked?: boolean;
@@ -63,7 +63,7 @@ export default function StayTypeCountList({
           return (
             <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
               <TypeBadge t={t} />
-              {left != null ? <span className="muted sm">남은 {left}</span> : null}
+              {left != null ? <span className="muted sm">잔여 {left}</span> : null}
               <span className="step sm">
                 <button
                   type="button"

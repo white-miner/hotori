@@ -109,16 +109,16 @@ export default function CheckoutConfirmModal({
               <p>
                 <b>{head}</b>
               </p>
-              <p className="muted sm">잔금이 있어요. 받은 뒤 퇴실하거나, 남긴 채 퇴실할 수 있어요.</p>
+              <p className="muted sm">잔금이 있어요. 수납 후 퇴실하거나, 미수금을 남기고 퇴실할 수 있어요.</p>
               <div className="payment-desk-glance" aria-label="잔금">
                 <span>
-                  받을 <b>{won(glance.due)}</b>
+                  청구 <b>{won(glance.due)}</b>
                 </span>
                 <span>
-                  받은 <b>{won(glance.paid)}</b>
+                  수납 <b>{won(glance.paid)}</b>
                 </span>
                 <span className="left">
-                  남은 <b>{won(glance.left)}</b>
+                  잔액 <b>{won(glance.left)}</b>
                 </span>
               </div>
               {glance.group ? <p className="muted sm">단체 · {glance.memberCount}실</p> : null}

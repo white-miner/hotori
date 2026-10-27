@@ -66,7 +66,7 @@ export default function OnsitePayModeFields({
             </ChipGroup>
             {payMode === "postpaid" ? (
               <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                후불 · 퇴실(또는 나중에) 정산 · 결제 줄 없음
+                후불 · 퇴실(또는 나중에) 정산 · 결제 내역 없음
               </div>
             ) : null}
             {priceUnset ? (
@@ -88,23 +88,23 @@ export default function OnsitePayModeFields({
       {take && payMode === "prepaid" && !priceUnset ? (
         <div className="fld">
           <label>수납</label>
-          <div className="muted sm">저장 시 판매금만큼 받기(완납)로 적어요 · 위 결제수단 사용</div>
+          <div className="muted sm">저장 시 판매금 전액을 수납(완납)으로 등록해요 · 위 결제수단 사용</div>
         </div>
       ) : null}
 
       {take && payMode === "deposit" && !priceUnset ? (
         <div className="fld">
-          <label>받을 선금</label>
+          <label>선금 금액</label>
           <div>
             <div className="muted sm" style={{ marginBottom: "var(--space-chip)" }}>
-              판매금과 별개 · 일부만 먼저 받을 때 · 위 결제수단 사용
+              판매금과 별개 · 일부만 먼저 수납할 때 · 위 결제수단 사용
             </div>
             <PriceRow>
               <PriceInp sm>
                 <input
                   className="num"
                   inputMode="numeric"
-                  aria-label="받을 선금"
+                  aria-label="선금 금액"
                   placeholder="선금"
                   disabled={disabled}
                   value={depAmt !== "" ? won(Number(depAmt)) : ""}

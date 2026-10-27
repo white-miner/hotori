@@ -84,7 +84,7 @@ const STAY_CONFIRM_KO: StayConfirmStrings = {
   bookingNo: "예약번호",
   amounts: "이용 금액",
   sale: "판매가",
-  paid: "받은",
+  paid: "수납액",
   balance: "잔금",
   amountUnset: "금액미정",
   attest: "위와 같이 숙박하였음을 확인합니다.",

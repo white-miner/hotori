@@ -42,7 +42,7 @@ export function planCheckoutBalancePay(
 
 export function checkoutPayNotifyLine(guestName: string, amount: number, method: BookPayMethod, group?: boolean): string {
   const scope = group ? "단체 " : "";
-  return `${scope}${guestName} 님 받기 · ${BOOK_PAY_LABEL[method]} ${won(amount)}원 · 퇴실처리`;
+  return `${scope}${guestName} 님 수납 · ${BOOK_PAY_LABEL[method]} ${won(amount)}원 · 퇴실처리`;
 }
 
 export function checkoutLeaveBalanceNotifyLine(guestName: string, left: number): string {

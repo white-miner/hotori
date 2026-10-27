@@ -173,7 +173,7 @@ export default function OverbookSubModal({
           )}
           {need > 0 ? (
             <p className="muted sm">
-              지정 {total} · 남은 초과 {left}
+              지정 {total} · 잔여 초과 {left}
             </p>
           ) : null}
           {err ? <p className="tred sm">{err}</p> : null}

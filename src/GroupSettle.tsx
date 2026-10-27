@@ -1,4 +1,4 @@
-// 단체 정산서: 타입별 소계 → 추가 인원 · 추가 항목 · 환불/취소 → 받은 돈 → 최종 결제액. 인쇄(이미지/PDF)용 모양도 같이.
+// 단체 정산서: 타입별 소계 → 추가 인원 · 추가 항목 · 환불/취소 → 수납액 → 최종 결제액. 인쇄(이미지/PDF)용 모양도 같이.
 import { hasExtraTime, isTimeService, timeTags } from "../shared/extratime";
 import { useState } from "react";
 import { Check, Plus, Printer, Receipt, X } from "lucide-react";
@@ -116,15 +116,15 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
       await data.addGroupPayment(groupId, { method: take.method, amount, bizDate: today });
       const left = Math.max(0, st.left - amount);
       setTake(null);
-      notify(`단체 ${name} ${won(amount)}원 받음 (${BOOK_PAY_LABEL[take.method]})${left ? ` · 남은 금액 ${won(left)}원` : " · 정산 완료"}`);
+      notify(`단체 ${name} ${won(amount)}원 수납 (${BOOK_PAY_LABEL[take.method]})${left ? ` · 잔액 ${won(left)}원` : " · 정산 완료"}`);
     });
   };
   const delPay = (id: string) => {
     void (async () => {
       const ok = await askConfirm({
-        title: "받은 돈 삭제",
-        body: "이 받은 돈 줄을 지울까요? 남은 금액이 다시 늘어나요.",
-        confirmLabel: "지우기",
+        title: "결제 내역 삭제",
+        body: "이 결제 내역을 삭제할까요? 잔액이 다시 늘어나요.",
+        confirmLabel: "삭제",
         danger: true,
       });
       if (!ok) return;
@@ -255,7 +255,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                 <tr key={`x${i}`}>
                   <td colSpan={4}>
                     추가 항목 · {x.name}
-                    <button type="button" className="ic noprint" aria-label="추가 항목 지우기" disabled={busy} onClick={() => delExtra(i)}>
+                    <button type="button" className="ic noprint" aria-label="추가 항목 삭제" disabled={busy} onClick={() => delExtra(i)}>
                       <X size={13} />
                     </button>
                   </td>
@@ -296,8 +296,8 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               {info.payments.map((p) => (
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
-                    받은 돈 · {dayLabel(p.bizDate)} · {PAYMENT_METHOD_LABEL[p.method]}
-                    <button type="button" className="ic noprint" aria-label="받은 돈 지우기" disabled={busy} onClick={() => delPay(p.id)}>
+                    결제 · {dayLabel(p.bizDate)} · {PAYMENT_METHOD_LABEL[p.method]}
+                    <button type="button" className="ic noprint" aria-label="결제 내역 삭제" disabled={busy} onClick={() => delPay(p.id)}>
                       <X size={13} />
                     </button>
                   </td>
@@ -307,7 +307,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               {memberPays.map((p) => (
                 <tr key={p.id} className="paid">
                   <td colSpan={4}>
-                    {p.kind === "deposit" ? "선금" : "받은 돈"} · {p.room ? `${p.room}호 · ` : ""}
+                    {p.kind === "deposit" ? "선금" : "결제"} · {p.room ? `${p.room}호 · ` : ""}
                     {dayLabel(p.bizDate)} · {PAYMENT_METHOD_LABEL[p.method]}
                   </td>
                   <td className="r num">−{won(p.amount)}</td>
@@ -316,18 +316,18 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               {info.payments.length + memberPays.length > 1 ? (
                 <tr className="paid psum">
                   <td colSpan={4}>
-                    받은 돈 합계 <span className="muted">· {splitLine(paySplit([...info.payments, ...memberPays]))}</span>
+                    결제 합계 <span className="muted">· {splitLine(paySplit([...info.payments, ...memberPays]))}</span>
                   </td>
                   <td className="r num">−{won(st.paid)}</td>
                 </tr>
               ) : null}
               <tr className={`left ${st.total - st.paid > 0 ? "due" : ""}`}>
-                <td colSpan={4}>{st.settled ? "남은 금액 · 정산 완료" : "남은 금액"}</td>
+                <td colSpan={4}>{st.settled ? "잔액 · 정산 완료" : "잔액"}</td>
                 <td className="r num">{won(Math.max(0, st.total - st.paid))}원</td>
               </tr>
             </tfoot>
           </table>
-          <div className="sh-foot">매출은 입실일 기준 그대로, 현금으로 받은 돈만 받은 날 현금 시재에 들어가요 (카드·이체는 빠져요) · {dayLabel(today)} 기준</div>
+          <div className="sh-foot">매출은 입실일 기준 그대로, 현금 수납액만 수납일 현금 시재에 들어가요 (카드·이체는 빠져요) · {dayLabel(today)} 기준</div>
         </div>
 
         {take ? (
@@ -340,13 +340,13 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               ))}
             </div>
             <label className="inp price sm">
-              <input className="num" inputMode="numeric" aria-label="받은 금액" value={take.amount ? won(Number(take.amount)) : ""} onChange={(e) => setTake({ ...take, amount: num(e.target.value) })} />원
+              <input className="num" inputMode="numeric" aria-label="수납 금액" value={take.amount ? won(Number(take.amount)) : ""} onChange={(e) => setTake({ ...take, amount: num(e.target.value) })} />원
             </label>
             <button type="button" className="btn sm" onClick={() => setTake(null)}>
               닫기
             </button>
             <button type="button" className="btn sm red" disabled={busy} onClick={record}>
-              {busy ? "저장 중…" : "받음 기록"}
+              {busy ? "저장 중…" : "수납 등록"}
             </button>
           </div>
         ) : null}
@@ -395,7 +395,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
           </button>
           {!st.settled && st.total > 0 ? (
             <button type="button" className="btn red" disabled={busy || !!take} onClick={() => setTake({ method: "card", amount: String(Math.max(0, st.total - st.paid)) })}>
-              금액 받음
+              금액 수납
             </button>
           ) : null}
         </div>

@@ -155,7 +155,7 @@ export function validateStaySaleCreate(s: HotelSettings, input: StaySaleCreateIn
   if (nights < 1) return "박수를 골라 주세요.";
   const plat = s.platforms.find((p) => p.id === input.platformId);
   const name = input.guestName.trim() || (input.walkInImmediate ? walkInDisplayName(input.checkIn) : "");
-  if (!name) return "이름을 적어 주세요.";
+  if (!name) return "이름을 입력해 주세요.";
   const phoneErr = validateGuestPhone(plat, input.guestPhone, { walkInImmediate: !!input.walkInImmediate });
   if (phoneErr) return phoneErr;
   if (!input.priceUnset && !(input.price > 0)) {

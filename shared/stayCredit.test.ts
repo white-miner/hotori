@@ -114,7 +114,7 @@ test("defaultKeepAmount: 선금만 받았으면 paid−earned (음수 클램프)
 
 test("validateKeepCreditAmount: paid 초과·0원 거절", () => {
   assert.match(validateKeepCreditAmount(0, 100_000)!, /보관 금액/);
-  assert.match(validateKeepCreditAmount(120_000, 100_000)!, /받은 돈/);
+  assert.match(validateKeepCreditAmount(120_000, 100_000)!, /수납액/);
   assert.equal(validateKeepCreditAmount(50_000, 100_000), null);
 });
 
@@ -194,7 +194,7 @@ test("validateEarlyOutKeep: refund_amount와 분리 · 보관만 검사", () => 
   const b = bk();
   assert.equal(validateEarlyOutKeep(b, "2026-10-19", 200_000, "2026-11-01", "2026-10-19", true), null);
   assert.match(validateEarlyOutKeep(b, "2026-10-19", 200_000, null, "2026-10-19", false)!, /현장·전화/);
-  assert.match(validateEarlyOutKeep(b, "2026-10-19", 400_000, null, "2026-10-19", true)!, /받은 돈/);
+  assert.match(validateEarlyOutKeep(b, "2026-10-19", 400_000, null, "2026-10-19", true)!, /수납액/);
 });
 
 test("labels KR · method credit", () => {

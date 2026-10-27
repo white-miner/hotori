@@ -203,12 +203,12 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       });
       if (!overOk) return;
     }
-    if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
-    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
-    if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
+    if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 입력해 주세요.");
+    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 입력해 주세요.");
+    if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 입력해 주세요.");
     if (!sum)
       return setErr(
-        mode === "room" ? "1실 가격을 적어 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 적어 주세요." : "총액을 적어 주세요.",
+        mode === "room" ? "1실 가격을 입력해 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 입력해 주세요." : "총액을 입력해 주세요.",
       );
     setBusy(true);
     setErr(null);
@@ -393,7 +393,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                     {assignMode === "typeOnly" ? <span className="muted"> · 호실 미정</span> : null}
                   </>
                 ) : (
-                  <span className="muted">{assignMode === "typeOnly" ? "타입별 실 수를 적어 주세요" : "추가할 방을 골라 주세요"}</span>
+                  <span className="muted">{assignMode === "typeOnly" ? "타입별 실 수를 입력해 주세요" : "추가할 방을 골라 주세요"}</span>
                 )}
               </span>
               {n ? (
@@ -429,7 +429,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                   return (
                     <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
                       <TypeBadge t={t} />
-                      <span className="muted sm">{assignMode === "typeOnly" ? `남은 재고 ${left}` : `빈 방 ${f}`}</span>
+                      <span className="muted sm">{assignMode === "typeOnly" ? `잔여 재고 ${left}` : `빈 방 ${f}`}</span>
                       <span className="step sm">
                         <button type="button" className="sb" aria-label={`${typeLabel(t)} 1실 빼기`} disabled={!c} onClick={() => setCount(t.id, c - 1)}>
                           <Minus size={14} />
@@ -618,7 +618,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
                   </>
                 )
               ) : (
-                <span className="muted">방을 고르고 금액을 적으면 합계가 보여요</span>
+                <span className="muted">방을 고르고 금액을 입력하면 합계가 보여요</span>
               )}
             </span>
           </div>
@@ -650,7 +650,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
           {impact.length ? (
             <>
               <div className="pt">
-                추가하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 남은 객실
+                추가하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 잔여 객실
               </div>
               {impact.map((r) => {
                 const t = L.types.get(r.typeId);
@@ -678,7 +678,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
         {err ? <div className="ferr">{err}</div> : null}
         <div className="mf">
           <div className="keys">
-            <span className="muted sm">기존 단체에 이어 붙어요 · 정산은 단체 줄에서 같이 봐요</span>
+            <span className="muted sm">기존 단체에 이어 붙어요 · 정산은 단체 정산에서 같이 봐요</span>
           </div>
           <button type="button" className="btn" onClick={onClose}>
             닫기

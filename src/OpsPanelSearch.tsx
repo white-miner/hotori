@@ -1,6 +1,6 @@
 /**
  * 「현황」·「배치」운영/사이드 패널 공통 검색 입력.
- * 보드 guest-search와 같은 Lucide Search · Escape 지우기.
+ * 보드 guest-search와 같은 Lucide Search · Escape 삭제.
  */
 import { Search, X } from "lucide-react";
 
@@ -40,7 +40,7 @@ export default function OpsPanelSearch({
           }}
         />
         {value ? (
-          <button type="button" className="ops-panel-search-x" aria-label="검색 지우기" onClick={() => onChange("")}>
+          <button type="button" className="ops-panel-search-x" aria-label="검색어 지우기" onClick={() => onChange("")}>
             <X size={14} strokeWidth={2.4} aria-hidden />
           </button>
         ) : null}

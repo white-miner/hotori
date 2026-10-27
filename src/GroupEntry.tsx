@@ -139,7 +139,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeIds.join("|"), nights, Object.values(rateNum).join("|")]);
 
-  // 방별 1박: 타입 요금으로 프리필 · 방마다 다르게 고칠 수 있어요
+  // 방별 1박: 타입 요금으로 프리필 · 방마다 다르게 수정할 수 있어요
   useEffect(() => {
     setMemberRates((prev) =>
       typeIds.map((tid, i) => {
@@ -213,14 +213,14 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       });
       if (!overOk) return;
     }
-    if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 적어 주세요.");
-    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 적어 주세요.");
-    if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 적어 주세요.");
+    if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 입력해 주세요.");
+    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 입력해 주세요.");
+    if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 입력해 주세요.");
     if (!sum)
       return setErr(
-        mode === "room" ? "1실 가격을 적어 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 적어 주세요." : "총액을 적어 주세요.",
+        mode === "room" ? "1실 가격을 입력해 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 입력해 주세요." : "총액을 입력해 주세요.",
       );
-    if (payMode === "postpaid" && !payer.company.trim() && !payer.name.trim()) return setErr("후불이면 결제자(회사나 담당자)를 적어 주세요.");
+    if (payMode === "postpaid" && !payer.company.trim() && !payer.name.trim()) return setErr("후불이면 결제자(회사 또는 담당자)를 입력해 주세요.");
     setBusy(true);
     setErr(null);
     try {
@@ -419,7 +419,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                     {assignMode === "typeOnly" ? <span className="muted"> · 호실 미정</span> : null}
                   </>
                 ) : (
-                  <span className="muted">{assignMode === "typeOnly" ? "타입별 실 수를 적어 주세요" : "아직 고른 방이 없어요"}</span>
+                  <span className="muted">{assignMode === "typeOnly" ? "타입별 실 수를 입력해 주세요" : "아직 고른 방이 없어요"}</span>
                 )}
               </span>
               {n ? (
@@ -455,7 +455,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                   return (
                     <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
                       <TypeBadge t={t} />
-                      <span className="muted sm">{assignMode === "typeOnly" ? `남은 재고 ${left}` : `빈 방 ${f}`}</span>
+                      <span className="muted sm">{assignMode === "typeOnly" ? `잔여 재고 ${left}` : `빈 방 ${f}`}</span>
                       <span className="step sm">
                         <button type="button" className="sb" aria-label={`${typeLabel(t)} 1실 빼기`} disabled={!c} onClick={() => setCount(t.id, c - 1)}>
                           <Minus size={14} />
@@ -477,7 +477,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 <div className="muted sm gnote">
                   {assignMode === "typeOnly"
                     ? "타입×실 수만 잡으면 호실 없이 저장돼요. 재고는 타입에서 차감되고, 나중에 방을 배정해요."
-                    : "개수를 적으면 같은 층의 붙은 방부터 골라 드려요. 바꾸려면 '방 직접 고르기'에서 눌러요."}
+                    : "개수를 입력하면 같은 층의 붙은 방부터 골라 드려요. 바꾸려면 '방 직접 고르기'에서 눌러요."}
                 </div>
               </div>
             ) : null}
@@ -607,7 +607,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                     </label>
                   ))
                 ) : (
-                  <span className="muted sm">방을 고르면 방마다 1박 요금을 적을 수 있어요 (예: 602=7만, 다른 방=8만).</span>
+                  <span className="muted sm">방을 고르면 방마다 1박 요금을 입력할 수 있어요 (예: 602=7만, 다른 방=8만).</span>
                 )}
                 <div className="muted sm gnote">방마다 다른 1박 · 총액 = 1박 × 박수 · 합계 = 방 합</div>
               </div>
@@ -651,9 +651,9 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                     </label>
                   ))
                 ) : (
-                  <span className="muted sm">방을 고르면 줄마다 금액을 적을 수 있어요. 위 타입 요금이 자동으로 채워져요.</span>
+                  <span className="muted sm">방을 고르면 방마다 금액을 입력할 수 있어요. 위 타입 요금이 자동으로 채워져요.</span>
                 )}
-                <div className="muted sm gnote">타입 1박 요금을 적으면 줄마다 채워 두고, 방마다 다르게 고칠 수 있어요.</div>
+                <div className="muted sm gnote">타입 1박 요금을 입력하면 방마다 자동 입력하고, 방마다 다르게 수정할 수 있어요.</div>
               </div>
             ) : null}
             {mode === "room" || mode === "total" ? (
@@ -688,7 +688,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                   </span>
                 </>
               ) : (
-                <span className="muted">방을 고르고 금액을 적으면 총액이 보여요</span>
+                <span className="muted">방을 고르고 금액을 입력하면 총액이 보여요</span>
               )}
             </span>
           </div>
@@ -742,7 +742,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 <input className="inp sm" placeholder="연락처" aria-label="결제자 연락처" inputMode="tel" maxLength={30} value={payer.phone} onChange={(e) => setPayer({ ...payer, phone: e.target.value })} />
               </div>
             ) : (
-              <span className="muted sm">방마다 잔금은 보이지 않고, 장부의 단체 줄에서 한 번에 정산해요</span>
+              <span className="muted sm">방마다 잔금은 보이지 않고, 장부의 단체 정산에서 한 번에 정산해요</span>
             )}
           </div>
         </div>
@@ -751,7 +751,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           {impact.length ? (
             <>
               <div className="pt">
-                저장하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 남은 객실 (가장 적은 날 · 호텔 전체)
+                저장하면 {dayLabel(checkIn)} ~ {dayLabel(addDays(checkOut, -1))} 밤 잔여 객실 (가장 적은 날 · 호텔 전체)
                 {assignMode === "rooms" && tentative ? " · 임시라도 만실이 될 수 있어요" : ""}
               </div>
               {impact.map((r) => {
@@ -777,7 +777,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               })}
             </>
           ) : (
-            <div className="pt">{assignMode === "typeOnly" ? "타입 실 수를 적으면 남은 객실이 어떻게 바뀌는지 보여요." : "방을 고르면 남은 객실이 어떻게 바뀌는지 보여요. 겹치는 방은 고를 수 없어요."}</div>
+            <div className="pt">{assignMode === "typeOnly" ? "타입 실 수를 입력하면 잔여 객실이 어떻게 바뀌는지 보여요." : "방을 고르면 잔여 객실이 어떻게 바뀌는지 보여요. 겹치는 방은 고를 수 없어요."}</div>
           )}
         </div>
 

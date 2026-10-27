@@ -75,7 +75,7 @@ export interface AddSurchargeInput {
   amount: number;
   /** 기타는 필수 · 그 외는 선택 */
   memo: string;
-  /** 금액>0이면 true=지금 받기 · false=잔금으로 남김. 0원이면 무시 */
+  /** 금액>0이면 true=즉시 수납 · false=잔금으로 남김. 0원이면 무시 */
   collect: boolean;
   method: BookPayMethod;
   bizDate: string;
@@ -107,8 +107,8 @@ export function validateAddSurcharge(b: Booking, input: AddSurchargeInput): stri
   if (!isSurchargeReason(input.reason)) return "사유를 골라 주세요.";
   const hours = clampHours(input.hours);
   if (input.reason === "late_out" && hours < 1) return "늦은 퇴실 시간을 1시간 이상 골라 주세요.";
-  if (input.reason === "other" && !input.memo.trim()) return "기타 사유는 메모를 적어 주세요.";
-  if (!Number.isInteger(input.amount) || input.amount < 0) return "추가금 금액을 숫자로 적어 주세요.";
+  if (input.reason === "other" && !input.memo.trim()) return "기타 사유는 메모를 입력해 주세요.";
+  if (!Number.isInteger(input.amount) || input.amount < 0) return "추가금 금액을 숫자로 입력해 주세요.";
   if (input.amount > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
   if (hours > EXTRA_HOURS_MAX) return `시간은 ${EXTRA_HOURS_MAX}시간까지예요.`;
   if (input.amount > 0 && input.collect) {
@@ -167,6 +167,6 @@ export function surchargeNotifyLine(
   const reasonL = SURCHARGE_REASON_LABEL[reason];
   const late = lateOut ? ` · 늦은 퇴실 ${lateOut}시간` : "";
   const pay =
-    amount > 0 ? (collected ? ` · ${won(amount)}원 받음` : ` · 잔금 +${won(amount)}원`) : " · 0원(기록만)";
+    amount > 0 ? (collected ? ` · ${won(amount)}원 수납` : ` · 잔금 +${won(amount)}원`) : " · 0원(기록만)";
   return `${guestName} 님 ${SURCHARGE_COPY} · ${reasonL}${late}${pay}`;
 }

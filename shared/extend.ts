@@ -34,7 +34,7 @@ import {
 
 export const EXTEND_COPY = "1박 연장";
 export const NIGHTS_PRICE_WARN =
-  "박수가 늘었는데 판매 가격은 그대로예요. 「1박 연장」으로 요금을 더하거나, 가격을 직접 고쳐 주세요. 그래도 저장할까요?";
+  "박수가 늘었는데 판매 가격은 그대로예요. 「1박 연장」으로 요금을 더하거나, 가격을 직접 수정해 주세요. 그래도 저장할까요?";
 export const REPRICE_TOAST = "판매가를 1박 요금 × 박수에 맞췄어요";
 
 /** 박과 무관한 가산분 (추가인원·시간료·주차 − 도보할인). MVP 재계산 시 유지 */
@@ -209,20 +209,20 @@ export function extendBlock(
   _label: (id: string | null) => string | null = (id) => roomLabel(s, id),
 ): string | null {
   if (!canExtend(b)) {
-    if (isEarlyOut(b)) return "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 고쳐 주세요.";
+    if (isEarlyOut(b)) return "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요.";
     if (b.status !== "active") return "취소·노쇼 예약은 1박 연장할 수 없어요.";
     if (b.kind !== "stay") return "숙박만 1박 연장할 수 있어요.";
     if ((b.nights ?? 0) >= 90) return "박수가 너무 많아요 (90박까지).";
     return "1박 연장할 수 없어요.";
   }
-  if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 적어 주세요.";
+  if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 입력해 주세요.";
   if (rate > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
   void bookings;
   return null;
 }
 
 export function validateExtendRate(rate: number): string | null {
-  if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 적어 주세요.";
+  if (!Number.isInteger(rate) || rate < 0) return "오늘 요금을 숫자로 입력해 주세요.";
   if (rate > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
   return null;
 }
@@ -245,7 +245,7 @@ export type ExtendCollect = { method: BookPayMethod; amount: number } | null;
 
 export interface ExtendPlan {
   draft: ExtendDraft;
-  /** 수납하면 넣을 결제 줄 금액 (0이면 잔금만) */
+  /** 수납하면 넣을 결제 내역 금액 (0이면 잔금만) */
   collectAmount: number;
 }
 
@@ -284,7 +284,7 @@ export interface OpsExtendPlan {
 /** 운영패널 1박 연장: planExtend + 결제수단. StaySale 비경유. */
 export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan | { err: string } {
   if (!canExtend(b)) {
-    if (isEarlyOut(b)) return { err: "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 고쳐 주세요." };
+    if (isEarlyOut(b)) return { err: "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요." };
     if (b.status !== "active") return { err: "취소·노쇼 예약은 1박 연장할 수 없어요." };
     if (b.kind !== "stay") return { err: "숙박만 1박 연장할 수 있어요." };
     if ((b.nights ?? 0) >= 90) return { err: "박수가 너무 많아요 (90박까지)." };
@@ -358,6 +358,6 @@ export function planGroupExtend(
 
 /** 알림용 짧은 줄 */
 export function extendNotifyLine(guestName: string, d: ExtendDraft, collected: boolean): string {
-  const pay = collected && d.rate > 0 ? ` · 오늘 요금 ${won(d.rate)}원 받음` : d.rate > 0 ? ` · 잔금 +${won(d.rate)}원` : "";
+  const pay = collected && d.rate > 0 ? ` · 오늘 요금 ${won(d.rate)}원 수납` : d.rate > 0 ? ` · 잔금 +${won(d.rate)}원` : "";
   return `${guestName} 님 ${EXTEND_COPY} · ${d.nights}박 · ${dayLabel(d.checkOut)} 퇴실${pay}`;
 }

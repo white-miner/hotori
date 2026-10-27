@@ -309,7 +309,7 @@ export function validateGroup(p: {
   /** 타입만(호실 미정). 있으면 roomIds는 무시하고 타입×수로 검사해요 */
   typeOnly?: GroupTypeSlot[];
 }): string | null {
-  if (!p.name.trim()) return "단체명을 적어 주세요.";
+  if (!p.name.trim()) return "단체명을 입력해 주세요.";
   if (p.name.trim().length > GROUP_NAME_MAX) return `단체명은 ${GROUP_NAME_MAX}글자까지예요.`;
   if (!p.platformId) return "플랫폼을 골라 주세요.";
   if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
@@ -399,7 +399,7 @@ export function groupSummaries(list: Booking[]): Map<string, GroupSummary> {
 /** 단체 날짜 바꾸기: 객실 이동·중도 퇴실한 방이 있으면 한 번에 못 바꿔요. 다른 예약과 겹치는 방을 알려 줘요 */
 export function groupDateBlock(s: HotelSettings, bookings: Booking[], members: Booking[], checkIn: string, nights: number): string | null {
   const act = members.filter(isActive);
-  if (act.some((b) => b.segments?.length || b.earlyOut)) return "객실 이동이나 중도 퇴실한 방이 있어서 날짜는 한 번에 바꿀 수 없어요. 방마다 고쳐 주세요.";
+  if (act.some((b) => b.segments?.length || b.earlyOut)) return "객실 이동이나 중도 퇴실한 방이 있어서 날짜는 한 번에 바꿀 수 없어요. 방마다 수정해 주세요.";
   const ids = new Set(members.map((b) => b.id));
   const free = freeForStay(s, bookings.filter((b) => !ids.has(b.id)), checkIn, nights);
   const rmap = new Map(allRooms(s).map((r) => [r.id, r]));

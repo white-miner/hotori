@@ -138,7 +138,7 @@ export function bookedCount(total: number, remaining: number): number {
   return total - remaining;
 }
 
-/** 판매 가능: 남은 재고 있고 판매중지 아님 */
+/** 판매 가능: 잔여 재고 있고 판매중지 아님 */
 export function isSellOpen(remaining: number, stopped: boolean): boolean {
   return !stopped && remaining > 0;
 }

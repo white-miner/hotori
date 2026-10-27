@@ -107,7 +107,7 @@ test("퇴실하는 날 같은 방에 다른 손님을 받을 수 있어요", () 
   assert.ok(!busy.has("r201"));
 });
 
-test("대실은 남은 객실 계산에 들어가지 않아요", () => {
+test("대실은 잔여 객실 계산에 들어가지 않아요", () => {
   const list = [
     bk({ kind: "dayuse", nights: null, startTime: "12:00", endTime: "14:00", roomId: "r201" }),
     bk({ kind: "dayuse", nights: null, startTime: "15:00", endTime: "17:00" }),
@@ -299,7 +299,7 @@ test("영업일: 새벽 6시 전 도착은 전날 밤으로 쳐요 (서울 시�
   assert.equal(businessDate(new Date("2026-10-18T09:00:00Z")), "2026-10-18");
 });
 
-test("미리보기: 저장하면 'S 남은 객실 2 → 1'처럼 바뀌는 밤만 보여 줘요", () => {
+test("미리보기: 저장하면 'S 잔여 객실 2 → 1'처럼 바뀌는 밤만 보여 줘요", () => {
   const draft = bk({ nights: 2 });
   const pv = previewChange(S, [], draft);
   assert.deepEqual(pv.map((r) => [r.date, r.typeId, r.before, r.after]), [
@@ -316,7 +316,7 @@ test("미리보기: 저장하면 'S 남은 객실 2 → 1'처럼 바뀌는 밤�
   ]);
 });
 
-test("총액으로 적고 1박 평균은 자동 계산", () => {
+test("총액으로 입력하고 1박 평균은 자동 계산", () => {
   assert.equal(perNight({ price: 148000, nights: 2 }), 74000);
   assert.equal(perNight({ price: 80000, nights: 1 }), null);
 });
@@ -402,7 +402,7 @@ test("겹치는 예약 확인은 방 번호가 아니라 그 건물의 그 방 �
   const board = nightBoard(M, [main201], "2026-10-18");
   assert.equal(board.byRoom.get("r201")?.id, main201.id);
   assert.equal(board.byRoom.get("ra201"), undefined);
-  // 남은 객실은 건물과 상관없이 타입별 합계 (S: 본관 2 + 별관 1 = 3)
+  // 잔여 객실은 건물과 상관없이 타입별 합계 (S: 본관 2 + 별관 1 = 3)
   assert.equal(remaining(M, [], "s", "2026-10-18"), 3);
   assert.equal(remaining(M, [main201], "s", "2026-10-18"), 2);
   const annexSd = bk({ typeId: "s", roomId: "ra202" });
@@ -423,7 +423,7 @@ test("호실 배정 목록은 본관·별관을 하나의 목록으로 두고, �
   assert.equal(rooms.findIndex((r) => r.typeId === "s") < rooms.findIndex((r) => r.typeId === "sd"), true);
 });
 
-test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 그 층·방도 지워져요", () => {
+test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 그 층·방도 삭제돼요", () => {
   const two = normalizeSettings({
     ...M,
     floors: [...M.floors, { id: "fm3", name: "3층", buildingId: "b-main", rooms: [] }],
@@ -435,7 +435,7 @@ test("층 순서는 같은 건물 안에서만 바뀌고, 건물을 지우면 �
   const gone = removeBuilding(M, "b-annex");
   assert.deepEqual(gone.buildings.map((b) => b.name), ["본관"]);
   assert.equal(allRooms(gone).length, 3);
-  assert.equal(removeBuilding(gone, "b-main"), gone, "마지막 건물은 지울 수 없어요");
+  assert.equal(removeBuilding(gone, "b-main"), gone, "마지막 건물은 삭제할 수 없어요");
 });
 
 test("객실 타입은 이름 하나(최대 12글자) — 옛 약자 데이터는 화면에 보이던 약자를 이름으로", () => {
@@ -498,7 +498,7 @@ test("층 추가: 새 층은 그 건물 맨 위에, 이름은 가장 큰 층 + 1
   assert.equal(first.floors[0].name, "1층");
 });
 
-test("대실 시간: 사람이 적은 그대로 알아들어요", () => {
+test("대실 시간: 사람이 입력한 그대로 알아들어요", () => {
   const cases: [string, string][] = [
     ["13:30", "13:30"], ["1330", "13:30"], ["930", "09:30"], ["9:5", "09:05"], ["13", "13:00"], ["9", "09:00"],
     ["13시 30분", "13:30"], ["13시", "13:00"], ["오후 1:30", "13:30"], ["1:30 PM", "13:30"], ["오전 12:10", "00:10"], ["13.30", "13:30"],

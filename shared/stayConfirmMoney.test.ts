@@ -59,7 +59,7 @@ test("stayConfirmMoney: 금액미정", () => {
   assert.equal(
     stayConfirmMoneyLine(m, (n) => String(n), {
       sale: "판매가",
-      paid: "받은",
+      paid: "수납액",
       balance: "잔금",
       amountUnset: "금액미정",
     }),

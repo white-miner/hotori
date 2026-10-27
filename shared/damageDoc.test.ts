@@ -31,7 +31,7 @@ test("validateDamageDraft requires item lines", () => {
     lines: [emptyDamageLine()],
     bookingId: "b1",
   };
-  assert.equal(validateDamageDraft(draft), "손해 항목을 한 줄 이상 적어 주세요.");
+  assert.equal(validateDamageDraft(draft), "손해 항목을 1개 이상 입력해 주세요.");
   draft.lines[0]!.item = "TV";
   draft.lines[0]!.amount = 50_000;
   assert.equal(validateDamageDraft(draft), null);

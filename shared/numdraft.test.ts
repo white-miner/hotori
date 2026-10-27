@@ -1,4 +1,4 @@
-// 숫자 칸: 적는 동안 글자 그대로 · 칸을 벗어날 때만 범위 맞춤 · 기본 ≤ 최대 인원은 안내만
+// 숫자 칸: 입력하는 동안 글자 그대로 · 칸을 벗어날 때만 범위 맞춤 · 기본 ≤ 최대 인원은 안내만
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cleanDraft, commitDraft, guestRangeMsg, liveValue } from "./numdraft";
@@ -25,7 +25,7 @@ test("기본 인원 2 → 지우고 10: 글자 그대로 10 (50 · 99로 안 튀
 test("단체 · 특수 객실: 10~30명도 그대로", () => {
   for (const n of ["12", "20", "30"]) assert.equal(typeInto("", n.split("")).final, Number(n));
 });
-test("범위 밖은 적는 동안 저장하지 않고, 칸을 벗어날 때만 맞춰요", () => {
+test("범위 밖은 입력하는 동안 저장하지 않고, 칸을 벗어날 때만 맞춰요", () => {
   const r = typeInto("", ["1", "5", "0"]);
   assert.equal(r.draft, "150");
   assert.deepEqual(r.saved, [1, 15]);

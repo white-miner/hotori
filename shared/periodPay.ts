@@ -12,9 +12,9 @@ export type PeriodBooking = Pick<
 
 export interface NightSlot {
   date: string;
-  /** 이 박에 받을 돈 */
+  /** 이 박에 청구액 */
   amount: number;
-  /** 이 박에 들어간 돈 (≤ amount) */
+  /** 이 박에 수납액 (≤ amount) */
   covered: number;
 }
 export type NightState = "paid" | "partial" | "unpaid";
@@ -23,12 +23,12 @@ export const nightState = (n: NightSlot): NightState => (n.covered >= n.amount ?
 export interface StayCoverage {
   bookingId: string;
   nights: NightSlot[];
-  /** 받을 돈 (환불·중도퇴실 반영 = revenueOf) */
+  /** 청구액 (환불·중도퇴실 반영 = revenueOf) */
   due: number;
   paid: number;
-  /** 아직 받을 돈 */
+  /** 아직 청구액 */
   left: number;
-  /** 받을 돈보다 더 받은 돈 */
+  /** 청구액보다 더 수납액 */
   over: number;
   /** 맨 앞 미결제(또는 일부) 박 · 다 냈으면 null */
   firstUnpaid: string | null;
@@ -40,7 +40,7 @@ export function isPeriodPayable(b: Pick<Booking, "status" | "kind" | "nights" | 
 }
 
 /**
- * 박별 받을 돈. 박별 요금(night_rates)이 LOS를 덮으면 그대로, 아니면 판매가를 똑같이(나머지는 마지막 박).
+ * 박별 청구액. 박별 요금(night_rates)이 LOS를 덮으면 그대로, 아니면 판매가를 똑같이(나머지는 마지막 박).
  * 중도퇴실이면 묵은 박까지만. 합계는 항상 revenueOf(판매가 − 환불)가 되도록 마지막 박에서 가감해요
  * (추가금·환불·반올림 차이). 빼다가 0 아래로 가면 앞 박에서 이어서 빼요.
  */
@@ -67,7 +67,7 @@ export function stayNightAmounts(b: PeriodBooking): { date: string; amount: numb
 const isTagged = (p: Pick<Payment, "nightDate" | "periodNights">) => !!p.nightDate && !!p.periodNights && p.periodNights > 0;
 const payOrder = (a: Payment, b: Payment) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 
-/** 박별 결제 채움: 기간 표시 있는 결제는 그 박들 먼저 · 넘친 돈과 표시 없는 돈은 맨 앞 미결제 박부터 */
+/** 박별 결제 채움: 기간 표시 있는 결제는 그 박들 먼저 · 초과 수납액과 기간 미지정 수납액은 맨 앞 미결제 박부터 */
 export function stayCoverage(b: PeriodBooking): StayCoverage {
   const nights: NightSlot[] = stayNightAmounts(b).map((n) => ({ ...n, covered: 0 }));
   const pays = [...(b.payments ?? [])].sort(payOrder);
@@ -131,7 +131,7 @@ export function coverageRuns(c: StayCoverage): CoverageRun[] {
 /** 방 한 줄 요약: `3박 결제 완료 · 이후 미결제` · `전체 30박 결제 완료` · `미결제` */
 export function coverageSummary(c: StayCoverage): string {
   const runs = coverageRuns(c);
-  if (!runs.length) return "받을 돈 없음";
+  if (!runs.length) return "청구액 없음";
   if (runs.length === 1) return runs[0]!.state === "paid" ? `전체 ${runs[0]!.nights}박 결제 완료` : "미결제";
   const range = (r: CoverageRun) => (r.from === r.to ? md(r.from) : `${md(r.from)}~${md(r.to)}`);
   if (runs.length === 2 && runs[0]!.state === "paid") return `${runs[0]!.nights}박 결제 완료(~${md(runs[0]!.to)}) · 이후 미결제`;
@@ -141,7 +141,7 @@ export function coverageSummary(c: StayCoverage): string {
 // ---------------- 단체 기간 ----------------
 export interface PeriodRow {
   bookingId: string;
-  /** 이번 기간에 이 방이 낼 돈 (이미 낸 박은 뺌) */
+  /** 이번 기간에 이 방이 납부액 (이미 낸 박은 뺌) */
   amount: number;
   /** 이번 기간에 이 방에서 결제할 박 수 */
   nights: number;
@@ -149,13 +149,13 @@ export interface PeriodRow {
   perNight: number;
 }
 export interface GroupPeriodPlan {
-  /** 첫 박 · 마지막 박 (둘 다 포함) · 박수 · 낼 돈이 없으면 null */
+  /** 첫 박 · 마지막 박 (둘 다 포함) · 박수 · 납부액이 없으면 null */
   start: string | null;
   end: string | null;
   nights: number;
   rows: PeriodRow[];
   total: number;
-  /** 방 수 (이번 기간에 낼 돈이 있는 방) */
+  /** 방 수 (이번 기간에 납부액이 있는 방) */
   rooms: number;
   /** 단체 전체에서 이 시작일 이후로 남은 최대 박 수 */
   maxNights: number;
@@ -216,7 +216,7 @@ export function allocateTotal(total: number, shares: readonly number[]): number[
   return out;
 }
 
-/** 저장할 결제 줄 (방마다 한 줄 · 낼 돈 0인 방은 빠짐) */
+/** 저장할 결제 내역 (방마다 한 줄 · 납부액 0인 방은 빠짐) */
 export interface PeriodPayLine {
   bookingId: string;
   amount: number;

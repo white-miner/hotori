@@ -89,7 +89,7 @@ export default function AssignCheckoutChoice({
                 새로 배정: <b>{booking.guestName}</b> · {occupiedNightLabel(booking)}
               </p>
               <p className="muted sm">
-                덮어쓰면 옛 숙박은 장부·결제 그대로 두고 방만 새 손님에게 씁니다. 잘못 배정된 퇴실 건이면 다른 방·미배정으로 옮길 수 있어요.
+                덮어쓰면 옛 숙박은 장부·결제 그대로 두고 방만 새 손님에게 배정합니다. 잘못 배정된 퇴실 건이면 다른 방·미배정으로 옮길 수 있어요.
               </p>
             </>
           ) : (

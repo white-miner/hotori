@@ -49,7 +49,7 @@ test("stayNightAmounts: 중도퇴실 = 묵은 박까지만 · 환불 반영해 �
   const a = stayNightAmounts(b);
   assert.equal(a.length, 2);
   assert.equal(a.reduce((s, x) => s + x.amount, 0), 160_000);
-  // 환불을 더 크게 적으면 마지막 박부터 줄어요 (0 밑으로 안 내려감)
+  // 환불을 더 크게 입력하면 마지막 박부터 줄어요 (0 밑으로 안 내려감)
   const c = stay("a", 80_000, 5, { earlyOut: "2026-10-29", refund: 300_000 });
   assert.deepEqual(stayNightAmounts(c).map((x) => x.amount), [80_000, 20_000]);
   const d = stay("a", 80_000, 5, { earlyOut: "2026-10-29", refund: 380_000 });
@@ -63,7 +63,7 @@ test("stayNightAmounts: 취소 · 대실 · 장기는 박 없음", () => {
   assert.deepEqual(stayNightAmounts(stay("a", 1000, 2, { stayMode: "long_stay" })), []);
 });
 
-test("stayCoverage: 결제 줄 없음 = 전부 미결제", () => {
+test("stayCoverage: 결제 내역 없음 = 전부 미결제", () => {
   const c = stayCoverage(stay("a", 70_000, 30));
   assert.equal(c.due, 2_100_000);
   assert.equal(c.left, 2_100_000);
@@ -98,7 +98,7 @@ test("stayCoverage: 완납 · 초과 수납", () => {
   assert.equal(coverageSummary(c), "전체 2박 결제 완료");
 });
 
-test("stayCoverage: 기간 결제가 그 기간보다 많으면 넘친 돈은 다음 미결제 박으로", () => {
+test("stayCoverage: 기간 결제가 그 기간보다 많으면 초과 수납액은 다음 미결제 박으로", () => {
   const b = stay("a", 50_000, 6, { payments: [pay("a", 175_000, { nightDate: "2026-10-27", periodNights: 3 })] });
   const c = stayCoverage(b);
   assert.deepEqual(c.nights.map((x) => x.covered), [50_000, 50_000, 50_000, 25_000, 0, 0]);
@@ -112,7 +112,7 @@ test("stayCoverage: 건너뛴 기간 결제 (오늘부터) → 앞쪽은 미결�
   assert.equal(c.firstUnpaid, "2026-10-27");
 });
 
-test("stayCoverage: 중도퇴실 뒤에는 받을 돈 줄고 낸 돈이 더 많으면 초과로", () => {
+test("stayCoverage: 중도퇴실 뒤에는 청구액 줄고 낸 돈이 더 많으면 초과로", () => {
   const b = stay("a", 80_000, 5, { earlyOut: "2026-10-29", refund: 240_000, payments: [pay("a", 240_000, { nightDate: "2026-10-27", periodNights: 3 })] });
   const c = stayCoverage(b);
   assert.equal(c.due, 160_000);
@@ -209,7 +209,7 @@ test("allocateTotal: 합 = 총액 · 비례 · 최대잔여법 · 0 몫은 0", (
   assert.deepEqual(allocateTotal(5, []), []);
 });
 
-test("periodPayLines: 총액을 고치면 방별로 비례 배분 · 낼 돈 0인 방은 줄 없음", () => {
+test("periodPayLines: 총액을 고치면 방별로 비례 배분 · 납부액 0인 방은 줄 없음", () => {
   const plan = planGroupPeriod(GROUP().map(stayCoverage), 3);
   const lines = periodPayLines(plan, 680_000);
   assert.equal(lines.reduce((s, l) => s + l.amount, 0), 680_000);
@@ -218,7 +218,7 @@ test("periodPayLines: 총액을 고치면 방별로 비례 배분 · 낼 돈 0�
   assert.deepEqual(periodPayLines(one).map((l) => l.bookingId), ["b"]);
 });
 
-test("기간 결제 줄을 장부 결제와 합쳐도 방 수납 합계 = 줄 합계 (기존 payState 호환)", async () => {
+test("기간 결제 내역을 장부 결제와 합쳐도 방 수납 합계 = 줄 합계 (기존 payState 호환)", async () => {
   const { paidOf } = await import("./payment");
   const plan = planGroupPeriod(GROUP().map(stayCoverage), 3);
   const lines = periodPayLines(plan);

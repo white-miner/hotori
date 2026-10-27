@@ -203,7 +203,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const manualTotalNum = Math.max(0, Math.round(Number(totalStr || 0)));
   /**
    * 현장·전화 총액 모드: 박마다 요금(특별일 > 시즌 > 평일/주말 > 기본)을 더해 자동으로 채워요.
-   * 직접 적은 총액이 있으면 그게 먼저예요. 요금이 없는 타입이 있으면 수동 입력 그대로.
+   * 직접 입력한 총액이 있으면 그게 먼저예요. 요금이 없는 타입이 있으면 수동 입력 그대로.
    */
   const autoStay =
     onsite && totalMode && !priceUnset && pickedTypes.length > 0 && effectiveTypeIds.every(Boolean)
@@ -395,7 +395,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   async function save(opts?: { walkInImmediate?: boolean }) {
     const walkInImmediate = !!opts?.walkInImmediate;
     const name = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
-    if (!name) return setErr("이름을 적어 주세요.");
+    if (!name) return setErr("이름을 입력해 주세요.");
     const phoneErr = validateGuestPhone(plat, guestPhone, { walkInImmediate });
     if (phoneErr) return setErr(phoneErr);
 
@@ -734,7 +734,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           <div className="mfp-wrap">
             {/* 타입 줄 = 배치도 위 · Path A 본체 + 하늘색 후보 필터 */}
             <div className="mfp-types">
-              <div className="muted sm">타입 · 남은 수</div>
+              <div className="muted sm">타입 · 잔여 수</div>
               <div className="gcounts mfp-type-list">
                 {types.map((t) => {
                   const c = typeCounts[t.id] ?? 0;
@@ -743,7 +743,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                   return (
                     <div className={`gcnt ${c ? "on" : ""}`} key={t.id}>
                       <TypeBadge t={t} />
-                      <span className="muted sm">남은 {left}</span>
+                      <span className="muted sm">잔여 {left}</span>
                       <span className="step sm">
                         <button
                           type="button"
@@ -912,7 +912,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       {autoStay.missingTypeIds.length ? (
                         <div className="anr-hint" role="status" style={{ marginTop: "var(--space-chip)" }}>
                           {autoStay.missingTypeIds.map((id) => typeLabel(L.types.get(id)) || id).join(" · ")} 요금이 아직 없어요. 총액을 직접 적거나,
-                          박마다 눌러서 적어 주세요. (설정 › 객실 요금에서 정해 두면 자동으로 채워져요)
+                          박마다 눌러서 입력해 주세요. (설정 › 객실 요금에서 정해 두면 자동으로 채워져요)
                         </div>
                       ) : null}
                       <div style={{ marginTop: "var(--space-chip)" }}>

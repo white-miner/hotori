@@ -40,7 +40,7 @@ export default function StayCreditsModal({
     void (async () => {
       const ok = await askConfirm({
         title: `${STAY_CREDIT_COPY.balance} 무효`,
-        body: `${c.guestName} 님 남은 ${won(c.amountRemaining)}원을 무효로 할까요? 이미 사용한 금액은 그대로예요.`,
+        body: `${c.guestName} 님 보관 잔액 ${won(c.amountRemaining)}원을 무효로 할까요? 이미 사용한 금액은 그대로예요.`,
         confirmLabel: "무효",
         danger: true,
       });
@@ -65,7 +65,7 @@ export default function StayCreditsModal({
         </div>
         <div className="mb">
           <p className="muted sm">
-            중도퇴실 「{STAY_CREDIT_COPY.keep}」으로 남긴 돈 · 새 예약에서 「{STAY_CREDIT_COPY.use}」
+            중도퇴실 「{STAY_CREDIT_COPY.keep}」으로 보관 처리한 금액 · 새 예약에서 「{STAY_CREDIT_COPY.use}」
           </p>
           <label className="dayuse-sale-field dayuse-sale-name">
             <span className="muted sm">이름·연락처</span>
@@ -95,7 +95,7 @@ export default function StayCreditsModal({
                   </b>
                   <span className="muted">
                     {c.status === "open"
-                      ? `남음 ${won(c.amountRemaining)} / ${won(c.amountOriginal)}`
+                      ? `잔액 ${won(c.amountRemaining)} / ${won(c.amountOriginal)}`
                       : c.status === "depleted"
                         ? `소진 ${won(c.amountOriginal)}`
                         : `무효 · 원래 ${won(c.amountOriginal)}`}

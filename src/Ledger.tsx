@@ -250,7 +250,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     };
   }, [hotelId, from, to, data.syncedAt, data.bookings]);
 
-  // 단체 정산: 방들의 지금 상태로 (방마다 잔금은 안 보이고 단체 줄에 한 번에)
+  // 단체 정산: 방들의 지금 상태로 (방마다 잔금은 안 보이고 단체 내역에 한 번에)
   const allGroups = useMemo(() => groupSummaries(rows ?? []), [rows]);
   const groupSettle = (id: string) => {
     const g = allGroups.get(id);
@@ -285,7 +285,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   if (sort === "in-asc") list.sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.createdAt.localeCompare(b.createdAt));
   else if (sort === "rec") list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const act = list.filter(isActive);
-  // 매출: 취소 0 · 노쇼는 받은 금액 그대로 · 중도 퇴실은 결제 − 환불 (환불은 퇴실한 날 기준)
+  // 매출: 취소 0 · 노쇼는 수납 금액 그대로 · 중도 퇴실은 결제 − 환불 (환불은 퇴실한 날 기준)
   const rev = roomRevenue(matched, from, to);
   const sum = rev.net;
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
@@ -295,7 +295,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0) +
     [...new Set(list.map((b) => b.groupId).filter((x): x is string => !!x))].reduce((n, id) => n + (groupSettle(id)?.left ?? 0), 0);
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
-  // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
+  // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 순수익 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
   const revAll = roomRevenue(rows ?? [], from, to);
   const roomsAll = revAll.net;
   const exT = expenseTotals(ex.list ?? []);
@@ -311,7 +311,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             const p = L.plats.get(b.platformId);
             const per = perNight(b);
             const eo = isActive(b) && isEarlyOut(b);
-            // 단체 방은 결제자가 하나라 방마다 잔금을 안 보여요 (단체 줄에서)
+            // 단체 방은 결제자가 하나라 방마다 잔금을 안 보여요 (단체 내역에서)
             const ps = b.groupId ? { left: 0, full: false } : payState(b, p);
             const po = payoutOf(b, p);
             const poV = payoutValue(po);
@@ -444,7 +444,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     if (what === "cancel") {
       const ok = await askConfirm({
         title: "단체 취소",
-        body: `단체 ${g.name} ${g.rooms}실을 모두 취소할까요?\n전액 환불로 보고 매출에서 빠지고, 방과 남은 객실이 다시 비어요.`,
+        body: `단체 ${g.name} ${g.rooms}실을 모두 취소할까요?\n전액 환불로 보고 매출에서 빠지고, 방과 잔여 객실이 다시 비어요.`,
         confirmLabel: "취소 확정",
         danger: true,
       });
@@ -463,7 +463,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const saveGroupEdit = async (g: GroupSummary) => {
     if (!gEdit || gBusy) return;
     const nm = gEdit.name.trim();
-    if (!nm) return notify("단체명을 적어 주세요");
+    if (!nm) return notify("단체명을 입력해 주세요");
     const dateChanged = gEdit.checkIn !== g.checkIn || gEdit.nights !== g.nights;
     const nightsUp = gEdit.nights > g.nights;
     const nightsDown = gEdit.nights < g.nights;
@@ -541,9 +541,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
       if (gExt.collect && planned.ok.totalRate > 0) {
         try {
           await data.addGroupPayment(g.groupId, { method: gExt.method, amount: planned.ok.totalRate, bizDate: today });
-          payNote = ` · 오늘 요금 ${won(planned.ok.totalRate)}원 받음 (${BOOK_PAY_LABEL[gExt.method]})`;
+          payNote = ` · 오늘 요금 ${won(planned.ok.totalRate)}원 수납 (${BOOK_PAY_LABEL[gExt.method]})`;
         } catch (e) {
-          payNote = ` · 수납은 못 했어요: ${e instanceof Error ? e.message : "다시 받아 주세요"}`;
+          payNote = ` · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
         }
       } else if (planned.ok.totalRate > 0) {
         payNote = ` · 잔금 +${won(planned.ok.totalRate)}원`;
@@ -689,7 +689,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       </span>
                       <span className="chips">
                         <button type="button" className={`chip ${gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: true })}>
-                          지금 받기
+                          즉시 수납
                         </button>
                         <button type="button" className={`chip ${!gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: false })}>
                           후불
@@ -758,7 +758,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     if (st === "active") bits.push("정상");
     if (st === "void") bits.push("취소·노쇼");
     if (phase !== "all") bits.push(STAY_PHASE_LABEL[phase]);
-    if (dueOnly) bits.push("잔금 남음");
+    if (dueOnly) bits.push("잔금 있음");
     if (poWait) bits.push("입금 미확인");
     if (q) bits.push(`검색「${query.trim()}」`);
     return bits;
@@ -818,7 +818,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           </div>
           <div className="lsum money">
             {feeUsed ? (
-              <div className="seg sm mbasis" role="group" aria-label="남은 금액 기준">
+              <div className="seg sm mbasis" role="group" aria-label="순수익 기준">
                 <button type="button" className={!byPayout ? "on" : ""} aria-pressed={!byPayout} onClick={() => setMBasis("sale")}>
                   판매가
                 </button>
@@ -853,11 +853,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             </span>
             <span className="op">=</span>
             <span className={`tot ${money.left < 0 ? "neg" : ""}`}>
-              남은 금액<b>{won(money.left)}원</b>
+              순수익<b>{won(money.left)}원</b>
             </span>
             <span
               className={`cash ${money.cash < 0 ? "neg" : ""}`}
-              title="현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금, 받은 날 기준) − 현금 지출. 플랫폼이 받은 예약 금액과 카드·이체는 빠져요"
+              title="현금 수납액(매점 현금 + 예약 선금·잔금 현금, 수납일 기준) − 현금 지출. 플랫폼 수취 예약 금액과 카드·이체는 빠져요"
             >
               현금 시재<b>{won(money.cash)}원</b>
               <i className="muted">
@@ -867,8 +867,8 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             </span>
           </div>
           {tab === "bookings" && paySum && paySum.total > 0 ? (
-            <div className="lsum-f muted paysum" title="받은 날 기준 예약 선금·잔금 (단체 정산 포함). 이체·잔액 사용은 현금 시재에 안 들어가요">
-              예약 받은 돈 {won(paySum.total)}원 · 카드 {won(paySum.card)} · 현금 {won(paySum.cash)} · 이체 {won(paySum.transfer)}
+            <div className="lsum-f muted paysum" title="수납일 기준 예약 선금·잔금 (단체 정산 포함). 이체·잔액 사용은 현금 시재에 안 들어가요">
+              예약 수납액 {won(paySum.total)}원 · 카드 {won(paySum.card)} · 현금 {won(paySum.cash)} · 이체 {won(paySum.transfer)}
               {paySum.credit > 0 ? ` · ${STAY_CREDIT_COPY.use} ${won(paySum.credit)}` : ""}
             </div>
           ) : null}
@@ -905,7 +905,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           ) : null}
           {tab === "bookings" && dueTotal > 0 ? (
             <div className="lsum-f">
-              <span className="dueamt">잔금 남음 {won(dueTotal)}원</span> <span className="muted">· 이 목록에서 아직 못 받은 돈</span>
+              <span className="dueamt">잔금 있음 {won(dueTotal)}원</span> <span className="muted">· 이 목록의 미수금</span>
             </div>
           ) : null}
           {tab === "bookings" && sumUp.shop === null ? (
@@ -969,9 +969,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             try {
               await ex.remove(exEdit.id);
               setExEdit(null);
-              notify("지출을 지웠어요");
+              notify("지출을 삭제했어요");
             } catch (e) {
-              notify(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+              notify(e instanceof Error ? `삭제하지 못했어요: ${e.message}` : "삭제하지 못했어요");
             }
           }}
         />
@@ -1040,7 +1040,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 <span className="print-only"> · 출력 {printedAt}</span>
               </div>
               <div className="exec-tot">
-                매출 <b>{won(money.sales)}</b> − 지출 <b>{won(money.expense)}</b> = 남은 금액{" "}
+                매출 <b>{won(money.sales)}</b> − 지출 <b>{won(money.expense)}</b> = 순수익{" "}
                 <b className={money.left < 0 ? "neg" : ""}>{won(money.left)}</b>
                 <span className="muted"> · 현금 시재 {won(money.cash)}</span>
               </div>
@@ -1109,7 +1109,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   {platPay.rows.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="muted">
-                        이 기간 받은 돈이 없어요
+                        이 기간 수납 내역이 없어요
                       </td>
                     </tr>
                   ) : (
@@ -1135,7 +1135,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 </tfoot>
               </table>
               <p className="exec-note muted">
-                받은 날 기준 · 행=플랫폼 · 열=결제수단 · 매점은 별도 행
+                수납일 기준 · 행=플랫폼 · 열=결제수단 · 매점은 별도 행
                 {platPay.total.credit > 0 ? ` · 잔액 사용 ${won(platPay.total.credit)}원(합계 제외)` : ""}
                 {payMethods.shop.none > 0 ? ` · 매점 미지정 ${won(payMethods.shop.none)}원(합계 제외)` : ""}
               </p>
@@ -1211,7 +1211,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             </section>
 
             <footer className="exec-foot">
-              매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 남은 금액 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
+              매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 순수익 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
             </footer>
           </div>
         </>
@@ -1349,7 +1349,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <option value="rec">최근 기록·수정 순</option>
         </select>
         <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
-          잔금 남음
+          잔금 있음
         </button>
         {feeUsed ? (
           <button type="button" className={`chip sm duechip ${poWait ? "on" : ""}`} aria-pressed={poWait} onClick={() => setPoWait((x) => !x)}>
@@ -1442,9 +1442,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           </div>
           {printFilters.length ? <div className="lph-filters">필터: {printFilters.join(" · ")}</div> : null}
           <div className="lph-sum">
-            매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 남은 금액 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
+            매출 {won(money.sales)}원 − 지출 {won(money.expense)}원 = 순수익 {won(money.left)}원 · 현금 시재 {won(money.cash)}원
             {paySum && paySum.total > 0
-              ? ` · 받은 돈 카드 ${won(paySum.card)} · 현금 ${won(paySum.cash)} · 이체 ${won(paySum.transfer)}`
+              ? ` · 수납액 카드 ${won(paySum.card)} · 현금 ${won(paySum.cash)} · 이체 ${won(paySum.transfer)}`
               : ""}
           </div>
         </header>
@@ -1473,7 +1473,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         {list.length ? (
           <div className="ledger-print-foot print-only">
             합계 {list.length}건 · 정상 판매가 {won(listTotal)}원
-            {dueTotal > 0 ? ` · 잔금 남음 ${won(dueTotal)}원` : ""}
+            {dueTotal > 0 ? ` · 잔금 있음 ${won(dueTotal)}원` : ""}
           </div>
         ) : null}
       </div>

@@ -1,4 +1,4 @@
-// 숫자 칸: 적는 동안 글자를 그대로 두고(범위 안이면 바로 저장), 칸을 벗어날 때만 범위를 맞춰요
+// 숫자 칸: 입력하는 동안 글자를 그대로 두고(범위 안이면 바로 저장), 칸을 벗어날 때만 범위를 맞춰요
 import { useState } from "react";
 import { type DraftOpts, cleanDraft, commitDraft, liveValue } from "../shared/numdraft";
 

@@ -211,7 +211,7 @@ export function ExpenseModal({
             </button>
             <DateChip value={stockIn || bizDate} label="입고날짜" onChange={setStockIn} />
           </div>
-          <p className="fine">물건 받은 날이에요. 영업일(결제일)과 달라도 돼요.</p>
+          <p className="fine">입고일이에요. 영업일(결제일)과 달라도 돼요.</p>
         </div>
         <div className="fld">
           <label>
@@ -285,7 +285,7 @@ export function ExpenseModal({
             aria-label="사용처·품목"
           />
           <p className="fine">
-            산 것·쓴 것을 그대로 적어 주세요.
+            구매·사용 내역을 그대로 입력해 주세요.
             {itemCadence?.label ? ` · 이 품목 구매 주기 ${itemCadence.label}` : ""}
           </p>
         </div>
@@ -355,11 +355,11 @@ export function ExpenseModal({
           {base ? (
             confirmDel ? (
               <button type="button" className="btn sm danger" onClick={() => void onDelete()}>
-                정말 지울까요?
+                정말 삭제할까요?
               </button>
             ) : (
               <button type="button" className="btn sm ghost" onClick={() => setConfirmDel(true)}>
-                지출 지우기
+                지출 삭제
               </button>
             )
           ) : null}
@@ -538,7 +538,7 @@ export function ExpenseList({
         {list === null ? (
           <div className="lempty">불러오는 중…</div>
         ) : rows.length === 0 ? (
-          <div className="lempty">{list.length ? "조건에 맞는 지출이 없어요" : "이 기간에 적은 지출이 없어요 · '+ 지출'로 적어 보세요"}</div>
+          <div className="lempty">{list.length ? "조건에 맞는 지출이 없어요" : "이 기간에 등록된 지출이 없어요 · '+ 지출'로 등록해 보세요"}</div>
         ) : (
           rows.map((e) => (
             <div key={e.id} role="button" tabIndex={0} className="erow excols" onClick={() => onOpen(e)} onKeyDown={(k) => k.key === "Enter" && onOpen(e)}>
@@ -649,7 +649,7 @@ export function ExpensesPage({
           <h1>
             <Wallet size={22} strokeWidth={2.2} /> 지출
           </h1>
-          <p className="muted">거래처·입고일·미수금을 적어요. 카드 · 현금 · 이체로 나눠요.</p>
+          <p className="muted">거래처·입고일·미수금을 입력해요. 카드 · 현금 · 이체로 나눠요.</p>
         </div>
       </div>
       {exEdit ? (
@@ -671,9 +671,9 @@ export function ExpensesPage({
             try {
               await ex.remove(exEdit.id);
               setExEdit(null);
-              notify("지출을 지웠어요");
+              notify("지출을 삭제했어요");
             } catch (e) {
-              notify(e instanceof Error ? `지우지 못했어요: ${e.message}` : "지우지 못했어요");
+              notify(e instanceof Error ? `삭제하지 못했어요: ${e.message}` : "삭제하지 못했어요");
             }
           }}
         />

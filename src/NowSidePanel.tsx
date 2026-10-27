@@ -577,7 +577,7 @@ export default function NowSidePanel({
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        받을 {won(balGlance.due)} · 받은 {won(balGlance.paid)} · 남은{" "}
+                        청구 {won(balGlance.due)} · 수납 {won(balGlance.paid)} · 잔액{" "}
                         <b>{won(balGlance.left)}</b>
                       </span>
                     </div>
@@ -622,7 +622,7 @@ export default function NowSidePanel({
                         </button>
                       ) : (
                         <button type="button" className="nsel-memobtn muted" onClick={() => onMemo(selectedRoomId!)} disabled={readOnly}>
-                          {readOnly ? "없음" : "메모 적기"}
+                          {readOnly ? "없음" : "메모 입력"}
                         </button>
                       )}
                     </span>
@@ -815,7 +815,7 @@ export default function NowSidePanel({
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        받을 {won(balGlance.due)} · 받은 {won(balGlance.paid)} · 남은{" "}
+                        청구 {won(balGlance.due)} · 수납 {won(balGlance.paid)} · 잔액{" "}
                         <b>{won(balGlance.left)}</b>
                       </span>
                     </div>
@@ -1000,7 +1000,7 @@ export default function NowSidePanel({
                     ) : (
                       "간단 예약"
                     )}
-                    으로 받을 수 있어요
+                    으로 수납할 수 있어요
                   </>
                 )}
             </div>

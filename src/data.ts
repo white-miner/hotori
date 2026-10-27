@@ -204,7 +204,7 @@ const chargeFromRow = (r: ChargeRow, bookingId?: string): NightCharge => ({
 });
 const COLS_BASE =
   "id,kind,status,platform_id,price,price_unset,guest_name,guest_phone,type_id,room_id,room_segments,check_in,nights,start_time,end_time,arrived,tentative,no_clean,early_out_on,checked_out_at,stay_mode,long_stay_rate,settle_cycle,refund_amount,memo,guests,extra_fee,early_in_hours,late_out_hours,time_fee,arrival_mode,car_count,car_plates,car_fee,walk_discount,coupons,payout_confirmed,payout_amount,group_id,group_name,succeeds_booking_id,night_rates,cancelled_at,created_at,updated_at";
-// 받은 돈(선금·잔금) · 장기 원장도 함께 불러와요
+// 수납액(선금·잔금) · 장기 원장도 함께 불러와요
 const COLS = `${COLS_BASE},booking_payments(${PAY_COLS}),booking_night_charges(${CHARGE_COLS})`;
 
 // 단체 정산
@@ -336,7 +336,7 @@ function toRow(b: Booking) {
     // 임시 배치는 방 있을 때만 (미배정 roomId=null 은 타입 홀드)
     tentative: b.tentative === true && !!b.roomId,
     no_clean: b.noClean === true,
-    // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 지워요 (서버도 같은 규칙으로 맞춰요)
+    // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 삭제해요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     checked_out_at: stay && b.status === "active" && b.checkedOutAt ? b.checkedOutAt : null,
     stay_mode: stay && b.stayMode === "long_stay" ? "long_stay" : "standard",
@@ -562,7 +562,7 @@ export function useHotelData(hotelId: string) {
     ) => {
       const row: Record<string, unknown> = {};
       if (patch.arrived !== undefined) row.arrived = patch.arrived;
-      if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 지워요
+      if (patch.roomId !== undefined) row.room_id = patch.roomId; // 방을 통째로 정하면 객실 이동 구간은 서버가 삭제해요
       if (patch.status !== undefined) row.status = patch.status;
       if (patch.noClean !== undefined) row.no_clean = patch.noClean;
       if (patch.checkedOutAt !== undefined) row.checked_out_at = patch.checkedOutAt;
@@ -623,7 +623,7 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId, refresh],
   );
-  // 선금·잔금 받음: 한 줄씩 적고 지워요 (고치기는 지우고 다시 적기)
+  // 선금·잔금 받음: 한 건씩 등록·삭제해요 (수정은 삭제 후 재등록)
   const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: PaymentMethod; amount: number; bizDate: string; note?: string | null }) => {
     const note = p.note?.trim() ? p.note.trim().slice(0, 80) : null;
     const { data, error } = await supabase
@@ -784,7 +784,7 @@ export function useHotelData(hotelId: string) {
   // 단체 예약: 여러 줄을 한 번에 (한 문장이라 모두 되거나 모두 안 돼요)
   const saveGroup = useCallback(
     async (list: Booking[], info?: Omit<GroupInfo, "payments">): Promise<Booking[]> => {
-      // 정산 정보를 먼저 만들고, 예약이 안 되면 다시 지워요 (모두 되거나 모두 안 돼요)
+      // 정산 정보를 먼저 만들고, 예약이 안 되면 다시 삭제해요 (모두 되거나 모두 안 돼요)
       if (info) {
         const r = await supabase.from("booking_groups").insert({ ...groupToRow(info), id: info.id, hotel_id: hotelId }).select(GROUP_COLS).single();
         if (r.error) throw r.error;
@@ -829,7 +829,7 @@ export function useHotelData(hotelId: string) {
         throw error;
       }
       let saved = (data as BookingRow[]).map(fromRow);
-      // 손님 이름을 단체명 그대로 둔 방만 새 이름으로 (방마다 적은 손님 이름은 그대로)
+      // 손님 이름을 단체명 그대로 둔 방만 새 이름으로 (방마다 입력한 손님 이름은 그대로)
       if (patch.groupName !== undefined && patch.oldName && patch.oldName !== patch.groupName.trim()) {
         const r2 = await supabase
           .from("bookings")
@@ -951,7 +951,7 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId, groups],
   );
-  /** 방금 한 기간 결제 취소: 줄 여러 개를 한 번에 지워요 */
+  /** 방금 한 기간 결제 취소: 줄 여러 개를 한 번에 삭제해요 */
   const deletePayments = useCallback(async (list: { bookingId: string; id: string }[]) => {
     if (!list.length) return;
     const { error } = await supabase.from("booking_payments").delete().in("id", list.map((x) => x.id));
@@ -1022,7 +1022,7 @@ export async function queryLedger(hotelId: string, from: string, to: string): Pr
   return (data as BookingRow[]).map(fromRow);
 }
 
-/** 장부 현금 시재: 그 기간에 받은 선금·잔금 (받은 날 기준) */
+/** 장부 현금 시재: 그 기간에 받은 선금·잔금 (수납일 기준) */
 export async function queryPayments(hotelId: string, from: string, to: string): Promise<Payment[]> {
   const { data, error } = await supabase
     .from("booking_payments")
@@ -1206,7 +1206,7 @@ export function useShopSales(hotelId: string, from: string, to: string) {
     },
     [hotelId],
   );
-  /** 1개 되돌리기: 그날 그 물품의 가장 최근 판매를 지워요 */
+  /** 1개 되돌리기: 그날 그 물품의 가장 최근 판매를 삭제해요 */
   const undo = useCallback(async (sale: ShopSale): Promise<void> => {
     setSales((cur) => (cur ?? []).filter((s) => s.id !== sale.id));
     try {
@@ -1222,7 +1222,7 @@ export function useShopSales(hotelId: string, from: string, to: string) {
 
   return { sales, error, refresh, sell, undo };
 }
-/** 이 물품을 판 기록이 있나요 (지우기 전에 확인) */
+/** 이 물품을 판 기록이 있나요 (삭제 전에 확인) */
 export async function hasShopSales(hotelId: string, itemId: string): Promise<boolean> {
   const { count, error } = await supabase
     .from("shop_sales")
@@ -1370,7 +1370,7 @@ export function useExpenseVendors(hotelId: string) {
   return { list, error, save, refresh };
 }
 
-/** 지출: 기간(영업일)으로 불러오고, 다른 기기에서 적은 것도 실시간 + 15초마다 맞춰요 */
+/** 지출: 기간(영업일)으로 불러오고, 다른 기기에서 등록한 것도 실시간 + 15초마다 맞춰요 */
 export function useExpenses(hotelId: string, from: string, to: string) {
   const [list, setList] = useState<Expense[] | null>(null);
   const [error, setError] = useState<string | null>(null);

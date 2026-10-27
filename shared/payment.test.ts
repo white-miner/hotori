@@ -120,11 +120,11 @@ test("현장 예약: 선금 50,000 받으면 잔금 100,000, 잔금 받으면 �
   assert.equal(payState(b2, onsite).full, true);
 });
 
-test("현장 예약은 받은 돈이 없으면 전액이 잔금", () => {
+test("현장 예약은 수납액이 없으면 전액이 잔금", () => {
   assert.equal(payState(bk({}), onsite).left, 150000);
 });
 
-test("OTA 예약은 잔금이 없어요 (플랫폼·손님 선결제) · 결제 줄이 있어도 잔금·미수 톤 금지", () => {
+test("OTA 예약은 잔금이 없어요 (플랫폼·손님 선결제) · 결제 내역이 있어도 잔금·미수 톤 금지", () => {
   assert.deepEqual(payState(bk({}), ota), { tracked: false, due: 150000, paid: 0, left: 0, full: false });
   const b = bk({ payments: [pay("deposit", "card", 30000)] });
   assert.deepEqual(payState(b, ota), { tracked: false, due: 150000, paid: 30000, left: 0, full: false });
@@ -157,13 +157,13 @@ test("현금 시재: 기간 안에 현금으로 받은 선금·잔금만 더해�
   assert.equal(moneySummary(1, 0, 10000, { amount: 0, cash: 0 }).cash, 10000); // 예전처럼 매점 현금만
 });
 
-test("받은 돈 검사", () => {
+test("수납액 검사", () => {
   assert.equal(validatePayment(50000, "cash", "2026-10-19"), null);
   assert.match(validatePayment(0, "cash", "2026-10-19")!, /금액/);
   assert.match(validatePayment(1.5, "cash", "2026-10-19")!, /금액/);
   assert.match(validatePayment(200_000_000, "card", "2026-10-19")!, /1억/);
   assert.match(validatePayment(1000, "bank", "2026-10-19")!, /카드/);
-  assert.match(validatePayment(1000, "card", "")!, /날짜/);
+  assert.match(validatePayment(1000, "card", "")!, /수납일/);
 });
 
 test("내역 카피: 방법+금액이 먼저 · kind는 장기/표준 라벨", () => {

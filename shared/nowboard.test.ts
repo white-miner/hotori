@@ -398,7 +398,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     nowAmountTone(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
     "paid",
   );
-  // OTA: 판매금만 · 결제 줄이 있어도 잔금 라벨·due/partial 톤 금지 (완납/검정)
+  // OTA: 판매금만 · 결제 내역이 있어도 잔금 라벨·due/partial 톤 금지 (완납/검정)
   const ota = { name: "야놀자" };
   assert.equal(nowAmountGlance(bk({ price: 140000, payments: [] }), ota), "₩140,000");
   assert.equal(nowAmountTone(bk({ price: 140000, payments: [] }), ota), "paid");
@@ -435,7 +435,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     "due",
   );
   assert.equal(nowAmountGlance(bk({ stayMode: "long_stay", price: 0, charges: [], payments: [] }), onsite), null);
-  // 단체: 방 payments 비어 있어도 단체 줄 완납 → 잔금 금지 · 최근=단체납 금액(판매가 대체)
+  // 단체: 방 payments 비어 있어도 단체 내역 완납 → 잔금 금지 · 최근=단체납 금액(판매가 대체)
   {
     const a = bk({ id: "ga", groupId: "g1", price: 80000, payments: [] });
     const b = bk({ id: "gb", groupId: "g1", price: 70000, payments: [], roomId: "r302" });
@@ -481,7 +481,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     assert.equal(nowPayMethodPrefix(paidAmt, nowLatestPayMethodLabel(paid)), "이체");
     assert.equal(nowPayMethodPrefix("미수 ₩80,000", "현금"), null);
     assert.equal(nowPayMethodPrefix(null, "카드"), "카드");
-    // 대납: 형제 방만 수납 · 이 방·단체 줄 없음 → left=0이어도 최근 후보 없음 → 판매가 폴백
+    // 대납: 형제 방만 수납 · 이 방·단체 내역 없음 → left=0이어도 최근 후보 없음 → 판매가 폴백
     {
       const a = bk({ id: "da", groupId: "gd", price: 80000, payments: [] });
       const b = bk({
@@ -522,7 +522,7 @@ test("칸 마크: 늦은 퇴실 → N시 퇴실 · 결제수단 글랜스", () =
   );
 });
 
-test("latestPaymentOf: createdAt 최신 · 동률 bizDate · 단체 줄 포함", () => {
+test("latestPaymentOf: createdAt 최신 · 동률 bizDate · 단체 내역 포함", () => {
   assert.equal(latestPaymentOf({ payments: [] }), null);
   const older = { id: "1", bookingId: "b", kind: "deposit" as const, method: "cash" as const, amount: 10000, bizDate: "2026-10-20", createdAt: "2026-10-20T09:00:00Z" };
   const newer = { id: "2", bookingId: "b", kind: "balance" as const, method: "card" as const, amount: 70000, bizDate: "2026-10-21", createdAt: "2026-10-21T11:00:00Z" };

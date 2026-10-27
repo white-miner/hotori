@@ -1,4 +1,4 @@
-// 선금 · 잔금: 받은 돈은 예약마다 줄로 적고, 잔금은 화면에서 계산해요.
+// 선금 · 잔금: 수납액은 예약마다 줄로 적고, 잔금은 화면에서 계산해요.
 import { type Booking, type Platform, revenueOf } from "./ledger";
 import { won } from "./ledger";
 
@@ -144,16 +144,16 @@ export const paidOf = (b: Pick<Booking, "payments">) => (b.payments ?? []).reduc
 export interface PayState {
   /** 잔금을 따지나요: 현장 결제(`isOnsite`)만. OTA는 손님·플랫폼 선결제 → 잔금 없음 */
   tracked: boolean;
-  due: number; // 받을 돈 (가격 − 환불)
+  due: number; // 청구액 (가격 − 환불)
   paid: number;
   left: number; // 잔금 (0 이상)
   full: boolean; // 완납
 }
 /**
  * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 손님·플랫폼이 받은 걸로 봐서 잔금이 없어요
- * (결제 줄이 있어도 현장 결제 채널이 아니면 잔금·미수 톤 금지 — 보드 완납/검정).
- * 받을 돈 = 판매 가격 − 중도 퇴실 환불.
- * 장기(long_stay): 받을 돈 = 원장 누적 − 받은 돈 (판매가 price 총액 모델 아님).
+ * (결제 내역이 있어도 현장 결제 채널이 아니면 잔금·미수 톤 금지 — 보드 완납/검정).
+ * 청구액 = 판매 가격 − 중도 퇴실 환불.
+ * 장기(long_stay): 청구액 = 원장 누적 − 수납액 (판매가 price 총액 모델 아님).
  */
 export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined): PayState {
   const paid = paidOf(b);
@@ -175,14 +175,14 @@ export function bookingCash(list: Pick<Payment, "method" | "amount" | "bizDate">
   return list.filter((x) => x.method === "cash" && x.bizDate >= from && x.bizDate <= to).reduce((n, x) => n + x.amount, 0);
 }
 export function validatePayment(amount: number, method: string, bizDate: string): string | null {
-  if (!Number.isInteger(amount) || amount <= 0) return "받은 금액을 적어 주세요.";
+  if (!Number.isInteger(amount) || amount <= 0) return "수납 금액을 입력해 주세요.";
   if (amount > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
   if (!isBookPayMethod(method)) return "카드 · 현금 · 이체 중에 골라 주세요.";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(bizDate)) return "받은 날짜를 골라 주세요.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(bizDate)) return "수납일을 선택해 주세요.";
   return null;
 }
 
-/** 받은 돈을 방법별로: 기간을 주면 그 영업일 안에 받은 것만. credit(잔액 사용)은 total만 합산 · 시재 칩 제외 */
+/** 수납액을 방법별로: 기간을 주면 그 영업일 안에 받은 것만. credit(잔액 사용)은 total만 합산 · 시재 칩 제외 */
 export function paySplit(list: Pick<Payment, "method" | "amount" | "bizDate">[], from?: string, to?: string): Record<BookPayMethod, number> & { total: number; credit: number } {
   const r = { card: 0, cash: 0, transfer: 0, credit: 0, total: 0 };
   for (const x of list) {

@@ -1,5 +1,5 @@
 // 「현황」빠른 입실: 즉시 arrived 금지 → 추가금 결제 팝업 후 확정
-// 서비스 = 무료(₩0)·결제 줄 없음. 카드/현금/이체는 amount>0일 때만 booking_payments.
+// 서비스 = 무료(₩0)·결제 내역 없음. 카드/현금/이체는 amount>0일 때만 booking_payments.
 import { type BookPayMethod, BOOK_PAY_LABEL, BOOK_PAY_METHODS, isBookPayMethod, PAY_MAX, validatePayment } from "./payment";
 import { won } from "./ledger";
 
@@ -29,7 +29,7 @@ export interface EarlyInPayInput {
 export interface EarlyInPayPlan {
   /** 판매가에 더할 추가금 (서비스·0원이면 0) */
   priceDelta: number;
-  /** 지금 받을 금액 (priceDelta와 동일 · >0이면 결제 줄) */
+  /** 지금 수납 금액 (priceDelta와 동일 · >0이면 결제 내역) */
   collectAmount: number;
   method: BookPayMethod | null;
   payNote: string | null;
@@ -48,7 +48,7 @@ export function validateEarlyInPay(input: EarlyInPayInput): string | null {
   if (!isEarlyInPayMethod(input.method)) return "카드 · 현금 · 이체 · 서비스 중에 골라 주세요.";
   // 서비스: 금액 무시(강제 0) · 날짜/방법 검증 생략
   if (input.method === "service") return null;
-  if (!Number.isFinite(input.amount) || input.amount < 0) return "추가금 금액을 숫자로 적어 주세요.";
+  if (!Number.isFinite(input.amount) || input.amount < 0) return "추가금 금액을 숫자로 입력해 주세요.";
   const amount = Math.round(input.amount);
   if (amount > PAY_MAX) return "금액이 너무 커요 (1억 원까지).";
   if (amount > 0) {

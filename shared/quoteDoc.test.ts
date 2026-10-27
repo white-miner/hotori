@@ -33,7 +33,7 @@ test("validateQuoteDraft: 제목·줄 필요", () => {
       lines: [],
       showRoomNos: false,
     }),
-    "견적 제목 또는 견적처를 적어 주세요.",
+    "견적 제목 또는 견적처를 입력해 주세요.",
   );
   const line = emptyQuoteLine("t1");
   line.label = "스탠다드";

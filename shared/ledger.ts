@@ -51,7 +51,7 @@ export {
 } from "./hotelBiz";
 export type { PrintLang, StayConfirmLang, StayConfirmStrings } from "./hotelBiz";
 // HOTORI v3 · 예약 장부 핵심 규칙 (화면과 테스트가 같이 써요)
-// 남은 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
+// 잔여 객실(타입, 날짜) = 그 타입 방 수 − 그날 밤을 차지한 숙박 예약 수
 // - 숙박 N박 = 입실 날짜부터 N개의 밤. 퇴실하는 날 밤은 비어요.
 // - 대실은 계산에 넣지 않아요. 취소·노쇼도 빠져요.
 // - 방을 정했으면 실제 방의 타입에서, 안 정했으면 판 타입에서 빼요.
@@ -67,7 +67,7 @@ export interface RoomType {
   name: string; // 객실 타입 이름(최대 12글자). 칩·방 칸·현황표·장부에 그대로 보여요. 예: S, SD, 스탠다드 디럭스
   /** @deprecated 예전 '약자' 칸. 옛 데이터를 불러올 때만 읽고, 저장할 때는 name과 같은 값으로 맞춰 둬요 */
   code?: string;
-  /** 인원 추가금: 기본 인원(안 적으면 2) · 최대 인원(넘으면 경고만) · 추가 요금 등급 id */
+  /** 인원 추가금: 기본 인원(안 입력하면 2) · 최대 인원(넘으면 경고만) · 추가 요금 등급 id */
   baseGuests?: number;
   maxGuests?: number;
   tierId?: string;
@@ -314,7 +314,7 @@ export interface Booking {
    * nights 행렬이 LOS를 덮으면 객실료 진실 = Σ nights. 장기 charges와 별개.
    */
   nightRates?: StayNightRates | null;
-  /** 받은 돈 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
+  /** 수납액 (선금·잔금). 장부·현황판이 잔금을 계산해요 */
   payments?: Payment[];
   cancelledAt: string | null;
   createdAt: string;
@@ -598,7 +598,7 @@ export function addFloorOnTop(s: HotelSettings, buildingId: string, id: string):
   else floors.splice(at, 0, floor);
   return { ...s, floors };
 }
-/** 건물 지우기: 그 건물의 층·방도 같이 지워요 (마지막 건물은 못 지워요) */
+/** 건물 삭제: 그 건물의 층·방도 같이 삭제해요 (마지막 건물은 못 삭제해요) */
 export function removeBuilding(s: HotelSettings, buildingId: string): HotelSettings {
   if (s.buildings.length <= 1) return s;
   return {
@@ -731,13 +731,13 @@ export function validateEarlyOut(b: Booking, date: string, refund: number | null
   if (b.status !== "active") return "취소·노쇼 예약은 중도 퇴실할 수 없어요.";
   if (b.kind !== "stay" || !b.nights || b.nights < 2) return "2박 이상 숙박만 중도 퇴실할 수 있어요.";
   if (!(date > b.checkIn && date < addDays(b.checkIn, b.nights))) return "퇴실 날짜는 입실 다음 날부터 원래 퇴실 전날까지예요.";
-  if (refund != null && (!Number.isInteger(refund) || refund < 0)) return "환불 금액을 숫자로 적어 주세요.";
+  if (refund != null && (!Number.isInteger(refund) || refund < 0)) return "환불 금액을 숫자로 입력해 주세요.";
   if (refund != null && refund > b.price) return `환불 금액은 결제 금액(${won(b.price)}원)보다 클 수 없어요.`;
   return null;
 }
 /**
  * 중도 퇴실 되돌리기를 막아야 하나요: 비운 밤에 다른 예약이 그 방에 들어왔거나,
- * 되돌리면 그 밤 남은 객실이 모자라요(새로 오버부킹). 막을 이유(문구) 또는 null
+ * 되돌리면 그 밤 잔여 객실이 모자라요(새로 오버부킹). 막을 이유(문구) 또는 null
  */
 export function earlyOutUndoBlock(s: HotelSettings, bookings: Booking[], b: Booking, roomLabel: (id: string | null) => string | null = (x) => x): string | null {
   if (!isEarlyOut(b)) return null;
@@ -756,7 +756,7 @@ export function earlyOutUndoBlock(s: HotelSettings, bookings: Booking[], b: Book
     for (const [d, n] of row)
       if (n < 0 && n < (before.get(tid)?.get(d) ?? 0)) {
         const t = s.types.find((x) => x.id === tid);
-        return `${dayLabel(d)} 밤 ${typeLabel(t) || "그 타입"} 남은 객실이 없어서 되돌릴 수 없어요 (비운 방이 다시 팔렸어요).`;
+        return `${dayLabel(d)} 밤 ${typeLabel(t) || "그 타입"} 잔여 객실이 없어서 되돌릴 수 없어요 (비운 방이 다시 팔렸어요).`;
       }
   return null;
 }
@@ -764,7 +764,7 @@ export function earlyOutUndoBlock(s: HotelSettings, bookings: Booking[], b: Book
 /**
  * 예약 하나가 매출에 남기는 금액:
  *  · 취소 = 0 (전액 환불)
- *  · 노쇼 = 결제 금액 그대로 (받은 돈)
+ *  · 노쇼 = 결제 금액 그대로 (수납액)
  *  · 중도 퇴실 = 결제 금액 − 환불
  */
 export function revenueOf(b: Pick<Booking, "status" | "price" | "kind" | "checkIn" | "nights" | "earlyOut" | "refund">): number {
@@ -817,7 +817,7 @@ export function freedLegsOf(b: LegPick): Leg[] {
     .filter((l) => addDays(l.checkIn, l.nights) > end)
     .map((l) => (l.checkIn >= end ? l : { ...l, checkIn: end, nights: daysBetween(end, addDays(l.checkIn, l.nights)) }));
 }
-/** 예약한 대로의 구간들 (중도 퇴실과 상관없이 처음 박수 전부) — 객실 이동 구간 고치기용 */
+/** 예약한 대로의 구간들 (중도 퇴실과 상관없이 처음 박수 전부) — 객실 이동 구간 수정용 */
 export function fullLegsOf(b: Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments">): Leg[] {
   if (b.kind !== "stay" || !b.nights) return [];
   if (!segsValid(b.segments, b.nights)) return [{ roomId: b.roomId, checkIn: b.checkIn, nights: b.nights, idx: 0 }];
@@ -1050,7 +1050,7 @@ export function nightsOverlap(
   return a.checkIn < checkOut(b) && b.checkIn < checkOut(a);
 }
 
-// ---------- 남은 객실 ----------
+// ---------- 잔여 객실 ----------
 export type StockTable = Map<string, Map<string, number>>; // typeId -> date -> remaining
 
 /**
@@ -1072,7 +1072,7 @@ export function stockGlanceDates(dates: readonly string[], today: string): strin
 }
 
 /**
- * 남은 객실 표. buildingId를 주면 그 건물만: 그 건물 방 수에서 그 건물 방에 배정된 숙박만 빼요.
+ * 잔여 객실 표. buildingId를 주면 그 건물만: 그 건물 방 수에서 그 건물 방에 배정된 숙박만 빼요.
  * 방을 안 정한 숙박은 어느 건물인지 모르니 '전체'에서만 빠져요.
  *
  * 같은 방×숙박일: 라이브(`occupiesRoom`)가 있으면 그 수만큼만 차감하고,
@@ -1285,7 +1285,7 @@ export function boardTabFromHash(hash: string): BoardTab | null {
   return m ? (m[1] as BoardTab) : null;
 }
 
-/** 저장 전 미리보기: 바뀌는 밤마다 '남은 객실 4 → 3' */
+/** 저장 전 미리보기: 바뀌는 밤마다 '잔여 객실 4 → 3' */
 export function previewChange(
   s: HotelSettings,
   bookings: Booking[],
@@ -1470,7 +1470,7 @@ export function perNight(b: Pick<Booking, "price" | "nights">): number | null {
 export const won = (v: number) => v.toLocaleString("ko-KR");
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 /**
- * 사람이 적은 시간을 HH:MM으로: "13:30", "1330", "930", "9:5", "13", "13시 30분", "오후 1:30", "1:30 PM".
+ * 사용자가 입력한 시간을 HH:MM으로: "13:30", "1330", "930", "9:5", "13", "13시 30분", "오후 1:30", "1:30 PM".
  * 알아볼 수 없으면 "" 를 돌려줘요.
  */
 export function parseTime(raw: string): string {
@@ -1520,20 +1520,20 @@ export function nowRounded(d: Date = new Date(), step = 5): string {
 export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if (!s.platforms.some((p) => p.id === b.platformId)) return "플랫폼을 골라 주세요.";
   if (!s.types.some((t) => t.id === b.typeId && typeLabel(t))) return "객실 타입을 골라 주세요.";
-  if (!b.guestName.trim()) return "손님 이름을 적어 주세요.";
+  if (!b.guestName.trim()) return "손님 이름을 입력해 주세요.";
   if (b.priceUnset) {
     if (b.price !== 0) return "금액미정이면 판매 가격은 비워 두세요.";
   } else if (!Number.isFinite(b.price) || b.price < 0) {
-    return "판매 가격을 적어 주세요.";
+    return "판매 가격을 입력해 주세요.";
   }
   if ((b.coupons ?? []).reduce((n, c) => n + (c.amount > 0 ? c.amount : 0), 0) > b.price) return "쿠폰 합계가 판매 가격보다 커요. 판매 가격은 쿠폰 빼기 전 금액이에요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
-    if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";
+    if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 입력해 주세요.";
     if (b.tentative && !b.roomId) return "임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「간단 예약」(타입 홀드)예요.";
   } else {
     if (!b.startTime || !b.endTime || !TIME_RE.test(b.startTime) || !TIME_RE.test(b.endTime))
-      return "대실은 이용 시간을 꼭 적어 주세요. 예: 12:00~14:00";
+      return "대실은 이용 시간을 꼭 입력해 주세요. 예: 12:00~14:00";
     if (b.startTime === b.endTime) return "대실 시작과 끝 시간이 같아요.";
   }
   return null;

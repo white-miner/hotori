@@ -38,7 +38,7 @@ export type HotelNoticeDraft = {
 /** 본문 검사. 통과하면 null, 아니면 한글 안내 */
 export function validateHotelNoticeDraft(d: HotelNoticeDraft): string | null {
   const body = d.body?.trim() ?? "";
-  if (!body) return "공지를 적어 주세요";
+  if (!body) return "공지를 입력해 주세요";
   if (body.length > HOTEL_NOTICE_BODY_MAX) return `공지는 ${HOTEL_NOTICE_BODY_MAX}자까지예요`;
   if (d.status != null && !isHotelNoticeStatus(d.status)) return "상태를 확인해 주세요";
   return null;

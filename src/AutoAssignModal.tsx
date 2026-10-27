@@ -100,7 +100,7 @@ export default function AutoAssignModal({
             배정 <b>{okCount}</b>건
           </span>
           <span className={plan.skipped.length ? "warn" : ""}>
-            못 넣음 <b>{plan.skipped.length}</b>건
+            배정 불가 <b>{plan.skipped.length}</b>건
           </span>
           {scatteredN ? <span className="warn">단체 흩어짐 {scatteredN}건</span> : null}
         </div>
@@ -136,7 +136,7 @@ export default function AutoAssignModal({
                   </b>
                   <span>
                     {md(b.checkIn)} 입실 · {b.nights}박
-                    {r.scattered ? <i className="aa-warn"> · 같은 층에 못 모았어요</i> : null}
+                    {r.scattered ? <i className="aa-warn"> · 같은 층에 배정하지 못했어요</i> : null}
                     {isBad ? <i className="aa-warn"> · 방이 겹쳐요 — 다른 방을 고르세요</i> : null}
                   </span>
                 </div>

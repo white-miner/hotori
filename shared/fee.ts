@@ -2,8 +2,8 @@
 //  · 플랫폼 수수료: 기준 = 판매가(기본) 또는 판매가 − 쿠폰 전부
 //  · 입금 예정가 = 판매가 − round(기준 × 수수료율) − 숙소 부담 쿠폰 − 중도 퇴실 환불 (원 단위)
 //  · 노쇼는 수수료 그대로 · 취소는 0
-//  · 쿠폰은 판매가(price)를 바꾸지 않아요. 플랫폼 부담 쿠폰은 숙소 돈과 상관없어요
-//  · 카드 수수료: HOTORI에 적은 현장 카드 결제(선금·잔금·단체·매점 카드)에만
+//  · 쿠폰은 판매가(price)를 바꾸지 않아요. 플랫폼 부담 쿠폰은 숙소 정산과 상관없어요
+//  · 카드 수수료: HOTORI에 등록한 현장 카드 결제(선금·잔금·단체·매점 카드)에만
 import { type Booking, type Coupon, type HotelSettings, type Platform, addDays, checkOut, isEarlyOut, won } from "./ledger";
 import { rateLabel } from "./feerate";
 
@@ -96,7 +96,7 @@ export function payoutLine(x: Payout): string | null {
   return `${parts.join(" − ")} = ${won(x.expected)}${tail}`;
 }
 
-/** 실제로 들어온 돈 (확인했으면 실제 입금액, 아니면 예정가) */
+/** 실제 입금액 (확인했으면 실제 입금액, 아니면 예정가) */
 export const payoutValue = (x: Payout) => x.received ?? x.expected;
 
 export interface PayoutSummary {

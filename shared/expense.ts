@@ -1,5 +1,5 @@
 // 지출: 수리·비품구매 등 분류 + 사용처·품목 · (거래처) · (입고일) · (금액) · 미수/입금 · 카드/현금/이체 · 영업일.
-// 분류 이름은 적은 그때 값으로 복사해 둬서, 설정에서 이름을 바꿔도 지난 기록은 그대로예요.
+// 분류 이름은 등록 시점의 값으로 복사해 둬서, 설정에서 이름을 바꿔도 지난 기록은 그대로예요.
 export type ExpensePayMethod = "card" | "cash" | "transfer";
 export const EXPENSE_PAY_METHODS: ExpensePayMethod[] = ["card", "cash", "transfer"];
 export const EXPENSE_PAY_LABEL: Record<ExpensePayMethod, string> = { card: "카드", cash: "현금", transfer: "이체" };
@@ -53,7 +53,7 @@ export interface Expense {
   id: string;
   bizDate: string; // 영업일 YYYY-MM-DD
   stockInDate: string | null; // 입고날짜 (없으면 null)
-  category: string; // 적은 그때 분류 이름
+  category: string; // 등록 시점의 분류 이름
   amount: number; // 원 · 0이면 아직 미정
   method: ExpensePayMethod | null; // 입금 완료면 필수
   paid: boolean; // false = 미수금(AP)
@@ -103,8 +103,8 @@ export function monthlyByCategory(list: Expense[]): { month: string; total: numb
 }
 
 /**
- * 장부 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 남은 금액,
- * 현금 시재 = 현금으로 받은 돈(매점 현금 + 예약 선금·잔금 현금) − 현금 지출(입금 완료만).
+ * 장부 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 순수익,
+ * 현금 시재 = 현금으로 수납액(매점 현금 + 예약 선금·잔금 현금) − 현금 지출(입금 완료만).
  * 카드·이체·미수 지출은 시재에 안 넣어요.
  */
 export function moneySummary(rooms: number, shop: number, shopCash: number, exp: Pick<ExpenseTotals, "amount" | "cash">, bookingCash = 0) {
@@ -115,7 +115,7 @@ export function moneySummary(rooms: number, shop: number, shopCash: number, exp:
 
 export function validateVendor(v: { name: string; vendorType: string }): string | null {
   const name = v.name.trim();
-  if (!name) return "거래처 이름을 적어 주세요.";
+  if (!name) return "거래처 이름을 입력해 주세요.";
   if (name.length > EXPENSE_VENDOR_NAME_MAX) return `거래처 이름은 ${EXPENSE_VENDOR_NAME_MAX}자까지예요.`;
   if (!isVendorType(v.vendorType)) return "거래처 종류를 골라 주세요.";
   return null;
@@ -137,10 +137,10 @@ export function validateExpense(e: {
   if (!e.category.trim()) return "분류를 골라 주세요.";
   if (!Number.isInteger(e.amount) || e.amount < 0) return "금액을 확인해 주세요.";
   if (e.amount > EXPENSE_AMOUNT_MAX) return "금액이 너무 커요 (1억 원까지).";
-  if (!e.memo?.trim()) return "사용처·품목을 적어 주세요.";
+  if (!e.memo?.trim()) return "사용처·품목을 입력해 주세요.";
   if (e.memo.trim().length > EXPENSE_MEMO_MAX) return `사용처·품목은 ${EXPENSE_MEMO_MAX}자까지예요.`;
   if (e.paid) {
-    if (e.amount <= 0) return "입금 완료면 금액을 적어 주세요.";
+    if (e.amount <= 0) return "입금 완료면 금액을 입력해 주세요.";
     if (!isExpensePayMethod(e.method)) return "카드 · 현금 · 이체 중에 골라 주세요.";
   } else if (e.method != null && e.method !== "" && !isExpensePayMethod(e.method)) {
     return "카드 · 현금 · 이체 중에 골라 주세요.";

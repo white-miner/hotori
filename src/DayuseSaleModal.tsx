@@ -190,7 +190,7 @@ export default function DayuseSaleModal({
                     setErr(null);
                   }}
                 >
-                  지금 받기
+                  즉시 수납
                 </Chip>
                 <Chip
                   sm
