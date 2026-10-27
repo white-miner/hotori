@@ -15,7 +15,7 @@ export function TierSettings({ s, update, notify }: { s: HotelSettings; update: 
       <div className="tierhead">
         <span>객실 종류</span>
         <span>평일 (일~목 밤)</span>
-        <span>금·토 · 특별일 밤</span>
+        <span>주말 · 특별일 밤</span>
         <span />
       </div>
       {s.surchargeTiers.map((t) => (
@@ -89,9 +89,9 @@ export function SpecialDates({ s, today, update }: { s: HotelSettings; today: st
             <button
               key={d}
               type="button"
-              className={`d ${on.has(d) ? "on" : isPeakNight(d) ? "wk" : ""} ${d === today ? "td" : ""}`}
+              className={`d ${on.has(d) ? "on" : isPeakNight(d, [], s.weekendDays) ? "wk" : ""} ${d === today ? "td" : ""}`}
               aria-pressed={on.has(d)}
-              title={on.has(d) ? "특별일 · 누르면 꺼요" : isPeakNight(d) ? "금·토 밤은 원래 주말 요금이에요" : "누르면 특별일로 켜요"}
+              title={on.has(d) ? "특별일 · 누르면 꺼요" : isPeakNight(d, [], s.weekendDays) ? "주말 요일 밤은 원래 주말 요금이에요" : "누르면 특별일로 켜요"}
               onClick={() => toggle(d)}
             >
               {Number(d.slice(8))}

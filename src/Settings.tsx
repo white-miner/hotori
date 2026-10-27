@@ -3,6 +3,7 @@ import { pastelColor, strongColor } from "../shared/floorColor";
 import { isOnsite } from "../shared/payment";
 import { GUESTS_MAX, tierLabel, typeGuests } from "../shared/surcharge";
 import { SpecialDates, TierSettings } from "./SurchargeSettings";
+import { RateSettings } from "./RateSettings";
 import FeeSettings from "./FeeSettings";
 import NumInput from "./NumInput";
 import type { ToastOpt } from "./App";
@@ -1130,9 +1131,15 @@ export default function Settings({ data, email, notify }: Props) {
           ) : null}
         </section>
 
+        <section className="card" id="set-rates">
+          <h3>객실 요금</h3>
+          <div className="sub">타입마다 평일·주말 요금을 정하고, 성수기 같은 기간(시즌)은 따로 정할 수 있어요. 간단 예약에서 박마다 더해 자동으로 채워 주고, 예약 창에서 총액이나 박별 금액은 언제든 바꿀 수 있어요. 이미 저장된 예약 금액은 바뀌지 않아요.</div>
+          <RateSettings s={s} update={update} notify={notify} />
+        </section>
+
         <section className="card" id="set-surcharge">
           <h3>인원 추가 요금</h3>
-          <div className="sub">객실 타입의 기본 인원을 넘으면 1명 1박마다 더해요. 금·토 밤과 특별일 밤은 오른쪽 요금이에요. 예약 창에서 금액을 바꿀 수 있어요.</div>
+          <div className="sub">객실 타입의 기본 인원을 넘으면 1명 1박마다 더해요. 주말 밤(기본 금·토, 객실 요금에서 바꿔요)과 특별일 밤은 오른쪽 요금이에요. 예약 창에서 금액을 바꿀 수 있어요.</div>
           <TierSettings s={s} update={update} notify={notify} />
           <h4 className="sp-h">특별일</h4>
           <SpecialDates s={s} today={businessDate()} update={update} />
