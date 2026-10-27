@@ -6,9 +6,10 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { FileDown, Printer, X } from "lucide-react";
 import {
   type InvoiceDoc,
+  type InvoiceRoomLine,
   type InvoiceSnapshot,
   INVOICE_COPY,
-  applyInvoiceNightOverrides,
+  applyInvoiceNightCellAcross,
   buildInvoiceSnapshot,
   defaultInvoicePayer,
   invoiceEligible,
@@ -17,12 +18,13 @@ import {
   invoicePrintStrings,
   invoiceRoomDisplay,
   invoiceSurchargeLabel,
+  redistributeInvoiceRoomsEven,
   validateInvoicePayer,
+  withInvoiceRoomAmount,
+  withInvoiceRoomMoney,
 } from "../shared/invoiceDoc";
 import {
-  type IssuanceNightCell,
   formatIssuanceNightDate,
-  patchIssuanceNightCell,
   redistributeIssuanceNights,
   sumIssuanceNightCells,
 } from "../shared/issuanceNightDetail";
@@ -113,7 +115,8 @@ export default function InvoiceLetter({
   const [err, setErr] = useState<string | null>(null);
   const [lang, setLang] = useState<PrintLang>("ko");
   const [page, setPage] = useState(0);
-  const [nightEdits, setNightEdits] = useState<Record<string, IssuanceNightCell[]>>({});
+  /** Staff room-line edits (amount + nights). null = live from bookings. */
+  const [roomEdits, setRoomEdits] = useState<InvoiceRoomLine[] | null>(null);
   const [openNights, setOpenNights] = useState<Record<string, boolean>>({});
   const t = invoicePrintStrings(lang);
   const locked = doc?.status === "issued" && !!doc.snapshot;
@@ -141,13 +144,24 @@ export default function InvoiceLetter({
     return { ...base, quoteCompare };
   }, [locked, doc, s, members, info, plat, payerName, payerPhone, linkedQuote]);
 
+  // Members / settle change → drop stale edits (booking ids or count mismatch)
+  useEffect(() => {
+    if (locked) return;
+    setRoomEdits((prev) => {
+      if (!prev) return prev;
+      const ids = new Set(baseSnap.rooms.map((r) => r.bookingId));
+      if (prev.length !== baseSnap.rooms.length || prev.some((r) => !ids.has(r.bookingId))) return null;
+      return prev;
+    });
+  }, [locked, baseSnap.rooms]);
+
   const liveSnap = useMemo(() => {
     if (locked) return baseSnap;
-    return {
-      ...baseSnap,
-      rooms: applyInvoiceNightOverrides(baseSnap.rooms, nightEdits),
-    };
-  }, [locked, baseSnap, nightEdits]);
+    if (!roomEdits) return baseSnap;
+    return withInvoiceRoomMoney(baseSnap, roomEdits);
+  }, [locked, baseSnap, roomEdits]);
+
+  const roomsWorking = (): InvoiceRoomLine[] => roomEdits ?? baseSnap.rooms.map((r) => ({ ...r, nightAmounts: r.nightAmounts?.map((c) => ({ ...c })) }));
 
   const roomChunks = useMemo(() => chunkIssuanceLines(liveSnap.rooms, 5), [liveSnap.rooms]);
   const pageCount = roomChunks.length;
@@ -161,22 +175,30 @@ export default function InvoiceLetter({
   const isLast = page >= pageCount - 1;
   const chunk = roomChunks[page] ?? [];
 
-  const nightCellsOf = (bookingId: string, fallback?: IssuanceNightCell[]) =>
-    nightEdits[bookingId] ?? fallback ?? [];
-
-  const setNightCell = (bookingId: string, cells: IssuanceNightCell[], index: number, amount: number, keepTotal: number) => {
-    setNightEdits((prev) => ({
-      ...prev,
-      [bookingId]: patchIssuanceNightCell(cells, index, amount, keepTotal),
-    }));
+  const setRoomAmount = (bookingId: string, amount: number) => {
+    setRoomEdits(
+      roomsWorking().map((r) => (r.bookingId === bookingId ? withInvoiceRoomAmount(r, amount) : r)),
+    );
   };
 
-  const redistribute = (bookingId: string, checkIn: string, nights: number, total: number) => {
-    setNightEdits((prev) => ({
-      ...prev,
-      [bookingId]: redistributeIssuanceNights(checkIn, nights, total),
-    }));
+  const setNightCell = (bookingId: string, date: string, amount: number) => {
+    setRoomEdits(applyInvoiceNightCellAcross(roomsWorking(), bookingId, date, amount));
     setOpenNights((p) => ({ ...p, [bookingId]: true }));
+  };
+
+  const redistributeNights = (bookingId: string) => {
+    setRoomEdits(
+      roomsWorking().map((r) => {
+        if (r.bookingId !== bookingId) return r;
+        const nightAmounts = redistributeIssuanceNights(r.checkIn, r.nights, r.amount);
+        return { ...r, nightAmounts };
+      }),
+    );
+    setOpenNights((p) => ({ ...p, [bookingId]: true }));
+  };
+
+  const redistributeRooms = () => {
+    setRoomEdits(redistributeInvoiceRoomsEven(roomsWorking()));
   };
 
   const issue = async () => {
@@ -210,11 +232,12 @@ export default function InvoiceLetter({
             invoiceTotal: snapBase.total,
           })
         : null;
-      const rooms = applyInvoiceNightOverrides(snapBase.rooms, nightEdits);
+      const rooms = roomEdits ?? snapBase.rooms;
+      const snapshot = withInvoiceRoomMoney({ ...snapBase, quoteCompare }, rooms);
       const saved = await onIssue({
         payerName,
         payerPhone,
-        snapshot: { ...snapBase, rooms, quoteCompare },
+        snapshot,
         groupId: groupId ?? null,
         bookingIds: members.filter((b) => b.status !== "cancelled").map((b) => b.id),
         isMidStay: mid,
@@ -290,7 +313,11 @@ export default function InvoiceLetter({
       </thead>
       <tbody>
         {rooms.map((r) => {
-          const cells = nightCellsOf(r.bookingId, r.nightAmounts);
+          const cells = r.nightAmounts?.length
+            ? r.nightAmounts
+            : r.nights > 0
+              ? redistributeIssuanceNights(r.checkIn, r.nights, r.amount)
+              : [];
           const toggled = openNights[r.bookingId];
           const uneven =
             cells.length > 1 && cells.some((c) => c.amount !== cells[0]!.amount);
@@ -303,6 +330,7 @@ export default function InvoiceLetter({
                 <td>
                   {invoiceRoomDisplay(r.roomNo, lang, t.roomSuffix)}
                   {r.typeLabel ? ` · ${r.typeLabel}` : ""}
+                  {r.guestCount > 0 ? ` · ${t.guests(r.guestCount)}` : ""}
                   {r.guestName ? <div className="muted sm">{r.guestName}</div> : null}
                 </td>
                 <td>
@@ -326,7 +354,21 @@ export default function InvoiceLetter({
                     </button>
                   ) : null}
                 </td>
-                <td>{won(r.amount)}</td>
+                <td>
+                  {opts.editable && !locked ? (
+                    <input
+                      className="inp price sm"
+                      inputMode="numeric"
+                      aria-label={t.amount}
+                      value={r.amount || ""}
+                      onChange={(e) =>
+                        setRoomAmount(r.bookingId, Number(e.target.value.replace(/\D/g, "")) || 0)
+                      }
+                    />
+                  ) : (
+                    won(r.amount)
+                  )}
+                </td>
                 <td>{won(r.paid)}</td>
               </tr>
               {showDetail ? (
@@ -339,14 +381,14 @@ export default function InvoiceLetter({
                           <button
                             type="button"
                             className="btn line sm"
-                            onClick={() => redistribute(r.bookingId, r.checkIn, r.nights, r.amount)}
+                            onClick={() => redistributeNights(r.bookingId)}
                           >
                             {INVOICE_COPY.redistribute}
                           </button>
                         ) : null}
                       </div>
                       <ul className="inv-night-list">
-                        {cells.map((c, i) => (
+                        {cells.map((c) => (
                           <li key={c.date}>
                             <span>{formatIssuanceNightDate(c.date, lang)}</span>
                             {opts.editable && !locked ? (
@@ -358,10 +400,8 @@ export default function InvoiceLetter({
                                 onChange={(e) =>
                                   setNightCell(
                                     r.bookingId,
-                                    cells,
-                                    i,
+                                    c.date,
                                     Number(e.target.value.replace(/\D/g, "")) || 0,
-                                    r.amount,
                                   )
                                 }
                               />
@@ -549,6 +589,13 @@ export default function InvoiceLetter({
                 <input className="inp" value={payerPhone} onChange={(e) => setPayerPhone(e.target.value)} />
               </label>
             </div>
+            {liveSnap.rooms.length > 1 ? (
+              <div className="iss-form-acts">
+                <button type="button" className="btn line sm" onClick={redistributeRooms}>
+                  {INVOICE_COPY.redistributeRooms}
+                </button>
+              </div>
+            ) : null}
             {!eligible ? <p className="warn sm">{INVOICE_COPY.needNights}</p> : null}
             <p className="muted sm">{INVOICE_COPY.tipNights}</p>
           </div>
