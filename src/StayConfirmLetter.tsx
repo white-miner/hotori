@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FileDown, Printer, X } from "lucide-react";
 import {
   type Booking,
@@ -19,6 +19,12 @@ import {
   stayConfirmStrings,
 } from "../shared/hotelBiz";
 import { stayConfirmMoney } from "../shared/stayConfirmMoney";
+import {
+  formatIssuanceNightDate,
+  issuanceNightCells,
+  unitRateFromCells,
+} from "../shared/issuanceNightDetail";
+import IssuancePager, { ISS_PAGER_EN, ISS_PAGER_KO } from "./IssuancePager";
 import { lookups } from "./ui";
 
 interface Props {
@@ -56,6 +62,7 @@ function runPrint(title: string) {
 
 export default function StayConfirmLetter({ booking: b, hotelName, s, today, onClose }: Props) {
   const [lang, setLang] = useState<StayConfirmLang>("ko");
+  const [page, setPage] = useState(0);
   const t = stayConfirmStrings(lang);
   const L = lookups(s);
   const biz = s.hotelBiz;
@@ -85,7 +92,122 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
         .filter(Boolean)
         .join(" · ");
 
+  const nightCells = useMemo(
+    () =>
+      money.unset || nights <= 0
+        ? []
+        : issuanceNightCells({
+            checkIn: b.checkIn,
+            nights,
+            total: money.sale,
+            nightRates: b.nightRates ?? null,
+          }),
+    [b.checkIn, b.nightRates, money.sale, money.unset, nights],
+  );
+  const unitRate = unitRateFromCells(nightCells, money.sale, nights);
+  /** Long = multi-night detail → 2 slides (summary / night rates) */
+  const longDoc = nightCells.length > 3;
+  const pageCount = longDoc ? 2 : 1;
+
   const printDoc = () => runPrint(fileTitle);
+
+  const head = (
+    <header className="sc-head">
+      <div className="sc-hotel">
+        <div className="sc-trade">{trade}</div>
+        {biz.businessNumber ? (
+          <div>
+            {t.bizNumber} {biz.businessNumber}
+          </div>
+        ) : null}
+        {(() => {
+          const uu = hotelBizUpjongUptaeLine(biz, { upjong: t.upjong, uptae: t.uptae });
+          return uu ? <div>{uu}</div> : null;
+        })()}
+        {biz.address ? <div>{biz.address}</div> : null}
+        {biz.phone || biz.representative ? (
+          <div>
+            {biz.phone ? `${t.phone} ${biz.phone}` : null}
+            {biz.phone && biz.representative ? " · " : null}
+            {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
+          </div>
+        ) : null}
+      </div>
+      <h1 className="sc-title">{t.title}</h1>
+    </header>
+  );
+
+  const bodyDl = (
+    <dl className="sc-body">
+      <div>
+        <dt>{t.guest}</dt>
+        <dd>
+          {b.guestName}
+          {b.guestPhone?.trim() ? ` · ${b.guestPhone.trim()}` : null}
+        </dd>
+      </div>
+      <div>
+        <dt>{t.room}</dt>
+        <dd>{roomLine}</dd>
+      </div>
+      <div>
+        <dt>{t.stayPeriod}</dt>
+        <dd>{period}</dd>
+      </div>
+      {plat || ref ? (
+        <div>
+          <dt>{t.reservation}</dt>
+          <dd>
+            {plat?.name ?? ""}
+            {plat && ref ? " · " : null}
+            {ref ? `${t.bookingNo} ${ref}` : null}
+          </dd>
+        </div>
+      ) : null}
+      <div>
+        <dt>{t.amounts}</dt>
+        <dd>
+          {moneyLine}
+          {!money.unset && nights > 1 && unitRate > 0 ? (
+            <div className="muted sm">
+              {lang === "en" ? "Per night" : "1박"} ₩{won(unitRate)}
+            </div>
+          ) : null}
+        </dd>
+      </div>
+    </dl>
+  );
+
+  const nightBlock =
+    nightCells.length > 1 ? (
+      <div className="sc-night-detail">
+        <div className="inv-pays-h">{lang === "en" ? "Nightly rates" : "날짜별 단가"}</div>
+        <ul className="inv-night-list">
+          {nightCells.map((c) => (
+            <li key={c.date}>
+              <span>{formatIssuanceNightDate(c.date, lang)}</span>
+              <strong>₩{won(c.amount)}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
+  const foot = (
+    <>
+      <p className="sc-attest">{t.attest}</p>
+      <div className="sc-issue">
+        {t.issued} {issued}
+      </div>
+      <div className="sc-sign">
+        <div className="sc-sign-trade">{trade}</div>
+        <div className="sc-sign-rep">
+          {t.representative} {biz.representative || "____________"}
+          <span className="sc-seal">{t.seal}</span>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div className="dim stay-confirm-dim" role="presentation" onClick={onClose}>
@@ -122,79 +244,39 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
           </button>
         </div>
 
-        <div className={`stay-confirm-print${lang === "en" ? " en" : ""}`}>
-          <header className="sc-head">
-            <div className="sc-hotel">
-              <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? (
-                <div>
-                  {t.bizNumber} {biz.businessNumber}
-                </div>
-              ) : null}
-              {(() => {
-                const uu = hotelBizUpjongUptaeLine(biz, { upjong: t.upjong, uptae: t.uptae });
-                return uu ? <div>{uu}</div> : null;
-              })()}
-              {biz.address ? <div>{biz.address}</div> : null}
-              {biz.phone || biz.representative ? (
-                <div>
-                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
-                  {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
-                </div>
-              ) : null}
-            </div>
-            <h1 className="sc-title">{t.title}</h1>
-          </header>
-
-          <dl className="sc-body">
-            <div>
-              <dt>{t.guest}</dt>
-              <dd>
-                {b.guestName}
-                {b.guestPhone?.trim() ? ` · ${b.guestPhone.trim()}` : null}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.room}</dt>
-              <dd>{roomLine}</dd>
-            </div>
-            <div>
-              <dt>{t.stayPeriod}</dt>
-              <dd>{period}</dd>
-            </div>
-            {plat || ref ? (
-              <div>
-                <dt>{t.reservation}</dt>
-                <dd>
-                  {plat?.name ?? ""}
-                  {plat && ref ? " · " : null}
-                  {ref ? `${t.bookingNo} ${ref}` : null}
-                </dd>
+        <div className={`stay-confirm-slide noprint${lang === "en" ? " en" : ""}`}>
+          {page === 0 ? (
+            <>
+              {head}
+              {bodyDl}
+              {!longDoc ? nightBlock : null}
+              {foot}
+            </>
+          ) : (
+            <>
+              <div className="iss-slide-cont muted sm">
+                {t.title} · {lang === "en" ? "Nightly rates" : "날짜별 단가"}
               </div>
-            ) : null}
-            <div>
-              <dt>{t.amounts}</dt>
-              <dd>{moneyLine}</dd>
-            </div>
-          </dl>
-
-          <p className="sc-attest">{t.attest}</p>
-
-          <div className="sc-issue">
-            {t.issued} {issued}
-          </div>
-
-          <div className="sc-sign">
-            <div className="sc-sign-trade">{trade}</div>
-            <div className="sc-sign-rep">
-              {t.representative} {biz.representative || "____________"}
-              <span className="sc-seal">{t.seal}</span>
-            </div>
-          </div>
+              {nightBlock}
+              {foot}
+            </>
+          )}
         </div>
 
-        <div className="mf noprint">
+        <div className={`stay-confirm-print iss-print-src${lang === "en" ? " en" : ""}`} aria-hidden>
+          {head}
+          {bodyDl}
+          {nightBlock}
+          {foot}
+        </div>
+
+        <div className="mf noprint stay-confirm-foot">
+          <IssuancePager
+            page={page}
+            pageCount={pageCount}
+            onChange={setPage}
+            labels={lang === "en" ? ISS_PAGER_EN : ISS_PAGER_KO}
+          />
           <p className="fine">{hasBiz ? t.tipFilled : t.tipEmpty}</p>
           <div className="keys acts">
             <button type="button" className="btn line sm" onClick={printDoc} aria-label={`${t.title} ${t.print}`}>

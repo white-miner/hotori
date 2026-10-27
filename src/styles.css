@@ -2367,7 +2367,11 @@ label.ck input[type="checkbox"] {
   body.print-stay-confirm .stay-confirm-print * { visibility: visible !important; }
   body.print-stay-confirm .stay-confirm-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
   body.print-stay-confirm .modal.stay-confirm { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; }
-  body.print-stay-confirm .stay-confirm-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 8mm 4mm; }
+  body.print-stay-confirm .stay-confirm-print.iss-print-src,
+  body.print-stay-confirm .stay-confirm-print {
+    position: absolute; left: 0; top: 0; width: 100%; height: auto; color: #000; padding: 8mm 4mm;
+    opacity: 1 !important; overflow: visible !important; pointer-events: auto;
+  }
   body.print-stay-confirm .noprint { display: none !important; }
 
   /* 견적서 */
@@ -2378,7 +2382,11 @@ label.ck input[type="checkbox"] {
   body.print-quote .modal.quote-letter { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; width: 100% !important; max-width: none !important; display: block !important; }
   body.print-quote .quote-scroll { overflow: visible !important; max-height: none !important; }
   body.print-quote .mf.quote-foot { display: none !important; }
-  body.print-quote .quote-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 8mm 4mm; }
+  body.print-quote .quote-print.iss-print-src,
+  body.print-quote .quote-print {
+    position: absolute; left: 0; top: 0; width: 100%; height: auto; color: #000; padding: 8mm 4mm;
+    opacity: 1 !important; overflow: visible !important; pointer-events: auto;
+  }
   body.print-quote .noprint { display: none !important; }
 
   /* 청구서 */
@@ -2387,7 +2395,11 @@ label.ck input[type="checkbox"] {
   body.print-invoice .invoice-print * { visibility: visible !important; }
   body.print-invoice .invoice-dim { position: static !important; background: none !important; backdrop-filter: none !important; }
   body.print-invoice .modal.invoice-letter { box-shadow: none !important; max-height: none !important; overflow: visible !important; transform: none !important; width: 100% !important; max-width: none !important; }
-  body.print-invoice .invoice-print { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 8mm 4mm; }
+  body.print-invoice .invoice-print.iss-print-src,
+  body.print-invoice .invoice-print {
+    position: absolute; left: 0; top: 0; width: 100%; height: auto; color: #000; padding: 8mm 4mm;
+    opacity: 1 !important; overflow: visible !important; pointer-events: auto;
+  }
   body.print-invoice .noprint { display: none !important; }
   body.print-invoice .inv-watermark { color: rgba(0,0,0,0.12) !important; }
 
@@ -2420,12 +2432,97 @@ label.ck input[type="checkbox"] {
   body.print-floor-plan .fp-bld { break-inside: avoid; page-break-inside: avoid; }
 }
 /* 숙박확인서 (화면 미리보기) */
-.modal.stay-confirm { width: min(560px, 96vw); max-height: min(92vh, 820px); }
+.modal.stay-confirm {
+  width: min(560px, 96vw);
+  max-height: min(92vh, 820px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 14px;
+}
 .modal.stay-confirm .mh .sc-lang,
 .modal.quote-letter .mh .sc-lang,
 .modal.invoice-letter .mh .sc-lang,
 .modal.damage-letter .mh .sc-lang { flex-shrink: 0; }
 .stay-confirm-print { color: var(--ink); padding: 8px 4px 16px; }
+.stay-confirm-slide,
+.invoice-slide,
+.quote-slide {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 4px 8px;
+  position: relative;
+}
+.iss-print-src {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.iss-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  margin: 0 0 6px;
+  flex-wrap: wrap;
+}
+.iss-pager-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+  min-width: 64px;
+}
+.iss-pager-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: var(--line);
+  cursor: pointer;
+}
+.iss-pager-dot.on { background: var(--ink); }
+.iss-pager-nav { gap: 2px; }
+.iss-pager-num { flex-shrink: 0; }
+.iss-slide-cont { margin: 0 0 8px; font-weight: 650; }
+.iss-more-hint { margin: 8px 0 0; text-align: center; }
+.inv-night-toggle { display: block; margin-top: 4px; }
+.inv-night-detail { padding: 6px 4px 2px; }
+.inv-night-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.inv-night-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+.inv-night-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2, #f7f7f7);
+}
+.inv-night-list .inp { max-width: 96px; }
+.inv-night-row td { border-bottom: 1px solid #eee; background: #fafafa; }
+.quote-night-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.sc-night-detail { margin: 12px 0; }
+.iss-sticky-meta { flex-shrink: 0; }
 .sc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; border-bottom: 1.5px solid var(--ink); padding-bottom: 12px; }
 .sc-hotel { font-size: 12.5px; line-height: 1.5; color: var(--ink2); flex: 1; min-width: 0; }
 .sc-trade { font-size: 16px; font-weight: 850; color: var(--ink); letter-spacing: -0.02em; margin-bottom: 4px; }
@@ -2663,6 +2760,8 @@ label.ck input[type="checkbox"] {
 }
 .modal.quote-letter .mf.quote-foot,
 .modal.invoice-letter .mf,
+.modal.invoice-letter .mf.invoice-foot,
+.modal.stay-confirm .mf.stay-confirm-foot,
 .modal.damage-letter .mf {
   flex-shrink: 0;
   margin-top: 8px;
@@ -2672,7 +2771,14 @@ label.ck input[type="checkbox"] {
   position: sticky;
   bottom: 0;
   z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
+.modal.quote-letter .mf.quote-foot .fine,
+.modal.invoice-letter .mf .fine,
+.modal.stay-confirm .mf .fine { flex: 1 1 100%; margin: 0; }
 .damage-form { padding: 0 16px 8px; display: grid; gap: 12px; }
 .damage-line {
   display: grid;

@@ -1,5 +1,11 @@
 /** 견적서 (P1.1) — 예약 전 제안. See docs/group-invoice-plan.md */
 import type { PrintLang } from "./hotelBiz";
+import type { IssuanceNightCell } from "./issuanceNightDetail";
+import {
+  quoteAmountFromNightCells,
+  quoteLineNightCells,
+  unitRateFromCells,
+} from "./issuanceNightDetail";
 
 export const QUOTE_TITLE_MAX = 80;
 export const QUOTE_CLIENT_MAX = 60;
@@ -28,6 +34,8 @@ export type QuoteLine = {
    * Issue: if set & length matches rooms → Path B with roomId; else Path A roomId=null.
    */
   roomIds?: string[];
+  /** 1실 기준 날짜별 단가 (있으면 amount = rooms × Σ) */
+  nightAmounts?: IssuanceNightCell[];
 };
 
 export type QuoteDoc = {
@@ -105,6 +113,8 @@ export const QUOTE_COPY = {
   rate: "단가",
   amount: "금액",
   pax: "인원",
+  nightDetail: "날짜별 단가",
+  redistribute: "단가×박 분배",
   total: "합계",
   showRoomNos: "객실번호 표시",
   showRoomNosHint: "기본은 타입만. 손님이 호수를 원할 때만 켜요.",
@@ -120,6 +130,7 @@ export const QUOTE_COPY = {
   attest: "위와 같이 견적합니다.",
   issueDate: "발급일",
   tip: "발급하면 견적이 고정되고, 같은 날짜·타입으로 미배정 예약이 만들어져요. 호실은 배치에서 정하세요.",
+  tipNights: "총액·단가만 있어도 날짜별 단가로 나눠 적을 수 있어요.",
   emptyLines: "항목을 한 줄 이상 넣어 주세요.",
   titleRequired: "견적 제목 또는 견적처를 적어 주세요.",
   saveOk: "견적을 저장했어요.",
@@ -153,6 +164,7 @@ export type QuotePrintStrings = {
   pax: string;
   rate: string;
   amount: string;
+  nightDetail: string;
   total: string;
   attest: string;
   issueDate: string;
@@ -183,6 +195,7 @@ const QUOTE_PRINT_KO: QuotePrintStrings = {
   pax: QUOTE_COPY.pax,
   rate: QUOTE_COPY.rate,
   amount: QUOTE_COPY.amount,
+  nightDetail: QUOTE_COPY.nightDetail,
   total: QUOTE_COPY.total,
   attest: QUOTE_COPY.attest,
   issueDate: QUOTE_COPY.issueDate,
@@ -213,6 +226,7 @@ const QUOTE_PRINT_EN: QuotePrintStrings = {
   pax: "Pax",
   rate: "Rate",
   amount: "Amount",
+  nightDetail: "Nightly rates",
   total: "Total",
   attest: "We quote the above rates for your stay.",
   issueDate: "Issued",
@@ -278,7 +292,40 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
       ? lineAmount(rooms, nights, rate)
       : Math.max(0, Math.round(Number(amountRaw) || 0));
   const roomIds = normalizeRoomIds(o.roomIds, Math.max(rooms, 20));
-  return { id, typeId, label, rooms, nights, pax, rate, amount, roomIds };
+  let nightAmounts: IssuanceNightCell[] | undefined;
+  if (Array.isArray(o.nightAmounts)) {
+    nightAmounts = o.nightAmounts
+      .map((x) => {
+        if (!x || typeof x !== "object") return null;
+        const c = x as Record<string, unknown>;
+        const date = typeof c.date === "string" ? c.date : "";
+        const a = Math.max(0, Math.round(Number(c.amount) || 0));
+        return date ? { date, amount: a } : null;
+      })
+      .filter((x): x is IssuanceNightCell => !!x);
+    if (!nightAmounts.length) nightAmounts = undefined;
+  }
+  return { id, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts };
+}
+
+/** Ensure night detail exists for edit UI; sync amount from cells×rooms when detail present */
+export function ensureQuoteLineNights(
+  line: QuoteLine,
+  checkIn: string | null | undefined,
+): QuoteLine {
+  const cells =
+    line.nightAmounts?.length && line.nightAmounts.length === Math.max(1, line.nights)
+      ? line.nightAmounts
+      : quoteLineNightCells({
+          checkIn,
+          nights: line.nights,
+          rate: line.rate,
+          roomTotal: line.nights > 0 && line.rooms > 0 ? Math.round(line.amount / Math.max(1, line.rooms)) : undefined,
+          nightAmounts: line.nightAmounts,
+        });
+  const rate = unitRateFromCells(cells, line.rate * Math.max(1, line.nights), line.nights) || line.rate;
+  const amount = quoteAmountFromNightCells(line.rooms, cells);
+  return { ...line, nightAmounts: cells, rate, amount };
 }
 
 export function normalizeQuoteLines(raw: unknown): QuoteLine[] {
