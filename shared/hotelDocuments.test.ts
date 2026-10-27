@@ -7,7 +7,9 @@ import {
   hotelDocExpiryBadge,
   hotelDocFailMessage,
   hotelDocHubCopy,
+  hotelDocPageTitle,
   hotelDocStoragePath,
+  hotelDocUploadOkMessage,
   isHotelDocHubKind,
   isHotelDocKind,
   mimeFromFile,
@@ -33,9 +35,19 @@ describe("hotelDocuments", () => {
     );
     assert.equal(HOTEL_DOC_KIND_LABEL.bank_book, "통장사본");
     assert.equal(HOTEL_DOC_KIND_LABEL.business_license, "사업자등록증");
-    assert.equal(HOTEL_DOC_KIND_LABEL.operating_report, "영업신고서");
+    assert.equal(HOTEL_DOC_KIND_LABEL.operating_report, "영업신고증");
+    assert.equal(ISSUANCE_COPY.operatingReport, "영업신고증");
     assert.equal(hotelDocHubCopy("bank_book").title, "통장사본");
-    assert.equal(hotelDocHubCopy("operating_report").title, "영업신고서");
+    assert.equal(hotelDocHubCopy("operating_report").title, "영업신고증");
+    assert.equal(hotelDocHubCopy("fire_insurance").hint, "여러 장 업로드 · 열기 · 인쇄");
+    assert.equal(hotelDocPageTitle("화재보험증서", 0, 1), "화재보험증서");
+    assert.equal(hotelDocPageTitle("화재보험증서", 0, 3), "화재보험증서 (1/3)");
+    assert.equal(hotelDocPageTitle("화재보험증서", 2, 3), "화재보험증서 (3/3)");
+    assert.equal(hotelDocUploadOkMessage(1), ISSUANCE_COPY.uploadOk);
+    assert.equal(hotelDocUploadOkMessage(3), "증서 3장을 올렸어요.");
+    assert.ok(!ISSUANCE_COPY.emptyVault.includes("영업신고서"));
+    assert.ok(ISSUANCE_COPY.emptyVault.includes("영업신고증"));
+    assert.ok(ISSUANCE_COPY.settingsVaultHint.includes("영업신고증"));
     // Hangul filenames → ASCII path (Supabase Storage InvalidKey otherwise)
     assert.equal(sanitizeDocFilename("사업자등록증.jpg"), "document.jpg");
     assert.equal(sanitizeDocFilename("사업자등록증 .jpg"), "document.jpg");
@@ -76,7 +88,7 @@ describe("hotelDocuments", () => {
     assert.equal(validateHotelDocumentDraft({ kind: "bank_book", title: "국민은행 통장" }), null);
     assert.equal(validateHotelDocumentDraft({ kind: "business_license", title: "사업자등록증" }), null);
     assert.equal(
-      validateHotelDocumentDraft({ kind: "operating_report", title: "영업신고서", expiresOn: null }),
+      validateHotelDocumentDraft({ kind: "operating_report", title: "영업신고증", expiresOn: null }),
       null,
     );
   });

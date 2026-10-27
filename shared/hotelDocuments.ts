@@ -78,12 +78,12 @@ export const ISSUANCE_COPY = {
   floorPlanHint: "설정 배치를 A4로 인쇄",
   floorPlanCta: "인쇄 미리보기",
   fireInsurance: "화재보험증서",
-  fireInsuranceHint: "업로드 · 열기 · 인쇄",
+  fireInsuranceHint: "여러 장 업로드 · 열기 · 인쇄",
   bankBook: "통장사본",
   bankBookHint: "업로드 · 열기 · 인쇄",
   businessReg: "사업자등록증",
   businessRegHint: "업로드 · 열기 · 인쇄",
-  operatingReport: "영업신고서",
+  operatingReport: "영업신고증",
   operatingReportHint: "업로드 · 열기 · 인쇄",
   vaultCta: "보관함 열기",
   filterAll: "전체",
@@ -91,6 +91,9 @@ export const ISSUANCE_COPY = {
   title: "제목",
   kind: "종류",
   file: "파일",
+  fileMultiHint: "여러 장 선택 · 추가 가능",
+  addMoreFiles: "장 더 추가",
+  removeFile: "빼기",
   issuedOn: "발급일 (선택)",
   expiresOn: "만료일 (선택)",
   notes: "메모",
@@ -100,7 +103,7 @@ export const ISSUANCE_COPY = {
   download: "내려받기",
   delete: "삭제",
   emptyVault:
-    "아직 올린 증서가 없어요. 화재보험·통장사본·사업자등록증·영업신고서 PDF나 사진을 올려 두세요.",
+    "아직 올린 증서가 없어요. 화재보험·통장사본·사업자등록증·영업신고증 PDF나 사진을 올려 두세요.",
   emptyVaultKind: "이 종류로 올린 파일이 없어요.",
   emptyRecent: "최근 발급·업로드가 없어요.",
   recentDocs: "최근 발급",
@@ -108,7 +111,7 @@ export const ISSUANCE_COPY = {
 
   expireSoon: "만료 임박",
   expired: "만료",
-  settingsVaultHint: "화재보험·통장사본·사업자등록증·영업신고서는 「발급」보관함에서 관리해요.",
+  settingsVaultHint: "화재보험·통장사본·사업자등록증·영업신고증은 「발급」보관함에서 관리해요.",
   settingsFloorPrint: "배치도 인쇄",
   confirmDeleteTitle: "증서를 삭제할까요?",
   confirmDeleteBody: "보관함과 파일에서 지워져요. 되돌릴 수 없어요.",
@@ -131,7 +134,7 @@ export const HOTEL_DOC_KIND_LABEL: Record<HotelDocKind, string> = {
   fire_insurance: "화재보험증서",
   bank_book: "통장사본",
   business_license: "사업자등록증",
-  operating_report: "영업신고서",
+  operating_report: "영업신고증",
   other: "기타",
 };
 
@@ -238,6 +241,21 @@ export function validateHotelDocFile(file: File): string | null {
   if (file.size > HOTEL_DOC_MAX_BYTES) return ISSUANCE_COPY.fileTooBig;
   if (!mimeFromFile(file)) return ISSUANCE_COPY.fileTypeBad;
   return null;
+}
+
+/** Title for one page when uploading several files under the same kind. */
+export function hotelDocPageTitle(base: string, index: number, total: number): string {
+  const trimmed = base.trim() || "증서";
+  if (total <= 1) return trimmed.slice(0, HOTEL_DOC_TITLE_MAX);
+  const suffix = ` (${index + 1}/${total})`;
+  const maxBase = Math.max(1, HOTEL_DOC_TITLE_MAX - suffix.length);
+  return `${trimmed.slice(0, maxBase)}${suffix}`;
+}
+
+/** Toast after vault upload (1장 vs 여러 장). */
+export function hotelDocUploadOkMessage(count: number): string {
+  if (count <= 1) return ISSUANCE_COPY.uploadOk;
+  return `증서 ${count}장을 올렸어요.`;
 }
 
 /** Expiry badge for list: expired | soon (≤30d) | null */

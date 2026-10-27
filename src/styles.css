@@ -2520,6 +2520,18 @@ label.ck input[type="checkbox"] {
 .iss-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 650; color: var(--ink3); }
 .iss-form label.wide { grid-column: 1 / -1; }
 .iss-form input[type="file"] { font-size: 12.5px; }
+.iss-file-queue {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 6px;
+  grid-column: 1 / -1;
+}
+.iss-file-queue li {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-chip, 8px);
+  background: var(--panel);
+  font-size: 12.5px;
+}
+.iss-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.iss-upload-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
 .iss-vault-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .iss-vault-row {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
