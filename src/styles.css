@@ -5674,3 +5674,19 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .gjn-arr { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .grc-hidden-date { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
 .gpp-row .gpp-amt .inp { max-width: 190px; }
+
+/* 메모 · 기록 */
+.chl-add { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+.chl-input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--line, #d9d9d9); border-radius: 10px; font-size: 15px; }
+.chl-go { min-height: 44px; white-space: nowrap; }
+.chl-filters { margin-bottom: 6px; }
+.chl-list { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow: auto; }
+.chl-row { display: grid; grid-template-columns: 78px 1fr auto; gap: 8px; align-items: start; padding: 9px 2px; border-bottom: 1px solid var(--line, #eee); font-size: 14px; }
+.chl-row.pin { background: #fff8e1; border-radius: 8px; padding-left: 6px; }
+.chl-tag { font-size: 12px; margin-right: 4px; padding: 1px 6px; border-radius: 6px; background: #eef3ff; color: #2c4a9a; }
+.chl-pin { border: 0; background: transparent; padding: 4px; cursor: pointer; color: #666; min-width: 32px; min-height: 32px; }
+.chl-empty { padding: 14px 2px; }
+@media (max-width: 520px) { .chl-add { flex-direction: column; } .chl-row { grid-template-columns: 1fr auto; } .chl-at { grid-column: 1 / -1; } }
+.nsel-notes { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; margin: 6px 0; border: 1px dashed var(--line, #d0d0d0); border-radius: 10px; background: transparent; cursor: pointer; font-size: 14px; min-height: 40px; }
+.nsel-notes.has { background: #fff8e1; border-style: solid; border-color: #f0d98a; }
+.nsel-notes-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

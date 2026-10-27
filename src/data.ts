@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 import { supabase } from "./supabase";
+import { type Change, type ChangeKind, NOTE_MAX } from "../shared/changes";
 import {
   type Booking,
   type HotelSettings,
@@ -378,6 +379,10 @@ export async function createHotel(name: string): Promise<string> {
 /** 현황판에 필요한 범위: 영업일 120일 전 입실 ~ (장기 숙박도 포함) */
 export const WINDOW_BACK = 120; // 현황판이 늘 들고 있는 예약: 입실일이 오늘 − 120일 이후
 
+const CHANGE_COLS = "id,group_id,booking_id,kind,summary,effective_on,pinned,created_at";
+type ChangeRow = { id: string; group_id: string | null; booking_id: string | null; kind: ChangeKind; summary: string; effective_on: string | null; pinned: boolean; created_at: string };
+const changeFromRow = (r: ChangeRow): Change => ({ id: r.id, groupId: r.group_id, bookingId: r.booking_id, kind: r.kind, summary: r.summary, effectiveOn: r.effective_on, pinned: r.pinned, at: r.created_at });
+
 export function useHotelData(hotelId: string) {
   const [hotel, setHotel] = useState<Hotel | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -387,6 +392,8 @@ export function useHotelData(hotelId: string) {
   const [groups, setGroups] = useState<Map<string, GroupInfo>>(new Map());
   /** 잔액 보관(Option A) — open/depleted/void 전부 로드(목록·매칭) */
   const [stayCredits, setStayCredits] = useState<StayCredit[]>([]);
+  /** 메모 + 변경 기록 (표가 없으면 빈 목록 — 예약 화면은 그대로) */
+  const [changes, setChanges] = useState<Change[]>([]);
   const busy = useRef(false);
   const again = useRef(false);
   /** 로컬 저장이 in-flight refresh 결과를 덮어쓰지 않게 (판매 캘린더 굳음 방지) */
@@ -431,7 +438,7 @@ export function useHotelData(hotelId: string) {
     const genAtStart = mutateGen.current;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
-      const [h, b, g, c] = await Promise.all([
+      const [h, b, g, c, ch] = await Promise.all([
         supabase.from("hotels").select("id,name,plan,is_demo,settings").eq("id", hotelId).single(),
         supabase
           .from("bookings")
@@ -442,6 +449,7 @@ export function useHotelData(hotelId: string) {
           .limit(10000),
         supabase.from("booking_groups").select(GROUP_COLS).eq("hotel_id", hotelId).limit(5000),
         supabase.from("stay_credits").select(CREDIT_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(2000),
+        supabase.from("booking_changes").select(CHANGE_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(3000),
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
@@ -462,6 +470,7 @@ export function useHotelData(hotelId: string) {
       if (!g.error) setGroups(new Map((g.data as unknown as GroupRow[]).map((r) => [r.id, groupFromRow(r)])));
       // 마이그레이션 전이면 표가 없을 수 있음 → 빈 목록
       if (!c.error) setStayCredits((c.data as StayCreditRow[]).map(creditFromRow));
+      if (!ch.error) setChanges((ch.data as unknown as ChangeRow[]).map(changeFromRow));
       setError(null);
       setSyncedAt(Date.now());
     } catch (e) {
@@ -1040,12 +1049,45 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
+  /**
+   * 기록 한 줄 남기기 — 실패해도 본 작업은 막지 않아요(조용히 무시).
+   * 메모(kind=note)는 쓰기 실패를 알려야 해서 결과를 돌려줘요.
+   */
+  const logChange = useCallback(
+    async (p: { kind: ChangeKind; summary: string; groupId?: string | null; bookingId?: string | null; effectiveOn?: string | null; pinned?: boolean }): Promise<Change | null> => {
+      const summary = p.summary.trim().slice(0, NOTE_MAX);
+      if (!summary || (!p.groupId && !p.bookingId)) return null;
+      try {
+        const r = await supabase
+          .from("booking_changes")
+          .insert({ hotel_id: hotelId, group_id: p.groupId ?? null, booking_id: p.bookingId ?? null, kind: p.kind, summary, effective_on: p.effectiveOn ?? null, pinned: !!p.pinned })
+          .select(CHANGE_COLS)
+          .single();
+        if (r.error || !r.data) return null;
+        const row = changeFromRow(r.data as unknown as ChangeRow);
+        setChanges((l) => [row, ...l.filter((x) => x.id !== row.id)]);
+        return row;
+      } catch {
+        return null;
+      }
+    },
+    [hotelId],
+  );
+  const pinChange = useCallback(async (id: string, pinned: boolean) => {
+    setChanges((l) => l.map((x) => (x.id === id ? { ...x, pinned } : x)));
+    const r = await supabase.from("booking_changes").update({ pinned }).eq("id", id);
+    if (r.error) setChanges((l) => l.map((x) => (x.id === id ? { ...x, pinned: !pinned } : x)));
+  }, []);
+
   return {
     hotel,
     bookings,
     error,
     syncedAt,
     refresh,
+    changes,
+    logChange,
+    pinChange,
     fetchFreshAround,
     saveBooking,
     patchBooking,

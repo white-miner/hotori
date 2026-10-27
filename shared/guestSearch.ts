@@ -124,6 +124,8 @@ export function boardGuestSearch(opts: {
   groups?: Map<string, GuestSearchGroup>;
   queryRaw: string;
   roomLabel: (roomId: string) => string;
+  /** 메모 본문에 검색어가 있는 예약 id (메모 · 기록 검색) */
+  noteIds?: Set<string>;
 }): { active: boolean; roomIds: Set<string>; chips: GuestSearchChip[] } {
   const query = parseGuestQuery(opts.queryRaw);
   if (!query) return { active: false, roomIds: new Set(), chips: [] };
@@ -134,14 +136,14 @@ export function boardGuestSearch(opts: {
 
   for (const { roomId, booking } of opts.slots) {
     if (!booking || !isActive(booking)) continue;
-    if (bookingMatches(booking, query, groups)) {
+    if (bookingMatches(booking, query, groups) || opts.noteIds?.has(booking.id)) {
       direct.push({ roomId, booking });
       if (booking.groupId) matchedGroupIds.add(booking.groupId);
     }
   }
   for (const b of opts.unassigned ?? []) {
     if (!isActive(b)) continue;
-    if (bookingMatches(b, query, groups)) {
+    if (bookingMatches(b, query, groups) || opts.noteIds?.has(b.id)) {
       direct.push({ roomId: null, booking: b });
       if (b.groupId) matchedGroupIds.add(b.groupId);
     }

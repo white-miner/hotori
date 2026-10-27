@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, Undo2, Wand2 } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
 import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
 import { DAMAGE_COPY } from "../shared/damageDoc";
 import StayConfirmLetter from "./StayConfirmLetter";
@@ -135,6 +135,8 @@ interface Props {
   onGroupPay?: (() => void) | null;
   /** 단체 머리글(결제 현황 + 큰 버튼) — 단체 객실을 골랐을 때 */
   groupHead?: { ledger: GroupLedger; name?: string | null; onJoin?: () => void } | null;
+  /** 메모 · 기록 한 줄 (고정 메모 미리보기 + 열기) */
+  notes?: { pinned: string | null; count: number; onOpen: () => void } | null;
   /** 늦은 퇴실 (숙박 lateOut · 대실 종료 연장) · Entry 금지 */
   onLateOut?: (b: Booking) => void;
   /** 1박 연장 (숙박·퇴실예정) · Entry/StaySale 우회 · 라이트 모달 */
@@ -203,6 +205,7 @@ export default function NowSidePanel({
   onPaymentDesk,
   onGroupPay,
   groupHead,
+  notes,
   onLateOut,
   onExtendNight,
   onConnectStay,
@@ -534,6 +537,13 @@ export default function NowSidePanel({
               </div>
               {groupHead && onGroupPay ? (
                 <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} onPay={onGroupPay} onJoin={groupHead.onJoin} />
+              ) : null}
+              {b && notes ? (
+                <button type="button" className={`nsel-notes${notes.pinned ? " has" : ""}`} onClick={notes.onOpen} aria-label="메모 · 기록 열기">
+                  <StickyNote size={14} aria-hidden />
+                  <span className="nsel-notes-t">{notes.pinned ?? "메모 · 기록"}</span>
+                  <span className="muted sm">{notes.count ? `${notes.count}건` : "+ 메모"}</span>
+                </button>
               ) : null}
               {b ? (
                 <div className="nsel-body">

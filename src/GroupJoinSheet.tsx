@@ -1,3 +1,4 @@
+import { joinSummary } from "../shared/changes";
 import { useMemo, useState } from "react";
 import { saveFailMessage } from "../shared/errors";
 import { addDays, allRooms, daysBetween, dayLabel, md, stayEnd, STAY_NIGHTS_MAX, typeLabel, won, type Booking } from "../shared/ledger";
@@ -89,6 +90,9 @@ export default function GroupJoinSheet({
         arrived: arrived && checkIn <= today,
       });
       await data.saveGroup(list);
+      for (const id of picked) {
+        void data.logChange({ kind: "room", groupId, effectiveOn: checkIn, summary: joinSummary({ roomNo: L.roomLabel(id) ?? "?", checkIn, nights, rate: rateOf(id) }) });
+      }
       onSaved(`${groupName}에 ${picked.map((id) => L.roomLabel(id) + "호").join(", ")} 추가 · ${md(checkIn)}부터 ${nights}박`);
     } catch (e) {
       setErr(saveFailMessage(e, "객실을 추가하지 못했어요"));

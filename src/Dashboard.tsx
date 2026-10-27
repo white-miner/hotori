@@ -1,3 +1,5 @@
+import { changesFor, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
+import ChangeLogSheet from "./ChangeLogSheet";
 import { parkingMark } from "../shared/parking";
 import ParkingView from "./ParkingView";
 import { type TurnWarn, clampHours, inTimeOf, outTimeOf, turnoverWarnings } from "../shared/extratime";
@@ -499,6 +501,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
   const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
   const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
+  /** 메모 · 기록 시트 (단체 또는 예약 하나) */
+  const [logScope, setLogScope] = useState<{ groupId: string | null; bookingIds: string[]; title: string } | null>(null);
   const [addTime, setAddTime] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [addTimeBusy, setAddTimeBusy] = useState(false);
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
@@ -726,6 +730,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return () => window.removeEventListener("keydown", onKey);
   }, [guestQueryLive, guestQuery]);
   const gsRoomLabel = (roomId: string) => L.roomLabel(roomId) ?? allRooms(s).find((r) => r.id === roomId)?.no ?? roomId;
+  /** 메모 본문 검색: 메모에 검색어가 든 예약(단체 메모면 단체 전체) */
+  const noteHitIds = useMemo(
+    () => noteBookingIds(data.changes, guestQuery, (gid) => data.bookings.filter((x) => x.groupId === gid).map((x) => x.id)),
+    [data.changes, data.bookings, guestQuery],
+  );
   const nowGuestSearch = useMemo(() => {
     const slots = allRooms(s).map((r) => ({ roomId: r.id, booking: nowBoardMap.get(r.id) ?? null }));
     return boardGuestSearch({
@@ -734,8 +743,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       groups: data.groups,
       queryRaw: guestQuery,
       roomLabel: gsRoomLabel,
+      noteIds: noteHitIds,
     });
-  }, [s, nowBoardMap, nowSide.unassigned, data.groups, guestQuery, L]);
+  }, [s, nowBoardMap, nowSide.unassigned, data.groups, guestQuery, L, noteHitIds]);
   const roomsGuestSearch = useMemo(() => {
     const slots = [...board.byRoom.entries()].map(([roomId, booking]) => ({ roomId, booking }));
     return boardGuestSearch({
@@ -744,8 +754,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       groups: data.groups,
       queryRaw: guestQuery,
       roomLabel: gsRoomLabel,
+      noteIds: noteHitIds,
     });
-  }, [board, data.groups, guestQuery, L]);
+  }, [board, data.groups, guestQuery, L, noteHitIds]);
   const activeGuestSearch = tab === "now" ? nowGuestSearch : tab === "rooms" ? roomsGuestSearch : null;
   const gsActive = !!(activeGuestSearch?.active);
   const gsHitRooms = activeGuestSearch?.roomIds;
@@ -930,6 +941,37 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       onJoin: () => setJoinGroupId(gid),
     };
   }, [selectedSettle, bookings, data.groups, today]);
+  /** 선택한 칸의 메모 · 기록 범위 (단체면 단체 전체, 아니면 그 예약) */
+  const selectedNotes = useMemo(() => {
+    const m = selectedSettle.members;
+    const first = m[0];
+    if (!first) return null;
+    const groupId = first.groupId && m.length > 1 ? first.groupId : null;
+    const bookingIds = m.map((x) => x.id);
+    const title = groupId ? `${first.groupName || "단체"} · ${m.length}객실` : `${first.guestName}${first.roomId ? ` · ${L.roomLabel(first.roomId) ?? ""}호` : ""}`;
+    const scope = { groupId, bookingIds };
+    return {
+      pinned: pinnedNote(data.changes, scope)?.summary ?? null,
+      count: changesFor(data.changes, scope).length,
+      onOpen: () => setLogScope({ ...scope, title }),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSettle, data.changes]);
+  const renderChangeLog = () => {
+    if (!logScope) return null;
+    const entries = changesFor(data.changes, logScope);
+    const anchor = logScope.bookingIds[0] ?? null;
+    return (
+      <ChangeLogSheet
+        title={logScope.title}
+        entries={entries}
+        readOnly={readOnly}
+        onClose={() => setLogScope(null)}
+        onPin={(id, pinned) => void data.pinChange(id, pinned)}
+        onAdd={async (text) => !!(await data.logChange({ kind: "note", summary: text, groupId: logScope.groupId, bookingId: logScope.groupId ? null : anchor }))}
+      />
+    );
+  };
   /** 단체 잔금은 addGroupPayment → 형제 전부 members로 열어 settle/칸 SoT 맞춤 */
   const payDeskMembersFor = (bk: Booking): Booking[] => {
     if (!bk.groupId) return [bk];
@@ -1734,6 +1776,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onClose={() => setLeaveBkId(null)}
         onConfirm={async (leaveDate, nights, price, segments) => {
           await data.patchBooking(bk.id, { nights, price, ...(segments !== undefined ? { segments } : {}) });
+          void data.logChange({
+            kind: "room",
+            groupId: bk.groupId ?? null,
+            bookingId: bk.id,
+            effectiveOn: leaveDate,
+            summary: leaveSummary({ roomNo: (bk.roomId ? L.roomLabel(bk.roomId) : "") ?? "?", leaveDate, nights, price }),
+          });
           setLeaveBkId(null);
           notify(`${(bk.roomId ? L.roomLabel(bk.roomId) : "") ?? ""}호 ${leaveDate.slice(5).replace("-", "/")} 조기 퇴실 처리`);
         }}
@@ -1762,6 +1811,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onClose={() => setPeriodPay(null)}
         onPay={async (plan, method, memo, headline) => {
           const saved = await data.addReceipt(groupId, plan.lines, plan.lump, { method, bizDate: today, leadBookingId: lead?.id ?? null, memo });
+          void data.logChange({
+            kind: "money",
+            groupId,
+            effectiveOn: today,
+            summary: `결제 등록 · ${headline}${memo ? ` · ${memo}` : ""}`,
+          });
           notify(`${peers[0]?.groupName || "단체"} · ${headline} 결제 등록`);
           return saved;
         }}
@@ -3517,6 +3572,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : null
               }
               groupHead={selectedGroupHead}
+              notes={selectedNotes}
               onLateOut={(bk) => {
                 const lab = bk.roomId
                   ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`
@@ -3761,6 +3817,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {periodPay ? renderPeriodPay(periodPay.groupId) : null}
       {joinGroupId ? renderJoin(joinGroupId) : null}
       {leaveBkId ? renderLeave(leaveBkId) : null}
+    {renderChangeLog()}
+      {renderChangeLog()}
       {payDesk ? (
         <PaymentDeskModal
           s={s}
