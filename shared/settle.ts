@@ -72,7 +72,7 @@ export interface Settlement {
   extraTime: number; // 빠른 입실 · 늦은 퇴실 (D)
   parking: number; // 추가 차량 − 도보 할인 (E)
   extras: number; // 추가 항목
-  refunds: number; // 중도 퇴실 환불
+  refunds: number; // 조기 퇴실 환불
   cancelled: { rooms: number; amount: number }; // 빠진 것 (청구 안 함)
   noshowRooms: number;
   total: number; // 최종 결제액
@@ -83,7 +83,7 @@ export interface Settlement {
   tracked: boolean;
 }
 /**
- * 정산 계산: 취소한 방은 빼고, 노쇼는 넣고, 중도 퇴실 환불은 빼요.
+ * 정산 계산: 취소한 방은 빼고, 노쇼는 넣고, 조기 퇴실 환불은 빼요.
  * 방 가격을 고쳤으면 고친 가격이 들어가요 (가격 = 판매 가격 − 추가 인원 − 빠른 입실·늦은 퇴실).
  */
 export function settle(members: Booking[], info: GroupInfo | null | undefined, plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null): Settlement {

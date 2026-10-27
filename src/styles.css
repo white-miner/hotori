@@ -981,7 +981,7 @@ label.ck input[type="checkbox"] {
   .lweek-day { min-height: 132px; }
   .lweek-row strong { font-size: 22px; }
 }
-/* 노쇼: 줄을 긋지 않아요 (받은 금액은 매출) · 중도 퇴실: 이용한 박수와 환불 */
+/* 노쇼: 줄을 긋지 않아요 (받은 금액은 매출) · 조기 퇴실: 이용한 박수와 환불 */
 .nst { font-size: 10px; font-weight: 750; color: var(--ink2); background: #efefef; border-radius: 6px; padding: 1px 5px; white-space: nowrap; }
 .lrow.ns .c-name .gn { color: var(--ink2); }
 .lrow.eo .c-len { color: var(--ink); white-space: normal; line-height: 1.3; font-size: 12.5px; }
@@ -1816,7 +1816,7 @@ label.ck input[type="checkbox"] {
 .cal-pl .cal-pl-ok i { background: #ececec; box-shadow: inset 0 0 0 2px #6b6b6b; }
 .cal-pl .cal-pl-eo { color: var(--ink3); font-weight: 550; }
 .cal-pl .cal-pl-eo i { background: repeating-linear-gradient(135deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px #b8b8b8; }
-/* 중도 퇴실: 묵은 밤은 그대로, 비운 밤은 흐린 점선 꼬리 (그 방은 비어 있어서 그 위에 새 예약이 올 수 있어요) */
+/* 조기 퇴실: 묵은 밤은 그대로, 비운 밤은 흐린 점선 꼬리 (그 방은 비어 있어서 그 위에 새 예약이 올 수 있어요) */
 .cbar.eo, .cbar.eo:hover { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--pt) 55%, transparent) 0 4px, transparent 4px 8px); border: 1.5px dashed color-mix(in srgb, var(--pb) 45%, #c8c8c8); box-shadow: none; color: var(--ink4); z-index: 0; }
 .cbar.eo .cb-eo { font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cbar.eoe { border-top-right-radius: 3px; border-bottom-right-radius: 3px; }
@@ -1859,7 +1859,7 @@ label.ck input[type="checkbox"] {
 .eoline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: -4px 0 12px; padding: 9px 12px; border-radius: 12px; background: #f4f4f4; color: var(--ink2); font-size: 13px; }
 .eoline b { color: var(--ink); font-weight: 800; }
 .eoline span { color: var(--ink3); font-weight: 550; }
-/* 중도 퇴실 확인 (예약 창 안의 작은 카드) */
+/* 조기 퇴실 확인 (예약 창 안의 작은 카드) */
 .eoc { margin: -2px 0 14px; padding: 14px; border-radius: 16px; background: #fff; border: 1.5px solid var(--ink); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08); display: flex; flex-direction: column; gap: 12px; }
 .eoc-h { display: flex; flex-direction: column; gap: 3px; }
 .eoc-h b { font-size: 16px; font-weight: 850; }
@@ -5638,3 +5638,39 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   .gpp-acts .gpp-go { flex-basis: 100%; order: -1; }
   .gpp-modal .chip { height: 38px; }
 }
+
+/* 단체 결제 등록(v2) */
+.grc-modal { width: min(580px, 100%); }
+.grc-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px 14px; border-radius: 14px; background: var(--panel); font-size: 13.5px; }
+.grc-sum .grc-bal { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.grc-sum.owed .grc-bal { color: #c2410c; }
+.grc-sum.prepaid .grc-bal { color: #1f8a4c; }
+.grc-warn { color: #c2410c; font-weight: 700; }
+.grc-date { display: flex; align-items: center; gap: 8px; }
+.grc-date input, .grc-memo { height: 40px; border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 0 12px; font: inherit; background: #fff; }
+.grc-memo { width: 100%; }
+.grc-pick { cursor: pointer; }
+.grc-pick input { width: 18px; height: 18px; accent-color: var(--dark, #222); }
+.grc-tag { font-style: normal; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: #e8f0ff; color: #2a52be; }
+.grc-tag.end { background: #eee; color: #777; }
+.grc-link { border: 0; background: none; padding: 0 0 0 10px; color: var(--ink3); text-decoration: underline; font: inherit; font-size: 12px; cursor: pointer; }
+.grc-link.block { align-self: flex-start; padding: 0; }
+.grc-note { margin: 0; }
+.grc-row.idle { opacity: 0.6; }
+
+/* 단체 머리글(v2) */
+.ghead { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; margin: 0 0 10px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line, #eee); }
+.ghead-top { display: flex; align-items: baseline; gap: 8px; }
+.ghead-name { font-size: 14px; }
+.ghead-bal { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.2px; }
+.ghead.owed .ghead-bal { color: #c2410c; }
+.ghead.prepaid .ghead-bal { color: #1f8a4c; }
+.ghead-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--ink3); }
+.ghead-warn { color: #c2410c; font-weight: 700; }
+.ghead-acts { display: flex; gap: 8px; margin-top: 6px; }
+.ghead-go { flex: 1; min-height: 46px; font-size: 15px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.ghead-sub { min-height: 46px; white-space: nowrap; }
+.gjn-rooms { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
+.gjn-arr { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.grc-hidden-date { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.gpp-row .gpp-amt .inp { max-width: 190px; }

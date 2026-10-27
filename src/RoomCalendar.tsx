@@ -38,7 +38,7 @@ function tip(b: Booking, L: L, readOnly: boolean): string {
   if (b.kind === "dayuse")
     return `대실 ${b.startTime ?? ""}~${b.endTime ?? ""} · ${b.guestName || "이름 없음"} · ${p}${readOnly ? "" : ` · ${won(b.price)}원`}${st}`;
   const mv = isMoved(b) ? ` · 객실 이동 ${legsOf(b).map((l) => `${L.roomLabel(l.roomId) ?? "?"} ${l.nights}박`).join(" → ")}` : "";
-  const eo = isActive(b) && isEarlyOut(b) ? ` · ${md(b.earlyOut!)} 중도퇴실 (${usedLabel(b)})${!readOnly && b.refund ? ` · 환불 ${won(b.refund)}원` : ""}` : "";
+  const eo = isActive(b) && isEarlyOut(b) ? ` · ${md(b.earlyOut!)} 조기 퇴실 (${usedLabel(b)})${!readOnly && b.refund ? ` · 환불 ${won(b.refund)}원` : ""}` : "";
   return `${b.guestName || "이름 없음"} · ${p} · ${b.nights}박 · ${md(b.checkIn)}~${md(addDays(b.checkIn, b.nights ?? 0))}${readOnly ? "" : ` · ${won(b.price)}원`}${mv}${st}${eo}`;
 }
 
@@ -96,7 +96,7 @@ const BarEl = memo(function BarEl({
       onKeyDown={readOnly ? undefined : (e) => e.key === "Enter" && onOpen(b)}
     >
       {bar.freed ? (
-        <span className="cb-eo">{px >= 70 ? "중도 퇴실 · 빈 방" : "빈 방"}</span>
+        <span className="cb-eo">{px >= 70 ? "조기 퇴실 · 빈 방" : "빈 방"}</span>
       ) : (
         <>
           {typeCode && px >= 80 ? <span className="cb-t">{typeCode}</span> : null}
@@ -556,9 +556,9 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
           미배정
         </span>
         {anyFreed ? (
-          <span title="중도 퇴실로 비운 밤">
+          <span title="조기 퇴실로 비운 밤">
             <UserRoundX size={12} strokeWidth={2.4} aria-hidden />
-            중도퇴실
+            조기 퇴실
           </span>
         ) : null}
         <span title="취소·노쇼">

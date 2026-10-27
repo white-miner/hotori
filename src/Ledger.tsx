@@ -259,7 +259,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   };
   const leftOf = (b: Booking) => (b.groupId ? (groupSettle(b.groupId)?.left ?? 0) : payState(b, L.plats.get(b.platformId)).left);
   const q = query.trim().toLowerCase();
-  // 조건(플랫폼·타입·종류·검색·상태)만 거른 목록: 기간 밖 입실이라도 기간 안에 중도 퇴실 환불이 있으면 매출 계산에 들어가요
+  // 조건(플랫폼·타입·종류·검색·상태)만 거른 목록: 기간 밖 입실이라도 기간 안에 조기 퇴실 환불이 있으면 매출 계산에 들어가요
   const matched = (rows ?? []).filter((b) => {
     if (plat && b.platformId !== plat) return false;
     if (type && b.typeId !== type) return false;
@@ -285,7 +285,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   if (sort === "in-asc") list.sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.createdAt.localeCompare(b.createdAt));
   else if (sort === "rec") list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const act = list.filter(isActive);
-  // 매출: 취소 0 · 노쇼는 수납 금액 그대로 · 중도 퇴실은 결제 − 환불 (환불은 퇴실한 날 기준)
+  // 매출: 취소 0 · 노쇼는 수납 금액 그대로 · 조기 퇴실은 결제 − 환불 (환불은 퇴실한 날 기준)
   const rev = roomRevenue(matched, from, to);
   const sum = rev.net;
   const nights = act.reduce((n, b) => n + (usedNights(b) ?? 0), 0);
@@ -392,7 +392,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   {stLabel ? (
                     <span
                       className={`stag ${b.status === "cancelled" ? "cx" : b.status === "noshow" ? "ns" : ph === "pre" ? "pre" : ph === "in" ? "in" : "done"}`}
-                      title={eo ? `${dayLabel(b.earlyOut!)} 중도 퇴실` : undefined}
+                      title={eo ? `${dayLabel(b.earlyOut!)} 조기 퇴실` : undefined}
                     >
                       {stLabel}
                     </span>
@@ -400,7 +400,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                     "—"
                   )}
                 </span>
-                <span className="c-inout" title={eo ? `${usedLabel(b)} · 중도 퇴실` : b.kind === "stay" ? `${b.nights}박` : undefined}>
+                <span className="c-inout" title={eo ? `${usedLabel(b)} · 조기 퇴실` : b.kind === "stay" ? `${b.nights}박` : undefined}>
                   {stayInOutLabel(b)}
                   {s.parking.enabled && parkingMark(b) ? <small className="gcount" title={b.plates?.length ? `차량번호 ${b.plates.join(", ")}` : undefined}> · {parkingMark(b)}</small> : null}
                   {timeTags(s, b).length ? <small className="gcount" title={`${timeLine(b)}${isTimeService(b) ? " · 서비스" : b.timeFee ? ` · ${won(b.timeFee)}원 포함` : ""}`}> · {timeTags(s, b).join(" · ")}</small> : null}
@@ -1090,7 +1090,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   </tr>
                 </tfoot>
               </table>
-              <p className="exec-note muted">입실일 기준 · 취소 제외 · 노쇼 포함 · 환불은 중도퇴실 날</p>
+              <p className="exec-note muted">입실일 기준 · 취소 제외 · 노쇼 포함 · 환불은 조기 퇴실 날</p>
             </section>
 
             <section className="exec-sec" aria-label="플랫폼별 결제 매출">

@@ -277,7 +277,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
               </tr>
               {st.refunds ? (
                 <tr>
-                  <td colSpan={4}>중도 퇴실 환불</td>
+                  <td colSpan={4}>조기 퇴실 환불</td>
                   <td className="r num">−{won(st.refunds)}</td>
                 </tr>
               ) : null}

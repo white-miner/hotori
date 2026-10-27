@@ -192,7 +192,7 @@ test("퇴실처리 후 빈 칸 · 되돌리기 전제 · 당일 다음 예약은
   assert.equal(nowFlags(bk({ stayMode: "long_stay", checkIn: "2026-10-19", nights: 7, arrived: true, roomId: "r301" }), "2026-10-19").longStay, true);
 });
 
-test("중도 퇴실: stayEnd가 앞당겨진 날 아침에 퇴실예정", () => {
+test("조기 퇴실: stayEnd가 앞당겨진 날 아침에 퇴실예정", () => {
   const b = bk({ arrived: true, checkIn: "2026-10-18", nights: 4, earlyOut: "2026-10-20" });
   // used nights → stayEnd 10/20. 마지막 점유 밤 10/19 = 숙박
   assert.equal(nowFlags(b, "2026-10-19").kind, "inhouse");

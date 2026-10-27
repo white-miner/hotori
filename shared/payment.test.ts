@@ -137,7 +137,7 @@ test("취소 · 노쇼 예약은 잔금을 보여 주지 않아요", () => {
   assert.equal(payState(bk({ status: "noshow", payments: [pay("deposit", "cash", 10000)] }), onsite).left, 0);
 });
 
-test("중도 퇴실 환불을 빼고 잔금을 계산해요 · 더 받았으면 잔금 0", () => {
+test("조기 퇴실 환불을 빼고 잔금을 계산해요 · 더 받았으면 잔금 0", () => {
   const b = bk({ nights: 3, price: 300000, earlyOut: "2026-10-21", refund: 100000, payments: [pay("deposit", "cash", 150000)] });
   assert.equal(payState(b, onsite).due, 200000);
   assert.equal(payState(b, onsite).left, 50000);

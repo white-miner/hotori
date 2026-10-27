@@ -181,7 +181,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
       setEntry({ preset, roomIds: opts?.roomIds, simple: true, n: Date.now() }),
     [],
   );
-  // 중도 퇴실 되돌리기 (예약 창 단추·알림의 되돌리기): 비운 밤이 다시 팔렸으면 막아요
+  // 조기 퇴실 되돌리기 (예약 창 단추·알림의 되돌리기): 비운 밤이 다시 팔렸으면 막아요
   const bkRef = useRef(data.bookings);
   bkRef.current = data.bookings;
   const hotelRef = useRef(data.hotel);
@@ -198,7 +198,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
       }
       try {
         await data.setEarlyOut(id, null, null);
-        notify(`${b.guestName} 님 중도 퇴실을 되돌렸어요 · 원래대로 ${dayLabel(checkOut(b))} 퇴실`);
+        notify(`${b.guestName} 님 조기 퇴실을 되돌렸어요 · 원래대로 ${dayLabel(checkOut(b))} 퇴실`);
         return true;
       } catch (e) {
         notify(e instanceof Error ? `되돌리지 못했어요: ${e.message}` : "되돌리지 못했어요", { ms: 7000 });

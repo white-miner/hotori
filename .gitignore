@@ -8,3 +8,4 @@ dist/
 !.env.production
 !.env.development
 dist-server/
+node_modules

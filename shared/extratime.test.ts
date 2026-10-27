@@ -39,7 +39,7 @@ test("같은 방 같은 날: 앞 손님 늦은 퇴실이면 다음 손님에게 
   const n = bk({ id: "n", checkIn: "2026-10-19", nights: 2 });
   const w = turnoverWarnings(S, [a, n]);
   assert.deepEqual(w.map((x) => [x.id, x.text]), [["n", "앞 손님 늦은 퇴실 14:00"], ["a", "다음 손님 같은 날 입실 16:00"]]);
-  // 다른 방 · 취소 · 중도 퇴실이면 없어요
+  // 다른 방 · 취소 · 조기 퇴실이면 없어요
   assert.equal(turnoverWarnings(S, [a, { ...n, roomId: "r2" }]).length, 0);
   assert.equal(turnoverWarnings(S, [{ ...a, status: "cancelled" }, n]).length, 0);
   // 빠른 입실이 앞 손님 퇴실(12:00)보다 이르면

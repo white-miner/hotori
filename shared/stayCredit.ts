@@ -1,4 +1,4 @@
-// Option A · 잔액 보관: 중도퇴실 시 현금 환불과 분리한 손님 부채 · 새 예약에서 「잔액 사용」
+// Option A · 잔액 보관: 조기 퇴실 시 현금 환불과 분리한 손님 부채 · 새 예약에서 「잔액 사용」
 import { unusedNightRefund } from "./extend";
 import { type Booking, addDays, won } from "./ledger";
 import { phoneDigits, normalizeGuestName } from "./guestSearch";
@@ -165,7 +165,7 @@ export function planCreateStayCredit(input: CreateStayCreditInput): {
   };
 }
 
-/** 중도퇴실 + 보관: refund는 항상 null · 보관액은 별도 검증 */
+/** 조기 퇴실 + 보관: refund는 항상 null · 보관액은 별도 검증 */
 export function validateEarlyOutKeep(
   b: Booking,
   date: string,
@@ -174,8 +174,8 @@ export function validateEarlyOutKeep(
   today: string,
   onsite: boolean,
 ): string | null {
-  if (b.status !== "active") return "취소·노쇼 예약은 중도 퇴실할 수 없어요.";
-  if (b.kind !== "stay" || !b.nights || b.nights < 2) return "2박 이상 숙박만 중도 퇴실할 수 있어요.";
+  if (b.status !== "active") return "취소·노쇼 예약은 조기 퇴실할 수 없어요.";
+  if (b.kind !== "stay" || !b.nights || b.nights < 2) return "2박 이상 숙박만 조기 퇴실할 수 있어요.";
   if (!(date > b.checkIn && date < addDays(b.checkIn, b.nights))) {
     return "퇴실 날짜는 입실 다음 날부터 원래 퇴실 전날까지예요.";
   }

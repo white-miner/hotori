@@ -1,5 +1,5 @@
 // 장기숙박(퇴실 미정): 요금표 · 박별 누적 · 미수 · 재고 창 롤링
-import { type Booking, addDays, dayLabel, fitSegments, won } from "./ledger";
+import { type Booking, STAY_NIGHTS_MAX, addDays, dayLabel, fitSegments, won } from "./ledger";
 import { applyExtend, canExtend, extendBlock, extendOverlaps, type ExtendDraft } from "./extend";
 import type { HotelSettings } from "./ledger";
 
@@ -172,7 +172,7 @@ export function planWindowExtend(b: Booking, addNights: number, rate: LongStayRa
   const add = Math.round(addNights);
   if (!Number.isInteger(add) || add < 1) return { err: "늘릴 박수를 입력해 주세요." };
   if (!canExtend(b)) return { err: "재고 창을 늘릴 수 없어요." };
-  if ((b.nights ?? 0) + add > 90) return { err: "박수가 너무 많아요 (90박까지)." };
+  if ((b.nights ?? 0) + add > STAY_NIGHTS_MAX) return { err: `박수가 너무 많아요 (${STAY_NIGHTS_MAX}박까지).` };
   const rv = validateLongStayRate(rate);
   if (rv) return { err: rv };
   const lines: { nightDate: string; amount: number }[] = [];

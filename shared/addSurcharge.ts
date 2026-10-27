@@ -18,7 +18,7 @@ export function isSurchargeReason(v: unknown): v is SurchargeReason {
   return v === "late_out" || v === "late_fee" || v === "other";
 }
 
-/** 활성 숙박만 (늦은 퇴실·레이트 시나리오). 중도 퇴실·취소 제외 */
+/** 활성 숙박만 (늦은 퇴실·레이트 시나리오). 조기 퇴실·취소 제외 */
 export function canAddSurcharge(b: Pick<Booking, "status" | "kind" | "earlyOut">): boolean {
   return b.status === "active" && b.kind === "stay" && !b.earlyOut;
 }
@@ -99,7 +99,7 @@ export interface AddSurchargePlan {
 
 export function validateAddSurcharge(b: Booking, input: AddSurchargeInput): string | null {
   if (!canAddSurcharge(b)) {
-    if (b.earlyOut) return "중도 퇴실한 예약에는 추가금을 넣을 수 없어요.";
+    if (b.earlyOut) return "조기 퇴실한 예약에는 추가금을 넣을 수 없어요.";
     if (b.status !== "active") return "취소·노쇼 예약에는 추가금을 넣을 수 없어요.";
     if (b.kind !== "stay") return "숙박 예약에만 추가금을 넣을 수 있어요.";
     return "추가금을 넣을 수 없어요.";

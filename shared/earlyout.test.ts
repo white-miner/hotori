@@ -1,4 +1,4 @@
-// 취소 · 노쇼 · 중도 퇴실: 밤마다 재고 · 매출 · 환불 날짜 · 되돌리기 · 비운 밤 다시 팔기 · 객실 이동과 함께
+// 취소 · 노쇼 · 조기 퇴실: 밤마다 재고 · 매출 · 환불 날짜 · 되돌리기 · 비운 밤 다시 팔기 · 객실 이동과 함께
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -64,7 +64,7 @@ test("비운 밤은 다시 팔 수 있어요: 겹침 오류 없이 305호가 빈
   const draft = bk({ id: "new", checkIn: "2026-10-20", nights: 1, roomId: "r305" });
   assert.equal(freeRooms(S, [b], draft).has("r305"), true);
   assert.deepEqual(legConflicts([b], draft), []);
-  // 중도 퇴실이 없으면 겹쳐요
+  // 조기 퇴실이 없으면 겹쳐요
   assert.equal(legConflicts([{ ...b, earlyOut: null }], draft).length, 1);
   // 캘린더: 묵은 2박은 막대, 비운 1박은 흐린 꼬리, 새 예약과 겹침 표시 없음
   const lay = calendarLayout(S, [b, draft], "2026-10-17", "2026-10-22");
@@ -76,7 +76,7 @@ test("비운 밤은 다시 팔 수 있어요: 겹침 오류 없이 305호가 빈
   assert.equal(bars[0].freed, true);
 });
 
-test("잘못된 날짜는 중도 퇴실이 아니에요 (첫 날·퇴실일·1박·대실)", () => {
+test("잘못된 날짜는 조기 퇴실이 아니에요 (첫 날·퇴실일·1박·대실)", () => {
   assert.equal(usedNights(bk({ earlyOut: "2026-10-18" })), 3);
   assert.equal(usedNights(bk({ earlyOut: "2026-10-21" })), 3);
   assert.equal(usedNights(bk({ nights: 1, earlyOut: "2026-10-19" })), 1);
@@ -90,7 +90,7 @@ test("잘못된 날짜는 중도 퇴실이 아니에요 (첫 날·퇴실일·1�
   assert.match(validateEarlyOut(bk({ status: "noshow" }), "2026-10-19", null)!, /취소·노쇼/);
 });
 
-test("중도 퇴실 단추는 첫 밤 다음 날부터 퇴실 전날까지만 (2박 이상 정상 숙박)", () => {
+test("조기 퇴실 단추는 첫 밤 다음 날부터 퇴실 전날까지만 (2박 이상 정상 숙박)", () => {
   const b = bk({});
   assert.deepEqual(["2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21"].map((t) => canEarlyOutToday(b, t)), [false, true, true, false]);
   assert.equal(canEarlyOutToday(bk({ nights: 1 }), "2026-10-18"), false);
@@ -98,7 +98,7 @@ test("중도 퇴실 단추는 첫 밤 다음 날부터 퇴실 전날까지만 (2
   assert.equal(canEarlyOutToday(bk({ earlyOut: "2026-10-19" }), "2026-10-19"), false); // 이미 했으면 되돌리기만
 });
 
-test("매출: 취소 0 · 노쇼는 결제 금액 그대로 · 중도 퇴실은 결제 − 환불", () => {
+test("매출: 취소 0 · 노쇼는 결제 금액 그대로 · 조기 퇴실은 결제 − 환불", () => {
   assert.equal(revenueOf(bk({ status: "cancelled" })), 0);
   assert.equal(revenueOf(bk({ status: "noshow" })), 300000);
   assert.equal(revenueOf(bk({ earlyOut: "2026-10-20", refund: 100000 })), 200000);
@@ -112,7 +112,7 @@ test("매출: 취소 0 · 노쇼는 결제 금액 그대로 · 중도 퇴실은 
   assert.deepEqual(roomRevenue(list, "2026-10-01", "2026-10-31"), { sales: 430000, refunds: 100000, net: 330000 });
 });
 
-test("환불은 중도 퇴실한 날짜의 달에 빠져요 (9/30 입실 · 10/2 퇴실)", () => {
+test("환불은 조기 퇴실한 날짜의 달에 빠져요 (9/30 입실 · 10/2 퇴실)", () => {
   const b = bk({ checkIn: "2026-09-30", nights: 4, earlyOut: "2026-10-02", refund: 120000, price: 400000 });
   assert.deepEqual(roomRevenue([b], "2026-09-01", "2026-09-30"), { sales: 400000, refunds: 0, net: 400000 });
   assert.deepEqual(roomRevenue([b], "2026-10-01", "2026-10-31"), { sales: 0, refunds: 120000, net: -120000 });
@@ -158,13 +158,13 @@ test("객실 이동과 함께: 밤마다 실제로 쓴 방에서 재고를 빼�
   assert.equal(boardMoveTargets(S, [b3, sold307], b3, "2026-10-19").has("r307"), true);
 });
 
-test("노쇼·취소 자리는 새 예약이 채우면 사라져요 (예전 그대로), 중도 퇴실 손님의 묵은 밤만 자리를 막아요", () => {
+test("노쇼·취소 자리는 새 예약이 채우면 사라져요 (예전 그대로), 조기 퇴실 손님의 묵은 밤만 자리를 막아요", () => {
   const rooms = roomMap(S);
   const ns = bk({ status: "noshow", cancelledAt: "2026-10-18T10:00:00Z" });
   const fill = bk({ checkIn: "2026-10-19", nights: 1, roomId: "r305" });
   assert.equal(isCancelledRefilled(ns, [ns, fill], rooms), true);
   assert.equal(nightBoard(S, [ns, fill], "2026-10-19").byRoom.get("r305")?.id, fill.id);
-  // 방 미배정 노쇼: 같은 타입 새 숙박이 묵는 밤과 겹치면 사라져요. 중도 퇴실한 숙박은 묵은 밤까지만 봐요
+  // 방 미배정 노쇼: 같은 타입 새 숙박이 묵는 밤과 겹치면 사라져요. 조기 퇴실한 숙박은 묵은 밤까지만 봐요
   const nsLoose = bk({ roomId: null, status: "noshow", checkIn: "2026-10-20", nights: 1, cancelledAt: "2026-10-02T00:00:00Z" });
   const eo = bk({ roomId: "r306", createdAt: "2026-10-05T00:00:00Z", earlyOut: "2026-10-20" });
   assert.equal(isCancelledRefilled(nsLoose, [nsLoose, eo], rooms), false);

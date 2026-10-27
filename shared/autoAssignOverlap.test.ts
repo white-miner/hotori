@@ -156,8 +156,8 @@ test("퇴실처리된 숙박이 아직 그 밤을 장부에 잡고 있으면 자
   assert.equal(roomOf(planAutoAssign(ONE, [old, w], [w]), w.id), "r101");
 });
 
-// ───────── 중도 퇴실 ─────────
-test("중도 퇴실(earlyOut)로 풀린 밤은 배정 가능, 실제 쓴 밤은 막아요", () => {
+// ───────── 조기 퇴실 ─────────
+test("조기 퇴실(earlyOut)로 풀린 밤은 배정 가능, 실제 쓴 밤은 막아요", () => {
   const ex = bk({ roomId: "r101", checkIn: "2026-10-25", nights: 5, earlyOut: "2026-10-27" }); // 25·26박만 사용
   const free = bk({ checkIn: "2026-10-27", nights: 2 });
   assert.equal(roomOf(planAutoAssign(ONE, [ex, free], [free]), free.id), "r101");

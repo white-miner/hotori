@@ -49,6 +49,7 @@ import {
   usableTypes,
   validateBooking,
   won,
+  STAY_NIGHTS_MAX,
 } from "../shared/ledger";
 import { dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import type { HotelData } from "./data";
@@ -202,7 +203,7 @@ interface Props {
   /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
   onBoardMove?: () => void;
   notify: (m: string, opt?: ToastOpt) => void;
-  /** 중도 퇴실 되돌리기 (비운 밤이 다시 팔렸으면 막고 false) */
+  /** 조기 퇴실 되돌리기 (비운 밤이 다시 팔렸으면 막고 false) */
   undoEarlyOut: (id: string) => Promise<boolean>;
   /** 새 예약 상세 → 간단 셸 (progressive disclosure) */
   onOpenSimple?: (preset: Partial<Booking>) => void;
@@ -398,7 +399,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [createPayMode, setCreatePayMode] = useState<OnsitePayMode>("prepaid");
   const [createDepAmt, setCreateDepAmt] = useState("");
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
-  // 중도 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
+  // 조기 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
   const [eo, setEo] = useState<{
     date: string;
     disposition: EarlyOutDisposition;
@@ -857,7 +858,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         eo.disposition === "refund" && refund ? ` · 환불 ${won(refund)}원` : eo.disposition === "none" ? " · 환불 없음" : "";
       onClose();
       notify(
-        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 중도 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refundTail}${keepTail}`,
+        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 조기 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refundTail}${keepTail}`,
         { action: { label: "되돌리기", run: () => void undoEarlyOut(saved.id) }, ms: 8000 },
       );
     } catch (e) {
@@ -1019,7 +1020,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setInErr(
         isLongStay(liveB)
           ? "입실일 전부터는 퇴실처리할 수 없어요."
-          : "퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 중도 퇴실을 써 주세요.",
+          : "퇴실일은 퇴실 아침부터 퇴실처리할 수 있어요. 그보다 일찍 나가면 조기 퇴실을 써 주세요.",
       );
       return;
     }
@@ -1451,7 +1452,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const minRemain = (tid: string) => Math.min(...nightDates.map((d) => table.get(tid)?.get(d) ?? 0));
   const legs = fullLegsOf(draft);
   const moved = legs.length > 1;
-  // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요 (중도 퇴실했으면 실제로 묵은 밤까지만)
+  // 방 번호 고르기: 객실 이동이 있으면 첫 방에 묵는 밤만 봐요 (조기 퇴실했으면 실제로 묵은 밤까지만)
   const firstNights = Math.min(moved ? legs[0].nights : nights, usedNights(draft) ?? nights);
   const free = useMemo(() => {
     const f = freeRooms(s, data.bookings, { ...draft, nights: kind === "stay" ? firstNights : null });
@@ -1859,7 +1860,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 aria-pressed={!!checkedOutAt}
                 disabled={coBusy}
                 onClick={() => void toggleCheckOut()}
-                title="정상 퇴실 · 누르면 바로 저장 · 중도 퇴실과 다름"
+                title="정상 퇴실 · 누르면 바로 저장 · 조기 퇴실과 다름"
               >
                 <DoorOpen size={17} />
                 <b>{checkedOutAt ? `퇴실처리됨 · ${CHECKOUT_UNDO_CTA}` : "퇴실처리"}</b>
@@ -1918,12 +1919,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {isActive(base) && eoNow ? (
               <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
                 <Undo2 size={17} />
-                <b>중도 퇴실 되돌리기</b>
+                <b>조기 퇴실 되돌리기</b>
               </button>
             ) : isActive(base) && eoToday ? (
               <button type="button" className={`beo ${eo ? "on" : ""}`} aria-expanded={!!eo} onClick={() => (eo ? setEo(null) : openEo())}>
                 <DoorOpen size={17} />
-                <b>중도 퇴실</b>
+                <b>조기 퇴실</b>
               </button>
             ) : null}
             {isActive(draft) ? (
@@ -1967,7 +1968,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         {eoNow && live ? (
           <div className="eoline">
             <DoorOpen size={15} />
-            <b>{dayLabel(live.earlyOut!)} 중도 퇴실</b>
+            <b>{dayLabel(live.earlyOut!)} 조기 퇴실</b>
             <span>
               {usedLabel(live)} · {dayLabel(live.earlyOut!)}부터 방이 비었어요
               {live.refund
@@ -2226,7 +2227,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         ) : null}
         {eo && live ? (
-          <div className="eoc" role="group" aria-label="중도 퇴실" ref={eocRef}>
+          <div className="eoc" role="group" aria-label="조기 퇴실" ref={eocRef}>
             <div className="eoc-h">
               <b>
                 {eo.date === today ? "오늘 퇴실" : `${dayLabel(eo.date)} 퇴실`} · {live.nights}박 중 {daysBetween(live.checkIn, eo.date)}박 이용
@@ -2394,7 +2395,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               </>
             ) : null}
             {eo.disposition === "none" ? (
-              <div className="muted sm">환불·보관 없이 중도 퇴실만 해요 · 방은 비워요</div>
+              <div className="muted sm">환불·보관 없이 조기 퇴실만 해요 · 방은 비워요</div>
             ) : null}
             {eoErr ? <div className="ferr">{eoErr}</div> : null}
             <div className="eoc-a">
@@ -2405,8 +2406,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 {eoBusy
                   ? "저장 중…"
                   : eo.disposition === "keep"
-                    ? `${STAY_CREDIT_COPY.keep} · 중도 퇴실`
-                    : "중도 퇴실"}
+                    ? `${STAY_CREDIT_COPY.keep} · 조기 퇴실`
+                    : "조기 퇴실"}
               </button>
             </div>
           </div>
@@ -2625,7 +2626,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         <input
                           type="date"
                           min={addDays(checkIn, 1)}
-                          max={addDays(checkIn, 90)}
+                          max={addDays(checkIn, STAY_NIGHTS_MAX)}
                           value={checkOutDate}
                           onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
                           onClick={(e) => openPicker(e.currentTarget)}

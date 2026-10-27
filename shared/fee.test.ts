@@ -57,7 +57,7 @@ test("추가 인원 · 빠른/늦은 · 주차는 판매가에 들어 있어서 
   assert.equal(x.fee, 15200);
   assert.equal(x.expected, 136800);
 });
-test("중도 퇴실 환불은 입금에서 빠지고 · 노쇼는 수수료 그대로 · 취소는 0", () => {
+test("조기 퇴실 환불은 입금에서 빠지고 · 노쇼는 수수료 그대로 · 취소는 0", () => {
   const eo = payoutOf(bk({ price: 200000, nights: 2, earlyOut: "2026-10-20", refund: 90000 }), Y);
   assert.equal(eo.expected, 200000 - 20000 - 90000);
   assert.match(payoutLine(eo)!, /− 환불 90,000 = 90,000/);
@@ -67,7 +67,7 @@ test("중도 퇴실 환불은 입금에서 빠지고 · 노쇼는 수수료 그�
   const cx = payoutOf(bk({ status: "cancelled", coupons: [{ amount: 1000, hotel: true }] }), Y);
   assert.deepEqual([cx.sale, cx.fee, cx.hotelCoupons, cx.expected, cx.tracked, cx.shown], [0, 0, 0, 0, false, false]);
 });
-test("입금 예정일 = 퇴실일 + N일 (중도 퇴실이면 떠난 날 · 대실은 그날)", () => {
+test("입금 예정일 = 퇴실일 + N일 (조기 퇴실이면 떠난 날 · 대실은 그날)", () => {
   assert.equal(payoutOf(bk({ nights: 3 }), { feeRate: 10, payoutDays: 3 }).dueOn, "2026-10-25");
   assert.equal(payoutOf(bk({ nights: 3, earlyOut: "2026-10-20" }), { feeRate: 10, payoutDays: 3 }).dueOn, "2026-10-23");
   assert.equal(payoutOf(bk({ kind: "dayuse", nights: null }), { payoutDays: 0 }).dueOn, "2026-10-19");

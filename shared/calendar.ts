@@ -24,9 +24,9 @@ export interface Bar {
   leg: Leg; // 객실 이동이면 그 방에 묵는 구간
   prev?: string | null; // 앞 구간 방 (이동해 들어왔으면)
   next?: string | null; // 다음 구간 방 (이동해 나가면)
-  /** 중도 퇴실로 비운 밤 (흐린 점선 꼬리: 방·재고는 비어 있어요) */
+  /** 조기 퇴실로 비운 밤 (흐린 점선 꼬리: 방·재고는 비어 있어요) */
   freed?: boolean;
-  /** 이 막대 다음 날 중도 퇴실 (꼬리가 이어 붙어요) */
+  /** 이 막대 다음 날 조기 퇴실 (꼬리가 이어 붙어요) */
   endsEarly?: boolean;
 }
 export interface CalendarLayout {
@@ -104,7 +104,7 @@ export function calendarLayout(s: HotelSettings, bookings: Booking[], from: stri
       if (room) out.rooms.set(room.id, [...(out.rooms.get(room.id) ?? []), bar]);
       else loose.push(bar);
     });
-    // 중도 퇴실: 비운 밤은 흐린 꼬리로 (정상 예약일 때만)
+    // 조기 퇴실: 비운 밤은 흐린 꼬리로 (정상 예약일 때만)
     if (isActive(b))
       for (const leg of freedLegsOf(b)) {
         const room = leg.roomId ? rooms.get(leg.roomId) : undefined;

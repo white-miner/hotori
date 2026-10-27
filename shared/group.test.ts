@@ -215,7 +215,7 @@ test("단체 날짜 바꾸기: 다른 예약과 겹치는 방 · 객실 이동�
   assert.match(groupDateBlock(S, [mv, m2], [mv, m2], "2026-10-20", 2)!, /객실 이동/);
 });
 
-test("groupLeadBooking: 중도퇴실로 빈 방은 대장 후보에서 뒤로 (본관 302호 사례) · 수납 0 동률", () => {
+test("groupLeadBooking: 조기 퇴실로 빈 방은 대장 후보에서 뒤로 (본관 302호 사례) · 수납 0 동률", () => {
   const gone = bk({ id: "g302", roomId: "r302", checkIn: "2026-10-11", nights: 30, earlyOut: "2026-10-21", payments: [] });
   const a = bk({ id: "a602", roomId: "r301", checkIn: "2026-10-11", nights: 30, payments: [] });
   const b = bk({ id: "a501", roomId: "r303", checkIn: "2026-10-11", nights: 30, payments: [] });

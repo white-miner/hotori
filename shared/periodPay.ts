@@ -23,7 +23,7 @@ export const nightState = (n: NightSlot): NightState => (n.covered >= n.amount ?
 export interface StayCoverage {
   bookingId: string;
   nights: NightSlot[];
-  /** 청구액 (환불·중도퇴실 반영 = revenueOf) */
+  /** 청구액 (환불·조기 퇴실 반영 = revenueOf) */
   due: number;
   paid: number;
   /** 아직 청구액 */
@@ -41,7 +41,7 @@ export function isPeriodPayable(b: Pick<Booking, "status" | "kind" | "nights" | 
 
 /**
  * 박별 청구액. 박별 요금(night_rates)이 LOS를 덮으면 그대로, 아니면 판매가를 똑같이(나머지는 마지막 박).
- * 중도퇴실이면 묵은 박까지만. 합계는 항상 revenueOf(판매가 − 환불)가 되도록 마지막 박에서 가감해요
+ * 조기 퇴실이면 묵은 박까지만. 합계는 항상 revenueOf(판매가 − 환불)가 되도록 마지막 박에서 가감해요
  * (추가금·환불·반올림 차이). 빼다가 0 아래로 가면 앞 박에서 이어서 빼요.
  */
 export function stayNightAmounts(b: PeriodBooking): { date: string; amount: number }[] {

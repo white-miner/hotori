@@ -152,7 +152,7 @@ export interface PayState {
 /**
  * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 손님·플랫폼이 받은 걸로 봐서 잔금이 없어요
  * (결제 내역이 있어도 현장 결제 채널이 아니면 잔금·미수 톤 금지 — 보드 완납/검정).
- * 청구액 = 판매 가격 − 중도 퇴실 환불.
+ * 청구액 = 판매 가격 − 조기 퇴실 환불.
  * 장기(long_stay): 청구액 = 원장 누적 − 수납액 (판매가 price 총액 모델 아님).
  */
 export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined): PayState {

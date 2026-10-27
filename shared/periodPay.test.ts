@@ -1,4 +1,4 @@
-// 단체 기간 결제: 박별 금액 · 박별 결제 채움 · 다음 N박 합계 · 총액 배분 · 환불/중도퇴실/박 초과
+// 단체 기간 결제: 박별 금액 · 박별 결제 채움 · 다음 N박 합계 · 총액 배분 · 환불/조기 퇴실/박 초과
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Booking } from "./ledger";
@@ -44,7 +44,7 @@ test("stayNightAmounts: 행렬 없으면 판매가 균등 · 나머지는 마지
   assert.deepEqual(stayNightAmounts(b).map((x) => x.amount), [33_333, 33_333, 33_334]);
 });
 
-test("stayNightAmounts: 중도퇴실 = 묵은 박까지만 · 환불 반영해 합 = 판매가 − 환불", () => {
+test("stayNightAmounts: 조기 퇴실 = 묵은 박까지만 · 환불 반영해 합 = 판매가 − 환불", () => {
   const b = stay("a", 80_000, 5, { earlyOut: "2026-10-29", refund: 240_000 });
   const a = stayNightAmounts(b);
   assert.equal(a.length, 2);
@@ -112,7 +112,7 @@ test("stayCoverage: 건너뛴 기간 결제 (오늘부터) → 앞쪽은 미결�
   assert.equal(c.firstUnpaid, "2026-10-27");
 });
 
-test("stayCoverage: 중도퇴실 뒤에는 청구액 줄고 낸 돈이 더 많으면 초과로", () => {
+test("stayCoverage: 조기 퇴실 뒤에는 청구액 줄고 낸 돈이 더 많으면 초과로", () => {
   const b = stay("a", 80_000, 5, { earlyOut: "2026-10-29", refund: 240_000, payments: [pay("a", 240_000, { nightDate: "2026-10-27", periodNights: 3 })] });
   const c = stayCoverage(b);
   assert.equal(c.due, 160_000);

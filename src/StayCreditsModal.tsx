@@ -65,7 +65,7 @@ export default function StayCreditsModal({
         </div>
         <div className="mb">
           <p className="muted sm">
-            중도퇴실 「{STAY_CREDIT_COPY.keep}」으로 보관 처리한 금액 · 새 예약에서 「{STAY_CREDIT_COPY.use}」
+            조기 퇴실 「{STAY_CREDIT_COPY.keep}」으로 보관 처리한 금액 · 새 예약에서 「{STAY_CREDIT_COPY.use}」
           </p>
           <label className="dayuse-sale-field dayuse-sale-name">
             <span className="muted sm">이름·연락처</span>

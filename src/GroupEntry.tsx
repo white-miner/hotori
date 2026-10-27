@@ -17,6 +17,7 @@ import {
   typeLabel,
   usableTypes,
   won,
+  STAY_NIGHTS_MAX,
 } from "../shared/ledger";
 import {
   autoPick,
@@ -361,7 +362,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               <input
                 type="date"
                 min={addDays(checkIn, 1)}
-                max={addDays(checkIn, 90)}
+                max={addDays(checkIn, STAY_NIGHTS_MAX)}
                 value={checkOutDate}
                 onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
                 aria-label="퇴실"

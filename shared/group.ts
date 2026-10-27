@@ -1,5 +1,5 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
-import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
+import { type Booking, type HotelSettings, type PlacedRoom, STAY_NIGHTS_MAX, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
 import { syncStayNightRates } from "./nightrates";
 import { paidOf } from "./payment";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
@@ -36,7 +36,7 @@ type LeadPick = Pick<Booking, "id" | "payments" | "roomId" | "createdAt"> &
 
 /**
  * 아직 방을 쓰는 단체 구성원: 활성 · 퇴실처리 전 · (today가 있으면) 실제 퇴실일이 오늘 이후.
- * 중도퇴실로 비어 버린 방(status는 active)은 대장 후보에서 뒤로 밀려요.
+ * 조기 퇴실로 비어 버린 방(status는 active)은 대장 후보에서 뒤로 밀려요.
  */
 export function isLiveGroupMember(b: LeadPick, today?: string | null): boolean {
   if (b.status && b.status !== "active") return false;
@@ -51,7 +51,7 @@ export function isLiveGroupMember(b: LeadPick, today?: string | null): boolean {
  * 대장 예약:
  *  1) 직원이 지정한 대장(preferredId · booking_groups.lead_booking_id)이 구성원이면 그 방
  *  2) 아니면 자동: 투숙 중인 방 먼저 → 수납액 최대 → 목록 앞(create 시 drafts[0]).
- *     (예전: 수납 동률이면 목록 첫 방 → 중도퇴실로 빈 방이 대장으로 뜨던 문제)
+ *     (예전: 수납 동률이면 목록 첫 방 → 조기 퇴실로 빈 방이 대장으로 뜨던 문제)
  */
 export function groupLeadBooking<T extends LeadPick>(
   members: readonly T[],
@@ -312,7 +312,7 @@ export function validateGroup(p: {
   if (!p.name.trim()) return "단체명을 입력해 주세요.";
   if (p.name.trim().length > GROUP_NAME_MAX) return `단체명은 ${GROUP_NAME_MAX}글자까지예요.`;
   if (!p.platformId) return "플랫폼을 골라 주세요.";
-  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
+  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > STAY_NIGHTS_MAX) return "박수를 확인해 주세요.";
   if (p.typeOnly) {
     const slots = p.typeOnly.filter((x) => x.count > 0);
     if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";
@@ -343,7 +343,7 @@ export function validateGroupAttach(p: {
   /** 타입만(호실 미정). 있으면 roomIds는 무시하고 타입×수로 검사해요 */
   typeOnly?: GroupTypeSlot[];
 }): string | null {
-  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
+  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > STAY_NIGHTS_MAX) return "박수를 확인해 주세요.";
   if (p.typeOnly) {
     const slots = p.typeOnly.filter((x) => x.count > 0);
     if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";
@@ -396,10 +396,10 @@ export function groupSummaries(list: Booking[]): Map<string, GroupSummary> {
   return m;
 }
 
-/** 단체 날짜 바꾸기: 객실 이동·중도 퇴실한 방이 있으면 한 번에 못 바꿔요. 다른 예약과 겹치는 방을 알려 줘요 */
+/** 단체 날짜 바꾸기: 객실 이동·조기 퇴실한 방이 있으면 한 번에 못 바꿔요. 다른 예약과 겹치는 방을 알려 줘요 */
 export function groupDateBlock(s: HotelSettings, bookings: Booking[], members: Booking[], checkIn: string, nights: number): string | null {
   const act = members.filter(isActive);
-  if (act.some((b) => b.segments?.length || b.earlyOut)) return "객실 이동이나 중도 퇴실한 방이 있어서 날짜는 한 번에 바꿀 수 없어요. 방마다 수정해 주세요.";
+  if (act.some((b) => b.segments?.length || b.earlyOut)) return "객실 이동이나 조기 퇴실한 방이 있어서 날짜는 한 번에 바꿀 수 없어요. 방마다 수정해 주세요.";
   const ids = new Set(members.map((b) => b.id));
   const free = freeForStay(s, bookings.filter((b) => !ids.has(b.id)), checkIn, nights);
   const rmap = new Map(allRooms(s).map((r) => [r.id, r]));

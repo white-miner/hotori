@@ -96,12 +96,12 @@ interface BookingRow {
   arrived: boolean;
   tentative?: boolean; // 임시 배치
   no_clean?: boolean; // 청소X
-  early_out_on?: string | null; // 중도 퇴실한 영업일 (없으면 끝까지)
+  early_out_on?: string | null; // 조기 퇴실한 영업일 (없으면 끝까지)
   checked_out_at?: string | null; // 정상 퇴실처리 시각
   stay_mode?: string | null;
   long_stay_rate?: unknown;
   settle_cycle?: string | null;
-  refund_amount?: number | null; // 중도 퇴실 환불 (공유 링크에는 없어요)
+  refund_amount?: number | null; // 조기 퇴실 환불 (공유 링크에는 없어요)
   memo: string | null;
   guests?: number | null; // 인원
   extra_fee?: number | null; // 판매 가격에 들어 있는 추가 인원 금액
@@ -336,7 +336,7 @@ function toRow(b: Booking) {
     // 임시 배치는 방 있을 때만 (미배정 roomId=null 은 타입 홀드)
     tentative: b.tentative === true && !!b.roomId,
     no_clean: b.noClean === true,
-    // 중도 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 삭제해요 (서버도 같은 규칙으로 맞춰요)
+    // 조기 퇴실: 박수·입실일을 고쳐서 날짜가 범위를 벗어나면 삭제해요 (서버도 같은 규칙으로 맞춰요)
     early_out_on: stay && b.status === "active" && isEarlyOut(b) ? b.earlyOut : null,
     checked_out_at: stay && b.status === "active" && b.checkedOutAt ? b.checkedOutAt : null,
     stay_mode: stay && b.stayMode === "long_stay" ? "long_stay" : "standard",
@@ -641,7 +641,7 @@ export function useHotelData(hotelId: string) {
     if (error) throw error;
     setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
   }, []);
-  /** 잔액 보관 생성 (중도퇴실 keep 경로 · refund_amount와 무관) */
+  /** 잔액 보관 생성 (조기 퇴실 keep 경로 · refund_amount와 무관) */
   const createStayCredit = useCallback(
     async (input: {
       guestName: string;
@@ -743,7 +743,7 @@ export function useHotelData(hotelId: string) {
     setStayCredits((list) => list.map((x) => (x.id === saved.id ? saved : x)));
     return saved;
   }, []);
-  // 중도 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
+  // 조기 퇴실 · 되돌리기: 날짜와 환불만 바꿔요 (되돌릴 때 비운 밤이 다시 팔렸으면 서버가 막아요)
   const setEarlyOut = useCallback(async (id: string, earlyOut: string | null, refund: number | null) => {
     const box: { prev?: Booking } = {};
     setBookingsLocal((list) => list.map((x) => (x.id === id ? ((box.prev = x), { ...x, earlyOut, refund: earlyOut ? refund : null }) : x)));
@@ -951,6 +951,73 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId, groups],
   );
+  /**
+   * 결제 등록(단체): 객실별 줄 + (남는 돈이 있으면) 단체 선수금 한 줄을 한 문장 insert로 저장 (모두 되거나 모두 안 돼요).
+   * lines = receiptPlan().lines · lump = receiptPlan().lump
+   */
+  const addReceipt = useCallback(
+    async (
+      groupId: string,
+      lines: { bookingId: string; amount: number; nightDate: string | null; periodNights: number | null; note: string }[],
+      lump: { amount: number; note: string } | null,
+      p: { method: BookPayMethod; bizDate: string; leadBookingId?: string | null; memo?: string | null },
+    ): Promise<Payment[]> => {
+      if (!lines.length && !lump) return [];
+      const withMemo = (note: string) => (p.memo?.trim() ? `${note} · ${p.memo.trim()}` : note).slice(0, 80);
+      if ((lump && !groups.has(groupId)) || (p.leadBookingId && !groups.get(groupId)?.leadBookingId)) {
+        const row: Record<string, unknown> = { id: groupId, hotel_id: hotelId };
+        if (p.leadBookingId && !groups.get(groupId)?.leadBookingId) row.lead_booking_id = p.leadBookingId;
+        const r = await supabase.from("booking_groups").upsert(row, { onConflict: "id" });
+        if (r.error) throw r.error;
+      }
+      const rows: Record<string, unknown>[] = lines.map((l) => ({
+        booking_id: l.bookingId,
+        kind: "balance",
+        method: p.method,
+        amount: Math.round(l.amount),
+        biz_date: p.bizDate,
+        note: withMemo(l.note),
+        night_date: l.nightDate,
+        period_nights: l.periodNights,
+      }));
+      if (lump) rows.push({ group_id: groupId, kind: "balance", method: p.method, amount: Math.round(lump.amount), biz_date: p.bizDate, note: withMemo(lump.note) });
+      const { data, error } = await supabase.from("booking_payments").insert(rows).select(PAY_COLS);
+      if (error) throw error;
+      const saved = (data as PaymentRow[]).map((x) => payFromRow(x));
+      const roomSaved = saved.filter((x) => x.bookingId);
+      const groupSaved = saved.filter((x) => !x.bookingId).map((x) => ({ ...x, groupId }));
+      if (roomSaved.length)
+        setBookingsLocal((list) =>
+          list.map((x) => {
+            const mine = roomSaved.filter((y) => y.bookingId === x.id);
+            return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
+          }),
+        );
+      if (groupSaved.length || p.leadBookingId)
+        setGroups((m) => {
+          const g = m.get(groupId) ?? emptyGroupInfo(groupId);
+          return new Map(m).set(groupId, {
+            ...g,
+            payments: [...g.payments, ...groupSaved],
+            leadBookingId: g.leadBookingId ?? p.leadBookingId ?? null,
+          });
+        });
+      return saved;
+    },
+    [hotelId, groups],
+  );
+  /** 방금 한 결제 등록 취소 (객실 줄 + 단체 줄) */
+  const deleteReceipt = useCallback(async (groupId: string, saved: Payment[]) => {
+    if (!saved.length) return;
+    const { error } = await supabase.from("booking_payments").delete().in("id", saved.map((x) => x.id));
+    if (error) throw error;
+    const gone = new Set(saved.map((x) => x.id));
+    setBookingsLocal((all) => all.map((x) => ((x.payments ?? []).some((y) => gone.has(y.id)) ? { ...x, payments: (x.payments ?? []).filter((y) => !gone.has(y.id)) } : x)));
+    setGroups((m) => {
+      const g = m.get(groupId);
+      return g ? new Map(m).set(groupId, { ...g, payments: g.payments.filter((x) => !gone.has(x.id)) }) : m;
+    });
+  }, []);
   /** 방금 한 기간 결제 취소: 줄 여러 개를 한 번에 삭제해요 */
   const deletePayments = useCallback(async (list: { bookingId: string; id: string }[]) => {
     if (!list.length) return;
@@ -998,6 +1065,8 @@ export function useHotelData(hotelId: string) {
     deleteGroupPayment,
     setGroupLead,
     addPeriodPayments,
+    addReceipt,
+    deleteReceipt,
     deletePayments,
     stayCredits,
     createStayCredit,
@@ -1013,7 +1082,7 @@ export async function queryLedger(hotelId: string, from: string, to: string): Pr
     .from("bookings")
     .select(COLS)
     .eq("hotel_id", hotelId)
-    // 입실일이 기간 안이거나, 기간 안에 중도 퇴실(환불)한 예약 (환불은 퇴실한 날 매출에서 빠져요)
+    // 입실일이 기간 안이거나, 기간 안에 조기 퇴실(환불)한 예약 (환불은 퇴실한 날 매출에서 빠져요)
     .or(`and(check_in.gte.${from},check_in.lte.${to}),and(early_out_on.gte.${from},early_out_on.lte.${to})`)
     .order("check_in", { ascending: false })
     .order("created_at", { ascending: false })

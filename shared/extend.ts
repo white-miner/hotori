@@ -3,6 +3,7 @@ import {
   type Booking,
   type HotelSettings,
   type RoomSegment,
+  STAY_NIGHTS_MAX,
   addDays,
   dayLabel,
   daysBetween,
@@ -114,7 +115,7 @@ export function repriceForNights(
   return { rate, addons, price: Math.max(0, rate * n + addons), nightRates: b.nightRates ?? null };
 }
 
-/** 중도 퇴실 환불 제안 = 미사용 박 × 단가 (수정 가능) */
+/** 조기 퇴실 환불 제안 = 미사용 박 × 단가 (수정 가능) */
 export function unusedNightRefund(
   b: Pick<
     Booking,
@@ -131,9 +132,9 @@ export function unusedNightRefund(
   return roomNightRate(b, typeRate) * unused;
 }
 
-/** 활성 숙박 · 중도 퇴실 아님 · 90박 미만 */
+/** 활성 숙박 · 조기 퇴실 아님 · 90박 미만 */
 export function canExtend(b: Pick<Booking, "status" | "kind" | "checkIn" | "nights" | "earlyOut">): boolean {
-  return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < 90 && !isEarlyOut(b);
+  return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < STAY_NIGHTS_MAX && !isEarlyOut(b);
 }
 
 export interface ExtendDraft {
@@ -209,7 +210,7 @@ export function extendBlock(
   _label: (id: string | null) => string | null = (id) => roomLabel(s, id),
 ): string | null {
   if (!canExtend(b)) {
-    if (isEarlyOut(b)) return "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요.";
+    if (isEarlyOut(b)) return "조기 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요.";
     if (b.status !== "active") return "취소·노쇼 예약은 1박 연장할 수 없어요.";
     if (b.kind !== "stay") return "숙박만 1박 연장할 수 있어요.";
     if ((b.nights ?? 0) >= 90) return "박수가 너무 많아요 (90박까지).";
@@ -284,7 +285,7 @@ export interface OpsExtendPlan {
 /** 운영패널 1박 연장: planExtend + 결제수단. StaySale 비경유. */
 export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan | { err: string } {
   if (!canExtend(b)) {
-    if (isEarlyOut(b)) return { err: "중도 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요." };
+    if (isEarlyOut(b)) return { err: "조기 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요." };
     if (b.status !== "active") return { err: "취소·노쇼 예약은 1박 연장할 수 없어요." };
     if (b.kind !== "stay") return { err: "숙박만 1박 연장할 수 있어요." };
     if ((b.nights ?? 0) >= 90) return { err: "박수가 너무 많아요 (90박까지)." };
@@ -332,7 +333,7 @@ export function planGroupExtend(
 ): { ok: GroupExtendPlan } | { err: string } {
   const act = members.filter((b) => isActive(b) && canExtend(b));
   if (!act.length) return { err: "연장할 수 있는 방이 없어요." };
-  if (members.some((b) => isActive(b) && isEarlyOut(b))) return { err: "중도 퇴실한 방이 있어서 한 번에 연장할 수 없어요. 방마다 예약 창에서 해 주세요." };
+  if (members.some((b) => isActive(b) && isEarlyOut(b))) return { err: "조기 퇴실한 방이 있어서 한 번에 연장할 수 없어요. 방마다 예약 창에서 해 주세요." };
   if (members.some((b) => isActive(b) && b.segments?.length)) return { err: "객실 이동한 방이 있어서 한 번에 연장할 수 없어요. 방마다 예약 창에서 해 주세요." };
   const membersOut: GroupExtendPlan["members"] = [];
   let totalRate = 0;

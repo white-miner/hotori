@@ -50,7 +50,7 @@ type WB = Pick<Booking, "id" | "kind" | "status" | "checkIn" | "nights" | "roomI
  * 같은 방 같은 날 퇴실 → 입실이 겹칠 수 있으면 경고 (막지는 않아요)
  *  · 앞 손님이 늦은 퇴실이고 그날 다음 손님이 들어오면
  *  · 다음 손님 빠른 입실이 앞 손님 퇴실 시간보다 이르면
- * 앞 손님이 중도 퇴실했으면 그 날짜에 나간 걸로 봐요 (늦은 퇴실은 원래 퇴실날에만 써요).
+ * 앞 손님이 조기 퇴실했으면 그 날짜에 나간 걸로 봐요 (늦은 퇴실은 원래 퇴실날에만 써요).
  */
 export function turnoverWarnings(s: Pick<HotelSettings, "stayTimes">, list: WB[]): TurnWarn[] {
   const outs = new Map<string, WB[]>(); // room|date → 그날 그 방에서 나가는 예약

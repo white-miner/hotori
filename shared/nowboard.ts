@@ -617,7 +617,7 @@ export function groupStayPeers(list: readonly Booking[], groupId: string | null 
 }
 
 /**
- * 퇴실처리 가능: 활성 숙박 · 영업일 ≥ 퇴실일 (중도 퇴실 earlyOut 경로와 분리).
+ * 퇴실처리 가능: 활성 숙박 · 영업일 ≥ 퇴실일 (조기 퇴실 earlyOut 경로와 분리).
  * 장기: 약속 퇴실 없음 → 입실일 이후(당일 포함) 언제든 퇴실처리로 종료.
  */
 export function canCheckOut(b: Booking, today: string): boolean {

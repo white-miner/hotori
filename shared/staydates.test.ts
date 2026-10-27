@@ -31,12 +31,12 @@ test("양방향: 퇴실 고르면 박수, 박수 고르면 퇴실이 맞물림",
   assert.equal(checkOutFromStayNights("2026-10-21", nights), "2026-10-29");
 });
 
-test("클램프: 퇴실≤입실·0·초과는 1~90박", () => {
+test("클램프: 퇴실≤입실·0·초과는 1~366박", () => {
   assert.equal(clampStayNights(0), STAY_NIGHTS_MIN);
   assert.equal(clampStayNights(-3), STAY_NIGHTS_MIN);
-  assert.equal(clampStayNights(91), STAY_NIGHTS_MAX);
+  assert.equal(clampStayNights(400), STAY_NIGHTS_MAX);
   assert.equal(clampStayNights(NaN), STAY_NIGHTS_MIN);
   assert.equal(nightsFromStayDates("2026-10-20", "2026-10-20"), 1);
   assert.equal(nightsFromStayDates("2026-10-20", "2026-10-19"), 1);
-  assert.equal(nightsFromStayDates("2026-01-01", "2026-12-31"), STAY_NIGHTS_MAX);
+  assert.equal(nightsFromStayDates("2026-01-01", "2028-12-31"), STAY_NIGHTS_MAX);
 });

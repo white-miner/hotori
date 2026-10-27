@@ -562,7 +562,7 @@ export function buildInvoiceSnapshot(opts: BuildInvoiceOpts): InvoiceSnapshot {
   for (const b of included) {
     if (b.earlyOut && b.refund) {
       footnotes.push(
-        `${roomLabel(opts.s, b.roomId) || b.guestName}: 중도퇴실 환불 ${b.refund.toLocaleString("ko-KR")}원`,
+        `${roomLabel(opts.s, b.roomId) || b.guestName}: 조기 퇴실 환불 ${b.refund.toLocaleString("ko-KR")}원`,
       );
     }
   }
