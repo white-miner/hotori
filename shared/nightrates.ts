@@ -27,16 +27,17 @@ export function occupiedNightDates(checkIn: string, nights: number): string[] {
 }
 
 /** 금·토 밤 (특별일 목록 없으면 isPeakNight와 동일) */
-export function isWeekendNight(date: string, special: readonly string[] = []): boolean {
-  return isPeakNight(date, special);
+export function isWeekendNight(date: string, special: readonly string[] = [], weekendDays?: readonly number[]): boolean {
+  return isPeakNight(date, special, weekendDays);
 }
 
 export function defaultNightAmount(
   date: string,
   d: { flat?: number | null; weekday?: number | null; weekend?: number | null; typeRate?: number | null },
   special: readonly string[] = [],
+  weekendDays?: readonly number[],
 ): number {
-  const peak = isWeekendNight(date, special);
+  const peak = isWeekendNight(date, special, weekendDays);
   if (peak && d.weekend != null && d.weekend > 0) return Math.round(d.weekend);
   if (!peak && d.weekday != null && d.weekday > 0) return Math.round(d.weekday);
   if (d.flat != null && d.flat > 0) return Math.round(d.flat);

@@ -4,6 +4,7 @@
  * (ledger와 순환 import 금지 — 날짜 헬퍼는 여기 최소 복제)
  */
 import { defaultNightAmount, isWeekendNight, occupiedNightDates } from "./nightrates";
+import { type ResolvedRate, type TypeSeasonsMap, seasonAmount, seasonOn } from "./seasonRates";
 
 export interface TypeRateDefaults {
   weekday?: number | null;
@@ -23,6 +24,10 @@ type SalesSettings = {
   typeRateOverrides?: TypeRateOverridesMap;
   typeStopSell?: TypeStopSellMap;
   specialDates?: string[];
+  /** 시즌 요금 (타입별 기간) */
+  typeSeasons?: TypeSeasonsMap;
+  /** 주말로 칠 요일 (기본 금·토) */
+  weekendDays?: number[];
 };
 
 const PAY_MAX = 100_000_000;
@@ -87,12 +92,36 @@ export function typeRateDefaults(s: Pick<SalesSettings, "typeRates">, typeId: st
   return s.typeRates?.[typeId] ?? {};
 }
 
-/** 타입×숙박일 기본 판매 단가 (오버라이드 → 평일/주말 → flat) */
-export function baseRateFor(s: SalesSettings, typeId: string, date: string): number {
+/**
+ * 타입×숙박일 1박 요금과 그 출처.
+ * 우선순위: 특별일 요금(날짜별 금액) > 시즌 > 평일/주말 > 기본.
+ * 특별일 목록(specialDates)은 "주말 요금 받는 날"이라 시즌 안에서도 주말로 쳐요.
+ */
+export function resolveNightRate(s: SalesSettings, typeId: string, date: string): ResolvedRate {
+  const special = s.specialDates ?? [];
+  const weekend = isWeekendNight(date, special, s.weekendDays);
   const ov = s.typeRateOverrides?.[typeId]?.[date];
-  if (ov != null && ov > 0) return Math.round(ov);
+  if (ov != null && ov > 0) return { amount: Math.round(ov), source: "date", weekend };
+  const season = seasonOn(s.typeSeasons?.[typeId], date);
+  if (season) {
+    const a = seasonAmount(season, weekend);
+    if (a > 0) return { amount: a, source: "season", seasonName: season.name, weekend };
+  }
   const d = typeRateDefaults(s, typeId);
-  return defaultNightAmount(date, { weekday: d.weekday, weekend: d.weekend, flat: d.flat }, s.specialDates ?? []);
+  const amount = defaultNightAmount(date, { weekday: d.weekday, weekend: d.weekend, flat: d.flat }, special, s.weekendDays);
+  if (amount <= 0) return { amount: 0, source: "none", weekend };
+  const source = weekend && d.weekend != null && d.weekend > 0 ? "weekend" : !weekend && d.weekday != null && d.weekday > 0 ? "weekday" : "flat";
+  return { amount, source, weekend };
+}
+
+/** 타입×숙박일 기본 판매 단가 (특별일 요금 → 시즌 → 평일/주말 → 기본) */
+export function baseRateFor(s: SalesSettings, typeId: string, date: string): number {
+  return resolveNightRate(s, typeId, date).amount;
+}
+
+/** 박마다 요금 (checkIn부터 nights박) */
+export function resolveStayRates(s: SalesSettings, typeId: string, checkIn: string, nights: number): Array<ResolvedRate & { date: string }> {
+  return occupiedNightDates(checkIn, nights).map((date) => ({ date, ...resolveNightRate(s, typeId, date) }));
 }
 
 export function isStopSell(s: Pick<SalesSettings, "typeStopSell">, typeId: string, date: string): boolean {

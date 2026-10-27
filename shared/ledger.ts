@@ -12,6 +12,7 @@ import {
   normalizeTypeRates,
   normalizeTypeStopSell,
 } from "./salesCalendar";
+import { type TypeSeasonsMap, normalizeTypeSeasons, normalizeWeekendDays } from "./seasonRates";
 import { type RoomHold, normalizeRoomHolds, roomsHeldForStay } from "./roomHold";
 import { type OverbookSub, normalizeOverbookSubs } from "./overbookSub";
 import { type HotelBiz, emptyHotelBiz, normalizeHotelBiz } from "./hotelBiz";
@@ -143,6 +144,10 @@ export interface HotelSettings {
   typeRateOverrides: TypeRateOverridesMap;
   /** 판매 캘린더: 타입×숙박일 판매 중지 */
   typeStopSell: TypeStopSellMap;
+  /** 시즌 요금: 타입별 이름 붙은 기간(성수기 등)의 평일/주말 요금 (기간 겹침 없음) */
+  typeSeasons: TypeSeasonsMap;
+  /** 주말 요금을 받는 요일 (0=일 … 6=토, 기본 금·토) */
+  weekendDays: number[];
   /**
    * 스마트 등록: OTA 객실타입명 → Hotori typeId (호텔×플랫폼).
    * See docs/smart-register-type-alias-plan.md
@@ -340,6 +345,8 @@ export function emptySettings(): HotelSettings {
     cardFeeRate: null,
     typeRates: {},
     typeRateOverrides: {},
+    typeSeasons: {},
+    weekendDays: [5, 6],
     typeStopSell: {},
     typeAliases: [],
     roomHolds: [],
@@ -398,6 +405,8 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeRates: normalizeTypeRates((s as { typeRates?: unknown }).typeRates),
     typeRateOverrides: normalizeTypeRateOverrides((s as { typeRateOverrides?: unknown }).typeRateOverrides),
     typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
+    typeSeasons: normalizeTypeSeasons((s as { typeSeasons?: unknown }).typeSeasons),
+    weekendDays: normalizeWeekendDays((s as { weekendDays?: unknown }).weekendDays),
     typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
     roomHolds: normalizeRoomHolds((s as { roomHolds?: unknown }).roomHolds),
     overbookSubs: normalizeOverbookSubs((s as { overbookSubs?: unknown }).overbookSubs),

@@ -13,11 +13,11 @@ export function tierOf(s: Pick<HotelSettings, "surchargeTiers">, t: Pick<RoomTyp
   const tiers = s.surchargeTiers?.length ? s.surchargeTiers : DEFAULT_TIERS;
   return tiers.find((x) => x.id === t?.tierId) ?? tiers[0];
 }
-/** 금·토 밤이거나 특별일이면 주말 요금 */
-export function isPeakNight(date: string, special: readonly string[] = []): boolean {
+/** 주말로 정한 요일(기본 금·토)의 밤이거나 특별일이면 주말 요금 */
+export function isPeakNight(date: string, special: readonly string[] = [], weekendDays: readonly number[] = [5, 6]): boolean {
   const [y, m, d] = date.split("-").map(Number);
   const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return w === 5 || w === 6 || special.includes(date);
+  return weekendDays.includes(w) || special.includes(date);
 }
 const DOW = "일월화수목금토";
 const dow = (date: string) => {
@@ -49,7 +49,7 @@ export interface Surcharge {
   /** 예: "추가 2명 · 60,000원 (금 1박 2만×2 · 일 1박 1만×2)" · 추가가 없으면 "" */
   line: string;
 }
-type SPick = Pick<HotelSettings, "types" | "floors" | "surchargeTiers" | "specialDates">;
+type SPick = Pick<HotelSettings, "types" | "floors" | "surchargeTiers" | "specialDates"> & { weekendDays?: number[] };
 type BPick = Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments" | "typeId">;
 
 /**
@@ -75,7 +75,7 @@ export function surchargeOf(s: SPick, b: BPick, guests: number | null | undefine
     for (const l of fullLegsOf(b))
       for (let i = 0; i < l.nights; i++) {
         const date = addDays(l.checkIn, i);
-        add(date, (l.roomId && roomType.get(l.roomId)) || b.typeId, isPeakNight(date, special));
+        add(date, (l.roomId && roomType.get(l.roomId)) || b.typeId, isPeakNight(date, special, s.weekendDays));
       }
   const total = nights.reduce((n, x) => n + x.amount, 0);
   const extra = nights.reduce((n, x) => Math.max(n, x.extra), 0);
