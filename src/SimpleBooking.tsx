@@ -52,6 +52,9 @@ import { TypeBadge, lookups } from "./ui";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import StayDateFields from "./StayDateFields";
 import OpenStayToggle from "./OpenStayToggle";
+import NightRatesTable from "./NightRatesTable";
+import { sumNightAmounts } from "../shared/nightrates";
+import type { StayNightRates } from "../shared/nightrates";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import AutoNightRates from "./AutoNightRates";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
@@ -111,6 +114,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [checkIn, setCheckIn] = useState(p.checkIn ?? today);
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
   /** 이용 기간 미정: 켜면 박수는 오늘 밤 + 방 보호까지 자동 */
+  /** 박별 요금표 (한 객실 기준 · 모든 객실에 같게). 고치면 1박 요금/총액이 따라 바뀌어요 */
+  const [nightTable, setNightTable] = useState<StayNightRates | null>(null);
   const [openOn, setOpenOn] = useState(false);
   const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
   const [guestName, setName] = useState("");
@@ -206,6 +211,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
    */
   const totalMode = salesMode === "total";
   const manualTotalNum = Math.max(0, Math.round(Number(totalStr || 0)));
+  const tableNow: StayNightRates | null = nightTable && (!totalMode || effectiveTypeIds.length <= 1) ? syncStayNightRates(checkIn, nights, nightTable) : null;
+  const tableSum = tableNow ? sumNightAmounts(tableNow.nights) : 0;
   /**
    * 현장·전화 총액 모드: 박마다 요금(특별일 > 시즌 > 평일/주말 > 기본)을 더해 자동으로 채워요.
    * 직접 입력한 총액이 있으면 그게 먼저예요. 요금이 없는 타입이 있으면 수동 입력 그대로.
@@ -215,7 +222,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       ? autoStayRates(s, pickedTypes.map((t) => ({ typeId: t.id, count: countOf(t.id) })), checkIn, nights, nightOv)
       : null;
   const autoActive = !!autoStay?.ready && !totalTouched;
-  const totalNum = autoActive ? autoStay!.total : manualTotalNum;
+  const totalNum = tableNow && totalMode ? tableSum : autoActive ? autoStay!.total : manualTotalNum;
   const rateKeysForLines =
     !totalMode && pickedTypes.length
       ? effectiveTypeIds.map((tid) => tid || fallbackRateKey)
@@ -226,7 +233,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     ? effectiveTypeIds.map(() => 0)
     : totalMode
       ? leadPrices(totalNum, Math.max(1, effectiveTypeIds.length || 1)).slice(0, effectiveTypeIds.length)
-      : ratePrices(rateKeysForLines, rateNum, nights);
+      : tableNow
+        ? effectiveTypeIds.map(() => tableSum)
+        : ratePrices(rateKeysForLines, rateNum, nights);
   const sumPrice = priceUnset ? 0 : totalMode ? totalNum : linePrices.reduce((a, b) => a + b, 0);
   const formula = totalMode
     ? ""
@@ -418,7 +427,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     if (!priceUnset) {
       if (totalMode) {
         if (!(totalNum > 0)) return setErr("판매금(총액)을 적거나 금액미정을 켜 주세요.");
-      } else {
+      } else if (!tableNow) {
         const missing = slots.filter((x) => !(rateNum[x.typeId] > 0));
         const fallbackOk = !slots.length && fallbackRateKey && rateNum[fallbackRateKey] > 0;
         if (missing.length || (!slots.length && !fallbackOk))
@@ -438,7 +447,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       ? saveTypeIds.map(() => 0)
       : totalMode
         ? leadPrices(totalNum, saveTypeIds.length)
-        : ratePrices(
+        : tableNow
+          ? saveTypeIds.map(() => tableSum)
+          : ratePrices(
             saveTypeIds.map((tid) => tid || fallbackRateKey),
             rateNumForSave,
             nights,
@@ -508,6 +519,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
       const ratesForBooking = (typeId: string, roomPrice: number) => {
         if (priceUnset || !(roomPrice > 0)) return null;
+        if (tableNow) return tableNow;
         if (totalMode) return autoActive && autoStay ? autoNightRates(autoStay, nights) : nightRatesFromTotal(checkIn, nights, roomPrice);
         const flat = rateNum[typeId] ?? 0;
         return flat > 0 ? syncStayNightRates(checkIn, nights, { flat }) : null;
@@ -633,6 +645,30 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       setBusy(false);
     }
   }
+
+  /** 박별 요금표: 총액 ⇄ 박별 (한 객실 기준 · 모든 객실에 같게) */
+  const roomsN = Math.max(1, effectiveTypeIds.length);
+  const firstRate = rateNum[fallbackRateKey] ?? Number(Object.values(rates)[0] || 0);
+  const nightsEditor =
+    !priceUnset && (!totalMode || roomsN <= 1) ? (
+      <div style={{ marginTop: "var(--space-chip)" }}>
+        <NightRatesTable
+          checkIn={checkIn}
+          nights={nights}
+          rates={tableNow ?? (totalMode && totalNum > 0 ? nightRatesFromTotal(checkIn, nights, totalNum) : null)}
+          fallback={firstRate}
+          label={roomsN > 1 ? "객실당" : undefined}
+          onChange={(r) => {
+            setNightTable(r);
+            if (totalMode) {
+              setTotalStr(String(sumNightAmounts(r.nights)));
+              setTotalTouched(true);
+            }
+          }}
+        />
+        {roomsN > 1 ? <div className="muted sm">모든 객실에 같은 박별 요금이 들어가요 · 합계 {won(tableSum * roomsN || firstRate * nights * roomsN)}원</div> : null}
+      </div>
+    ) : null;
 
   const roomSummary =
     roomIds.length > 0
@@ -906,6 +942,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                         placeholder="총액"
                         value={autoActive ? won(totalNum) : totalStr !== "" ? won(Number(totalStr)) : ""}
                         onChange={(e) => {
+                          setNightTable(null);
                           setTotalStr(e.target.value.replace(/\D/g, "").slice(0, 9));
                           setTotalTouched(true);
                         }}
@@ -923,6 +960,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       </>
                     ) : null}
                   </div>
+                  {nightsEditor}
                   {autoStay ? (
                     <>
                       {autoStay.missingTypeIds.length ? (
@@ -975,9 +1013,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                               aria-label={`${typeLabel(t) || t.name || t.id} 1박 요금`}
                               value={rates[t.id] !== undefined && rates[t.id] !== "" ? won(Number(rates[t.id])) : ""}
                               placeholder="1박"
-                              onChange={(e) =>
-                                setRates((m) => ({ ...m, [t.id]: e.target.value.replace(/\D/g, "").slice(0, 9) }))
-                              }
+                              onChange={(e) => {
+                                setNightTable(null);
+                                setRates((m) => ({ ...m, [t.id]: e.target.value.replace(/\D/g, "").slice(0, 9) }));
+                              }}
                             />
                           </PriceInp>
                           <span className="muted sm">
@@ -1000,6 +1039,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                             }
                             onChange={(e) => {
                               if (!fallbackRateKey) return;
+                              setNightTable(null);
                               setRates((m) => ({
                                 ...m,
                                 [fallbackRateKey]: e.target.value.replace(/\D/g, "").slice(0, 9),
@@ -1021,6 +1061,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                       <b>{won(sumPrice)}원</b>
                     </div>
                   ) : null}
+                  {hasRoomOrType ? nightsEditor : null}
                 </>
               )
             ) : (
