@@ -2,8 +2,12 @@
 import { groupLeadBooking } from "./group";
 import type { PrintLang } from "./hotelBiz";
 import { type Booking, type Platform, checkOut, revenueOf, roomLabel, typeLabel, type HotelSettings } from "./ledger";
+import { splitTotal } from "./group";
 import {
   issuanceNightCells,
+  patchIssuanceNightCell,
+  redistributeIssuanceNights,
+  sumIssuanceNightCells,
   unitRateFromCells,
   type IssuanceNightCell,
 } from "./issuanceNightDetail";
@@ -21,13 +25,15 @@ export type InvoiceNightCell = {
 export type InvoiceRoomLine = {
   bookingId: string;
   roomNo: string;
+  /** Matching key for same-type night sync */
+  typeId: string;
   typeLabel: string;
   guestName: string;
   checkIn: string;
   checkOut: string;
   nights: number;
   guestCount: number;
-  /** 판매가 (revenueOf) */
+  /** 판매가 (revenueOf · staff may redistribute on draft) */
   amount: number;
   paid: number;
   /** 1박 단가(표시 · 평균 또는 flat) */
@@ -100,7 +106,9 @@ export const INVOICE_COPY = {
   amount: "판매가",
   unitRate: "1박",
   nightDetail: "날짜별 단가",
-  redistribute: "총액 균등 분배",
+  redistribute: "날짜 균등 분배",
+  redistributeRooms: "객실 균등 분배",
+  guests: "인원",
   paid: "받은",
   left: "잔금",
   total: "합계",
@@ -118,7 +126,8 @@ export const INVOICE_COPY = {
   reprint: "다시 인쇄",
   tip: "발급하면 금액이 고정돼요. 예약·결제를 고친 뒤엔 새 버전으로 재발급하세요.",
   tipLive: "미리보기는 지금 예약·정산과 같아요. 발급 시 스냅샷으로 얼려요.",
-  tipNights: "총액만 있어도 날짜별 단가를 나눠 적을 수 있어요. 합계는 판매가와 맞춰요.",
+  tipNights:
+    "객실 판매가를 나눠 적을 수 있어요. 같은 날짜·같은 타입 단가는 한 번 입력하면 맞는 줄에 같이 적용돼요.",
   needNights: "실제 숙박(입실·퇴실)이 있는 예약이 필요해요.",
   notDamage: "손해·파손은 「손해내역서」로 따로 발급해요.",
   saveOk: "청구서를 저장했어요.",
@@ -177,6 +186,7 @@ export type InvoicePrintStrings = {
   roomSuffix: string;
   unassigned: string;
   nights: (n: number) => string;
+  guests: (n: number) => string;
 };
 
 const INVOICE_PRINT_KO: InvoicePrintStrings = {
@@ -220,6 +230,7 @@ const INVOICE_PRINT_KO: InvoicePrintStrings = {
   roomSuffix: "호",
   unassigned: "미배정",
   nights: (n) => `${n}박`,
+  guests: (n) => `${n}명`,
 };
 
 const INVOICE_PRINT_EN: InvoicePrintStrings = {
@@ -263,6 +274,7 @@ const INVOICE_PRINT_EN: InvoicePrintStrings = {
   roomSuffix: "",
   unassigned: "Unassigned",
   nights: (n) => (n === 1 ? "1 night" : `${n} nights`),
+  guests: (n) => (n === 1 ? "1 guest" : `${n} guests`),
 };
 
 export function invoicePrintStrings(lang: PrintLang): InvoicePrintStrings {
@@ -366,6 +378,7 @@ function roomLineOf(b: Booking, s: HotelSettings, excluded: boolean): InvoiceRoo
   return {
     bookingId: b.id,
     roomNo: room || "미배정",
+    typeId: b.typeId || "",
     typeLabel: type || "",
     guestName: b.guestName || "",
     checkIn: b.checkIn,
@@ -380,7 +393,86 @@ function roomLineOf(b: Booking, s: HotelSettings, excluded: boolean): InvoiceRoo
   };
 }
 
-/** Staff night-detail overrides → snapshot rooms (amount SoT 유지 · 상세만 교체) */
+function cellsOf(r: InvoiceRoomLine): IssuanceNightCell[] {
+  if (r.nightAmounts?.length) return r.nightAmounts.map((c) => ({ ...c }));
+  if (r.nights <= 0) return [];
+  return redistributeIssuanceNights(r.checkIn, r.nights, r.amount);
+}
+
+/** Set one room's sale amount and re-split its night cells. */
+export function withInvoiceRoomAmount(r: InvoiceRoomLine, amount: number): InvoiceRoomLine {
+  const amt = Math.max(0, Math.round(amount || 0));
+  const nightAmounts = r.nights > 0 ? redistributeIssuanceNights(r.checkIn, r.nights, amt) : undefined;
+  return {
+    ...r,
+    amount: amt,
+    nightAmounts,
+    unitRate: unitRateFromCells(nightAmounts ?? [], amt, r.nights) || undefined,
+  };
+}
+
+/** Σ room amounts kept · even split across lines (remainder on first — splitTotal). */
+export function redistributeInvoiceRoomsEven(rooms: InvoiceRoomLine[]): InvoiceRoomLine[] {
+  if (rooms.length <= 1) return rooms.map((r) => withInvoiceRoomAmount(r, r.amount));
+  const sum = rooms.reduce((n, r) => n + Math.max(0, Math.round(r.amount || 0)), 0);
+  const parts = splitTotal(sum, rooms.length);
+  return rooms.map((r, i) => withInvoiceRoomAmount(r, parts[i]!));
+}
+
+/**
+ * Edit one night cell. When other lines share typeId + that date, apply the same
+ * amount and set each affected line's sale = Σ nights (owner: Deluxe twins sync).
+ * Solo line keeps sale total (last night pads).
+ */
+export function applyInvoiceNightCellAcross(
+  rooms: InvoiceRoomLine[],
+  bookingId: string,
+  date: string,
+  amount: number,
+): InvoiceRoomLine[] {
+  const source = rooms.find((r) => r.bookingId === bookingId);
+  if (!source) return rooms;
+  const amt = Math.max(0, Math.round(amount || 0));
+  const typeId = source.typeId;
+  const matchIds = new Set<string>([bookingId]);
+  if (typeId) {
+    for (const r of rooms) {
+      if (r.bookingId === bookingId) continue;
+      if (r.typeId !== typeId) continue;
+      const cells = cellsOf(r);
+      if (cells.some((c) => c.date === date)) matchIds.add(r.bookingId);
+    }
+  }
+  const syncPeers = matchIds.size > 1;
+
+  return rooms.map((r) => {
+    if (!matchIds.has(r.bookingId)) return r;
+    const base = cellsOf(r);
+    if (!base.length) return r;
+    const idx = base.findIndex((c) => c.date === date);
+    if (idx < 0) return r;
+    if (!syncPeers) {
+      const keep = r.amount;
+      const nightAmounts = patchIssuanceNightCell(base, idx, amt, keep);
+      return {
+        ...r,
+        nightAmounts,
+        unitRate: unitRateFromCells(nightAmounts, keep, r.nights) || undefined,
+        amount: keep,
+      };
+    }
+    const nightAmounts = base.map((c, i) => (i === idx ? { ...c, amount: amt } : { ...c }));
+    const nextAmt = sumIssuanceNightCells(nightAmounts);
+    return {
+      ...r,
+      nightAmounts,
+      amount: nextAmt,
+      unitRate: unitRateFromCells(nightAmounts, nextAmt, r.nights) || undefined,
+    };
+  });
+}
+
+/** Staff night-detail overrides → rooms (amount follows Σ cells when provided). */
 export function applyInvoiceNightOverrides(
   rooms: InvoiceRoomLine[],
   overrides: Record<string, IssuanceNightCell[]>,
@@ -389,13 +481,26 @@ export function applyInvoiceNightOverrides(
     const cells = overrides[r.bookingId];
     if (!cells?.length) return r;
     const nightAmounts = cells.map((c) => ({ date: c.date, amount: Math.max(0, Math.round(c.amount || 0)) }));
+    const amount = sumIssuanceNightCells(nightAmounts);
     return {
       ...r,
       nightAmounts,
-      unitRate: unitRateFromCells(nightAmounts, r.amount, r.nights) || undefined,
-      amount: r.amount,
+      amount,
+      unitRate: unitRateFromCells(nightAmounts, amount, r.nights) || undefined,
     };
   });
+}
+
+/** After room-line money edits: adjust snapshot total/left by room-sum delta. */
+export function withInvoiceRoomMoney(
+  base: InvoiceSnapshot,
+  rooms: InvoiceRoomLine[],
+): InvoiceSnapshot {
+  const baseSum = base.rooms.reduce((n, r) => n + Math.max(0, Math.round(r.amount || 0)), 0);
+  const nextSum = rooms.reduce((n, r) => n + Math.max(0, Math.round(r.amount || 0)), 0);
+  const total = Math.max(0, base.total + (nextSum - baseSum));
+  const left = base.tracked ? Math.max(0, total - base.paid) : 0;
+  return { ...base, rooms, total, left };
 }
 
 /**

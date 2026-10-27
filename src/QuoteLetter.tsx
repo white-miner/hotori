@@ -24,6 +24,7 @@ import {
   patchIssuanceNightCell,
   quoteAmountFromNightCells,
   quoteLineNightCells,
+  sumIssuanceNightCells,
   unitRateFromCells,
 } from "../shared/issuanceNightDetail";
 import { chunkIssuanceLines } from "../shared/issuancePages";
@@ -439,9 +440,48 @@ export default function QuoteLetter({
                                 aria-label={`${QUOTE_COPY.nightDetail} ${c.date}`}
                                 value={c.amount || ""}
                                 onChange={(e) => {
-                                  const roomTotal = Math.round(l.amount / Math.max(1, l.rooms));
-                                  const next = patchIssuanceNightCell(cells, i, Number(e.target.value.replace(/\D/g, "")) || 0, roomTotal);
-                                  setLine(l.id, { nightAmounts: next });
+                                  const val = Number(e.target.value.replace(/\D/g, "")) || 0;
+                                  const date = c.date;
+                                  // Same type + same date → set once, apply to matching lines
+                                  setDraft((d) => {
+                                    const peers =
+                                      !!l.typeId && d.lines.filter((x) => x.typeId === l.typeId).length > 1;
+                                    return {
+                                      ...d,
+                                      lines: d.lines.map((line) => {
+                                        const match =
+                                          line.id === l.id || (!!l.typeId && line.typeId === l.typeId);
+                                        if (!match) return line;
+                                        const lineCells =
+                                          line.id === l.id
+                                            ? cells
+                                            : line.nightAmounts?.length
+                                              ? line.nightAmounts
+                                              : quoteLineNightCells({
+                                                  checkIn: d.checkIn,
+                                                  nights: line.nights,
+                                                  rate: line.rate,
+                                                  roomTotal:
+                                                    line.rooms > 0
+                                                      ? Math.round(line.amount / Math.max(1, line.rooms))
+                                                      : line.rate * line.nights,
+                                                });
+                                        const idx = lineCells.findIndex((x) => x.date === date);
+                                        if (idx < 0) return line;
+                                        const roomTotal = Math.round(line.amount / Math.max(1, line.rooms));
+                                        const next = peers
+                                          ? lineCells.map((x, j) => (j === idx ? { ...x, amount: val } : { ...x }))
+                                          : patchIssuanceNightCell(lineCells, idx, val, roomTotal);
+                                        const perRoom = peers ? sumIssuanceNightCells(next) : roomTotal;
+                                        return {
+                                          ...line,
+                                          nightAmounts: next,
+                                          rate: unitRateFromCells(next, perRoom, line.nights),
+                                          amount: quoteAmountFromNightCells(line.rooms, next),
+                                        };
+                                      }),
+                                    };
+                                  });
                                 }}
                               />
                             </li>
