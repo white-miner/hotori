@@ -87,6 +87,8 @@ interface Props {
   /** 미배정 정렬 (현황·배치 공용, 기본 입실일 오름차순) */
   uaSort?: UaSort;
   onUaSort?: (s: UaSort) => void;
+  /** 플랫폼 필터에 안 걸리는 미배정 행을 흐리게 (숨기지 않음) */
+  dimOf?: (b: Booking) => boolean;
   lateOut: Booking[];
   departing: Booking[];
   /** 「현황」선택 호실 (공실 복수 · 점유 단실) */
@@ -162,6 +164,7 @@ export default function NowSidePanel({
   unassigned,
   uaSort = UA_SORT_DEFAULT,
   onUaSort,
+  dimOf,
   lateOut,
   departing,
   selectedRoomIds,
@@ -358,7 +361,7 @@ export default function NowSidePanel({
     const payG = simplePayGlance(x, isOnsite(p));
     // Dense row · 「방배정」→「배치」칸 체크 (칩 펼침/빈 존 금지 · 현황 좌표 유지)
     return (
-      <div key={x.id} className={`side-ua-row ${open ? "open" : ""}`}>
+      <div key={x.id} className={`side-ua-row ${open ? "open" : ""} ${dimOf?.(x) ? "pf-dim" : ""}`}>
         <div className="side-ua-main">
           <button type="button" className="side-ua-info" onClick={() => onOpen(x, today)} disabled={readOnly}>
             <span className="side-ua-l1">

@@ -196,6 +196,8 @@ import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from 
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
+import PlatformFilterBar from "./PlatformFilterBar";
+import { normalizePlatformFilter, platformChips, platformMatch, PLATFORM_FILTER_STORAGE_KEY, togglePlatformChoice } from "../shared/platformFilter";
 import { normalizeUaSort, sortUnassigned, UA_SORT_STORAGE_KEY, type UaSort } from "../shared/uaSort";
 import { DateChip, FitText, GroupBadge, GroupRoomNoHit, PlatBadge, TypeBadge, TypeRow, floorPaint, lookups } from "./ui";
 
@@ -529,6 +531,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const setUaSort = (v: UaSort) => {
     setUaSortState(v);
     lsSet(UA_SORT_STORAGE_KEY, JSON.stringify(v));
+  };
+  /** 플랫폼별 보기 · 현황/배치 공용 · 기기에 기억. 빈 배열 = 전체 (칸은 흐리게만, 숨기지 않음) */
+  const [pfRaw, setPfRaw] = useState<unknown>(() => {
+    try {
+      return JSON.parse(lsGet(PLATFORM_FILTER_STORAGE_KEY) ?? "null");
+    } catch {
+      return null;
+    }
+  });
+  const pfSel = useMemo(() => normalizePlatformFilter(pfRaw, s.platforms), [pfRaw, s.platforms]);
+  const setPfSel = (v: string[]) => {
+    setPfRaw(v);
+    lsSet(PLATFORM_FILTER_STORAGE_KEY, JSON.stringify(v));
   };
   const roomsUaAll = useMemo(() => listUnassignedBookings(bookings), [bookings]);
   const roomsUaByRange = useMemo(
@@ -1258,6 +1273,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setTab("rooms");
   };
 
+  /** 플랫폼 필터 흐림 — 이동·방배정 중에는 끔 (칸 하이라이트와 겹치지 않게) */
+  const pfOn = pfSel.length > 0 && !mvB;
+  const pfDimOf = (b: Booking | null | undefined): boolean =>
+    pfOn && !assigning && !!b && !platformMatch(b, pfSel, s.platforms);
+  const pfCls = (b: Booking | null | undefined) => (pfDimOf(b) ? "pf-dim" : "");
   const assignBk = useMemo(() => {
     if (!assigning) return null;
     return bookings.find((x) => x.id === assigning && isActive(x) && !x.roomId) ?? null;
@@ -1627,7 +1647,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`rooms-room-${r.id}`}
         data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -1830,6 +1850,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   ) : null;
+  const platformFilterBar =
+    tab === "now" || tab === "rooms" ? (
+      <PlatformFilterBar
+        chips={platformChips(s.platforms, bookings)}
+        selected={pfSel}
+        onToggle={(id) => setPfSel(togglePlatformChoice(pfSel, id))}
+        onClear={() => setPfSel([])}
+        paused={!!mvB || !!assigning}
+      />
+    ) : null;
   /** 현황·배치 공통 고객 검색 (건물 칩 근처 · sticky · Lucide Search) */
   const guestSearchBar =
     tab === "now" || tab === "rooms" ? (
@@ -2901,7 +2931,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`now-room-${r.id}`}
         data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
@@ -3051,7 +3081,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           const bk = nowBoardMap.get(r.id) ?? null;
           const base = glanceMapKindNow(bk, today, nowOpts);
           const held = base === "empty" && !!holdOnNight(s.roomHolds ?? [], r.id, today);
-          return { id: r.id, kind: held ? ("held" as const) : base };
+          return { id: r.id, kind: held ? ("held" as const) : base, dim: pfDimOf(bk) };
         }),
       })),
     }));
@@ -3153,6 +3183,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 <div className="board-filter-sticky">
                   {buildingTabs}
                   {guestSearchBar}
+                  {platformFilterBar}
                 </div>
                 {nowGlance}
               </div>
@@ -3185,6 +3216,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               L={L}
               unassigned={nowSide.unassigned}
               uaSort={uaSort}
+              dimOf={pfOn ? pfDimOf : undefined}
               onUaSort={setUaSort}
               lateOut={nowSide.lateOut}
               departing={nowSide.departing}
@@ -3677,7 +3709,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               rooms: f.rooms.map((r) => {
                 const base = glanceMapKindPlacement(bookings, r.id, selDate, nowOpts, today);
                 const held = base === "empty" && !!holdOnNight(s.roomHolds ?? [], r.id, selDate);
-                return { id: r.id, kind: held ? ("held" as const) : base };
+                return { id: r.id, kind: held ? ("held" as const) : base, dim: pfDimOf(board.byRoom.get(r.id)) };
               }),
             })),
           }));
@@ -3686,6 +3718,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <div className="board-filter-sticky">
                 {buildingTabs}
                 {guestSearchBar}
+                {platformFilterBar}
               </div>
               <NowGlancePanel
                 key={`rooms-glance-${bScope}-${selDate}`}
@@ -3817,7 +3850,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   const free = open ? freeRooms(s, bookings, b) : null;
                   const t = L.types.get(b.typeId);
                   return (
-                    <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"}`}>
+                    <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"} ${pfCls(b)}`}>
                       <div className="itr">
                         <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
                           <b>

@@ -7,7 +7,7 @@ import { glanceKindMatchesOccFilter, type GlanceMapKind, type GlanceOccFilter } 
 export type MinimapFloor = {
   id: string;
   name: string;
-  rooms: { id: string; kind: GlanceMapKind }[];
+  rooms: { id: string; kind: GlanceMapKind; /** 플랫폼 필터에 안 걸림 → 흐리게 */ dim?: boolean }[];
 };
 
 export type MinimapBuilding = {
@@ -52,7 +52,7 @@ export default function BoardStatusMinimap({
                   <span className="bmap-flab">{f.name}</span>
                   <div className="bmap-rooms" role="list">
                     {f.rooms.map((r) => {
-                      const dim = !glanceKindMatchesOccFilter(r.kind, occFilter);
+                      const dim = !glanceKindMatchesOccFilter(r.kind, occFilter) || !!r.dim;
                       return (
                         <button
                           key={r.id}
