@@ -15,6 +15,7 @@ import {
   weekday,
   weekStart,
   won,
+  stockGlanceDates,
 } from "../shared/ledger";
 import {
   applyBulkTypeDates,
@@ -153,13 +154,16 @@ export default function SalesCalendar({
     onFocusConsumed?.();
   }, [focusCell, onFocusConsumed, onOverbook, readOnly, s.overbookSubs, viewTable]);
 
+  /** 주·월 글랜스: 오늘+ 숙박일만 min (과거 밤을 넣으면 거짓 초과) · 카드 셀은 viewDates 전체 */
+  const glanceDates = useMemo(() => stockGlanceDates(viewDates, today), [viewDates, today]);
+
   /** 타입별 창 안 최소 판매가능 칸 — 한눈에 */
   const glance = useMemo(() => {
     const m = new Map<string, { min: number; stopped: number; total: number }>();
     for (const t of types) {
       let min = Infinity;
       let stopped = 0;
-      for (const d of viewDates) {
+      for (const d of glanceDates) {
         const rem = viewTable.get(t.id)?.get(d) ?? 0;
         const st = isStopSell(s, t.id, d);
         if (st) stopped += 1;
@@ -169,7 +173,7 @@ export default function SalesCalendar({
       m.set(t.id, { min: Number.isFinite(min) ? min : 0, stopped, total: totals.get(t.id) ?? 0 });
     }
     return m;
-  }, [types, viewDates, viewTable, s, totals]);
+  }, [types, glanceDates, viewTable, s, totals]);
 
   function toggleDate(d: string) {
     if (readOnly) return;
@@ -252,8 +256,8 @@ export default function SalesCalendar({
           {types.map((t) => {
             const g = glance.get(t.id)!;
             const overNight =
-              viewDates.find((d) => (viewTable.get(t.id)?.get(d) ?? 0) < 0) ??
-              viewDates.find((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d));
+              glanceDates.find((d) => (viewTable.get(t.id)?.get(d) ?? 0) < 0) ??
+              glanceDates.find((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d));
             const openOver = !readOnly && !!onOverbook && !!overNight;
             return (
               <TypeStockChip
@@ -262,11 +266,11 @@ export default function SalesCalendar({
                 rem={g.min}
                 total={g.total}
                 lowThreshold={s.lowThreshold}
-                subSrc={viewDates.some((d) => {
+                subSrc={glanceDates.some((d) => {
                   const rem = viewTable.get(t.id)?.get(d) ?? 0;
                   return rem >= 0 && (s.overbookSubs ?? []).some((x) => x.fromTypeId === t.id && x.date === d);
                 })}
-                subRelieved={viewDates.some((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d))}
+                subRelieved={glanceDates.some((d) => hasSubsForNight(s.overbookSubs ?? [], t.id, d))}
                 small={
                   <>
                     칸~ · {g.total}실{g.stopped ? ` · 마감 ${g.stopped}` : ""}

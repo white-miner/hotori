@@ -1043,9 +1043,23 @@ export function nightsOverlap(
 
 // ---------- 남은 객실 ----------
 export type StockTable = Map<string, Map<string, number>>; // typeId -> date -> remaining
+
+/**
+ * 판매 캘린더 주·월·기간 글랜스/오버부킹: 오늘 이전 숙박일은 빼고 집계해요.
+ * (과거 밤을 min에 넣으면 퇴실+같은 밤 재배정·과거 초과가 주/월 칩에 거짓 −N으로 보여요.)
+ * 창이 전부 과거면 역사 조회용으로 dates 그대로.
+ */
+export function stockGlanceDates(dates: readonly string[], today: string): string[] {
+  const fwd = dates.filter((d) => d >= today);
+  return fwd.length ? fwd : [...dates];
+}
+
 /**
  * 남은 객실 표. buildingId를 주면 그 건물만: 그 건물 방 수에서 그 건물 방에 배정된 숙박만 빼요.
  * 방을 안 정한 숙박은 어느 건물인지 모르니 '전체'에서만 빠져요.
+ *
+ * 같은 방×숙박일: 라이브(`occupiesRoom`)가 있으면 그 수만큼만 차감하고,
+ * 퇴실 고스트만 있으면 1만 차감 (#125 같은 밤 재배정이 재고 −2로 안 보이게).
  */
 export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[], buildingId?: string | null): StockTable {
   const totals = typeTotals(s, buildingId);
@@ -1053,18 +1067,50 @@ export function stockTable(s: HotelSettings, bookings: Booking[], dates: string[
   const table: StockTable = new Map();
   for (const t of s.types) table.set(t.id, new Map(dates.map((d) => [d, totals.get(t.id) ?? 0])));
   const dateSet = new Set(dates);
+  // key = typeId\0date → roomId → { live, ghost }
+  const byRoom = new Map<string, Map<string, { live: number; ghost: number }>>();
+  const unassigned = new Map<string, number>();
+  const bumpRoom = (key: string, roomId: string, live: boolean) => {
+    let roomsMap = byRoom.get(key);
+    if (!roomsMap) {
+      roomsMap = new Map();
+      byRoom.set(key, roomsMap);
+    }
+    const cur = roomsMap.get(roomId) ?? { live: 0, ghost: 0 };
+    if (live) cur.live += 1;
+    else cur.ghost += 1;
+    roomsMap.set(roomId, cur);
+  };
   for (const b of bookings) {
     if (!isActive(b) || b.kind !== "stay" || !b.nights) continue;
+    const live = occupiesRoom(b);
     // 밤마다 그 밤에 실제로 쓰는 방의 타입에서 빼요 (객실 이동이면 구간마다 달라요)
     for (const l of legsOf(b)) {
       if (buildingId && rooms.get(l.roomId ?? "")?.buildingId !== buildingId) continue;
-      const row = table.get(effectiveTypeId({ typeId: b.typeId, roomId: l.roomId }, rooms));
-      if (!row) continue;
+      const tid = effectiveTypeId({ typeId: b.typeId, roomId: l.roomId }, rooms);
+      if (!table.has(tid)) continue;
       for (let i = 0; i < l.nights; i++) {
         const d = addDays(l.checkIn, i);
-        if (dateSet.has(d)) row.set(d, row.get(d)! - 1);
+        if (!dateSet.has(d)) continue;
+        const key = `${tid}\0${d}`;
+        const rid = l.roomId;
+        if (rid && rooms.has(rid)) bumpRoom(key, rid, live);
+        else unassigned.set(key, (unassigned.get(key) ?? 0) + 1);
       }
     }
+  }
+  for (const [key, n] of unassigned) {
+    const [tid, d] = key.split("\0");
+    const row = table.get(tid!);
+    if (row) row.set(d!, row.get(d!)! - n);
+  }
+  for (const [key, roomMap] of byRoom) {
+    const [tid, d] = key.split("\0");
+    const row = table.get(tid!);
+    if (!row) continue;
+    let deduct = 0;
+    for (const c of roomMap.values()) deduct += c.live > 0 ? c.live : c.ghost > 0 ? 1 : 0;
+    row.set(d!, row.get(d!)! - deduct);
   }
   // 객실 임시마감: 그 방 타입 × 홀드 숙박일 −1 (게스트 예약과 별개)
   for (const h of s.roomHolds ?? []) {
