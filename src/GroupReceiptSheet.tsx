@@ -11,13 +11,14 @@ import {
   receiptDefaultRooms,
   receiptDefaultStart,
   receiptHeadline,
+  allocatePlan,
   receiptPlan,
 } from "../shared/receipt";
 import { isPeriodPayable } from "../shared/periodPay";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "../shared/settle";
 import { Chip, ChipGroup, PriceInp, Stepper } from "./primitives";
 
-type Mode = "nights" | "none" | "through";
+type Mode = "nights" | "none" | "through" | "later";
 const PRESETS = [1, 3, 7] as const;
 
 /**
@@ -32,6 +33,7 @@ export default function GroupReceiptSheet({
   members,
   groupName,
   groupLump,
+  lumps = [],
   extras = 0,
   leadId,
   leadPinned,
@@ -40,6 +42,7 @@ export default function GroupReceiptSheet({
   readOnly,
   onPay,
   onUndo,
+  onAllocate,
   onSetLead,
   onPickColor,
   onJoin,
@@ -52,6 +55,8 @@ export default function GroupReceiptSheet({
   groupName?: string | null;
   /** 객실에 나누지 않은 단체 몫 결제 합 */
   groupLump: number;
+  /** 객실에 나누지 않은 단체 몫 결제 줄 (나중에 배분 대기) */
+  lumps?: Payment[];
   extras?: number;
   leadId: string | null;
   leadPinned: boolean;
@@ -60,6 +65,8 @@ export default function GroupReceiptSheet({
   readOnly?: boolean;
   onPay: (plan: ReceiptPlan, method: BookPayMethod, memo: string, headline: string) => Promise<Payment[]>;
   onUndo: (saved: Payment[]) => Promise<void>;
+  /** 나중에 배분 확정: 단체 몫 한 줄 → 객실별 줄 (원자) */
+  onAllocate?: (paymentId: string, lines: { bookingId: string; amount: number }[], total: number) => Promise<void>;
   onSetLead: (bookingId: string | null) => Promise<void>;
   onPickColor?: (c: GroupBadgeColor) => Promise<void> | void;
   onJoin?: () => void;
@@ -80,10 +87,18 @@ export default function GroupReceiptSheet({
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ saved: Payment[]; headline: string } | null>(null);
+  const [allocId, setAllocId] = useState<string | null>(null);
+  const [allocDone, setAllocDone] = useState<number | null>(null);
+  const allocLump = allocId ? lumps.find((x) => x.id === allocId) ?? null : null;
+  const allocCalc = useMemo(() => {
+    if (!allocLump) return null;
+    const base = groupLedger(members, Math.max(0, groupLump - allocLump.amount), today, { extras });
+    return allocatePlan(base, allocLump.amount);
+  }, [allocLump, members, groupLump, today, extras]);
 
   const roomIds = useMemo(() => ledger.rooms.filter((r) => picked.has(r.bookingId)).map((r) => r.bookingId), [ledger, picked]);
   const autoStart = receiptDefaultStart(ledger, roomIds, today);
-  const period: ReceiptPeriod = mode === "none" ? { kind: "none" } : mode === "nights" ? { kind: "nights", nights } : { kind: "through", date: through };
+  const period: ReceiptPeriod = mode === "none" ? { kind: "none" } : mode === "later" ? { kind: "later" } : mode === "nights" ? { kind: "nights", nights } : { kind: "through", date: through };
   const plan = useMemo(
     () => receiptPlan({ ledger, roomIds, period, start: startPick, amount: amountEdit != null ? Number(amountEdit || 0) : null }, today),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,6 +135,20 @@ export default function GroupReceiptSheet({
       setAmountEdit(null);
     } catch (e) {
       setErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmAlloc = async () => {
+    if (busy || readOnly || !allocLump || !allocCalc || !onAllocate || !allocCalc.lines.length) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await onAllocate(allocLump.id, allocCalc.lines, allocLump.amount);
+      setAllocDone(allocLump.amount);
+      setAllocId(null);
+    } catch (e) {
+      setErr(e instanceof Error ? `배분하지 못했어요: ${e.message}` : "배분하지 못했어요");
     } finally {
       setBusy(false);
     }
@@ -164,7 +193,7 @@ export default function GroupReceiptSheet({
     reset();
   };
   const amountShown = amountEdit != null ? amountEdit : plan.suggested > 0 ? String(plan.suggested) : "";
-  const rangeText = plan.start && plan.end ? `${md(plan.start)}${plan.nights > 1 ? `~${md(plan.end)}` : ""} · ${plan.nights}박` : "기간 없음 · 선수금으로 등록";
+  const rangeText = mode === "later" ? "나중에 배분 · 단체에 받은 돈으로 적어요" : plan.start && plan.end ? `${md(plan.start)}${plan.nights > 1 ? `~${md(plan.end)}` : ""} · ${plan.nights}박` : "기간 없음 · 선수금으로 등록";
   const firstAll = ledger.rooms.reduce<string | null>((m, r) => (r.firstNight && (!m || r.firstNight < m) ? r.firstNight : m), null);
   const payableCount = members.filter(isPeriodPayable).length;
   const owedOf = (r: (typeof ledger.rooms)[number]) => r.nights.filter((n) => n.date <= today).reduce((a, n) => a + n.amount - n.covered, 0);
@@ -182,7 +211,33 @@ export default function GroupReceiptSheet({
           </button>
         </div>
         <div className="mb">
-          {done ? (
+          {allocDone != null ? (
+            <div className="gpp-done" role="status">
+              <span className="gpp-done-ic"><Check size={22} /></span>
+              <b>{won(allocDone)}원 배분 완료</b>
+              <span className="muted sm">객실별 결제 내역으로 옮겼어요. 총 받은 돈과 미수금은 그대로예요.</span>
+            </div>
+          ) : allocLump && allocCalc ? (
+            <div className="grc-alloc" aria-label="배분 확인">
+              <div className="gpp-hero">
+                <span className="gpp-hl">{won(allocLump.amount)}원 · {BOOK_PAY_LABEL[allocLump.method as BookPayMethod] ?? "결제"}</span>
+                <span className="muted sm">{md(allocLump.bizDate)}에 단체로 받은 돈을 앞 날부터 객실별로 채워요</span>
+              </div>
+              <ul className="gpp-rows grc-rows" aria-label="객실별 배분">
+                {allocCalc.lines.map((l) => {
+                  const b = byId.get(l.bookingId);
+                  return (
+                    <li key={l.bookingId} className="gpp-row grc-row">
+                      <span className="gpp-no"><b>{b ? roomLabel(b) : "객실"}</b></span>
+                      <span className="gpp-amt"><b>{won(l.amount)}</b></span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {allocCalc.rest > 0 ? <p className="muted sm grc-note">{won(allocCalc.rest)}원은 채울 박이 없어 단체 선수금으로 남아요.</p> : null}
+              {!allocCalc.lines.length ? <p className="muted sm grc-note">지금 채울 미결제 박이 없어요. 박이 더 생기면 그때 배분해 주세요.</p> : null}
+            </div>
+          ) : done ? (
             <div className="gpp-done" role="status">
               <span className="gpp-done-ic"><Check size={22} /></span>
               <b>{done.headline} 결제 등록 완료</b>
@@ -195,6 +250,21 @@ export default function GroupReceiptSheet({
                 <span>{paidThroughLabel(ledger, md)}</span>
                 {unpaidTodayLabel(ledger) ? <span className="grc-warn">{unpaidTodayLabel(ledger)}</span> : null}
               </div>
+
+              {lumps.length && onAllocate && !readOnly ? (
+                <ul className="grc-lumps" aria-label="나중에 배분할 돈">
+                  {lumps.map((x) => (
+                    <li key={x.id}>
+                      <span>
+                        <b>{won(x.amount)}원</b> <small className="muted">{md(x.bizDate)} · {BOOK_PAY_LABEL[x.method as BookPayMethod] ?? "결제"} · 단체로 받음</small>
+                      </span>
+                      <button type="button" className="btn line sm" disabled={busy} onClick={() => { setAllocId(x.id); setErr(null); }}>
+                        배분하기
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
 
               <div className="gpp-hero" aria-live="polite">
                 <span className="gpp-hl">{plan.ok ? receiptHeadline(plan, period) : "금액을 적어 주세요"}</span>
@@ -216,6 +286,9 @@ export default function GroupReceiptSheet({
                 <Chip active={mode === "none"} disabled={busy} onClick={() => { setMode("none"); setCustom(false); reset(); }}>
                   기간 없음
                 </Chip>
+                <Chip active={mode === "later"} disabled={busy} onClick={() => { setMode("later"); setCustom(false); reset(); }}>
+                  나중에 배분
+                </Chip>
               </ChipGroup>
               {mode === "nights" && custom ? <Stepper value={nights} unit="박" min={1} max={RECEIPT_NIGHTS_MAX} onChange={pickNights} /> : null}
               {mode === "through" ? (
@@ -224,7 +297,7 @@ export default function GroupReceiptSheet({
                   <input type="date" value={through} min={plan.start ?? autoStart} onChange={(e) => { setThrough(e.target.value || today); reset(); }} />
                 </label>
               ) : null}
-              {mode !== "none" ? (
+              {mode !== "none" && mode !== "later" ? (
                 <ChipGroup role="group" aria-label="시작일">
                   <Chip sm active={startPick == null} onClick={() => { setStartPick(null); reset(); }}>
                     {behind ? `밀린 ${md(autoStart)}부터` : `${md(autoStart)}부터`}
@@ -235,7 +308,7 @@ export default function GroupReceiptSheet({
                     </Chip>
                   ) : null}
                 </ChipGroup>
-              ) : (
+              ) : mode === "later" ? null : (
                 <p className="muted sm">기간을 정하지 않으면 선수금으로 등록돼요. 맨 앞 미결제 박부터 자동으로 반영하고, 남으면 단체 선수금으로 둬요.</p>
               )}
 
@@ -261,7 +334,7 @@ export default function GroupReceiptSheet({
                             <small>{row.nights}박{row.perNight && mode !== "none" ? ` × ${won(row.perNight)}` : ""}</small>
                           </>
                         ) : (
-                          <small>{on ? "이번 결제 없음" : "제외"}</small>
+                          <small>{on ? (mode === "later" ? "나중에 배분" : "이번 결제 없음") : "제외"}</small>
                         )}
                       </span>
                       <span className="gpp-st muted sm">
@@ -338,7 +411,20 @@ export default function GroupReceiptSheet({
           {err ? <div className="ferr">{err}</div> : null}
         </div>
         <div className="mf assign-type-acts gpp-acts">
-          {done ? (
+          {allocDone != null ? (
+            <button type="button" className="btn dark" autoFocus onClick={() => { setAllocDone(null); }}>
+              확인
+            </button>
+          ) : allocLump && allocCalc ? (
+            <>
+              <button type="button" className="btn line" disabled={busy} onClick={() => { setAllocId(null); setErr(null); }}>
+                뒤로
+              </button>
+              <button type="button" className="btn dark gpp-go" autoFocus disabled={busy || !allocCalc.lines.length} onClick={() => void confirmAlloc()}>
+                {busy ? "배분 중…" : `이대로 배분 · ${won(allocLump.amount - allocCalc.rest)}원`}
+              </button>
+            </>
+          ) : done ? (
             <>
               <button type="button" className="btn line" disabled={busy} onClick={() => void undo()}>
                 방금 결제 등록 취소

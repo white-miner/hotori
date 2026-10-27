@@ -1804,6 +1804,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         members={peers}
         groupName={peers[0]?.groupName}
         groupLump={(info?.payments ?? []).reduce((n, p) => n + p.amount, 0)}
+        lumps={info?.payments ?? []}
         extras={(info?.extras ?? []).reduce((n, x) => n + x.amount, 0)}
         leadId={lead?.id ?? null}
         leadPinned={!!info?.leadBookingId && peers.some((p) => p.id === info.leadBookingId)}
@@ -1825,6 +1826,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onUndo={async (saved) => {
           await data.deleteReceipt(groupId, saved);
           notify("방금 결제 등록을 취소했어요");
+        }}
+        onAllocate={async (paymentId, lines, total) => {
+          await data.allocateGroupPayment(groupId, paymentId, lines);
+          void data.logChange({
+            kind: "money",
+            groupId,
+            effectiveOn: today,
+            summary: `나중에 배분 확정 · ${total.toLocaleString("ko-KR")}원 → ${lines.length}객실`,
+          });
+          notify(`${peers[0]?.groupName || "단체"} · ${lines.length}객실에 배분했어요`);
         }}
         onSetLead={(id) => data.setGroupLead(groupId, id)}
         onPickColor={pickGroupColor(groupId)}

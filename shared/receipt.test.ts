@@ -199,3 +199,45 @@ test("큰 버튼: 결제 등록 · N박 금액 — 3박 결제 후엔 다음 3�
   assert.equal(nx.amount, 690_000);
   assert.equal(nx.label, "결제 등록 · 3박 690,000원");
 });
+
+// ── §9 나중에 배분 ──
+import { allocatePlan } from "./receipt";
+test("나중에 배분: 객실로 나누지 않고 단체 몫 한 줄 · 총 받은 돈에 바로 반영", () => {
+  const ms = [room("a", 100_000, 3), room("b", 100_000, 3)];
+  const ledger = groupLedger(ms, 0, "2026-10-28");
+  const plan = receiptPlan({ ledger, roomIds: null, period: { kind: "later" }, amount: 250_000 }, "2026-10-28");
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.lines, []);
+  assert.equal(plan.lump?.amount, 250_000);
+  assert.equal(plan.total, 250_000);
+  assert.equal(receiptHeadline(plan, { kind: "later" }), "250,000원 · 나중에 배분");
+  const after = groupLedger(ms, plan.lump!.amount, "2026-10-28");
+  assert.equal(after.paid, 250_000);
+});
+test("나중에 배분: 금액이 없으면 오늘 밤까지 미수금을 제안", () => {
+  const ms = [room("a", 100_000, 3), room("b", 100_000, 3)];
+  const ledger = groupLedger(ms, 0, "2026-10-28");
+  const plan = receiptPlan({ ledger, roomIds: null, period: { kind: "later" } }, "2026-10-28");
+  assert.equal(plan.total, 200_000);
+});
+test("배분하기: 앞 날부터 객실별로 채우고 넘치면 단체 몫으로 남김 · 합계 보존 · 요약 불변", () => {
+  const ms = [room("a", 100_000, 3), room("b", 100_000, 3)];
+  const base = groupLedger(ms, 0, "2026-10-28");
+  const { lines, rest } = allocatePlan(base, 250_000);
+  assert.deepEqual(lines, [{ bookingId: "a", amount: 150_000 }, { bookingId: "b", amount: 100_000 }]);
+  assert.equal(rest, 0);
+  assert.equal(lines.reduce((s, l) => s + l.amount, 0) + rest, 250_000);
+  // 요약: 단체 몫 250,000 → 객실별 줄로 옮겨도 총액·미수금 같음
+  const before = groupLedger(ms, 250_000, "2026-10-28");
+  const moved = ms.map((m) => ({ ...m, payments: lines.filter((l) => l.bookingId === m.id).map((l, i) => ({ id: `p${i}`, bookingId: m.id, kind: "balance", method: "card", amount: l.amount, bizDate: "2026-10-28", createdAt: "x" }) as Payment) }));
+  const afterLedger = groupLedger(moved, rest, "2026-10-28");
+  assert.equal(afterLedger.paid, before.paid);
+  assert.equal(afterLedger.owed, before.owed);
+  assert.equal(afterLedger.paidThrough, before.paidThrough);
+});
+test("배분하기: 모든 박을 채우고도 남는 돈은 rest", () => {
+  const ms = [room("a", 100_000, 1)];
+  const { lines, rest } = allocatePlan(groupLedger(ms, 0, "2026-10-28"), 130_000);
+  assert.deepEqual(lines, [{ bookingId: "a", amount: 100_000 }]);
+  assert.equal(rest, 30_000);
+});

@@ -7,7 +7,7 @@ import { addDays, daysBetween, md, won } from "./ledger";
 import type { GroupLedger } from "./groupLedger";
 import { allocateTotal } from "./periodPay";
 
-export type ReceiptPeriod = { kind: "none" } | { kind: "nights"; nights: number } | { kind: "through"; date: string };
+export type ReceiptPeriod = { kind: "none" } | { kind: "later" } | { kind: "nights"; nights: number } | { kind: "through"; date: string };
 
 export const RECEIPT_NIGHTS_MAX = 366;
 export const RECEIPT_AMOUNT_MAX = 100_000_000;
@@ -106,7 +106,7 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
   let start: string | null = null;
   let end: string | null = null;
   let nights = 0;
-  if (period.kind !== "none") {
+  if (period.kind !== "none" && period.kind !== "later") {
     start = inp.start ?? receiptDefaultStart(ledger, inp.roomIds, today);
     if (period.kind === "nights") {
       nights = Math.max(1, Math.min(RECEIPT_NIGHTS_MAX, Math.round(period.nights) || 1));
@@ -132,12 +132,23 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
   const suggestedWindow = shares.reduce((s, x) => s + x, 0);
   // 기간 없음: 제안 = 선택 객실의 오늘 밤까지 미수금
   const owedToday = rooms.reduce((s, r) => s + r.nights.filter((n) => n.date <= today).reduce((a, n) => a + n.amount - n.covered, 0), 0);
-  const suggested = period.kind === "none" ? owedToday : suggestedWindow;
+  const suggested = period.kind === "none" || period.kind === "later" ? owedToday : suggestedWindow;
 
   const amount = inp.amount == null ? suggested : Math.round(inp.amount);
   const notes: string[] = [];
   if (!Number.isFinite(amount) || amount <= 0) return { ...empty(period.kind === "none" ? "금액을 적어 주세요." : null), rows, start, end, nights, suggested, notes: [], ok: false, error: "금액을 적어 주세요." };
   if (amount > RECEIPT_AMOUNT_MAX) return { ...empty("금액을 확인해 주세요."), rows, start, end, nights, suggested };
+
+  // 나중에 배분: 객실로 나누지 않고 단체에 받은 돈으로만 적어요 (총 받은 돈에는 바로 반영)
+  if (period.kind === "later") {
+    rows.forEach((r) => (r.amount = 0));
+    return {
+      rows, start: null, end: null, nights: 0, suggested: owedToday, total: amount, diff: 0, lines: [],
+      lump: { amount, note: "나중에 배분" }, carry: amount,
+      notes: ["객실로 나누지 않고 단체에 받은 돈으로 적어요. 요약에는 앞 날부터 채운 것으로 보고, 나중에 「배분하기」로 확정해요."],
+      ok: true, error: null,
+    };
+  }
 
   const lines: ReceiptLine[] = [];
   const range = start && end ? (nights === 1 ? md(start) : `${md(start)}~${md(end)}`) : "";
@@ -198,6 +209,7 @@ export function receiptPlan(inp: ReceiptInput, today: string): ReceiptPlan {
 /** 확인 문구: `3박 × 3객실 = 690,000원` · 기간 없음은 `선수금 · 500,000원` */
 export function receiptHeadline(plan: ReceiptPlan, period: ReceiptPeriod): string {
   if (!plan.ok) return plan.error ?? "금액을 적어 주세요";
+  if (period.kind === "later") return `${won(plan.total)}원 · 나중에 배분`;
   if (period.kind === "none") return `${won(plan.total)}원 결제 등록`;
   const act = plan.rows.filter((r) => r.amount > 0);
   const roomsN = act.length || plan.rows.length;
@@ -212,4 +224,24 @@ export function receiptNextAction(ledger: GroupLedger, today: string): { label: 
   const plan = receiptPlan({ ledger, roomIds: null, period: { kind: "nights", nights } }, today);
   if (!plan.suggested) return { label: "결제 등록", nights, amount: 0 };
   return { label: `결제 등록 · ${nights}박 ${won(plan.suggested)}원`, nights, amount: plan.suggested };
+}
+
+/**
+ * 나중에 배분 확정 미리보기: 단체에 받아 둔 돈 한 줄(amount)을 앞 날부터(날짜 → 객실 순) 객실별 미결제 박에 채워요.
+ * ledger = 이 돈을 뺀 단체 요약(다른 선수금은 이미 반영). 넘치는 몫(rest)은 단체 몫으로 남아요.
+ */
+export function allocatePlan(ledger: GroupLedger, amount: number): { lines: { bookingId: string; amount: number }[]; rest: number } {
+  const flat: { i: number; date: string; open: number }[] = [];
+  ledger.rooms.forEach((r, i) => r.nights.forEach((n) => n.covered < n.amount && flat.push({ i, date: n.date, open: n.amount - n.covered })));
+  flat.sort((a, b) => a.date.localeCompare(b.date) || a.i - b.i);
+  let rest = Math.max(0, Math.round(amount));
+  const per = ledger.rooms.map(() => 0);
+  for (const f of flat) {
+    if (rest <= 0) break;
+    const take = Math.min(rest, f.open);
+    per[f.i]! += take;
+    rest -= take;
+  }
+  const lines = per.flatMap((a, i) => (a > 0 ? [{ bookingId: ledger.rooms[i]!.bookingId, amount: a }] : []));
+  return { lines, rest };
 }

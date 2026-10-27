@@ -1023,6 +1023,32 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId, groups],
   );
+  /**
+   * 나중에 배분 확정: 단체 몫 한 줄을 객실별 줄로 나눠요 (RPC 하나 = insert + delete 한 번에 · 모두 되거나 모두 안 돼요).
+   * 남는 돈은 단체 몫 한 줄로 다시 남아요. 돌려주는 값 = 새로 생긴 줄(객실 줄 + 남은 단체 몫).
+   */
+  const allocateGroupPayment = useCallback(async (groupId: string, paymentId: string, lines: { bookingId: string; amount: number }[]): Promise<Payment[]> => {
+    const { data, error } = await supabase.rpc("allocate_group_payment", {
+      p_payment_id: paymentId,
+      p_lines: lines.map((l) => ({ booking_id: l.bookingId, amount: Math.round(l.amount) })),
+    });
+    if (error) throw error;
+    const saved = ((data ?? []) as PaymentRow[]).map((x) => payFromRow(x));
+    const roomSaved = saved.filter((x) => x.bookingId);
+    const groupSaved = saved.filter((x) => !x.bookingId).map((x) => ({ ...x, groupId }));
+    if (roomSaved.length)
+      setBookingsLocal((list) =>
+        list.map((x) => {
+          const mine = roomSaved.filter((y) => y.bookingId === x.id);
+          return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
+        }),
+      );
+    setGroups((m) => {
+      const g = m.get(groupId);
+      return g ? new Map(m).set(groupId, { ...g, payments: [...g.payments.filter((x) => x.id !== paymentId), ...groupSaved] }) : m;
+    });
+    return saved;
+  }, []);
   /** 방금 한 결제 등록 취소 (객실 줄 + 단체 줄) */
   const deleteReceipt = useCallback(async (groupId: string, saved: Payment[]) => {
     if (!saved.length) return;
@@ -1116,6 +1142,7 @@ export function useHotelData(hotelId: string) {
     setGroupLead,
     addPeriodPayments,
     addReceipt,
+    allocateGroupPayment,
     deleteReceipt,
     deletePayments,
     stayCredits,
