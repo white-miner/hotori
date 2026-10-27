@@ -3,6 +3,7 @@ import {
   type Booking,
   type HotelSettings,
   type RoomSegment,
+  STAY_NIGHTS_MAX,
   addDays,
   dayLabel,
   daysBetween,
@@ -133,7 +134,7 @@ export function unusedNightRefund(
 
 /** 활성 숙박 · 중도 퇴실 아님 · 90박 미만 */
 export function canExtend(b: Pick<Booking, "status" | "kind" | "checkIn" | "nights" | "earlyOut">): boolean {
-  return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < 90 && !isEarlyOut(b);
+  return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < STAY_NIGHTS_MAX && !isEarlyOut(b);
 }
 
 export interface ExtendDraft {

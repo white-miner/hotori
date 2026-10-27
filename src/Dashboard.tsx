@@ -57,6 +57,8 @@ import OpsPanelSearch from "./OpsPanelSearch";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
 import GroupReceiptSheet from "./GroupReceiptSheet";
+import GroupJoinSheet from "./GroupJoinSheet";
+import GroupLeaveSheet from "./GroupLeaveSheet";
 import { groupLedger } from "../shared/groupLedger";
 import {
   checkoutLeaveBalanceNotifyLine,
@@ -495,6 +497,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [payDeskBusy, setPayDeskBusy] = useState(false);
   /** 단체 「기간 결제」 시트 (뱃지·패널에서 열림) */
   const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
+  const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
+  const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
   const [addTime, setAddTime] = useState<{ booking: Booking; roomLabel: string } | null>(null);
   const [addTimeBusy, setAddTimeBusy] = useState(false);
   /** 운영패널 1박 연장 (라이트 모달 · StaySale 비경유) */
@@ -923,6 +927,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return {
       ledger: groupLedger(peers, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }),
       name: peers[0]?.groupName,
+      onJoin: () => setJoinGroupId(gid),
     };
   }, [selectedSettle, bookings, data.groups, today]);
   /** 단체 잔금은 addGroupPayment → 형제 전부 members로 열어 settle/칸 SoT 맞춤 */
@@ -1698,6 +1703,44 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!readOnly) setPeriodPay({ groupId });
   };
 
+  const renderJoin = (groupId: string) => {
+    const peers = data.bookings.filter((x) => x.groupId === groupId && x.status !== "cancelled");
+    if (!peers.length) return null;
+    return (
+      <GroupJoinSheet
+        data={data}
+        today={today}
+        members={peers}
+        onClose={() => setJoinGroupId(null)}
+        onSaved={(m) => {
+          setJoinGroupId(null);
+          notify(m);
+        }}
+      />
+    );
+  };
+
+  const renderLeave = (bookingId: string) => {
+    const bk = data.bookings.find((x) => x.id === bookingId);
+    if (!bk) return null;
+    const info = bk.groupId ? data.groups.get(bk.groupId) : null;
+    const typeRate = (info?.rates as Record<string, number> | null | undefined)?.[bk.typeId] ?? null;
+    return (
+      <GroupLeaveSheet
+        today={today}
+        booking={bk}
+        roomLabel={(bk.roomId ? (L.roomLabel(bk.roomId) ?? "?") : "미배정") + "호"}
+        typeRate={typeRate}
+        onClose={() => setLeaveBkId(null)}
+        onConfirm={async (leaveDate, nights, price, segments) => {
+          await data.patchBooking(bk.id, { nights, price, ...(segments !== undefined ? { segments } : {}) });
+          setLeaveBkId(null);
+          notify(`${(bk.roomId ? L.roomLabel(bk.roomId) : "") ?? ""}호 ${leaveDate.slice(5).replace("-", "/")} 조기 퇴실 처리`);
+        }}
+      />
+    );
+  };
+
   const renderPeriodPay = (groupId: string) => {
     const peers = groupStayPeers(bookings, groupId).map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
     if (!peers.length) return null;
@@ -1728,6 +1771,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         }}
         onSetLead={(id) => data.setGroupLead(groupId, id)}
         onPickColor={pickGroupColor(groupId)}
+        onJoin={() => {
+          setPeriodPay(null);
+          setJoinGroupId(groupId);
+        }}
+        onLeave={(id) => {
+          setPeriodPay(null);
+          setLeaveBkId(id);
+        }}
       />
     );
   };
@@ -3708,6 +3759,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         />
       ) : null}
       {periodPay ? renderPeriodPay(periodPay.groupId) : null}
+      {joinGroupId ? renderJoin(joinGroupId) : null}
+      {leaveBkId ? renderLeave(leaveBkId) : null}
       {payDesk ? (
         <PaymentDeskModal
           s={s}
@@ -4122,6 +4175,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     </main>
     {renderOverbookSubModal()}
     {periodPay ? renderPeriodPay(periodPay.groupId) : null}
+    {joinGroupId ? renderJoin(joinGroupId) : null}
+    {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderAssignModals()}
     </>
   );

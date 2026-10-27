@@ -75,7 +75,7 @@ test("연장 가능: 활성 숙박만, 중도 퇴실·대실·취소 불가", ()
   assert.equal(canExtend(bk({ earlyOut: "2026-10-19", nights: 3 })), false);
   assert.equal(canExtend(bk({ kind: "dayuse", nights: null })), false);
   assert.equal(canExtend(bk({ status: "cancelled" })), false);
-  assert.equal(canExtend(bk({ nights: 90 })), false);
+  assert.equal(canExtend(bk({ nights: 366 })), false);
 });
 
 test("applyExtend: 박수+1 · 가격+단가 · fitSegments로 마지막 방 연장", () => {

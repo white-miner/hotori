@@ -5670,3 +5670,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .ghead-acts { display: flex; gap: 8px; margin-top: 6px; }
 .ghead-go { flex: 1; min-height: 46px; font-size: 15px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .ghead-sub { min-height: 46px; white-space: nowrap; }
+.gjn-rooms { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
+.gjn-arr { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+.grc-hidden-date { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.gpp-row .gpp-amt .inp { max-width: 190px; }
