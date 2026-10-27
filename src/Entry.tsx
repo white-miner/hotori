@@ -71,7 +71,6 @@ import {
   onsiteCreatePayTail,
   guestPhoneOptsForBooking,
   isGuestPhoneRequired,
-  payLineMain,
   paySplit,
   payState,
   planOnsiteCreatePay,
@@ -136,7 +135,6 @@ import {
   type SurchargeReason,
   canAddSurcharge,
   defaultSurchargeAmount,
-  payLineSub,
   planAddSurcharge,
   suggestElapsedLateHours,
   surchargeNotifyLine,
@@ -181,6 +179,9 @@ import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OpenStayToggle from "./OpenStayToggle";
 import NightRatesTable from "./NightRatesTable";
 import RoomClashNote from "./RoomClashNote";
+import PayEvidence from "./PayEvidence";
+import RecordSheet from "./RecordSheet";
+import { payLines } from "../shared/recordTimeline";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import { groupDrafts, hashGroupBadgeColor } from "../shared/group";
 import OnsitePayModeFields from "./OnsitePayModeFields";
@@ -271,6 +272,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   /** 혼자 묵는 예약에서 「객실 추가」를 누르면 한 단체로 묶고 그 id를 여기 둬요 */
   const [soloGid, setSoloGid] = useState<string | null>(null);
   const [soloBusy, setSoloBusy] = useState(false);
+  /** 기록 정정 시트 */
+  const [recOpen, setRecOpen] = useState(false);
   // 이용 기간 미정(∞) · 추가 객실(신규 숙박 여러 방) — 새 예약에서만 고르고, 고치는 예약은 저장된 값을 그대로 이어요
   const [openOn, setOpenOn] = useState(base?.openEnded === true);
   const [openHold, setOpenHold] = useState(base?.holdAhead ?? OPEN_HOLD_DEFAULT);
@@ -1333,6 +1336,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   // 같은 방 같은 날: 앞 손님 늦은 퇴실 · 빠른 입실이 겹치면 경고만
   const turnWarns = kind === "stay" && status === "active" ? turnoverWarnings(s, [...data.bookings.filter((x) => x.id !== draftBase.id), draftBase]).filter((w) => w.id === draftBase.id) : [];
   const livePays = (base ? data.bookings.find((x) => x.id === base.id)?.payments : null) ?? base?.payments ?? [];
+  const evidence = useMemo(() => {
+    if (!base) return null;
+    const gid = base.groupId ?? null;
+    const mem = gid ? data.bookings.filter((x) => x.groupId === gid && x.status !== "cancelled") : [data.bookings.find((x) => x.id === base.id) ?? base];
+    const info = gid ? data.groups.get(gid) : undefined;
+    const rn = (bid: string) => {
+      const bk = mem.find((x) => x.id === bid);
+      return bk?.roomId ? `${L.roomLabel(bk.roomId) ?? "?"}호` : "미배정";
+    };
+    return {
+      members: mem,
+      groupId: gid,
+      title: (gid ? base.groupName : null) ?? base.guestName,
+      lines: payLines([...mem.flatMap((m) => m.payments ?? []), ...(info?.payments ?? [])], { roomName: rn, meId: data.meId }),
+    };
+  }, [base, data.bookings, data.groups, data.meId, L]);
   const entryOpenCredits = useMemo(
     () => matchOpenCredits(data.stayCredits, guestName || live?.guestName, guestPhone || live?.guestPhone),
     [data.stayCredits, guestName, guestPhone, live?.guestName, live?.guestPhone],
@@ -1483,25 +1502,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       notify(payNoteOf(kind, amount, recv.method, left));
     } catch (e) {
       setPayErr(saveFailMessage(e));
-    } finally {
-      setPayBusy(false);
-    }
-  };
-  const delPay = async (id: string) => {
-    if (!base || payBusy) return;
-    const delOk = await askConfirm({
-      title: "결제 내역 삭제",
-      body: long ? "이 결제 내역을 삭제할까요? 미수금이 다시 늘어나요." : "이 결제 내역을 삭제할까요? 잔금이 다시 늘어나요.",
-      confirmLabel: "삭제",
-      danger: true,
-    });
-    if (!delOk) return;
-    setPayBusy(true);
-    setPayErr(null);
-    try {
-      await data.deletePayment(base.id, id);
-    } catch (e) {
-      setPayErr(e instanceof Error ? `삭제하지 못했어요: ${e.message}` : "삭제하지 못했어요");
     } finally {
       setPayBusy(false);
     }
@@ -1971,6 +1971,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             {isActive(base) && base.kind === "stay" ? (
               <button type="button" className={`beo ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} disabled={ncxBusy} onClick={() => void toggleNoClean()} title="청소하지 않음 · 누르면 바로 저장">
                 <b>{noClean ? "청소X · 해제" : "청소X"}</b>
+              </button>
+            ) : null}
+            {base.kind === "stay" ? (
+              <button type="button" className="beo" onClick={() => setRecOpen(true)} title="결제·요금·객실 기록을 고치고 되돌려요">
+                <b>기록 정정</b>
               </button>
             ) : null}
             {isActive(base) && base.groupId ? (
@@ -3573,15 +3578,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                 </div>
               ) : (
                 <>
-                  {livePays.map((x) => (
-                    <div className="payrow" key={x.id} title={x.note?.trim() || undefined}>
-                      <b>{payLineMain(x.method, x.amount)}</b>
-                      <span className="muted">{payLineSub(x.kind, x.bizDate, x.note, long)}</span>
-                      <button type="button" className="ic" aria-label="이 결제 삭제" disabled={payBusy} onClick={() => void delPay(x.id)}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {evidence ? <PayEvidence title={evidence.title} lines={evidence.lines} ledger={null} onOpen={() => setRecOpen(true)} /> : null}
                   {livePays.length > 0 ? <div className="muted sm paysplit">수납액 {splitLine(paySplit(livePays))}</div> : null}
                   <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                     {payLeft > 0 ? (
@@ -4034,6 +4031,18 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         busy={busy}
         onCancel={() => setDayuseWarn(null)}
         onContinue={() => void save(dayuseWarn.again, dayuseWarn.override, { allowDayuseOverlap: true })}
+      />
+    ) : null}
+    {recOpen && evidence && evidence.members.length ? (
+      <RecordSheet
+        data={data}
+        today={today}
+        members={evidence.members}
+        groupId={evidence.groupId}
+        name={evidence.title}
+        readOnly={false}
+        onClose={() => setRecOpen(false)}
+        onSaved={(m) => notify(m)}
       />
     ) : null}
     {coConfirm ? (
