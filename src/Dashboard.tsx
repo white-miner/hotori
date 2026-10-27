@@ -28,13 +28,15 @@ import {
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, X, Zap } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, Wand2, X, Zap } from "lucide-react";
 import { boardGuestSearch, filterOpsBookings, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
 import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
+import AutoAssignModal from "./AutoAssignModal";
+import { revalidateItem, type AutoAssignItem } from "../shared/autoAssign";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import DayuseSaleModal from "./DayuseSaleModal";
 import EarlyInPayModal from "./EarlyInPayModal";
@@ -1342,6 +1344,73 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+
+  // ── 자동 배정: 미리보기 → 건별 재검증 → 저장 → (실패 시 되돌림) → 6초 되돌리기 ──
+  const [autoTargets, setAutoTargets] = useState<Booking[] | null>(null);
+  const bookingsRef = useRef(bookings);
+  bookingsRef.current = bookings;
+  const applyAutoAssign = async (items: AutoAssignItem[]) => {
+    if (readOnly || assignBusy || !items.length) return;
+    setAssignBusy(true);
+    const done = new Map<string, { roomId: string | null; segments: AutoAssignItem["segments"] }>();
+    const skipped: string[] = [];
+    const nameOf = (id: string) => bookingsRef.current.find((x) => x.id === id)?.guestName ?? "";
+    const overlay = () => bookingsRef.current.map((x) => (done.has(x.id) ? { ...x, ...done.get(x.id)! } : x));
+    const clear = async (ids: string[]) => {
+      let fail = 0;
+      for (const id of ids) {
+        try {
+          await data.setPlacement(id, { roomId: null, segments: null });
+        } catch {
+          fail++;
+        }
+      }
+      return fail;
+    };
+    try {
+      for (const it of items) {
+        const why = revalidateItem(s, overlay(), it);
+        if (why) {
+          skipped.push(`${nameOf(it.bookingId)}: ${why}`);
+          continue;
+        }
+        await data.setPlacement(it.bookingId, { roomId: it.roomId, segments: it.segments });
+        done.set(it.bookingId, { roomId: it.roomId, segments: it.segments });
+      }
+    } catch (e) {
+      const fail = await clear([...done.keys()]);
+      setAssignBusy(false);
+      notify(
+        `${saveFailMessage(e, "자동 배정을 마치지 못했어요")} · 이미 넣은 ${done.size}건은 ${fail ? "되돌리지 못한 건이 있어요. 화면을 확인해 주세요" : "모두 되돌렸어요"}`,
+      );
+      return;
+    }
+    setAssignBusy(false);
+    setAutoTargets(null);
+    const ids = [...done.keys()];
+    if (!ids.length) {
+      notify(skipped.length ? `배정한 예약이 없어요 · ${skipped[0]}` : "배정한 예약이 없어요");
+      return;
+    }
+    notify(`${ids.length}건 자동 배정했어요${skipped.length ? ` · ${skipped.length}건은 그 사이 바뀌어 건너뛰었어요` : ""}`, {
+      ms: 6000,
+      action: {
+        label: "되돌리기",
+        run: () =>
+          void (async () => {
+            // 그 사이 다른 방으로 옮겨진 예약은 건드리지 않아요
+            const still = ids.filter((id) => {
+              const cur = bookingsRef.current.find((x) => x.id === id);
+              const d = done.get(id)!;
+              return !!cur && cur.roomId === d.roomId;
+            });
+            const fail = await clear(still);
+            notify(fail ? `일부(${fail}건)를 되돌리지 못했어요` : `자동 배정 ${still.length}건을 되돌렸어요`);
+          })(),
+      },
+    });
+  };
+
   /** 동타입=즉시 · 이타입=승인 모달 */
   const gateTypeThenAssign = (b: Booking, roomId: string) => {
     const room = L.rooms.get(roomId) ?? allRooms(s).find((r) => r.id === roomId);
@@ -1435,6 +1504,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             setDayuseMoveWarn(null);
             void doMove({ allowDayuseOverlap: true, to });
           }}
+        />
+      ) : null}
+      {autoTargets ? (
+        <AutoAssignModal
+          s={s}
+          L={L}
+          bookings={bookings}
+          targets={autoTargets}
+          busy={assignBusy}
+          onClose={() => setAutoTargets(null)}
+          onApply={(items) => void applyAutoAssign(items)}
         />
       ) : null}
       {checkoutChoice ? (
@@ -3206,6 +3286,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               uaSort={uaSort}
               dimOf={pfOn ? pfDimOf : undefined}
               onUaSort={setUaSort}
+              onAutoAssign={readOnly || mvB ? undefined : (list) => setAutoTargets(list)}
               lateOut={nowSide.lateOut}
               departing={nowSide.departing}
               selectedRoomIds={selectedRoomIds}
@@ -3831,6 +3912,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               미배정 예약 <small>{uaActiveN}건</small>
             </h3>
             <UaSortBar sort={uaSort} onChange={setUaSort} />
+            {!readOnly && roomsUaByRange.some(isActive) ? (
+              <button type="button" className="btn line sm ua-auto" disabled={assignBusy || !!mvB} onClick={() => setAutoTargets(roomsUaByRange.filter(isActive))}>
+                <Wand2 size={14} strokeWidth={2.4} /> 자동배정 · {roomsUaByRange.filter(isActive).length}건 미리보기
+              </button>
+            ) : null}
             <div className="lst side-ua-lst">
               {roomsUaList.length ? (
                 roomsUaList.map((b) => {

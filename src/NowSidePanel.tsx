@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, Undo2, Wand2 } from "lucide-react";
 import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
 import { DAMAGE_COPY } from "../shared/damageDoc";
 import StayConfirmLetter from "./StayConfirmLetter";
@@ -87,6 +87,8 @@ interface Props {
   /** 미배정 정렬 (현황·배치 공용, 기본 입실일 오름차순) */
   uaSort?: UaSort;
   onUaSort?: (s: UaSort) => void;
+  /** 오늘 미배정 전체를 자동 배정 미리보기로 (검색과 무관) */
+  onAutoAssign?: (list: Booking[]) => void;
   /** 플랫폼 필터에 안 걸리는 미배정 행을 흐리게 (숨기지 않음) */
   dimOf?: (b: Booking) => boolean;
   lateOut: Booking[];
@@ -163,6 +165,7 @@ export default function NowSidePanel({
   L,
   unassigned,
   uaSort = UA_SORT_DEFAULT,
+  onAutoAssign,
   onUaSort,
   dimOf,
   lateOut,
@@ -226,6 +229,7 @@ export default function NowSidePanel({
   };
 
   /** 「현황」= 오늘만 (기한초과 포함). 일주일/한달 칩은 「배치」사이드. */
+  const todayUa = useMemo(() => sortUnassigned(filterUnassignedByCheckIn(unassigned, today, "today"), uaSort).filter((b) => b.status === "active"), [unassigned, today, uaSort]);
   const filteredUa = useMemo(() => {
     const byDate = sortUnassigned(filterUnassignedByCheckIn(unassigned, today, "today"), uaSort);
     return filterOpsBookings(byDate, opsQuery, opsMeta);
@@ -960,6 +964,11 @@ export default function NowSidePanel({
             미배정 예약 · 임시와 다름 · 입실일≤오늘
           </p>
           {onUaSort ? <UaSortBar sort={uaSort} onChange={onUaSort} /> : null}
+          {onAutoAssign && !readOnly && todayUa.length ? (
+            <button type="button" className="btn line sm ua-auto" disabled={assigning != null} onClick={() => onAutoAssign(todayUa)}>
+              <Wand2 size={14} strokeWidth={2.4} /> 자동배정 · {todayUa.length}건 미리보기
+            </button>
+          ) : null}
           {filteredUa.length ? (
             <div className="side-ua-list">{filteredUa.map(uaRow)}</div>
           ) : (
