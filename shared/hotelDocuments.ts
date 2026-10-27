@@ -116,7 +116,14 @@ export const ISSUANCE_COPY = {
   fileTypeBad: "PDF · JPG · PNG만 올릴 수 있어요.",
   titleRequired: "제목을 적어 주세요.",
   uploadOk: "증서를 올렸어요.",
+  uploadFailTitle: "업로드에 실패했어요",
+  uploadFail:
+    "증서를 올리지 못했어요. 파일 형식(PDF·JPG·PNG)과 크기를 확인한 뒤 다시 시도해 주세요.",
+  uploadFailAuth: "이 호텔에 올릴 권한이 없어요. 로그인을 확인해 주세요.",
+  uploadFailDup: "같은 파일이 이미 있어요. 이름을 바꾸거나 기존 파일을 지운 뒤 올려 주세요.",
+  uploadFailNetwork: "연결이 불안정해요. 잠시 후 다시 올려 주세요.",
   deleteOk: "증서를 지웠어요.",
+  deleteFail: "증서를 지우지 못했어요. 잠시 후 다시 시도해 주세요.",
   openFail: "파일을 열지 못했어요.",
 } as const;
 
@@ -161,14 +168,61 @@ export function mimeFromFile(file: File): HotelDocMime | null {
   return null;
 }
 
+/**
+ * Storage object key must match Supabase `isValidKey` (ASCII / S3-safe).
+ * Hangul names like `사업자등록증.jpg` otherwise fail with InvalidKey 400.
+ * Display title stays in `hotel_documents.title` — path is opaque.
+ */
 export function sanitizeDocFilename(name: string): string {
-  const base = name.replace(/[/\\?%*:|"<>]/g, "_").trim() || "document";
-  return base.slice(0, 120);
+  const trimmed = (name || "").trim() || "document";
+  const lastDot = trimmed.lastIndexOf(".");
+  const rawExt = lastDot > 0 ? trimmed.slice(lastDot + 1) : "";
+  const rawBase = lastDot > 0 ? trimmed.slice(0, lastDot) : trimmed;
+  const ext = rawExt.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
+  let base = rawBase
+    .normalize("NFKD")
+    .replace(/[^\x00-\x7F]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^[._]+|[._]+$/g, "");
+  if (!base) base = "document";
+  base = base.slice(0, 80);
+  return ext ? `${base}.${ext}` : base;
 }
 
-/** `{hotel_id}/certs/{document_id}/{filename}` */
+/** `{hotel_id}/certs/{document_id}/{filename}` — filename ASCII-sanitized */
 export function hotelDocStoragePath(hotelId: string, documentId: string, filename: string): string {
   return `${hotelId}/certs/${documentId}/${sanitizeDocFilename(filename)}`;
+}
+
+/** Map Storage / PostgREST errors → FO KR copy (never leak raw InvalidKey / 400). */
+export function hotelDocFailMessage(e: unknown, fallback: string = ISSUANCE_COPY.uploadFail): string {
+  const bits: string[] = [];
+  if (e && typeof e === "object") {
+    const o = e as {
+      message?: unknown;
+      error?: unknown;
+      statusCode?: unknown;
+      status?: unknown;
+      code?: unknown;
+      name?: unknown;
+    };
+    for (const v of [o.message, o.error, o.name, o.code, o.statusCode, o.status]) {
+      if (typeof v === "string" && v.trim()) bits.push(v.trim());
+      else if (typeof v === "number") bits.push(String(v));
+    }
+  } else if (typeof e === "string") {
+    bits.push(e);
+  }
+  const blob = bits.join(" ").toLowerCase();
+  if (/invalid.?key|invalid key/.test(blob)) return ISSUANCE_COPY.uploadFail;
+  if (/mime|content.?type|not supported|allowed_mime|unsupported/.test(blob)) return ISSUANCE_COPY.fileTypeBad;
+  if (/too large|maximum|413|payload|file size|exceeded/.test(blob)) return ISSUANCE_COPY.fileTooBig;
+  if (/row-level security|rls|42501|403|not allowed|unauthorized|jwt|permission/.test(blob))
+    return ISSUANCE_COPY.uploadFailAuth;
+  if (/duplicate|already exists|23505|resource already/.test(blob)) return ISSUANCE_COPY.uploadFailDup;
+  if (/network|fetch|failed to fetch|timeout|econn|offline/.test(blob)) return ISSUANCE_COPY.uploadFailNetwork;
+  return fallback;
 }
 
 export function validateHotelDocumentDraft(d: HotelDocumentDraft): string | null {

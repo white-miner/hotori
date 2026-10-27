@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   HOTEL_DOC_KIND_LABEL,
   HOTEL_DOC_KINDS,
+  ISSUANCE_COPY,
   hotelDocExpiryBadge,
+  hotelDocFailMessage,
   hotelDocHubCopy,
   hotelDocStoragePath,
   isHotelDocHubKind,
@@ -34,11 +36,30 @@ describe("hotelDocuments", () => {
     assert.equal(HOTEL_DOC_KIND_LABEL.operating_report, "영업신고서");
     assert.equal(hotelDocHubCopy("bank_book").title, "통장사본");
     assert.equal(hotelDocHubCopy("operating_report").title, "영업신고서");
+    // Hangul filenames → ASCII path (Supabase Storage InvalidKey otherwise)
+    assert.equal(sanitizeDocFilename("사업자등록증.jpg"), "document.jpg");
+    assert.equal(sanitizeDocFilename("사업자등록증 .jpg"), "document.jpg");
+    assert.equal(sanitizeDocFilename("화재 보험.pdf"), "document.pdf");
+    assert.equal(sanitizeDocFilename("license_2024.JPG"), "license_2024.jpg");
+    assert.equal(sanitizeDocFilename("a/b\\c?.pdf"), "a_b_c.pdf");
     assert.equal(
-      hotelDocStoragePath("hid", "did", "화재 보험.pdf"),
-      "hid/certs/did/화재 보험.pdf",
+      hotelDocStoragePath("hid", "did", "사업자등록증.jpg"),
+      "hid/certs/did/document.jpg",
     );
-    assert.equal(sanitizeDocFilename("a/b\\c?.pdf"), "a_b_c_.pdf");
+  });
+
+  it("hotelDocFailMessage maps Storage InvalidKey without raw English/status", () => {
+    const msg = hotelDocFailMessage({
+      message: "Invalid key: …/certs/…/사업자등록증.jpg",
+      statusCode: "400",
+      error: "InvalidKey",
+    });
+    assert.equal(msg, ISSUANCE_COPY.uploadFail);
+    assert.equal(msg.includes("Invalid"), false);
+    assert.equal(msg.includes("400"), false);
+    assert.equal(hotelDocFailMessage({ message: "The resource already exists" }), ISSUANCE_COPY.uploadFailDup);
+    assert.equal(hotelDocFailMessage({ message: "new row violates row-level security policy" }), ISSUANCE_COPY.uploadFailAuth);
+    assert.equal(hotelDocFailMessage({ message: "Payload too large", statusCode: "413" }), ISSUANCE_COPY.fileTooBig);
   });
 
   it("mime + validate file/draft (expiry not required)", () => {

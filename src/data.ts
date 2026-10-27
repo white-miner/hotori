@@ -33,10 +33,12 @@ import {
 } from "../shared/hotelNotice";
 import {
   HOTEL_DOC_BUCKET,
+  ISSUANCE_COPY,
   type HotelDocKind,
   type HotelDocMime,
   type HotelDocument,
   type HotelDocumentDraft,
+  hotelDocFailMessage,
   hotelDocStoragePath,
   isHotelDocKind,
   isHotelDocMime,
@@ -1711,7 +1713,7 @@ export function useHotelDocuments(hotelId: string) {
         contentType: mime,
         upsert: false,
       });
-      if (upErr) throw upErr;
+      if (upErr) throw new Error(hotelDocFailMessage(upErr, ISSUANCE_COPY.uploadFail));
       const { data, error } = await supabase
         .from("hotel_documents")
         .insert({
@@ -1729,7 +1731,7 @@ export function useHotelDocuments(hotelId: string) {
         .single();
       if (error) {
         void supabase.storage.from(HOTEL_DOC_BUCKET).remove([path]);
-        throw error;
+        throw new Error(hotelDocFailMessage(error, ISSUANCE_COPY.uploadFail));
       }
       const saved = fromDocRow(data as HotelDocumentRow);
       setList((cur) => [saved, ...(cur ?? []).filter((x) => x.id !== saved.id)]);
@@ -1740,7 +1742,7 @@ export function useHotelDocuments(hotelId: string) {
 
   const remove = useCallback(async (doc: HotelDocument) => {
     const { error } = await supabase.from("hotel_documents").delete().eq("id", doc.id);
-    if (error) throw error;
+    if (error) throw new Error(hotelDocFailMessage(error, ISSUANCE_COPY.deleteFail));
     if (doc.storagePath) {
       const { error: rmErr } = await supabase.storage.from(HOTEL_DOC_BUCKET).remove([doc.storagePath]);
       if (rmErr) console.warn("hotel doc storage remove", rmErr.message);
@@ -1752,8 +1754,8 @@ export function useHotelDocuments(hotelId: string) {
     const { data, error } = await supabase.storage
       .from(HOTEL_DOC_BUCKET)
       .createSignedUrl(doc.storagePath, expiresIn);
-    if (error) throw error;
-    if (!data?.signedUrl) throw new Error("signed url missing");
+    if (error) throw new Error(hotelDocFailMessage(error, ISSUANCE_COPY.openFail));
+    if (!data?.signedUrl) throw new Error(ISSUANCE_COPY.openFail);
     return data.signedUrl;
   }, []);
 
