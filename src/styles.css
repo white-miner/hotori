@@ -2660,8 +2660,23 @@ label.ck input[type="checkbox"] {
   grid-template-columns: minmax(88px, 1.4fr) repeat(3, 56px) minmax(72px, 1fr) minmax(72px, 1fr) 36px;
   gap: 6px; align-items: center;
 }
-.quote-line-hint { margin-top: 4px; }
+.quote-line-head {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 750;
+  color: var(--ink3);
+  letter-spacing: -0.01em;
+}
+.quote-line-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quote-line .inp { min-width: 0; width: 100%; }
 .quote-type-chips { margin-bottom: 2px; }
+.invoice-form .iss-form { margin-bottom: 8px; }
+.invoice-form .iss-form label { color: var(--ink2); }
 .quote-room-opt { display: flex; flex-direction: column; gap: 4px; }
 .quote-show-rooms {
   display: flex; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 650;
@@ -2677,6 +2692,20 @@ label.ck input[type="checkbox"] {
 .quote-tbl tfoot th, .inv-tbl tfoot th { border-top: 1.5px solid var(--ink); font-weight: 850; color: var(--ink); }
 .quote-notes { font-size: 13px; color: var(--ink2); margin: 8px 0; }
 .invoice-form { padding: 0 16px 8px; }
+
+/* 발급 hub — 예약/단체 고르기 */
+.modal.iss-pick-modal { width: min(480px, 96vw); max-height: min(88vh, 640px); display: flex; flex-direction: column; }
+.iss-pick-body { padding: 0 16px 16px; display: grid; gap: 12px; overflow: auto; min-height: 0; }
+.iss-pick-sec { display: grid; gap: 6px; }
+.iss-pick-h { margin: 0; font-size: 12px; font-weight: 800; color: var(--ink3); letter-spacing: -0.01em; }
+.iss-pick-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.iss-pick-row {
+  width: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
+  cursor: pointer; font: inherit;
+}
+.iss-pick-row:hover { border-color: var(--ink2); }
+.iss-pick-t { font-size: 14px; font-weight: 750; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .inv-title-block { text-align: right; }
 .inv-no { font-size: 12.5px; font-weight: 750; color: var(--ink2); margin-top: 4px; }
 .inv-watermark {
