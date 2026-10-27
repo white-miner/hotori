@@ -1,5 +1,5 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
-import { type Booking, type HotelSettings, type PlacedRoom, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
+import { type Booking, type HotelSettings, type PlacedRoom, STAY_NIGHTS_MAX, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
 import { syncStayNightRates } from "./nightrates";
 import { paidOf } from "./payment";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
@@ -312,7 +312,7 @@ export function validateGroup(p: {
   if (!p.name.trim()) return "단체명을 적어 주세요.";
   if (p.name.trim().length > GROUP_NAME_MAX) return `단체명은 ${GROUP_NAME_MAX}글자까지예요.`;
   if (!p.platformId) return "플랫폼을 골라 주세요.";
-  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
+  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > STAY_NIGHTS_MAX) return "박수를 확인해 주세요.";
   if (p.typeOnly) {
     const slots = p.typeOnly.filter((x) => x.count > 0);
     if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";
@@ -343,7 +343,7 @@ export function validateGroupAttach(p: {
   /** 타입만(호실 미정). 있으면 roomIds는 무시하고 타입×수로 검사해요 */
   typeOnly?: GroupTypeSlot[];
 }): string | null {
-  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > 90) return "박수를 확인해 주세요.";
+  if (!Number.isInteger(p.nights) || p.nights < 1 || p.nights > STAY_NIGHTS_MAX) return "박수를 확인해 주세요.";
   if (p.typeOnly) {
     const slots = p.typeOnly.filter((x) => x.count > 0);
     if (!slots.length || slots.some((x) => !x.typeId || !Number.isInteger(x.count) || x.count < 0)) return "타입과 실 수를 확인해 주세요.";

@@ -49,6 +49,7 @@ import {
   usableTypes,
   validateBooking,
   won,
+  STAY_NIGHTS_MAX,
 } from "../shared/ledger";
 import { dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import type { HotelData } from "./data";
@@ -2625,7 +2626,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         <input
                           type="date"
                           min={addDays(checkIn, 1)}
-                          max={addDays(checkIn, 90)}
+                          max={addDays(checkIn, STAY_NIGHTS_MAX)}
                           value={checkOutDate}
                           onChange={(e) => e.target.value && setStayCheckOut(e.target.value)}
                           onClick={(e) => openPicker(e.currentTarget)}

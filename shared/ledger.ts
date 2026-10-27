@@ -459,7 +459,7 @@ export function checkOut(b: Pick<Booking, "checkIn" | "nights">): string {
 
 /** 숙박 박수 범위 (예약 창·단체와 동일) */
 export const STAY_NIGHTS_MIN = 1;
-export const STAY_NIGHTS_MAX = 90;
+export const STAY_NIGHTS_MAX = 366;
 
 /** 숙박 박수 클램프 (1~90). NaN·비유한 값은 1박 */
 export function clampStayNights(n: number): number {
@@ -1529,7 +1529,7 @@ export function validateBooking(b: Booking, s: HotelSettings): string | null {
   if ((b.coupons ?? []).reduce((n, c) => n + (c.amount > 0 ? c.amount : 0), 0) > b.price) return "쿠폰 합계가 판매 가격보다 커요. 판매 가격은 쿠폰 빼기 전 금액이에요.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.checkIn)) return "입실 날짜를 골라 주세요.";
   if (b.kind === "stay") {
-    if (!b.nights || b.nights < 1 || b.nights > 90) return "박수는 1~90박 사이로 적어 주세요.";
+    if (!b.nights || b.nights < 1 || b.nights > STAY_NIGHTS_MAX) return `박수는 1~${STAY_NIGHTS_MAX}박 사이로 적어 주세요.`;
     if (b.tentative && !b.roomId) return "임시 배치는 방을 고른 뒤에만 켤 수 있어요. 호실 미정은 「간단 예약」(타입 홀드)예요.";
   } else {
     if (!b.startTime || !b.endTime || !TIME_RE.test(b.startTime) || !TIME_RE.test(b.endTime))

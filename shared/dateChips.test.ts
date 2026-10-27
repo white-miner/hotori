@@ -15,16 +15,16 @@ test("칩: 오늘·내일·모레는 영업일 기준 (새벽 6시 전은 전날
   assert.equal(quickDateChips("2026-10-31")[1].date, "2026-11-01");
 });
 
-test("박수: 칩 1~7, 증감은 1~90으로 맞춤, 입력 글자 해석", () => {
+test("박수: 칩 1~7, 증감은 1~366으로 맞춤, 입력 글자 해석", () => {
   assert.deepEqual([...NIGHT_CHIPS], [1, 2, 3, 4, 5, 6, 7]);
   assert.equal(stepNights(1, -1), 1);
   assert.equal(stepNights(1, 1), 2);
-  assert.equal(stepNights(90, 1), 90);
+  assert.equal(stepNights(366, 1), 366);
   assert.equal(parseNightsInput(" 3 "), 3);
   assert.equal(parseNightsInput("0"), null);
   assert.equal(parseNightsInput(""), null);
   assert.equal(parseNightsInput("abc"), null);
-  assert.equal(parseNightsInput("500"), 90);
+  assert.equal(parseNightsInput("500"), 366);
 });
 
 test("요약: 요일 이름이 있는 입실 → 퇴실", () => {
@@ -52,6 +52,6 @@ test("달력 두 번 누르기: 멀리 있는 날짜도 '선택 해제' 없이 �
   r = pickRangeClick({ start: "2026-11-10" }, "2026-11-03");
   assert.deepEqual([r.checkIn, r.nights, r.state.start], ["2026-11-03", 1, "2026-11-03"]);
   // 너무 먼 퇴실일은 최대 박수로
-  r = pickRangeClick({ start: "2026-11-01" }, "2027-11-01");
-  assert.equal(r.nights, 90);
+  r = pickRangeClick({ start: "2026-11-01" }, "2028-11-01");
+  assert.equal(r.nights, 366);
 });
