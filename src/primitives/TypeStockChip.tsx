@@ -23,7 +23,7 @@ export function TypeStockChip({
   rem: number;
   total: number;
   lowThreshold: number;
-  /** 기본 `{total}실` · 판매 글랜스는 `칸~ · N실` 등 */
+  /** 기본 `{total}실` · 판매 글랜스는 `M/D · N실` (하룻밤만) */
   small?: ReactNode;
   onClick?: () => void;
   title?: string;
