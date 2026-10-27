@@ -31,6 +31,7 @@ import {
   previewChange,
   remaining,
   mergeViewBookings,
+  stockGlanceDates,
   stockLevel,
   stockTable,
   validateBooking,
@@ -172,6 +173,51 @@ test("오버부킹 전부 세기 (탭의 빨간 숫자)", async () => {
   const all = allOverbookings(S, stockTable(S, list, dates), dates);
   assert.deepEqual(all.map((x) => x.date), ["2026-10-20", "2026-10-21"]);
   assert.deepEqual(allOverbookings(S, stockTable(S, [], dates), dates), []);
+});
+
+test("주·월 글랜스 날짜: 오늘+만 · 전부 과거면 그대로", () => {
+  const month = ["2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27", "2026-11-02"];
+  assert.deepEqual(stockGlanceDates(month, "2026-10-27"), ["2026-10-27", "2026-11-02"]);
+  assert.deepEqual(stockGlanceDates(["2026-10-20", "2026-10-21"], "2026-10-27"), ["2026-10-20", "2026-10-21"]);
+  assert.deepEqual(stockGlanceDates(["2026-11-02"], "2026-10-27"), ["2026-11-02"]);
+});
+
+test("stockTable: 퇴실 고스트 + 같은 방 같은 밤 라이브는 1만 차감 (#125)", () => {
+  const ghost = bk({
+    id: "ghost",
+    typeId: "s",
+    roomId: "r201",
+    checkIn: "2026-10-24",
+    nights: 1,
+    arrived: true,
+    checkedOutAt: "2026-10-25T20:54:24.000Z",
+  });
+  const live = bk({
+    id: "live",
+    typeId: "s",
+    roomId: "r201",
+    checkIn: "2026-10-24",
+    nights: 1,
+    arrived: true,
+    checkedOutAt: null,
+  });
+  const total = stockTable(S, [], ["2026-10-24"]).get("s")!.get("2026-10-24")!;
+  assert.equal(stockTable(S, [ghost], ["2026-10-24"]).get("s")!.get("2026-10-24"), total - 1);
+  assert.equal(stockTable(S, [ghost, live], ["2026-10-24"]).get("s")!.get("2026-10-24"), total - 1, "재배정 후 −2 금지");
+  const clash = bk({
+    id: "clash",
+    typeId: "s",
+    roomId: "r201",
+    checkIn: "2026-10-24",
+    nights: 1,
+    arrived: true,
+    checkedOutAt: null,
+  });
+  assert.equal(
+    stockTable(S, [live, clash], ["2026-10-24"]).get("s")!.get("2026-10-24"),
+    total - 2,
+    "라이브 둘이면 물리 충돌만큼 차감",
+  );
 });
 
 test("표시 단계: 여유 / 적음 / 만실 / 초과", () => {

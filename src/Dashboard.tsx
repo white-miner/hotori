@@ -158,6 +158,7 @@ import {
   orderedFloors,
   stayEnd,
   stockTable,
+  stockGlanceDates,
   mergeViewBookings,
   typeLabel,
   typeTotals,
@@ -429,7 +430,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return mergeViewBookings(old.list, bookings);
   }, [needOld, old, oldKey, bookings]);
   const viewTable = useMemo(() => stockTable(s, viewBookings, viewDates, scopeId), [s, viewBookings, viewDates, scopeId]);
-  const viewOvers = useMemo(() => allOverbookings(s, viewTable, viewDates), [s, viewTable, viewDates]);
+  /** 주·월·기간: 오늘+ 숙박일만 오버부킹 집계 (과거 밤 min/건수가 거짓 부족으로 안 보이게) */
+  const viewGlanceDates = useMemo(() => stockGlanceDates(viewDates, today), [viewDates, today]);
+  const viewOvers = useMemo(
+    () => allOverbookings(s, viewTable, viewGlanceDates),
+    [s, viewTable, viewGlanceDates],
+  );
   // 넓은 표(월·긴 기간): 오늘이 들어 있으면 오늘 열이 보이게 옆으로 밀어 둬요
   const wideRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -3493,7 +3499,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           banner={banner}
           tabs={tabs}
           bName={bName}
-          over={over}
+          over={
+            viewOvers[0]
+              ? { date: viewOvers[0].date, type: viewOvers[0].type, over: viewOvers[0].over }
+              : null
+          }
           wideRef={wideRef}
           notify={(m) => notify(m)}
           onSimple={onSimple}
