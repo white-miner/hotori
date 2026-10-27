@@ -1,5 +1,9 @@
 import { joinSummary } from "../shared/changes";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import NightRatesTable from "./NightRatesTable";
+import OpenStayToggle from "./OpenStayToggle";
+import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
+import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
 import { saveFailMessage } from "../shared/errors";
 import { addDays, allRooms, daysBetween, dayLabel, md, stayEnd, STAY_NIGHTS_MAX, typeLabel, won, type Booking } from "../shared/ledger";
 import { freeForStay, groupDrafts, validateGroupAttach } from "../shared/group";
@@ -46,6 +50,14 @@ export default function GroupJoinSheet({
   const [nights, setNights] = useState(defNights);
   const [picked, setPicked] = useState<string[]>([]);
   const [rates, setRates] = useState<Record<string, string>>({});
+  /** 객실별 박별 요금표 (고치면 그 객실 금액 = 박별 합) */
+  const [tables, setTables] = useState<Record<string, StayNightRates>>({});
+  /** 이용 기간 미정 */
+  const [openOn, setOpenOn] = useState(false);
+  const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
+  useEffect(() => {
+    if (openOn) setNights(openStayNights(checkIn, today, openHold));
+  }, [openOn, checkIn, openHold, today]);
   const [arrived, setArrived] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -60,20 +72,25 @@ export default function GroupJoinSheet({
     return peer ? roomNightRate(peer, typeRate ?? null) : typeRate ?? 0;
   };
   const rateOf = (id: string) => (rates[id] != null ? Number(rates[id] || 0) : suggestRate(id));
+  const tableOf = (id: string): StayNightRates | null => (tables[id] ? syncStayNightRates(checkIn, nights, tables[id]) : null);
+  const totalOf = (id: string) => {
+    const t = tableOf(id);
+    return t ? sumNightAmounts(t.nights) : rateOf(id) * nights;
+  };
   const toggle = (id: string) => {
     setErr(null);
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   };
   const out = addDays(checkIn, nights);
-  const sum = picked.reduce((n, id) => n + rateOf(id) * nights, 0);
+  const sum = picked.reduce((n, id) => n + totalOf(id), 0);
   const dates = [today, addDays(today, 1), addDays(today, 2)];
 
   const save = async () => {
     if (busy) return;
-    const prices = picked.map((id) => rateOf(id) * nights);
+    const prices = picked.map(totalOf);
     const v = validateGroupAttach({ nights, roomIds: picked, prices, free });
     if (v) return setErr(v);
-    if (picked.some((id) => rateOf(id) <= 0)) return setErr("객실마다 1박 요금을 입력해 주세요.");
+    if (picked.some((id) => totalOf(id) <= 0)) return setErr("객실마다 1박 요금을 입력해 주세요.");
     setBusy(true);
     setErr(null);
     try {
@@ -86,6 +103,8 @@ export default function GroupJoinSheet({
         roomIds: picked,
         prices,
         memberRates: picked.map(rateOf),
+        memberNightRates: picked.map(tableOf),
+        openHold: openOn ? openHold : null,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
         arrived: arrived && checkIn <= today,
@@ -94,7 +113,7 @@ export default function GroupJoinSheet({
       for (const id of picked) {
         void data.logChange({ kind: "room", groupId, effectiveOn: checkIn, summary: joinSummary({ roomNo: L.roomLabel(id) ?? "?", checkIn, nights, rate: rateOf(id) }) });
       }
-      onSaved(`${groupName}에 ${picked.map((id) => L.roomLabel(id) + "호").join(", ")} 추가 · ${md(checkIn)}부터 ${nights}박`);
+      onSaved(`${groupName}에 ${picked.map((id) => L.roomLabel(id) + "호").join(", ")} 추가 · ${md(checkIn)}부터 ${openOn ? "∞ 미정" : `${nights}박`}`);
     } catch (e) {
       setErr(saveFailMessage(e, "객실을 추가하지 못했어요"));
     } finally {
@@ -114,10 +133,10 @@ export default function GroupJoinSheet({
         <div className="mb">
           <div className="gpp-hero">
             <span className="gpp-hl">
-              {picked.length ? `${picked.length}객실 · ${md(checkIn)}부터 ${nights}박` : "추가할 객실을 골라 주세요"}
+              {picked.length ? `${picked.length}객실 · ${md(checkIn)}부터 ${openOn ? "∞ 미정" : `${nights}박`}` : "추가할 객실을 골라 주세요"}
             </span>
             <span className="muted sm">
-              {picked.length ? `퇴실 ${md(out)} · 합계 ${won(sum)}원 · 다음 결제 등록에 자동으로 들어가요` : groupEnd ? `단체는 ${md(groupEnd)}까지 예정이에요` : ""}
+              {picked.length ? `${openOn ? "" : `퇴실 ${md(out)} · `}합계 ${won(sum)}원 · 다음 결제 등록에 자동으로 들어가요` : groupEnd ? `단체는 ${md(groupEnd)}까지 예정이에요` : ""}
             </span>
           </div>
 
@@ -133,7 +152,8 @@ export default function GroupJoinSheet({
             </label>
           </ChipGroup>
 
-          <Stepper value={nights} unit="박" min={1} max={STAY_NIGHTS_MAX} onChange={(n) => setNights(Math.max(1, Math.min(STAY_NIGHTS_MAX, n)))} />
+          {openOn ? null : <Stepper value={nights} unit="박" min={1} max={STAY_NIGHTS_MAX} onChange={(n) => setNights(Math.max(1, Math.min(STAY_NIGHTS_MAX, n)))} />}
+          <OpenStayToggle on={openOn} hold={openHold} onChange={(on, h) => { setOpenOn(on); setOpenHold(h); }} />
 
           <div className="gjn-rooms" role="group" aria-label="객실 선택">
             {rooms.map((r) => {
@@ -171,11 +191,27 @@ export default function GroupJoinSheet({
                         aria-label={`${L.roomLabel(id)}호 1박 요금`}
                         value={won(rateOf(id)) === "0" ? "" : won(rateOf(id))}
                         placeholder="0"
-                        onChange={(e) => setRates((m) => ({ ...m, [id]: e.target.value.replace(/\D/g, "").slice(0, 9) }))}
+                        onChange={(e) => {
+                          setTables((m) => {
+                            const { [id]: _drop, ...rest } = m;
+                            return rest;
+                          });
+                          setRates((m) => ({ ...m, [id]: e.target.value.replace(/\D/g, "").slice(0, 9) }));
+                        }}
                       />
                     </PriceInp>
                   </span>
-                  <span className="gpp-st muted sm">{nights}박 × {won(rateOf(id))} = {won(rateOf(id) * nights)}원</span>
+                  <span className="gpp-st muted sm">{tableOf(id) ? `박별 합계 ${won(totalOf(id))}원` : `${nights}박 × ${won(rateOf(id))} = ${won(totalOf(id))}원`}</span>
+                  <div className="gpp-nrt">
+                    <NightRatesTable
+                      checkIn={checkIn}
+                      nights={nights}
+                      rates={tableOf(id)}
+                      fallback={rateOf(id)}
+                      label={`${L.roomLabel(id)}호`}
+                      onChange={(r) => setTables((m) => ({ ...m, [id]: r }))}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

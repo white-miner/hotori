@@ -51,6 +51,8 @@ import type { EntryRequest, ToastOpt } from "./App";
 import { TypeBadge, lookups } from "./ui";
 import { BookingModeSeg, Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import StayDateFields from "./StayDateFields";
+import OpenStayToggle from "./OpenStayToggle";
+import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import AutoNightRates from "./AutoNightRates";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OnsitePayModeFields from "./OnsitePayModeFields";
@@ -108,6 +110,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   });
   const [checkIn, setCheckIn] = useState(p.checkIn ?? today);
   const [nights, setNights] = useState(Math.max(1, p.nights ?? 1));
+  /** 이용 기간 미정: 켜면 박수는 오늘 밤 + 방 보호까지 자동 */
+  const [openOn, setOpenOn] = useState(false);
+  const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
   const [guestName, setName] = useState("");
   const [guestPhone, setPhone] = useState("");
   const [guests, setGuests] = useState(1);
@@ -510,6 +515,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
       const decorate = (b: Booking): Booking => ({
         ...b,
+        ...(openOn ? { openEnded: true, holdAhead: openHold } : {}),
         guestName: name,
         guestPhone: phone,
         priceUnset,
@@ -688,9 +694,19 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               roomId={pathB ? roomIds[0] ?? null : null}
               onChange={(ci, n) => {
                 setCheckIn(ci);
-                setNights(n);
+                setNights(openOn ? openStayNights(ci, today, openHold) : n);
               }}
               onBlocked={() => notify("그 숙박일은 이미 다른 예약이 있어요")}
+              open={openOn}
+            />
+            <OpenStayToggle
+              on={openOn}
+              hold={openHold}
+              onChange={(on, h) => {
+                setOpenOn(on);
+                setOpenHold(h);
+                if (on) setNights(openStayNights(checkIn, today, h));
+              }}
             />
           </div>
         </div>

@@ -751,7 +751,7 @@ export default function NowSidePanel({
                           onClick={() => onOpenEnded?.(b, !b.openEnded, b.holdAhead ?? 1)}
                           title="끝 날짜 없이 계속 묵어요. 앱이 열릴 때 오늘 밤까지 박수를 이어 줘요 (결제는 따로)"
                         >
-                          ∞ 끝 날짜 없이 계속 묵음
+                          ∞ 이용 기간 미정
                         </button>
                         {b.openEnded ? (
                           <span className="nsel-hold" role="group" aria-label="방 보호">

@@ -1,6 +1,10 @@
 // 단체 예약 만들기: 방 여러 개를 한 번에 (모두 되거나 모두 안 돼요)
 // · 호실 지정 / 타입만(호실 나중에) · 방별 1박 · 방별 총액(타입 요금 프리필)
 import { useEffect, useMemo, useState } from "react";
+import OpenStayToggle from "./OpenStayToggle";
+import NightRatesTable from "./NightRatesTable";
+import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
+import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import { saveFailMessage } from "../shared/errors";
 import { askConfirm } from "./ConfirmDialog";
 import { ArrowRight, CalendarDays, Check, Minus, Plus } from "lucide-react";
@@ -39,7 +43,7 @@ import { PlatBadge, TypeBadge, lookups } from "./ui";
 import RoomClashNote from "./RoomClashNote";
 
 type AssignMode = "rooms" | "typeOnly";
-type PriceMode = "rate" | "member" | "room" | "total" | "line";
+type PriceMode = "rate" | "member" | "room" | "total" | "line" | "night";
 interface Props {
   data: HotelData;
   today: string;
@@ -60,6 +64,12 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const [checkIn, setCheckIn] = useState(init.checkIn);
   const [nights, setNights] = useState(clampStayNights(init.nights));
   const checkOutDate = checkOutFromStayNights(checkIn, nights);
+  /** 이용 기간 미정: 박수는 오늘 밤 + 방 보호까지 자동 */
+  const [openOn, setOpenOn] = useState(false);
+  const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
+  useEffect(() => {
+    if (openOn) setNights(openStayNights(checkIn, today, openHold));
+  }, [openOn, checkIn, openHold, today]);
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
@@ -72,6 +82,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const [roomPrice, setRoomPrice] = useState("");
   const [total, setTotal] = useState("");
   const [linePrices, setLinePrices] = useState<string[]>([]);
+  /** 박별 요금표 (방 순서대로) — 방이 바뀌면 비워요 */
+  const [nightTables, setNightTables] = useState<Record<number, StayNightRates>>({});
   /** 방별 1박 요금 (member 모드) */
   const [memberRates, setMemberRates] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
@@ -144,6 +156,13 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeIds.join("|"), Object.values(rateNum).join("|")]);
 
+  const tableOf = (i: number): StayNightRates | null => (nightTables[i] ? syncStayNightRates(checkIn, nights, nightTables[i]) : null);
+  const nightTotal = (i: number) => {
+    const t = tableOf(i);
+    return t ? sumNightAmounts(t.nights) : (rateNum[typeIds[i] ?? ""] ?? 0) * nights;
+  };
+  const roomsKey = typeIds.join("|") + "#" + (assignMode === "rooms" ? sorted.join(",") : "");
+  useEffect(() => setNightTables({}), [roomsKey]);
   const memberRateNums = memberRates.map((x) => Number(x || 0));
   const prices =
     mode === "rate"
@@ -154,7 +173,9 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           ? typeIds.map(() => Number(roomPrice || 0))
           : mode === "total"
             ? splitTotal(Number(total || 0), n)
-            : linePrices.map((x) => Number(x || 0));
+            : mode === "night"
+              ? typeIds.map((_, i) => nightTotal(i))
+              : linePrices.map((x) => Number(x || 0));
   const pickedTypes = types.filter((t) => countOf(t.id) > 0);
   const formula = rateFormula(
     pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
@@ -208,9 +229,10 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 입력해 주세요.");
     if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 입력해 주세요.");
     if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 입력해 주세요.");
+    if (mode === "night" && prices.some((x) => !x)) return setErr("방마다 박별 요금을 입력해 주세요.");
     if (!sum)
       return setErr(
-        mode === "room" ? "1실 가격을 입력해 주세요." : mode === "line" || mode === "member" ? "방마다 요금을 입력해 주세요." : "총액을 입력해 주세요.",
+        mode === "room" ? "1실 가격을 입력해 주세요." : mode === "line" || mode === "member" || mode === "night" ? "방마다 요금을 입력해 주세요." : "총액을 입력해 주세요.",
       );
     if (payMode === "postpaid" && !payer.company.trim() && !payer.name.trim()) return setErr("후불이면 결제자(회사 또는 담당자)를 입력해 주세요.");
     setBusy(true);
@@ -235,12 +257,14 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         typeIds: assignMode === "typeOnly" ? typeIds : undefined,
         prices,
         memberRates: memberFlats.some((x) => x > 0) ? memberFlats : undefined,
+        memberNightRates: mode === "night" ? typeIds.map((_, i) => tableOf(i)) : undefined,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
         tentative: assignMode === "rooms" && tentative,
+        openHold: openOn ? openHold : null,
       });
       const typeRatesPersist =
-        mode === "rate" || mode === "line" || mode === "member"
+        mode === "rate" || mode === "line" || mode === "member" || mode === "night"
           ? Object.fromEntries(pickedTypes.map((t) => [t.id, rateNum[t.id]]).filter(([, r]) => r))
           : null;
       await data.saveGroup(list, {
@@ -257,7 +281,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       const how = assignMode === "typeOnly" ? `${n}실(간단 예약·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(
-        `단체 ${name.trim()} ${how} · ${nights}박 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
+        `단체 ${name.trim()} ${how} · ${openOn ? "∞ 미정" : `${nights}박`} 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
       );
     } catch (e) {
       setErr(saveFailMessage(e, "하나도 저장하지 않았어요"));
@@ -343,6 +367,19 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           </div>
         </div>
         <div className="fld">
+          <label>이용 기간</label>
+          <OpenStayToggle
+            on={openOn}
+            hold={openHold}
+            onChange={(on, h) => {
+              setOpenOn(on);
+              setOpenHold(h);
+            }}
+          />
+        </div>
+        {openOn ? null : (
+          <>
+        <div className="fld">
           <label>
             퇴실<em>*</em>
           </label>
@@ -390,6 +427,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           </div>
         </div>
 
+          </>
+        )}
         <div className="fld gpick">
           <label>
             방<em>*</em>
@@ -538,6 +577,9 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               <button type="button" className={mode === "line" ? "on" : ""} onClick={() => setMode("line")}>
                 방별 총액
               </button>
+              <button type="button" className={mode === "night" ? "on" : ""} onClick={() => setMode("night")} title="방마다 박별(날짜별) 요금 · 총액 ⇄ 박별">
+                박별 요금
+              </button>
               <button type="button" className={mode === "room" ? "on" : ""} onClick={() => setMode("room")}>
                 1실 가격
               </button>
@@ -545,7 +587,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 총액 나누기
               </button>
             </div>
-            {mode === "rate" || mode === "line" || mode === "member" ? (
+            {mode === "rate" || mode === "line" || mode === "member" || mode === "night" ? (
               <div className="grates">
                 {pickedTypes.length ? (
                   pickedTypes.map((t) => (
@@ -612,6 +654,31 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                   <span className="muted sm">방을 고르면 방마다 1박 요금을 입력할 수 있어요 (예: 602=7만, 다른 방=8만).</span>
                 )}
                 <div className="muted sm gnote">방마다 다른 1박 · 총액 = 1박 × 박수 · 합계 = 방 합</div>
+              </div>
+            ) : null}
+            {mode === "night" ? (
+              <div className="glines gnight">
+                {lineRows.length ? (
+                  lineRows.map((row) => (
+                    <div className="gline-night" key={row.key}>
+                      <span className="gl-lab">
+                        <b>{row.label}</b>
+                        <span className="muted sm">{row.sub}</span>
+                      </span>
+                      <NightRatesTable
+                        checkIn={checkIn}
+                        nights={nights}
+                        rates={tableOf(row.i)}
+                        fallback={rateNum[row.typeId] ?? 0}
+                        label={row.label}
+                        onChange={(r) => setNightTables((m) => ({ ...m, [row.i]: r }))}
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <span className="muted sm">방을 고르면 방마다 총액을 쓰거나 박별로 나눠 쓸 수 있어요.</span>
+                )}
+                <div className="muted sm gnote">총액을 쓰면 박별로 나뉘고, 박별 금액을 고치면 총액이 바뀌어요.</div>
               </div>
             ) : null}
             {mode === "line" ? (
@@ -682,6 +749,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                       ? formula
                       : mode === "member"
                         ? "방별 1박 × 박수 합"
+                        : mode === "night"
+                          ? "방별 박별 합"
                         : mode === "line"
                           ? "방별 합"
                           : mode === "room"

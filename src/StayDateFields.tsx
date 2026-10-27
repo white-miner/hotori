@@ -18,9 +18,11 @@ interface Props {
   roomId: string | null;
   onChange: (checkIn: string, nights: number) => void;
   onBlocked: () => void;
+  /** 이용 기간 미정 중이면 박수 입력을 숨기고 ∞ 미정으로 */
+  open?: boolean;
 }
 
-export default function StayDateFields({ checkIn, nights, today, bookings, roomId, onChange, onBlocked }: Props) {
+export default function StayDateFields({ checkIn, nights, today, bookings, roomId, onChange, onBlocked, open }: Props) {
   const [calOpen, setCalOpen] = useState(false);
   const chips = quickDateChips(today);
   const active = activeDateChip(today, checkIn);
@@ -47,7 +49,7 @@ export default function StayDateFields({ checkIn, nights, today, bookings, roomI
           </Chip>
         </ChipGroup>
       </div>
-      <div className="sdf-row">
+      {open ? null : <div className="sdf-row">
         <span className="sdf-lab">숙박</span>
         <ChipGroup role="group" aria-label="박수 빠른 선택">
           {NIGHT_CHIPS.filter((n) => n <= 4).map((n) => (
@@ -63,12 +65,20 @@ export default function StayDateFields({ checkIn, nights, today, bookings, roomI
           max={STAY_NIGHTS_MAX}
           onChange={(n) => onChange(checkIn, Math.min(STAY_NIGHTS_MAX, Math.max(STAY_NIGHTS_MIN, n)))}
         />
-      </div>
+      </div>}
       <div className="sdf-sum" role="status" aria-live="polite">
-        <b>{sum.inLabel}</b> 입실 <span aria-hidden>→</span> <b>{sum.outLabel}</b> 퇴실
-        <span className="sdf-n">
-          {sum.nights}박 {sum.nights + 1}일
-        </span>
+        {open ? (
+          <>
+            <b>{sum.inLabel}</b> 입실 <span aria-hidden>→</span> <b>∞ 미정</b>
+          </>
+        ) : (
+          <>
+            <b>{sum.inLabel}</b> 입실 <span aria-hidden>→</span> <b>{sum.outLabel}</b> 퇴실
+            <span className="sdf-n">
+              {sum.nights}박 {sum.nights + 1}일
+            </span>
+          </>
+        )}
       </div>
       {calOpen ? (
         <NightPickCalendar

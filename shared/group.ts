@@ -1,6 +1,6 @@
 // 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
 import { type Booking, type HotelSettings, type PlacedRoom, STAY_NIGHTS_MAX, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
-import { syncStayNightRates } from "./nightrates";
+import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "./nightrates";
 import { paidOf } from "./payment";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
 
@@ -210,19 +210,30 @@ export function groupDrafts(p: {
   prices: number[];
   /** 방별 1박 단가 (있으면 night_rates 행렬을 채워요) */
   memberRates?: number[];
+  /** 방별 박별 요금표 (있으면 1박 단가보다 먼저 쓰고, 방 금액 = 박별 합) */
+  memberNightRates?: (StayNightRates | null | undefined)[];
   s: HotelSettings;
   guestsOf?: (typeId: string) => number | null;
   tentative?: boolean;
   noClean?: boolean;
   /** 「바로 입실」저장 시 true */
   arrived?: boolean;
+  /** 이용 기간 미정: 방 보호 일수 (null/없음 = 퇴실일이 정해진 예약). nights는 호출자가 openStayNights로 */
+  openHold?: number | null;
 }): Booking[] {
   const rmap = new Map(allRooms(p.s).map((r) => [r.id, r]));
   const now = new Date().toISOString();
   const tent = !!p.tentative;
   const ncx = !!p.noClean;
   const arr = !!p.arrived;
-  const withRates = (b: Booking, i: number): Booking => {
+  const open = p.openHold == null ? {} : { openEnded: true, holdAhead: Math.max(0, Math.min(30, Math.round(p.openHold))) };
+  const withRates = (b0: Booking, i: number): Booking => {
+    const b = { ...b0, ...open };
+    const table = p.memberNightRates?.[i];
+    if (table && b.nights) {
+      const r = syncStayNightRates(b.checkIn, b.nights, table);
+      return { ...b, nightRates: r, price: sumNightAmounts(r.nights) };
+    }
     const flat = p.memberRates?.[i];
     if (flat == null || flat <= 0 || !b.nights) return b;
     return { ...b, nightRates: syncStayNightRates(b.checkIn, b.nights, { flat }) };

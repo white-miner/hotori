@@ -27,7 +27,7 @@ export const CELL_BADGE_LABEL: Record<CellBadgeKind, string> = {
   walkIn: "바로입실",
   tentative: "임시",
   longStay: "장기",
-  openEnded: "∞ 계속",
+  openEnded: "∞ 미정",
 };
 
 /** 단체 색: 저장된 badgeColor 우선 · 없으면 groupId 해시색(표시 전용, 저장 안 함) */

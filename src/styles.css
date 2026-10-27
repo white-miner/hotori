@@ -5789,3 +5789,11 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .pev-more { font-size: 11.5px; }
 .pev-f { display: flex; gap: 6px; flex-wrap: wrap; }
 .pev-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line, #e7e7ea); background: #fff; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer; }
+
+/* ===== 이용 기간 미정 ===== */
+.ost { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; }
+.ost-btn { min-height: 44px; }
+.ost-hold { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ost-hint { flex-basis: 100%; }
+.gpp-nrt { grid-column: 1 / -1; }
+.gline-night { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line, #eee); }
