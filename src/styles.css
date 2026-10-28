@@ -6231,3 +6231,26 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-page .cell .r1[data-slot="head"], .board-page:not(.now-page):not(.one) .cell .r1[data-slot="head"] { height: var(--rc-h-head); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
 .now-page .cell .tl-row[data-slot="type"], .board-page:not(.now-page):not(.one) .cell .tl-row[data-slot="type"] { height: var(--rc-h-type); box-sizing: border-box; overflow: hidden; }
 .board-page:not(.now-page) .rc-grid > [data-slot="empty"] { grid-row: 3; line-height: var(--rc-h-period); }
+
+/* ---------- 왼쪽 사이드바 (스위치 켬 · 데스크톱만 · docs/sidebar.md) ----------
+   평소 56px 레일 → 임시 펼침 320px(본문 위에 겹침 · 카드 열 수 그대로) · 고정(본문이 좁아짐).
+   z-index: .top 30 < .sb 32 < .pop 40 < .dim 50 (열린 창이 사이드바 위) */
+.app.sb-active { --sb-top: 64px; --sb-pad: 56px; padding-left: var(--sb-pad); }
+.app.sb-active.sb-pinned { --sb-pad: 320px; }
+.app.sb-active > .top { margin-left: calc(-1 * var(--sb-pad)); }
+.sb { position: fixed; left: 0; top: var(--sb-top, 64px); bottom: 0; width: 56px; z-index: 32; box-sizing: border-box; background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
+.sb.open { width: 320px; }
+.sb.open:not(.pinned) { box-shadow: 10px 0 30px rgba(0, 0, 0, 0.12); }
+.sb-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 8px 10px; }
+.sb.rail .sb-head { justify-content: center; padding: 8px 0; }
+.sb-ico { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--ink3); }
+.sb-ico:hover, .sb-ico.on { background: var(--panel); color: var(--ink); }
+.sb-pin { margin-left: auto; }
+.sb-a, .sb-d { flex: none; }
+.sb-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.sb.rail .sb-scroll { display: none; }
+.sb-b, .sb-c { padding: 0 12px; }
+.sb-slot:empty { display: none; }
+.sb-off { flex: none; margin: 6px 14px 12px; padding: 4px 0; text-align: left; font-size: 12px; font-weight: 600; color: var(--ink3); text-decoration: underline; }
+.sb-off:hover { color: var(--ink); }
+@media print { .sb { display: none; } .app.sb-active { padding-left: 0; } .app.sb-active > .top { margin-left: 0; } }

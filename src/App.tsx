@@ -24,6 +24,7 @@ import Ledger from "./Ledger";
 import Issuance from "./Issuance";
 import Settings from "./Settings";
 import Shop from "./Shop";
+import { Sidebar, SidebarProvider, clearSidebarSwitch, initSidebarSwitch, useSidebarState } from "./Sidebar";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
 /** 데스크톱 텍스트 내비: 설정은 우측 톱니로 이동 (공지와 자리 교체) */
@@ -128,6 +129,10 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const [selDate, setSelDate] = useState(today);
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(false);
+  // 왼쪽 사이드바 스위치 (기본 꺼짐): 주소 ?sidebar=1 로 켜고 ?sidebar=0 또는 사이드바의 끄기 단추로 끔
+  const [sbSwitch, setSbSwitch] = useState(initSidebarSwitch);
+  const closeMenu = useCallback(() => setMenu(false), []);
+  const sb = useSidebarState(sbSwitch, menu, closeMenu);
   const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -254,7 +259,8 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
     return <div className="center-msg">{data.error ? `불러오지 못했어요: ${data.error}` : "장부를 불러오는 중…"}</div>;
 
   return (
-    <div className="app">
+    <SidebarProvider value={sb.ctx}>
+    <div className={sb.active ? `app sb-active${sb.pinned ? " sb-pinned" : ""}` : "app"}>
       <header className="top">
         <Brand sub={hotel.name} onHome={goHome} />
         <nav className="nav">
@@ -343,6 +349,16 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           </div>
         </div>
       </header>
+
+      {sb.active ? (
+        <Sidebar
+          st={sb}
+          onOff={() => {
+            clearSidebarSwitch();
+            setSbSwitch(false);
+          }}
+        />
+      ) : null}
 
       {view === "board" ? (
         <Dashboard
@@ -511,5 +527,6 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
         </div>
       ) : null}
     </div>
+    </SidebarProvider>
   );
 }
