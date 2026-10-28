@@ -58,9 +58,14 @@ for (const site of ["now", "board"] as const) {
       const iPay = top.indexOf("rc-pay");
       const iDue = top.indexOf("rc-due");
       if (m.isMember) {
-        // 구성원 카드: 객실번호 · 기간 · 연동 · 박당 요금만 (결제·받을 돈·회사는 대표객실에서)
+        // 구성원 카드: 객실번호 · 기간 · 연동 · (자기 플랫폼 판매금액 한 줄) · 박당 요금. 단체 이체/카드·받을 돈·회사는 없음
         assert.match(top, /class="rc-link"[^>]*>연동 본관 602호</, "구성원은 연동 대표객실을 작게");
-        assert.equal(iPay + iDue, -2, "구성원 카드에는 결제·받을 돈 줄이 없어요");
+        assert.equal(iDue, -1, "구성원 카드에는 받을 돈 줄이 없어요");
+        if (e.pay) {
+          assert.match(top, /class="rc-pay amt-paid"/, "자기 플랫폼 판매금액 한 줄");
+          assert.match(text(top), /야놀자 320,000/, "플랫폼 이름 + 금액");
+          assert.doesNotMatch(top, /이체|카드|현금/, "단체 이체·카드는 구성원 카드에 없어요");
+        } else assert.equal(iPay, -1, "플랫폼 금액이 없으면 결제 줄 없음");
         assert.doesNotMatch(who, /rc-co/, "구성원 카드에는 회사 줄이 없어요");
         if (e.rate) assert.match(who, /class="rc-rate amt-rate"/);
         return;

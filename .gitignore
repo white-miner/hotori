@@ -8,4 +8,6 @@ dist/
 !.env.production
 !.env.development
 dist-server/
+test-results/
+playwright-report/
 node_modules
