@@ -114,6 +114,8 @@ export interface StaySaleCreateInput {
   nights: number;
   guestName: string;
   guestPhone?: string | null;
+  /** 회사명 (선택 · 객실 카드에 표시) */
+  company?: string | null;
   guests: number;
   /** 1실이면 판매가 · 2실 이상이면 객실별 요금(roomRates)의 합 (나눠 담지 않아요) */
   price: number;
@@ -240,6 +242,7 @@ export function buildStaySaleDrafts(
       priceUnset: !!input.priceUnset,
       guestName: name,
       guestPhone: input.guestPhone?.trim() || null,
+      company: input.company?.trim() || null,
       typeId: room.typeId,
       roomId: rid,
       segments: null,
@@ -289,6 +292,7 @@ export function buildStaySaleDrafts(
   }).map((b, i) => ({
     ...b,
     guestPhone: input.guestPhone?.trim() || null,
+    company: input.company?.trim() || null,
     priceUnset: !!input.priceUnset,
     price: input.priceUnset ? 0 : (withTime[i] ?? 0),
     earlyIn: earlyH || null,

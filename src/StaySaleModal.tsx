@@ -69,6 +69,7 @@ export default function StaySaleModal({
   const [platformId, setPlatformId] = useState(() => staySalePlatformIdForMode(s, "onsite"));
   const [guestName, setName] = useState(occupied?.guestName ?? "");
   const [guestPhone, setPhone] = useState(occupied?.guestPhone ?? "");
+  const [company, setCompany] = useState(occupied?.company ?? "");
   const [guests, setGuests] = useState(occupied?.guests ?? 1);
   const [nights, setNights] = useState(Math.max(1, occupied?.nights ?? 1));
   const [price, setPrice] = useState(occupied && occupied.price > 0 ? String(occupied.price) : "");
@@ -100,6 +101,7 @@ export default function StaySaleModal({
     setPlatformId(staySalePlatformIdForMode(s, "onsite"));
     setName(occupied?.guestName ?? "");
     setPhone(occupied?.guestPhone ?? "");
+    setCompany(occupied?.company ?? "");
     setGuests(occupied?.guests ?? 1);
     setNights(Math.max(1, occupied?.nights ?? 1));
     setPrice(occupied && occupied.price > 0 ? String(occupied.price) : "");
@@ -235,6 +237,7 @@ export default function StaySaleModal({
       nights,
       guestName,
       guestPhone,
+      company: company.trim() || null,
       guests,
       price: resolved,
       roomRates: multi && !priceUnset ? rateRows.map((r) => r.rates) : undefined,
@@ -352,6 +355,18 @@ export default function StaySaleModal({
                   onName={setName}
                   onPhone={setPhone}
                   phoneRequired={onsite}
+                />
+              </div>
+              <div className="fld">
+                <label htmlFor="ss-company">회사명</label>
+                <input
+                  id="ss-company"
+                  className="inp"
+                  value={company}
+                  maxLength={60}
+                  placeholder="선택 · 예: 오서건설"
+                  onChange={(e) => setCompany(e.target.value)}
+                  aria-label="회사명"
                 />
               </div>
               <div className="fld">

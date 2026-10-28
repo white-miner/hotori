@@ -122,6 +122,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
   const [guestName, setName] = useState("");
   const [guestPhone, setPhone] = useState("");
+  const [company, setCompany] = useState("");
   const [guests, setGuests] = useState(1);
   const [rates, setRates] = useState<Record<string, string>>(() => {
     const ci = p.checkIn ?? today;
@@ -310,6 +311,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
     priceUnset,
     guestName,
     guestPhone: guestPhone.trim() || null,
+    company: company.trim() || null,
     typeId: primaryTypeId,
     roomId: null,
     segments: null,
@@ -544,6 +546,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         ...(openOn ? { openEnded: true, holdAhead: openHold } : {}),
         guestName: name,
         guestPhone: phone,
+        company: company.trim() || null,
         priceUnset,
         price: priceUnset ? 0 : b.price,
         nightRates: multiRooms ? b.nightRates : (ratesForBooking(b.typeId, priceUnset ? 0 : b.price) ?? b.nightRates),
@@ -790,6 +793,21 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               phoneRequired={onsite}
             />
             <div className="muted sm">바로입실 시 이름·연락처 비워도 돼요 · 호실 필수</div>
+          </div>
+        </div>
+
+        <div className="fld">
+          <label htmlFor="simple-company">회사명</label>
+          <div className="payb">
+            <input
+              id="simple-company"
+              className="inp"
+              value={company}
+              maxLength={60}
+              placeholder="선택 · 예: 오서건설 (객실 카드에 보여요)"
+              onChange={(e) => setCompany(e.target.value)}
+              aria-label="회사명"
+            />
           </div>
         </div>
 

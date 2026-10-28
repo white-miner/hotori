@@ -274,3 +274,25 @@ test("바로입실: 현장·플랫폼 빈 이름·전화 OK · arrived", () => {
     /연락처/,
   );
 });
+
+test("바로입실 회사명: 적으면 예약마다 저장 · 비우면 null (다실도 같은 회사)", () => {
+  const base = {
+    checkIn: "2026-10-23",
+    nights: 1,
+    guestName: "김OTA",
+    guestPhone: "",
+    guests: 1,
+    price: 90000,
+    platformId: "yanol",
+    payMode: "postpaid" as const,
+    depAmt: "",
+    depMethod: "card" as const,
+    bizDate: "2026-10-23",
+  };
+  const one = buildStaySaleDrafts(s, { ...base, roomIds: ["r1"], company: " 오서건설 " });
+  assert.ok(!("err" in one));
+  assert.equal(one[0]!.company, "오서건설");
+  const none = buildStaySaleDrafts(s, { ...base, roomIds: ["r1"] });
+  assert.ok(!("err" in none));
+  assert.equal(none[0]!.company, null);
+});
