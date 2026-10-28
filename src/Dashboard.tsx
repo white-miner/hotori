@@ -217,6 +217,7 @@ import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholder
 import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
 import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowPlatformPayPart, nowRangeFull } from "../shared/nowCard";
 import RoomCardFacts from "./RoomCardFacts";
+import { cardRoomHead, roomCardModel } from "../shared/roomCard";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
@@ -621,7 +622,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
   /** 글랜스 칩 → 판매 캘린더 오늘·타입 포커스 */
   const [stockFocus, setStockFocus] = useState<{ typeId: string; date: string } | null>(null);
-  /** 룸 타임라인 헤더 ‘요금 설정’ (판매 캘린더와 같은 시트) */
+  /** 월간 예약 헤더 ‘요금 설정’ (판매 캘린더와 같은 시트) */
   const [calRateSheet, setCalRateSheet] = useState(false);
   const [calRateBusy, setCalRateBusy] = useState(false);
   /** 고객 이름·연락처 검색 (현황·배치 공통 · 칸 비율 무변경) */
@@ -1769,6 +1770,26 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const peers = groupStayPeers(bookings, b.groupId);
     return peers.length >= 2 && groupLeadOf(b.groupId, peers)?.id === b.id;
   };
+  /** 객실 카드 한 장의 내용 — 현황·배치가 같은 함수를 써요 (shared/roomCard.ts · docs/room-card-spec.md) */
+  const cardModelOf = (b: Booking, plat: ReturnType<typeof L.plats.get>, view: string, todayNow: string) =>
+    roomCardModel({
+      b,
+      plat,
+      bookings,
+      info: b.groupId ? (data.groups.get(b.groupId) ?? null) : null,
+      view,
+      today: todayNow,
+      preferredLeadId: b.groupId ? (data.groups.get(b.groupId)?.leadBookingId ?? null) : null,
+    });
+  /** 건물이 여러 개면 예약이 있는 카드 머리에 건물 이름 (같은 호수가 건물마다 있어요) */
+  const bldTag = (roomId: string, b: Booking | null | undefined) => {
+    const h = cardRoomHead({ no: L.rooms.get(roomId)?.no ?? "" }, L.rooms.get(roomId)?.building?.name, L.multi);
+    return b && isActive(b) && h.building ? (
+      <em className="rc-bld" title={`${h.building} ${h.no}`}>
+        {h.building}
+      </em>
+    ) : null;
+  };
   const leadTag = (b: Booking | null | undefined) =>
     isLeadRoom(b) ? (
       <em className="grp-lead-tag" title="대표객실 — 누르면 같은 단체 객실 번호">
@@ -1973,6 +1994,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onToggle={() => toggleGroupPop(r.id)}
           groupName={b?.groupName}
         >
+          {bldTag(r.id, b)}
           <FitText className={`no ${k}`} text={r.no} />
           {leadTag(b)}
         </GroupRoomNoHit>
@@ -2075,33 +2097,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : "assign-off"
       : "";
     const gMark = groupBoardMark(b);
-    // 카드 사실 줄 (순서: 객실번호 → 이용기간 → 결제수단+금액 → 이름 → 회사 → 하루 요금): top은 이름 위, who는 이름 아래
+    // 카드 사실 줄 (docs/room-card-spec.md): 순서 객실번호 → 이용기간(+박수) → 결제수단+금액 → 이름 → 회사 → 박당 요금. top은 이름 위, who는 이름 아래
+    const cardM = !readOnly && !cancelled ? cardModelOf(b, L.plats.get(b.platformId), selDate, today) : null;
     const factsEl = (slot: "top" | "who") =>
-      !readOnly && !cancelled
-        ? ((plat) => {
-            const grpInfo = b.groupId ? (data.groups.get(b.groupId) ?? null) : null;
-            const lead = isLeadRoom(b);
-            const platPart = nowPlatformPayPart(b, plat);
-            const parts = [...(platPart ? [platPart] : []), ...nowPayParts(b.payments, lead ? grpInfo?.payments : null)];
-            const tone = nowAmountTone(b, plat);
-            const member = !!b.groupId && !lead && bookings.filter((x) => x.groupId === b.groupId && isActive(x)).length >= 2;
-            const pay0 = nowPayText(parts) ?? (!b.groupId && tone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
-            return (
-              <RoomCardFacts
-                slot={slot}
-                rate={isLongStay(b) ? nowLongStayRate(b.longStayRate, selDate) : nowNightRate(b, selDate)}
-                payText={member ? (platPart ? nowPayText([platPart]) : null) : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
-                period={b.groupId || b.openEnded ? `${nowRangeFull(b)}${lead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}` : undefined}
-                openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
-                payTitle={platPart ? `${plat?.name ?? "플랫폼"}에 낸 결제 금액 (예약에 적힌 판매가)` : lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
-                tone={tone}
-                due={nowDueAmount(b, plat, b.groupId ? { members: groupStayPeers(bookings, b.groupId), info: grpInfo } : null, today, lead)}
-                company={nowCompanyOf(b, grpInfo)}
-                viewLabel={dayLabel(selDate)}
-              />
-            );
-          })(L.plats.get(b.platformId))
-        : null;
+      cardM ? (
+        <RoomCardFacts
+          slot={slot}
+          rate={cardM.rate}
+          payText={cardM.payText}
+          period={[cardM.period, cardM.progress].filter(Boolean).join(" · ")}
+          openEnded={cardM.openEnded}
+          payTitle={cardM.payTitle}
+          tone={cardM.tone}
+          due={cardM.due}
+          company={cardM.company}
+          viewLabel={dayLabel(selDate)}
+        />
+      ) : null;
     return (
       <div
         key={r.id}
@@ -2165,13 +2177,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 {ws[0].text}
               </span>
             ) : (
-              <span className="nownights-acc">
-                {(() => {
-                  const n = usedNights(b) ?? b.nights ?? 1;
-                  if (n <= 1) return "1박";
-                  return `${nth}/${n}박`;
-                })()}
-              </span>
+              <span />
             )}
             {tags.length ? (
               <span className="ttags">
@@ -2207,7 +2213,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const nightIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.filter((r) => { const x = board.byRoom.get(r.id); return x && isActive(x); }).length, 0);
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
 
-  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 룸 타임라인 (+주차)
+  const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 월간 예약 (+주차)
   const tabs = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
@@ -2233,7 +2239,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </button>
       <button role="tab" aria-selected={tab === "calendar"} className={tab === "calendar" ? "on" : ""} onClick={() => setTab("calendar")}>
-        룸 타임라인
+        월간 예약
       </button>
       {s.parking.enabled ? (
         <button role="tab" aria-selected={tab === "parking"} className={tab === "parking" ? "on" : ""} onClick={() => setTab("parking")}>
@@ -3400,6 +3406,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onToggle={() => toggleGroupPop(r.id)}
           groupName={b?.groupName}
         >
+          {bldTag(r.id, b)}
           <span className={`no ${k}`} title={r.no}>
             {r.no}
           </span>
@@ -3442,21 +3449,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     const f = nowFlags(b, today, nowOpts);
     if (nowFilter === "tentative" && !f.tentative) return null;
-    const nights = nowNightRange(b);
-    // 숙박예약(입실 전)은 진행 숨김 · 길이 `N박` · 연박 진행 `K/N박` (풀 라인 금지)
-    const staySummary = nowStaySummary(b, today, f.kind !== "arriving");
     const plat = L.plats.get(b.platformId);
-    const groupCtx =
-      b.groupId
-        ? {
-            members: groupStayPeers(bookings, b.groupId),
-            info: data.groups.get(b.groupId) ?? null,
-          }
-        : null;
-    const amountTone = nowAmountTone(b, plat, groupCtx, today);
+    const cardM = cardModelOf(b, plat, today, today);
+    const groupCtx = cardM.groupCtx;
     // 단체 결제 마크: 대표객실(대표객실) 칸 모서리에 작게 한 번 — 누르면 단체 상세(객실·박별 요금·결제 내역·차액)
-    const grpLead =
-      !!groupCtx && groupCtx.members.length >= 2 && b.stayMode !== "long_stay" && groupLeadOf(b.groupId!, groupCtx.members)?.id === b.id;
+    const grpLead = cardM.isLead;
     const grpLine = grpLead
       ? nowGroupLine(
           groupLedger(groupCtx!.members, (groupCtx!.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
@@ -3464,13 +3461,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           }),
         )
       : null;
-    // 카드 사실: 이 객실의 하루 요금 · 결제수단+금액(방 자기 결제, 대표객실이면 단체 결제도) · 회사명
-    const cardRate = f.longStay ? nowLongStayRate(b.longStayRate, today) : nowNightRate(b, today);
-    const cardPlatPart = nowPlatformPayPart(b, plat);
-    const cardPayParts = [...(cardPlatPart ? [cardPlatPart] : []), ...nowPayParts(b.payments, grpLead ? groupCtx?.info?.payments : null)];
-    const cardPayRaw = (f.longStay ? nowAmountGlance(b, plat, groupCtx) : null) ?? nowPayText(cardPayParts) ?? (amountTone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
-    const cardPay = b.groupId && !grpLead && groupCtx && groupCtx.members.length >= 2 ? (cardPlatPart ? nowPayText([cardPlatPart]) : null) : cardPayRaw;
-    const cardCompany = nowCompanyOf(b, groupCtx?.info);
     const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
@@ -3521,7 +3511,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <button
               type="button"
               className="nowdate-btn"
-              aria-label={`이용 기간 ${nowRangeFull(b)}`}
+              aria-label={`이용 기간 ${cardM.period}`}
               aria-expanded={popOpen}
               onClick={(e) => {
                 e.stopPropagation();
@@ -3529,14 +3519,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 setNightPopId(popOpen ? null : b.id);
               }}
             >
-              <span className="nowchip nowdate">{nowRangeFull(b)}{grpLead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}</span>
+              <span className="nowchip nowdate">{cardM.period}</span>
               <span className="nowdate-caret" aria-hidden>
                 ▾
               </span>
             </button>
-            {staySummary ? (
+            {cardM.progress ? (
               <span className="nowchip nownights" title="숙박">
-                {staySummary}
+                {cardM.progress}
               </span>
             ) : null}
             {popOpen ? (
@@ -3555,14 +3545,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </div>
           <RoomCardFacts
             slot="top"
-            rate={cardRate}
-            payText={cardPay}
-            payTitle={cardPlatPart ? `${plat?.name ?? "플랫폼"}에 낸 결제 금액 (예약에 적힌 판매가)` : grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
-            tone={f.longStay ? "due" : amountTone}
-            due={nowDueAmount(b, plat, groupCtx, today, grpLead)}
-            company={cardCompany}
+            rate={cardM.rate}
+            payText={cardM.payText}
+            payTitle={cardM.payTitle}
+            tone={cardM.tone}
+            due={cardM.due}
+            company={cardM.company}
             viewLabel={dayLabel(today)}
-            openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
+            openEnded={cardM.openEnded}
           />
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
@@ -3584,14 +3574,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
           <RoomCardFacts
             slot="who"
-            rate={cardRate}
-            payText={cardPay}
-            payTitle={grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
-            tone={f.longStay ? "due" : amountTone}
-            due={nowDueAmount(b, plat, groupCtx, today, grpLead)}
-            company={cardCompany}
+            rate={cardM.rate}
+            payText={cardM.payText}
+            payTitle={cardM.payTitle}
+            tone={cardM.tone}
+            due={cardM.due}
+            company={cardM.company}
             viewLabel={dayLabel(today)}
-            openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
+            openEnded={cardM.openEnded}
           />
           {grpLine ? (
             <button
@@ -4286,7 +4276,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <div className="hl">
             <div>
               <div className="hl-t">
-                <h1>룸 타임라인</h1>
+                <h1>월간 예약</h1>
                 {periodSeg}
               </div>
               <div className="when">

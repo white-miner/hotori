@@ -1268,7 +1268,7 @@ export default function Settings({ data, email, notify }: Props) {
 
         <section className="card" id="set-pcolor">
           <h3>플랫폼 색</h3>
-          <div className="sub">룸 타임라인 막대의 옅은 바탕 색이에요. 입실 완료면 같은 색 진한 테두리가 생겨요. 공유 링크 화면도 같은 색으로 보여요.</div>
+          <div className="sub">월간 예약 막대의 옅은 바탕 색이에요. 입실 완료면 같은 색 진한 테두리가 생겨요. 공유 링크 화면도 같은 색으로 보여요.</div>
           {s.platforms.map((p) => {
             const def = defaultPlatformColor(p);
             const cur = platPaint(p);

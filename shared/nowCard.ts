@@ -8,10 +8,10 @@ import { stayAddons } from "./extend";
 import { type LongStayRate, nightAmount } from "./longstay";
 import { PAYMENT_METHOD_LABEL, type Payment, isOnsite } from "./payment";
 
-/** 이용기간 `10/25~10/27` (점유 밤 첫날~마지막날 · 하루면 `10/25` · 미정이면 `10/25~`) */
+/** 이용기간 `10/25~10/27` (점유 밤 첫날~마지막날 · 하루면 `10/25` · 퇴실 미정이면 `10/25 ~`) */
 export function nowRangeFull(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut"> & { openEnded?: boolean }): string {
   const r = nowNightRange(b);
-  if (b.openEnded && b.kind === "stay" && !b.earlyOut) return r.label;
+  if (b.openEnded && b.kind === "stay" && !b.earlyOut) return `${r.fromLabel} ~`;
   return r.from === r.to ? md(r.from) : `${md(r.from)}~${md(r.to)}`;
 }
 
@@ -46,14 +46,14 @@ export function nowNightRate(b: RateBooking, date: string): NowNightRate {
     const max = Math.max(...vals);
     return { amount: Math.max(0, Math.round(Number(nr.nights![view]) || 0)), varies: min !== max, basis: "night", min, max };
   }
-  if (nr?.flat != null && nr.flat > 0) {
-    const a = Math.round(nr.flat);
-    return { amount: a, varies: false, basis: "flat", min: a, max: a };
-  }
-  // 일부 박만 적어 둔 표: 적혀 있는 박의 값만 (빈 박을 평균으로 메우지 않아요)
-  const rec = nr?.nights ? dates.map((d) => Math.max(0, Math.round(Number(nr.nights![d]) || 0))).filter((v) => v > 0) : [];
+  // 일부 박만 적어 둔 표: 보는 날짜가 적혀 있으면 그 값이 먼저 (1박 요금이 있어도 손으로 적은 박이 이겨요). 빈 박은 평균으로 메우지 않아요
+  const flat = nr?.flat != null && nr.flat > 0 ? Math.round(nr.flat) : 0;
   const own = Math.round(Number(nr?.nights?.[view]) || 0);
-  if (own > 0) return { amount: own, varies: rec.length > 1 && Math.min(...rec) !== Math.max(...rec), basis: "night", min: Math.min(...rec), max: Math.max(...rec) };
+  if (own > 0) {
+    const vals = dates.map((d) => Math.round(Number(nr?.nights?.[d]) || 0) || flat).filter((v) => v > 0);
+    return { amount: own, varies: vals.length > 1 && Math.min(...vals) !== Math.max(...vals), basis: "night", min: Math.min(...vals), max: Math.max(...vals) };
+  }
+  if (flat > 0) return { amount: flat, varies: false, basis: "flat", min: flat, max: flat };
   // 1박은 객실료 그대로가 그 밤의 요금 (나눌 게 없음). 연박에 박별 요금이 없으면 비워 둬요 — 총액÷박수 같은 추정 금지
   if (n === 1) {
     const room = b.price - extrasTotal(nr) - stayAddons(b);

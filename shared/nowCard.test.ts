@@ -161,7 +161,7 @@ test("카드 순서: 이용기간·결제는 이름 위(top), 회사·하루 요
 });
 
 test("단체 객실: 플랫폼 결제금액은 구성원 카드에도 자기 금액으로 — 단체 이체·카드는 대표객실만", () => {
-  const src = readFileSync(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
-  assert.match(src, /member \? \(platPart \? nowPayText\(\[platPart\]\) : null\)/, "배치 카드 구성원도 플랫폼 금액");
-  assert.match(src, /\(cardPlatPart \? nowPayText\(\[cardPlatPart\]\) : null\)/, "현황 카드 구성원도 플랫폼 금액");
+  // 두 화면이 같은 카드 모델(shared/roomCard.ts)을 써요 — 구성원 카드도 자기 플랫폼 금액만
+  const src = readFileSync(new URL("./roomCard.ts", import.meta.url), "utf8");
+  assert.match(src, /isMember\s*\?\s*platPart\s*\?\s*nowPayText\(\[platPart\]\)/, "구성원 카드도 플랫폼 금액");
 });

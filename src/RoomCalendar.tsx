@@ -1,4 +1,4 @@
-// 룸 타임라인: 방마다 한 줄, 날짜마다 한 칸. 숙박은 막대, 대실은 그날 칸의 작은 점.
+// 월간 예약: 방마다 한 줄, 날짜마다 한 칸. 숙박은 막대, 대실은 그날 칸의 작은 점.
 // 칸을 하나하나 그리지 않고 줄마다 배경 격자 + 막대만 절대 위치로 그려요 (60실 × 92일도 가볍게).
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BedDouble, CircleDot, Search, UserRoundX, X } from "lucide-react";
@@ -456,7 +456,7 @@ export default function RoomCalendar({ s, L, bookings, dates, today, scopeId, mu
 
   return (
     <>
-      <div className="cal-filters" role="toolbar" aria-label="룸 타임라인 필터">
+      <div className="cal-filters" role="toolbar" aria-label="월간 예약 필터">
         {s.types.length ? (
           <ChipGroup scroll className="cal-filter-scroll" aria-label="객실 타입">
             {s.types.map((t) => (

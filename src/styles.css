@@ -1457,7 +1457,7 @@ label.ck input[type="checkbox"] {
   .stock-wrap.big.wide .srow .th b { font-size: 12.5px; }
 }
 
-/* ---------- 룸 타임라인 (구 객실 캘린더) ---------- */
+/* ---------- 월간 예약 (구 객실 캘린더) ---------- */
 .cal-filters {
   display: flex;
   flex-direction: column;
@@ -6075,3 +6075,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .grr-one { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #4b5563; font-variant-numeric: tabular-nums; }
 .grr-flag.sug { background: #fff7e6; color: #8a5a00; border: 1px dashed #e0b25a; }
 .nrt-note { font-style: normal; }
+
+/* 객실 카드 머리: 건물이 여러 개일 때 건물 이름 (작고 흐리게 — 호수가 주인공) */
+.cell .rc-bld { font-style: normal; font-size: 9px; font-weight: 700; color: var(--ink4, #8a8a93); margin-right: 3px; white-space: nowrap; max-width: 48px; overflow: hidden; text-overflow: ellipsis; vertical-align: 1px; }
