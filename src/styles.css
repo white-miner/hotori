@@ -6045,3 +6045,9 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .gch-open-tag { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #2a52be; color: #fff; margin-left: auto; margin-right: 8px; }
 .gch-item.up .gch-row, .gch-row.gch-up { opacity: .6; }
 .gch-up-tag { display: block; font-size: 10.5px; font-weight: 700; color: var(--muted, #6b7280); }
+/* 판매 캘린더 일괄 적용: 타입마다 자기 요금 */
+.sales-bulk-rates { display: grid; gap: 6px; }
+.sales-bulk-same { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sales-bulk-rate { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 1.2fr); gap: 4px 8px; align-items: center; }
+.sales-bulk-rate-n { display: flex; align-items: center; gap: 6px; font-weight: 700; min-width: 0; }
+.sales-bulk-rate-src { grid-column: 1 / -1; }

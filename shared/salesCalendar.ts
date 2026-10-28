@@ -202,6 +202,52 @@ export function applyBulkTypeDates<T extends SalesSettings>(
   return next;
 }
 
+/** 일괄 적용 대상 요일: 전체 · 평일 밤만 · 주말 밤만 (특별일·주말 요일 설정을 따라요) */
+export type BulkDayFilter = "all" | "weekday" | "weekend";
+
+export function filterBulkDates(s: Pick<SalesSettings, "specialDates" | "weekendDays">, dates: string[], days: BulkDayFilter = "all"): string[] {
+  if (days === "all") return dates;
+  const special = s.specialDates ?? [];
+  return dates.filter((d) => isWeekendNight(d, special, s.weekendDays) === (days === "weekend"));
+}
+
+/** 타입마다 자기 금액으로 적용. rate undefined = 그 타입 요금은 그대로 (판매 설정만) */
+export type BulkTypeEntry = { typeId: string; rate?: number | null };
+
+export function applyBulkPerType<T extends SalesSettings>(
+  s: T,
+  entries: BulkTypeEntry[],
+  dates: string[],
+  opts: { stopSell?: boolean; days?: BulkDayFilter } = {},
+): T {
+  const target = filterBulkDates(s, dates, opts.days ?? "all");
+  let next = s;
+  for (const e of entries) {
+    for (const date of target) {
+      if (e.rate !== undefined) next = setTypeDateRate(next, e.typeId, date, e.rate);
+      if (opts.stopSell !== undefined) next = setTypeStopSell(next, e.typeId, date, opts.stopSell);
+    }
+  }
+  return next;
+}
+
+/** 현재 요금의 출처 이름 (특별일/시즌/주말/평일/기본) */
+export function rateSourceLabel(r: Pick<ResolvedRate, "source">): string {
+  return r.source === "date" ? "특별일" : r.source === "season" ? "시즌" : r.source === "weekend" ? "주말" : r.source === "weekday" ? "평일" : r.source === "flat" ? "기본" : "미설정";
+}
+
+/** 선택한 날짜들의 현재 요금 범위와 출처 (일괄 적용 칸의 안내) */
+export function bulkRateHint(
+  s: SalesSettings,
+  typeId: string,
+  dates: string[],
+): { min: number; max: number; tags: string[] } {
+  const rs = dates.map((d) => resolveNightRate(s, typeId, d));
+  if (!rs.length) return { min: 0, max: 0, tags: [] };
+  const amts = rs.map((r) => r.amount);
+  return { min: Math.min(...amts), max: Math.max(...amts), tags: [...new Set(rs.map(rateSourceLabel))] };
+}
+
 /** 예약이 점유하는 숙박일 중 판매중지된 날짜 (타입 기준) */
 export function stopSellDatesForStay(
   s: Pick<SalesSettings, "typeStopSell">,

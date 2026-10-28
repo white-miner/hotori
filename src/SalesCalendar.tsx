@@ -18,8 +18,13 @@ import {
   stockGlanceNight,
 } from "../shared/ledger";
 import {
+  applyBulkPerType,
   applyBulkTypeDates,
   baseRateFor,
+  bulkRateHint,
+  filterBulkDates,
+  type BulkDayFilter,
+  type BulkTypeEntry,
   resolveNightRate,
   bookedCount,
   isStopSell,
@@ -463,11 +468,17 @@ export default function SalesCalendar({
                 setBulkPanel(false);
               }}
               onClose={() => setBulkPanel(false)}
-              onApply={async (typeIds, patch) => {
-                const n = typeIds.length * picked.length;
+              s={s}
+              onApply={async (entries, opts) => {
+                const days = filterBulkDates(s, picked, opts.days ?? "all");
+                if (!days.length) {
+                  notify("고른 요일에 해당하는 날이 없어요");
+                  return;
+                }
+                const n = entries.length * days.length;
                 await saveSettings(
-                  applyBulkTypeDates(s, typeIds, picked, patch),
-                  `${typeIds.length}타입 · ${picked.length}일 (${n}칸)에 적용했어요`,
+                  applyBulkPerType(s, entries, picked, opts),
+                  `${entries.length}타입 · ${days.length}일 (${n}칸)에 적용했어요`,
                 );
                 setPicked([]);
                 setBulkPanel(false);
@@ -548,6 +559,7 @@ export default function SalesCalendar({
 }
 
 function BulkApplyBar({
+  s,
   types,
   dates,
   busy,
@@ -555,19 +567,22 @@ function BulkApplyBar({
   onClose,
   onApply,
 }: {
+  s: HotelSettings;
   types: HotelSettings["types"];
   dates: string[];
   busy: boolean;
   onClear: () => void;
   onClose: () => void;
-  onApply: (
-    typeIds: string[],
-    patch: { rate?: number | null; stopSell?: boolean },
-  ) => Promise<void>;
+  onApply: (entries: BulkTypeEntry[], opts: { stopSell?: boolean; days?: BulkDayFilter }) => Promise<void>;
 }) {
   const [typeIds, setTypeIds] = useState<string[]>(() => types.map((t) => t.id));
-  const [rateStr, setRateStr] = useState("");
+  /** 타입마다 자기 금액 (비우면 그 타입 요금은 그대로) */
+  const [rates, setRates] = useState<Record<string, string>>({});
+  const [sameStr, setSameStr] = useState("");
+  const [days, setDays] = useState<BulkDayFilter>("all");
   const [stopMode, setStopMode] = useState<StopMode>("keep");
+  const target = useMemo(() => filterBulkDates(s, dates, days), [s, dates, days]);
+  const hasRate = typeIds.some((id) => (rates[id] ?? "") !== "");
 
   useEffect(() => {
     setTypeIds((prev) => {
@@ -581,8 +596,7 @@ function BulkApplyBar({
     setTypeIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  const canApply =
-    typeIds.length > 0 && (rateStr !== "" || stopMode !== "keep") && !busy;
+  const canApply = typeIds.length > 0 && target.length > 0 && (hasRate || stopMode !== "keep") && !busy;
 
   return (
     <div className="sales-bulk" role="region" aria-label="선택한 숙박일 일괄 적용">
@@ -608,18 +622,71 @@ function BulkApplyBar({
         </ChipGroup>
       </div>
       <div className="fld">
-        <label>기본 1박 요금 (비우면 유지)</label>
-        <PriceInp sm>
-          <input
-            className="num"
-            inputMode="numeric"
-            aria-label="일괄 1박 요금"
-            value={rateStr !== "" ? won(Number(rateStr) || 0) : ""}
-            placeholder="변경 안 함"
-            disabled={busy}
-            onChange={(e) => setRateStr(e.target.value.replace(/\D/g, "").slice(0, 9))}
-          />
-        </PriceInp>
+        <label>적용할 밤</label>
+        <ChipGroup>
+          {([["all", "선택한 날 전부"], ["weekday", "평일 밤만"], ["weekend", "주말 밤만"]] as const).map(([k, label]) => (
+            <Chip key={k} sm active={days === k} disabled={busy} onClick={() => setDays(k)}>
+              {label}
+            </Chip>
+          ))}
+        </ChipGroup>
+        <small className="muted">{target.length}일에 적용</small>
+      </div>
+      <div className="fld sales-bulk-rates">
+        <label>타입별 1박 요금 (비우면 그 타입은 유지)</label>
+        <div className="sales-bulk-same">
+          <PriceInp sm>
+            <input
+              className="num"
+              inputMode="numeric"
+              aria-label="모든 타입 같은 금액"
+              value={sameStr !== "" ? won(Number(sameStr) || 0) : ""}
+              placeholder="모든 타입 같은 금액"
+              disabled={busy}
+              onChange={(e) => setSameStr(e.target.value.replace(/\D/g, "").slice(0, 9))}
+            />
+          </PriceInp>
+          <button
+            type="button"
+            className="chip sm"
+            disabled={busy || sameStr === ""}
+            onClick={() => setRates((prev) => ({ ...prev, ...Object.fromEntries(typeIds.map((id) => [id, sameStr])) }))}
+          >
+            선택한 타입에 채우기
+          </button>
+        </div>
+        {types
+          .filter((t) => typeIds.includes(t.id))
+          .map((t) => {
+            const h = bulkRateHint(s, t.id, target);
+            const cur = h.max <= 0 ? "요금 미설정" : h.min === h.max ? `₩${won(h.min)}` : `₩${won(h.min)}~₩${won(h.max)}`;
+            return (
+              <div key={t.id} className="sales-bulk-rate">
+                <span className="sales-bulk-rate-n">
+                  <TypeBadge t={t} />
+                  {typeLabel(t)}
+                </span>
+                <PriceInp sm>
+                  <input
+                    className="num"
+                    inputMode="numeric"
+                    aria-label={`${typeLabel(t)} 1박 요금`}
+                    value={(rates[t.id] ?? "") !== "" ? won(Number(rates[t.id]) || 0) : ""}
+                    placeholder={h.max > 0 ? `지금 ${cur}` : "변경 안 함"}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 9);
+                      setRates((prev) => ({ ...prev, [t.id]: v }));
+                    }}
+                  />
+                </PriceInp>
+                <small className="muted sales-bulk-rate-src">
+                  지금 {cur}
+                  {h.tags.length ? ` · ${h.tags.join("/")}` : ""}
+                </small>
+              </div>
+            );
+          })}
       </div>
       <div className="fld">
         <label>판매</label>
@@ -645,11 +712,14 @@ function BulkApplyBar({
           className="btn red"
           disabled={!canApply}
           onClick={() => {
-            const patch: { rate?: number | null; stopSell?: boolean } = {};
-            if (rateStr !== "") patch.rate = Number(rateStr) || null;
-            if (stopMode === "open") patch.stopSell = false;
-            if (stopMode === "stop") patch.stopSell = true;
-            void onApply(typeIds, patch);
+            const opts: { stopSell?: boolean; days?: BulkDayFilter } = { days };
+            if (stopMode === "open") opts.stopSell = false;
+            if (stopMode === "stop") opts.stopSell = true;
+            const entries: BulkTypeEntry[] = typeIds.map((typeId) => {
+              const v = rates[typeId] ?? "";
+              return v !== "" ? { typeId, rate: Number(v) || null } : { typeId };
+            });
+            void onApply(entries, opts);
           }}
         >
           적용
