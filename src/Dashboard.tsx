@@ -35,7 +35,6 @@ import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpe
 import { boardGuestSearch, filterOpsBookings, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
-import AssignRoomPick from "./AssignRoomPick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import AutoAssignModal from "./AutoAssignModal";
@@ -4507,7 +4506,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {roomsUaList.length ? (
           roomsUaList.map((b) => {
             const open = assigning === b.id;
-            const free = open ? freeRooms(s, bookings, b) : null;
             const t = L.types.get(b.typeId);
             return (
               <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"} ${pfCls(b)}`}>
@@ -4529,18 +4527,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                     </button>
                   ) : null}
                 </div>
-                {open && free ? (
-                  <div className="rpick">
-                    <AssignRoomPick
-                      s={s}
-                      L={L}
-                      free={free}
-                      typeId={b.typeId}
-                      multi={multi}
-                      onPick={(roomId) => requestAssign(b, roomId)}
-                    />
-                  </div>
-                ) : null}
               </div>
             );
           })
