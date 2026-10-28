@@ -4,7 +4,6 @@ import App from "./App";
 import SharedView from "./Shared";
 import { ConfirmHost } from "./ConfirmDialog";
 import "./styles.css";
-import "./room-card-frame.css";
 
 // 현황 공유 링크: /s/<토큰>
 const SHARE = /^\/s\/([^/]+)\/?$/.exec(location.pathname)?.[1] ?? null;
