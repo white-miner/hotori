@@ -25,7 +25,7 @@ import Issuance from "./Issuance";
 import Settings from "./Settings";
 import Shop from "./Shop";
 import { AccountMenu, SidebarTop, TopAlerts, type SbNavItem, type TopAlertsProps } from "./SidebarParts";
-import { Sidebar, SidebarProvider, clearSidebarSwitch, initSidebarSwitch, useSidebarState } from "./Sidebar";
+import { Sidebar, SidebarProvider, useSidebarState } from "./Sidebar";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
 /** 데스크톱 텍스트 내비: 설정은 우측 톱니로 이동 (공지와 자리 교체) */
@@ -132,10 +132,8 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const [selDate, setSelDate] = useState(today);
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(false);
-  // 왼쪽 사이드바 스위치 (기본 켜짐): 주소 ?sidebar=0 또는 사이드바의 끄기 단추로 끄고(저장), ?sidebar=1 로 다시 켬
-  const [sbSwitch, setSbSwitch] = useState(initSidebarSwitch);
   const closeMenu = useCallback(() => setMenu(false), []);
-  const sb = useSidebarState(sbSwitch, menu, closeMenu);
+  const sb = useSidebarState(menu, closeMenu);
   const [toast, setToast] = useState<{ m: string; opt?: ToastOpt; n: number } | null>(null);
   const [boardMove, setBoardMove] = useState<BoardMove | null>(null);
   const [issuesOpen, setIssuesOpen] = useState(false);
@@ -337,10 +335,6 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
               <AccountMenu email={email} open={menu} setOpen={setMenu} closeOnOutside onSignOut={signOut} />
             </div>
           }
-          onOff={() => {
-            clearSidebarSwitch();
-            setSbSwitch(false);
-          }}
         />
       ) : null}
 

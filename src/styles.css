@@ -6250,12 +6250,9 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .sb.rail .sb-scroll { display: none; }
 .sb-b, .sb-c { padding: 0 12px; }
 .sb-slot:empty { display: none; }
-.sb-off { flex: none; margin: 6px 14px 12px; padding: 4px 0; text-align: left; font-size: 12px; font-weight: 600; color: var(--ink3); text-decoration: underline; }
-.sb-off:hover { color: var(--ink); }
 @media print { .sb { display: none; } .app.sb-active { padding-left: 0; } }
 /* 상단 헤더가 없으므로 헤더 높이(64px)만큼 비워 두던 붙박이 자리를 맨 위로 */
-.app.sb-active .side, .app.sb-active .paint, .app.sb-active .board-chrome-sticky, .app.sb-active .board-filter-sticky { top: 0; }
-.app.sb-active .side { min-height: 100vh; max-height: 100vh; }
+.app.sb-active .paint, .app.sb-active .board-chrome-sticky, .app.sb-active .board-filter-sticky { top: 0; }
 /* A: 로고 · 간단 예약 · 화면 이동 */
 .sb-a { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 10px; }
 .sb-brand { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 2px 2px 0; }
@@ -6314,3 +6311,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .sb-c { padding-bottom: 16px; }
 .sb-c .nowside { position: static; top: auto; max-height: none; overflow: visible; margin: 0; padding: 12px 0 0; border: 0; border-radius: 0; border-top: 1px solid var(--line2); }
 .sb-c .nowside-body { overflow: visible; }
+/* C: 배치 오른쪽 패널 (미배정 목록 · 안은 그대로) — 우측 칸이 사라져 배치도 한 칸 */
+.app.sb-active .board-page:not(.now-page) { grid-template-columns: minmax(0, 1fr); }
+.app.sb-active .sb-c .side { position: static; top: auto; min-height: 0; max-height: none; overflow: visible; margin: 0; padding: 12px 0 0; border: 0; border-radius: 0; border-top: 1px solid var(--line2); background: transparent; }

@@ -1101,13 +1101,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     roomId: string;
     overlaps: Booking[];
   } | null>(null);
-  /** 배치 미배정 배정 저장→리렌더 시 window(+side) 스크롤 1회 복원 — document가 보드 스크롤 부모 */
+  /** 배치 미배정 배정 저장→리렌더 시 window(+side) 스크롤 1회 복원 — document가 보드 스크롤 부모 (사이드바 켜짐이면 side 스크롤은 .sb-scroll) */
   const assignScrollPin = useRef<{ winX: number; winY: number; sideTop: number } | null>(null);
   const assignScrollNeedRestore = useRef(false);
   const pinAssignScroll = () => {
     // 이미 저장 직전 pin이 있으면 덮지 않음 (await 중 top으로 튄 값을 다시 잡지 않음)
     if (assignScrollNeedRestore.current && assignScrollPin.current) return;
-    const side = document.querySelector<HTMLElement>(".board-page:not(.now-page) > .side");
+    const side = document.querySelector<HTMLElement>(sbOn ? ".sb-scroll" : ".board-page:not(.now-page) > .side");
     assignScrollPin.current = {
       winX: window.scrollX,
       winY: window.scrollY,
@@ -1121,7 +1121,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (window.scrollX !== pin.winX || window.scrollY !== pin.winY) {
       window.scrollTo(pin.winX, pin.winY);
     }
-    const side = document.querySelector<HTMLElement>(".board-page:not(.now-page) > .side");
+    const side = document.querySelector<HTMLElement>(sbOn ? ".sb-scroll" : ".board-page:not(.now-page) > .side");
     if (side && side.scrollTop !== pin.sideTop) side.scrollTop = pin.sideTop;
   };
   useLayoutEffect(() => {
@@ -4462,9 +4462,121 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </button>
     </>
   );
+  /** 배치 오른쪽 패널(R2~R7) 본문 — 사이드바 ON 이면 사이드바 C 구역으로 포털(내용·동작 그대로), 아니면 지금 자리(오른쪽 aside) */
+  const roomsSideBody = (
+    <>
+      {sbOn ? null : (
+        <div className="side-top">
+          <button
+            type="button"
+            className="side-collapse-btn"
+            onClick={() => rememberSideCollapsed(true)}
+            aria-label="패널 접기"
+            title="패널 접기"
+          >
+            <PanelRightClose size={16} strokeWidth={2.4} />
+            <span>접기</span>
+          </button>
+        </div>
+      )}
+      <OpsPanelSearch
+        id="rooms-ops-search"
+        value={roomsOpsQuery}
+        onChange={setRoomsOpsQuery}
+        label="배치 목록 검색"
+      />
+      <div className="nsel-filters side-ua-filters" role="group" aria-label="숙박일 필터">
+        {UA_CHECKIN_FILTERS.map((x) => {
+          const n = filterUnassignedForPlacement(roomsUaAll, selDate, x.id).length;
+          return (
+            <button
+              key={x.id}
+              type="button"
+              className={`chip sm ${roomsUaFilter === x.id ? "on" : ""}`}
+              onClick={() => setRoomsUaFilter(x.id)}
+            >
+              {x.label}
+              <small>{n}</small>
+            </button>
+          );
+        })}
+      </div>
+      <h3 className="side-ua-h">
+        미배정 예약 <small>{uaActiveN}건</small>
+      </h3>
+      <UaSortBar sort={uaSort} onChange={setUaSort} />
+      {!readOnly && roomsUaByRange.some(isActive) ? (
+        <button type="button" className="btn line sm ua-auto" disabled={assignBusy || !!mvB} onClick={() => setAutoTargets(roomsUaByRange.filter(isActive))}>
+          <Wand2 size={14} strokeWidth={2.4} /> 자동배정 · {roomsUaByRange.filter(isActive).length}건 미리보기
+        </button>
+      ) : null}
+      <div className="lst side-ua-lst">
+        {roomsUaList.length ? (
+          roomsUaList.map((b) => {
+            const open = assigning === b.id;
+            const free = open ? freeRooms(s, bookings, b) : null;
+            const t = L.types.get(b.typeId);
+            return (
+              <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"} ${pfCls(b)}`}>
+                <div className="itr">
+                  <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
+                    <b>
+                      <TypeBadge t={t} />
+                      <PlatBadge p={L.plats.get(b.platformId)} />
+                      <span className="gn">{b.guestName}</span>
+                      {isActive(b) ? null : <span className="cxt">{STATUS[b.status]}</span>}
+                    </b>
+                    <span>
+                      {b.nights}박{readOnly ? "" : ` · ${won(b.price)}원`}{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
+                    </span>
+                  </div>
+                  {isActive(b) && !readOnly ? (
+                    <button className="btn line sm" onClick={() => setAssigningMode(open ? null : b.id)}>
+                      {open ? "닫기" : "방배정"}
+                    </button>
+                  ) : null}
+                </div>
+                {open && free ? (
+                  <div className="rpick">
+                    <AssignRoomPick
+                      s={s}
+                      L={L}
+                      free={free}
+                      typeId={b.typeId}
+                      multi={multi}
+                      onPick={(roomId) => requestAssign(b, roomId)}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        ) : (
+          <div className="it muted">
+            {roomsOpsQuery.trim() ? "검색 결과 없음" : "이 기간 미배정 예약이 없어요"}
+          </div>
+        )}
+      </div>
+
+      <div className="sum">
+        <div>
+          <span>{dayLabel(selDate)} 밤 숙박</span>
+          <b>
+            {board.nightCount}실 / {roomCount}실
+          </b>
+        </div>
+        {readOnly ? null : (
+          <div>
+            <span>이날 입실 예약 금액</span>
+            <b>{won(dayTotal)}원</b>
+          </div>
+        )}
+      </div>
+    </>
+  );
   return (
     <>
-    <main className={`page board-page${sideCollapsed ? " side-collapsed" : ""}`}>
+    <main className={`page board-page${sideCollapsed && !sbOn ? " side-collapsed" : ""}`}>
       <div className="main">
         {tabs}
         {banner}
@@ -4600,7 +4712,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ))}
       </div>
 
-      <aside className={`side ${sideCollapsed ? "collapsed" : ""}`}>
+      {sbOn ? sbx.into("ops", <div className="side">{roomsSideBody}</div>) : (
+        <aside className={`side ${sideCollapsed ? "collapsed" : ""}`}>
         {sideCollapsed ? (
           <div className="side-rail" role="toolbar" aria-label="배치 패널">
             <button
@@ -4624,115 +4737,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </button>
           </div>
         ) : (
-          <>
-            <div className="side-top">
-              <button
-                type="button"
-                className="side-collapse-btn"
-                onClick={() => rememberSideCollapsed(true)}
-                aria-label="패널 접기"
-                title="패널 접기"
-              >
-                <PanelRightClose size={16} strokeWidth={2.4} />
-                <span>접기</span>
-              </button>
-            </div>
-            <OpsPanelSearch
-              id="rooms-ops-search"
-              value={roomsOpsQuery}
-              onChange={setRoomsOpsQuery}
-              label="배치 목록 검색"
-            />
-            <div className="nsel-filters side-ua-filters" role="group" aria-label="숙박일 필터">
-              {UA_CHECKIN_FILTERS.map((x) => {
-                const n = filterUnassignedForPlacement(roomsUaAll, selDate, x.id).length;
-                return (
-                  <button
-                    key={x.id}
-                    type="button"
-                    className={`chip sm ${roomsUaFilter === x.id ? "on" : ""}`}
-                    onClick={() => setRoomsUaFilter(x.id)}
-                  >
-                    {x.label}
-                    <small>{n}</small>
-                  </button>
-                );
-              })}
-            </div>
-            <h3 className="side-ua-h">
-              미배정 예약 <small>{uaActiveN}건</small>
-            </h3>
-            <UaSortBar sort={uaSort} onChange={setUaSort} />
-            {!readOnly && roomsUaByRange.some(isActive) ? (
-              <button type="button" className="btn line sm ua-auto" disabled={assignBusy || !!mvB} onClick={() => setAutoTargets(roomsUaByRange.filter(isActive))}>
-                <Wand2 size={14} strokeWidth={2.4} /> 자동배정 · {roomsUaByRange.filter(isActive).length}건 미리보기
-              </button>
-            ) : null}
-            <div className="lst side-ua-lst">
-              {roomsUaList.length ? (
-                roomsUaList.map((b) => {
-                  const open = assigning === b.id;
-                  const free = open ? freeRooms(s, bookings, b) : null;
-                  const t = L.types.get(b.typeId);
-                  return (
-                    <div key={b.id} className={`it col ${isActive(b) ? "" : "cx"} ${pfCls(b)}`}>
-                      <div className="itr">
-                        <div className="md" {...act} onClick={() => !mvB && onOpen(b, selDate)}>
-                          <b>
-                            <TypeBadge t={t} />
-                            <PlatBadge p={L.plats.get(b.platformId)} />
-                            <span className="gn">{b.guestName}</span>
-                            {isActive(b) ? null : <span className="cxt">{STATUS[b.status]}</span>}
-                          </b>
-                          <span>
-                            {b.nights}박{readOnly ? "" : ` · ${won(b.price)}원`}{b.checkIn !== selDate ? ` · ${md(b.checkIn)} 입실` : ""}
-                          </span>
-                        </div>
-                        {isActive(b) && !readOnly ? (
-                          <button className="btn line sm" onClick={() => setAssigningMode(open ? null : b.id)}>
-                            {open ? "닫기" : "방배정"}
-                          </button>
-                        ) : null}
-                      </div>
-                      {open && free ? (
-                        <div className="rpick">
-                          <AssignRoomPick
-                            s={s}
-                            L={L}
-                            free={free}
-                            typeId={b.typeId}
-                            multi={multi}
-                            onPick={(roomId) => requestAssign(b, roomId)}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="it muted">
-                  {roomsOpsQuery.trim() ? "검색 결과 없음" : "이 기간 미배정 예약이 없어요"}
-                </div>
-              )}
-            </div>
-
-            <div className="sum">
-              <div>
-                <span>{dayLabel(selDate)} 밤 숙박</span>
-                <b>
-                  {board.nightCount}실 / {roomCount}실
-                </b>
-              </div>
-              {readOnly ? null : (
-                <div>
-                  <span>이날 입실 예약 금액</span>
-                  <b>{won(dayTotal)}원</b>
-                </div>
-              )}
-            </div>
-          </>
+          roomsSideBody
         )}
       </aside>
+      )}
     </main>
     {renderOverbookSubModal()}
     {periodPay ? renderPeriodPay(periodPay.groupId) : null}

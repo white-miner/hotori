@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Pin, PinOff, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { SIDEBAR_PIN_KEY, SIDEBAR_SWITCH_KEY, escSidebarAction, parsePinned, resolveSidebarSwitch } from "../shared/sidebar";
+import { SIDEBAR_PIN_KEY, escSidebarAction, parsePinned } from "../shared/sidebar";
 
 /**
- * 왼쪽 사이드바 (스위치 켬 · 데스크톱만).
+ * 왼쪽 사이드바 (항상 켜짐 · 데스크톱만).
  * 평소 56px 아이콘 레일 → 눌러서 320px 로 임시 펼침(본문 위에 겹침, 열 수 변함 없음) 또는 고정(본문이 좁아짐).
  * 상태(선택 객실·모드·이동·배정)는 Dashboard 에 그대로 두고, Dashboard 가 아래 칸(slot)으로 그려 넣는다 (portal · 상태 이동 없음).
  */
@@ -15,7 +15,7 @@ export type SbSlot = "views" | "date" | "building" | "search" | "platform" | "st
 const SLOTS: SbSlot[] = ["views", "date", "building", "search", "platform", "status", "minimap", "ops"];
 
 interface SbCtx {
-  /** 사이드바를 쓰는 중 (스위치 켬 + 데스크톱) */
+  /** 사이드바를 쓰는 중 (데스크톱) */
   active: boolean;
   slots: Partial<Record<SbSlot, HTMLElement>>;
 }
@@ -55,24 +55,6 @@ const lsSet = (k: string, v: string | null) => {
   }
 };
 
-/** 처음 한 번: 주소 `?sidebar=1|0` 과 저장값으로 켬/끔을 정한다 (저장 · 주소 정리 포함). 기본 켜짐. */
-export function initSidebarSwitch(): boolean {
-  const r = resolveSidebarSwitch(location.search, lsGet(SIDEBAR_SWITCH_KEY));
-  if (r.store) lsSet(SIDEBAR_SWITCH_KEY, r.store === "0" ? "0" : null);
-  if (r.cleanSearch != null) {
-    try {
-      history.replaceState(history.state, "", `${location.pathname}${r.cleanSearch}${location.hash}`);
-    } catch {
-      /* 무시 */
-    }
-  }
-  return r.on;
-}
-/** 끄기: "0" 을 저장하고 바로 예전 화면으로 (새로 고침 없이) */
-export function clearSidebarSwitch() {
-  lsSet(SIDEBAR_SWITCH_KEY, "0");
-}
-
 function useMobile(): boolean {
   const q = "(max-width: 760px)";
   const [m, setM] = useState(() => typeof matchMedia === "function" && matchMedia(q).matches);
@@ -100,10 +82,10 @@ export interface SidebarState {
   setSlot: (name: SbSlot) => (el: HTMLElement | null) => void;
 }
 
-/** 스위치(켬/끔)를 받아 사이드바 상태를 만든다. 모바일(≤760px)은 단계 6 전까지 지금 화면 그대로라 active=false. */
-export function useSidebarState(switchOn: boolean, menuOpen: boolean, closeMenu: () => void): SidebarState {
+/** 사이드바 상태를 만든다. 데스크톱은 항상 켜짐. 모바일(≤760px)은 단계 6 전까지 지금 화면 그대로라 active=false. */
+export function useSidebarState(menuOpen: boolean, closeMenu: () => void): SidebarState {
   const mobile = useMobile();
-  const active = switchOn && !mobile;
+  const active = !mobile;
   const [expanded, setExpanded] = useState(false);
   const [pinned, setPinned] = useState(() => parsePinned(lsGet(SIDEBAR_PIN_KEY)));
   const [els, setEls] = useState<Partial<Record<SbSlot, HTMLElement>>>({});
@@ -154,7 +136,7 @@ export function useSidebarState(switchOn: boolean, menuOpen: boolean, closeMenu:
 }
 
 /** 사이드바 틀. top = 로고·간단 예약·화면 이동 (A) · bottom = 특이사항·공지·확인 필요·설정·계정 (D) */
-export function Sidebar({ st, top, bottom, onOff }: { st: SidebarState; top?: ReactNode; bottom?: ReactNode; onOff: () => void }) {
+export function Sidebar({ st, top, bottom }: { st: SidebarState; top?: ReactNode; bottom?: ReactNode }) {
   const cls = `sb ${st.open ? "open" : "rail"}${st.pinned ? " pinned" : ""}`;
   return (
     <aside className={cls} aria-label="사이드바">
@@ -196,12 +178,6 @@ export function Sidebar({ st, top, bottom, onOff }: { st: SidebarState; top?: Re
         </div>
       </div>
       {bottom ? <div className="sb-d">{bottom}</div> : null}
-      {/* 임시: 사이드바 시험 기간에만 있는 끄기 단추 (단계 7 에서 스위치와 함께 제거) */}
-      {st.open ? (
-        <button type="button" className="sb-off" onClick={onOff}>
-          예전 화면으로
-        </button>
-      ) : null}
     </aside>
   );
 }

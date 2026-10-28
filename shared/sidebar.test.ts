@@ -1,33 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { escSidebarAction, parsePinned, resolveSidebarSwitch, selectionAfterFilter, visibleNowRoomIds } from "./sidebar";
-
-test("스위치: 기본값은 켜짐 (주소 인자·저장값 없음)", () => {
-  assert.deepEqual(resolveSidebarSwitch("", null), { on: true, store: null, cleanSearch: null });
-  assert.equal(resolveSidebarSwitch("?x=1", null).on, true);
-});
-
-test("스위치: 저장값 '0' 만 끔, 옛 저장값 '1' 과 알 수 없는 저장값은 켬", () => {
-  assert.deepEqual(resolveSidebarSwitch("", "0"), { on: false, store: null, cleanSearch: null });
-  assert.equal(resolveSidebarSwitch("", "1").on, true);
-  assert.equal(resolveSidebarSwitch("?x=1", "abc").on, true);
-});
-
-test("스위치: ?sidebar=0 은 끄고 '0' 저장, 주소에서 인자를 뺀다", () => {
-  assert.deepEqual(resolveSidebarSwitch("?sidebar=0", null), { on: false, store: "0", cleanSearch: "" });
-  assert.deepEqual(resolveSidebarSwitch("?a=b&sidebar=0", "1"), { on: false, store: "0", cleanSearch: "?a=b" });
-});
-
-test("스위치: ?sidebar=1 은 켜고 저장값(0)을 지운다", () => {
-  assert.deepEqual(resolveSidebarSwitch("?sidebar=1", "0"), { on: true, store: "remove", cleanSearch: "" });
-  assert.deepEqual(resolveSidebarSwitch("?a=b&sidebar=1", null), { on: true, store: "remove", cleanSearch: "?a=b" });
-});
-
-test("스위치: 알 수 없는 인자 값은 무시하고 저장값을 따른다", () => {
-  assert.deepEqual(resolveSidebarSwitch("?sidebar=abc", "0"), { on: false, store: null, cleanSearch: null });
-  assert.deepEqual(resolveSidebarSwitch("?sidebar=abc", null), { on: true, store: null, cleanSearch: null });
-  assert.deepEqual(resolveSidebarSwitch("?sidebar=", null), { on: true, store: null, cleanSearch: null });
-});
+import { escSidebarAction, parsePinned, selectionAfterFilter, visibleNowRoomIds } from "./sidebar";
 
 test("고정 저장값은 '1' 만 고정", () => {
   assert.equal(parsePinned("1"), true);
