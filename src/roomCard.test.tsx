@@ -24,6 +24,7 @@ const renderFacts = (m: ReturnType<typeof model>, slot: "top" | "who", withPerio
       tone={m.tone}
       due={m.due}
       company={m.company}
+      linkLabel={m.isMember ? "본관 602호" : null}
       viewLabel="10/28"
       openEnded={m.openEnded}
       period={withPeriod ? [m.period, m.progress].filter(Boolean).join(" · ") : undefined}
@@ -56,19 +57,29 @@ for (const site of ["now", "board"] as const) {
       const iPeriod = top.indexOf("rc-period");
       const iPay = top.indexOf("rc-pay");
       const iDue = top.indexOf("rc-due");
+      if (m.isMember) {
+        // 구성원 카드: 객실번호 · 기간 · 연동 · 박당 요금만 (결제·받을 돈·회사는 대표객실에서)
+        assert.match(top, /class="rc-link"[^>]*>연동 본관 602호</, "구성원은 연동 대표객실을 작게");
+        assert.equal(iPay + iDue, -2, "구성원 카드에는 결제·받을 돈 줄이 없어요");
+        assert.doesNotMatch(who, /rc-co/, "구성원 카드에는 회사 줄이 없어요");
+        if (e.rate) assert.match(who, /class="rc-rate amt-rate"/);
+        return;
+      }
+      assert.doesNotMatch(top, /rc-link/, "연동 줄은 구성원만");
       if (e.pay) {
-        assert.match(top, /class="nowamt rc-pay amt-paid"/, "받은 돈=검정");
-        assert.ok(top.includes(e.pay.split(" · ")[0]!));
+        assert.match(top, /class="rc-pay amt-paid"/, "받은 돈=검정");
+        assert.ok(text(top).replace(/\s/g, "").includes(e.pay.split(" · ")[0]!.replace(/\s/g, "")));
         if (iPeriod >= 0) assert.ok(iPeriod < iPay, "이용기간이 결제보다 위");
       } else assert.equal(iPay, -1, "결제 줄 없음");
       if (e.due > 0) {
-        assert.match(top, /class="nowamt rc-due amt-due"/, "받아야 할 돈=파랑");
+        assert.match(top, /class="rc-due amt-due"/, "받아야 할 돈=파랑");
+        assert.match(top, /받을 돈/, "받을 돈 라벨");
         assert.ok(top.includes(e.due.toLocaleString("en-US")));
         if (iPay >= 0) assert.ok(iPay < iDue, "받을 돈은 결제 아래");
       } else assert.equal(iDue, -1);
       if (e.rate) {
         assert.match(who, /class="rc-rate amt-rate"/, "객실 가격=빨강");
-        assert.ok(who.includes(e.rate));
+        assert.ok(who.includes(`${e.rate}/박`), "박당 요금은 ₩…/박으로 분명히");
         if (e.company) assert.ok(who.indexOf(e.company) < who.indexOf("rc-rate"), "회사가 박당 요금보다 위");
       } else assert.doesNotMatch(who, /rc-rate/, "요금을 모르면 비워요 (평균·추정 금지)");
       assert.equal(who.includes("변동"), e.varies === true);
@@ -118,6 +129,22 @@ test("카드 · 현황과 배치는 같은 모델을 쓰고, 그림 순서는 �
   assert.ok(now.indexOf('className="nm"') < now.indexOf('slot="who"'));
   // 대표객실 글자는 leadTag(isLeadRoom)만
   assert.equal((src.match(/>\s*대표객실\s*</g) ?? []).length, 1);
+});
+
+test("카드 · 글자 크기 위계 (docs/room-card-spec.md §3): 기간·결제·받을 돈 13px↑ · 박당 요금 15px↑ 굵게 · 회사·연동은 작게", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const size = (sel: string) => {
+    for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const items = m[1]!.split(",").map((x) => x.trim());
+      const fs = /font-size:\s*([\d.]+)px/.exec(m[2]!);
+      if (fs && items.includes(`.cell ${sel}`)) return Number(fs[1]);
+    }
+    assert.fail(`${sel} 글자 크기`);
+  };
+  for (const k of [".rc-period", ".rc-due-k"]) assert.ok(size(k) >= 13, k);
+  assert.ok(size(".rc-rate") >= 15, "박당 요금");
+  assert.ok(size(".rc-co") < size(".rc-pay") && size(".rc-link") < size(".rc-co"), "회사 < 결제, 연동 < 회사");
+  assert.ok(size(".rc-pay") >= 13 && size(".rc-due") >= 13, "결제 · 받을 돈");
 });
 
 test("카드 · 이름 바꾸기: 화면에는 `룸 타임라인`이 남지 않아요 (월간 예약)", () => {

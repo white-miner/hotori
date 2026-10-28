@@ -3131,8 +3131,6 @@ label.ck input[type="checkbox"] {
 .amt-rate, .cell .amt-rate { color: var(--amt-rate); }
 .amt-paid, .cell .amt-paid, .nowamt.amt-paid { color: var(--amt-paid); }
 .amt-due, .cell .amt-due, .nowamt.amt-due, .nsel-bal-v.due b.amt-due { color: var(--amt-due); }
-.cell .rc-due { font-size: 11px; font-weight: 800; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; font-variant-numeric: tabular-nums; }
-.cell .rc-due-k { font-size: 9.5px; font-weight: 700; opacity: .85; }
 .cell .pr.tone-due { color: var(--badge-danger); }
 .cell .pr.tone-partial { color: var(--badge-info); }
 .cell .pr.tone-paid { color: var(--ink); }
@@ -5987,53 +5985,109 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rec-shift-opt small { color: var(--muted, #6b6b76); font-size: 12px; }
 .rec-shift-opt.on { border-color: #2a52be; background: #eef3ff; }
 
-/* 객실 카드 사실 줄: 회사 · 하루 객실 요금(+변동) · 결제수단+금액 — 총액은 카드에 쓰지 않아요 */
+/* 객실 카드 사실 줄 — 한 줄에 사실 하나, 글자 크기로 위계 (docs/room-card-spec.md §3)
+   객실번호 30 · 이름 22 · 박당 요금 17(빨강) · 기간·결제·받을 돈 13.5 · 회사 12 · 연동 11 */
+.cell .rc-period,
+.cell .rc-link,
+.cell .rc-pay,
+.cell .rc-due,
 .cell .rc-co,
-.cell .rc-rate,
-.cell .rc-pay {
+.cell .rc-rate {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.25;
-}
-.cell .rc-co {
-  font-size: 10px;
-  font-weight: 700;
-  opacity: 0.78;
-}
-.cell .rc-rate {
-  font-size: 11px;
-  font-weight: 800;
+  box-sizing: border-box;
+  padding: 0 5px;
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }
+.cell .rc-period {
+  font-family: var(--num);
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.cell .nowdate-btn .rc-period { padding: 0; overflow: hidden; text-overflow: clip; }
+.cell .rc-pay-part { display: inline-block; white-space: nowrap; }
+.cell .rc-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell .rc-pay,
+.cell .rc-due {
+  font-family: var(--num);
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  margin: 1px 0 0;
+}
+.cell .rc-due-k { font-size: 13px; font-weight: 700; margin-right: 2px; }
+.cell .rc-co {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell .rc-rate {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+@media (max-width: 760px) {
+  .cell .rc-period { font-size: 12.5px; }
+  .cell .rc-pay, .cell .rc-due { font-size: 13px; }
+}
+/* 단체 결제 열기 — 대표객실 카드 한 줄 (칩 아님) */
+.cell .rc-grpbtn {
+  align-self: flex-start;
+  margin: 4px 4px 0;
+  padding: 1px 8px;
+  border: 1px solid var(--badge-info, #2f5fd0);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--badge-info, #2f5fd0);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cell .rc-grpbtn:hover { background: #eef3ff; }
 .cell .rc-var {
   display: inline-block;
   margin-left: 4px;
-  padding: 0 4px;
+  padding: 0 5px;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 800;
   background: #fff1d6;
   color: #9a5b00;
-  vertical-align: 1px;
+  vertical-align: 2px;
 }
 .cell .rc-var.est {
   background: #eceff3;
   color: #5b6573;
 }
-.cell .rc-pay {
-  font-size: 11px;
-  font-weight: 700;
-}
 .grp-lead-tag {
   display: inline-block;
   margin-left: 4px;
-  padding: 0 5px;
+  padding: 1px 7px;
   border-radius: 999px;
-  font-size: 9px;
+  font-size: 11.5px;
   font-style: normal;
   font-weight: 800;
   background: #e8efff;
@@ -6041,7 +6095,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   white-space: nowrap;
   vertical-align: 1px;
 }
-.cell .rc-var.open { background: #e6f4ea; color: #1b6b33; margin-left: 0; }
 .gch-open-tag { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #2a52be; color: #fff; margin-left: auto; margin-right: 8px; }
 .gch-item.up .gch-row, .gch-row.gch-up { opacity: .6; }
 .gch-up-tag { display: block; font-size: 10.5px; font-weight: 700; color: var(--muted, #6b7280); }

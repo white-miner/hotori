@@ -2101,6 +2101,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           tone={cardM.tone}
           due={cardM.due}
           company={cardM.company}
+          linkLabel={cardM.isMember ? gMark.label : null}
           viewLabel={dayLabel(selDate)}
         />
       ) : null;
@@ -2145,17 +2146,32 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {head}
         {typeRow(cancelled ? null : b.guests)}
         {factsEl("top")}
-        <div className="nm">
-          <PlatBadge p={L.plats.get(b.platformId)} />
-          <span className="gn">{b.guestName}</span>
-        </div>
+        {cardM?.isMember ? null : (
+          <div className="nm">
+            <PlatBadge p={L.plats.get(b.platformId)} />
+            <span className="gn">{b.guestName}</span>
+          </div>
+        )}
         {!cancelled ? (
           <CellBadges
-            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b), openEnded: b.openEnded && b.status === "active" }}
-            group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
+            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b), openEnded: !cardM && b.openEnded && b.status === "active" }}
+            group={b.groupId && !cardM?.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
         ) : null}
         {factsEl("who")}
+        {cardM?.isLead && !readOnly ? (
+          <button
+            type="button"
+            className="rc-grpbtn"
+            title="단체 결제 · 객실·박별 요금·결제 내역"
+            onClick={(e) => {
+              e.stopPropagation();
+              openGroupPay(b.groupId!);
+            }}
+          >
+            단체 결제 ›
+          </button>
+        ) : null}
         <div className="r3 rp">
           <span />
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
@@ -3508,16 +3524,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 setNightPopId(popOpen ? null : b.id);
               }}
             >
-              <span className="nowchip nowdate">{cardM.period}</span>
+              <span className="rc-period" title={cardM.openEnded ? "퇴실 미정 — 끝나는 날이 아직 없어요" : "이용기간 · 몇째 밤/전체 박수"}>
+                {[cardM.period, cardM.progress].filter(Boolean).join(" · ")}
+              </span>
               <span className="nowdate-caret" aria-hidden>
                 ▾
               </span>
             </button>
-            {cardM.progress ? (
-              <span className="nowchip nownights" title="숙박">
-                {cardM.progress}
-              </span>
-            ) : null}
             {popOpen ? (
               <NowNightPopover
                 booking={b}
@@ -3540,16 +3553,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             tone={cardM.tone}
             due={cardM.due}
             company={cardM.company}
+            linkLabel={cardM.isMember ? gMark.label : null}
             viewLabel={dayLabel(today)}
-            openEnded={cardM.openEnded}
           />
-          <div className="nm">
-            <PlatBadge p={L.plats.get(b.platformId)} />
-            <span className="gn">{b.guestName}</span>
-          </div>
+          {cardM.isMember ? null : (
+            <div className="nm">
+              <PlatBadge p={L.plats.get(b.platformId)} />
+              <span className="gn">{b.guestName}</span>
+            </div>
+          )}
           <CellBadges
-            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: b.openEnded && b.status === "active" }}
-            group={f.group && b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
+            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: false }}
+            group={f.group && b.groupId && !cardM.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
           {((mvDue, mvNext) =>
             mvDue ? (
@@ -3569,13 +3584,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             tone={cardM.tone}
             due={cardM.due}
             company={cardM.company}
+            linkLabel={cardM.isMember ? gMark.label : null}
             viewLabel={dayLabel(today)}
-            openEnded={cardM.openEnded}
           />
           {grpLine ? (
             <button
               type="button"
-              className="nowgrp-mark"
+              className="rc-grpbtn"
               title={`${grpLine} · 눌러서 단체 상세`}
               aria-label={`단체 결제 · ${grpLine}`}
               onClick={(e) => {
@@ -3583,7 +3598,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 openGroupPay(b.groupId!);
               }}
             >
-              단체 결제
+              단체 결제 ›
             </button>
           ) : null}
           {meta ? <div className="nowmeta">{meta}</div> : null}
