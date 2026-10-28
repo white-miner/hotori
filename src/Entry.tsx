@@ -3568,7 +3568,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   />
                 </PriceInp>
               )}
-              {kind === "stay" && !long && nights >= 1 && nights <= 60 ? (
+              {kind === "stay" && !long && nights >= 1 && nights <= STAY_NIGHTS_MAX ? (
                 <NightRatesTable
                   checkIn={checkIn}
                   nights={nights}

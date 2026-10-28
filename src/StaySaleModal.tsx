@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type Booking,
   type HotelSettings,
+  STAY_NIGHTS_MAX,
   allRooms,
   typeLabel,
   won,
@@ -26,6 +27,7 @@ import { type BookPayMethod, type OnsitePayMode, isOnsite } from "../shared/paym
 import { ADD_TIME_HOUR_CHIPS, ADD_TIME_METHOD_LABEL, ADD_TIME_METHODS, type AddTimeMethod } from "../shared/addTime";
 import { EARLY_IN_HOUR_CHIPS, EARLY_IN_PAY_LABEL, EARLY_IN_PAY_METHODS, type EarlyInPayMethod } from "../shared/earlyInPay";
 import { canExtend } from "../shared/extend";
+import { GUESTS_MAX } from "../shared/surcharge";
 import { Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import OnsitePayModeFields from "./OnsitePayModeFields";
 import GroupRoomRates from "./GroupRoomRates";
@@ -354,7 +356,7 @@ export default function StaySaleModal({
               </div>
               <div className="fld">
                 <label>인원</label>
-                <Stepper value={guests} min={1} max={12} onChange={setGuests} />
+                <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
               </div>
               <div className="fld">
                 <label>숙박</label>
@@ -362,7 +364,7 @@ export default function StaySaleModal({
                   value={nights}
                   unit="박"
                   min={1}
-                  max={30}
+                  max={STAY_NIGHTS_MAX}
                   onChange={(n) => {
                     setNights(n);
                     setErr(null);
