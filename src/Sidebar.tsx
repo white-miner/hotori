@@ -55,10 +55,10 @@ const lsSet = (k: string, v: string | null) => {
   }
 };
 
-/** 처음 한 번: 주소 `?sidebar=1|0` 과 저장값으로 켬/끔을 정한다 (저장 · 주소 정리 포함). 기본 꺼짐. */
+/** 처음 한 번: 주소 `?sidebar=1|0` 과 저장값으로 켬/끔을 정한다 (저장 · 주소 정리 포함). 기본 켜짐. */
 export function initSidebarSwitch(): boolean {
   const r = resolveSidebarSwitch(location.search, lsGet(SIDEBAR_SWITCH_KEY));
-  if (r.store) lsSet(SIDEBAR_SWITCH_KEY, r.store === "1" ? "1" : null);
+  if (r.store) lsSet(SIDEBAR_SWITCH_KEY, r.store === "0" ? "0" : null);
   if (r.cleanSearch != null) {
     try {
       history.replaceState(history.state, "", `${location.pathname}${r.cleanSearch}${location.hash}`);
@@ -68,9 +68,9 @@ export function initSidebarSwitch(): boolean {
   }
   return r.on;
 }
-/** 끄기: 저장을 지우고 바로 예전 화면으로 (새로 고침 없이) */
+/** 끄기: "0" 을 저장하고 바로 예전 화면으로 (새로 고침 없이) */
 export function clearSidebarSwitch() {
-  lsSet(SIDEBAR_SWITCH_KEY, null);
+  lsSet(SIDEBAR_SWITCH_KEY, "0");
 }
 
 function useMobile(): boolean {

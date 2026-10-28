@@ -132,7 +132,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const [selDate, setSelDate] = useState(today);
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState(false);
-  // 왼쪽 사이드바 스위치 (기본 꺼짐): 주소 ?sidebar=1 로 켜고 ?sidebar=0 또는 사이드바의 끄기 단추로 끔
+  // 왼쪽 사이드바 스위치 (기본 켜짐): 주소 ?sidebar=0 또는 사이드바의 끄기 단추로 끄고(저장), ?sidebar=1 로 다시 켬
   const [sbSwitch, setSbSwitch] = useState(initSidebarSwitch);
   const closeMenu = useCallback(() => setMenu(false), []);
   const sb = useSidebarState(sbSwitch, menu, closeMenu);

@@ -9,17 +9,18 @@ export const SIDEBAR_PIN_KEY = "hotori.sidebarPinned";
 export interface SidebarSwitchResult {
   /** 지금 사이드바를 쓰는가 */
   on: boolean;
-  /** 저장소에 할 일: "1" 저장 · "remove" 지움 · null 그대로 */
-  store: "1" | "remove" | null;
+  /** 저장소에 할 일: "0" 저장(끄기 기억) · "remove" 지움(기본 켜짐으로) · null 그대로 */
+  store: "0" | "remove" | null;
   /** 주소에서 `sidebar` 인자를 뺀 search (인자가 없었으면 null = 주소 그대로) */
   cleanSearch: string | null;
 }
 
 /**
- * 켜기/끄기 판정.
- * - 주소 `?sidebar=1` → 켬 + 저장 · `?sidebar=0` → 끔 + 저장 지움
- * - 주소에 없으면 저장값("1")만 켬. 기본값은 꺼짐.
- * 그 밖의 값(`?sidebar=abc`)은 무시하고 저장값을 따른다.
+ * 켜기/끄기 판정. 기본값은 켜짐 (화면 폭 760px 이하는 호출한 쪽에서 기존 모바일 화면으로 둔다).
+ * - 주소 `?sidebar=0` → 끔 + "0" 저장 (새로고침해도 유지)
+ * - 주소 `?sidebar=1` → 켬 + 저장값 지움 (기본이 켜짐이므로 지우면 켜진다)
+ * - 주소에 없으면 저장값이 "0" 일 때만 끔. 저장값 "1"(옛 저장) · 없음 · 그 밖의 값은 켬.
+ * 그 밖의 인자 값(`?sidebar=abc`)은 무시하고 저장값을 따른다.
  */
 export function resolveSidebarSwitch(search: string, stored: string | null): SidebarSwitchResult {
   const q = new URLSearchParams(search);
@@ -27,9 +28,9 @@ export function resolveSidebarSwitch(search: string, stored: string | null): Sid
   if (v === "1" || v === "0") {
     q.delete("sidebar");
     const rest = q.toString();
-    return { on: v === "1", store: v === "1" ? "1" : "remove", cleanSearch: rest ? `?${rest}` : "" };
+    return { on: v === "1", store: v === "1" ? "remove" : "0", cleanSearch: rest ? `?${rest}` : "" };
   }
-  return { on: stored === "1", store: null, cleanSearch: null };
+  return { on: stored !== "0", store: null, cleanSearch: null };
 }
 
 /** 저장된 고정 값 → 고정 여부 */
