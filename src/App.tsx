@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { AlertTriangle, Bell, BookOpen, ClipboardList, FileStack, LayoutGrid, LogOut, Menu, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
+import { BookOpen, FileStack, LayoutGrid, Settings as Gear, ShoppingBag, Wallet } from "lucide-react";
 import { configured, supabase } from "./supabase";
 import { createHotel, loadMyHotelId, useHotelData, useHotelNotices, useRoomMemos } from "./data";
 import { type Booking, businessDate, checkOut, dayLabel, earlyOutUndoBlock, isEarlyOut } from "../shared/ledger";
@@ -24,6 +24,7 @@ import Ledger from "./Ledger";
 import Issuance from "./Issuance";
 import Settings from "./Settings";
 import Shop from "./Shop";
+import { AccountMenu, SidebarTop, TopAlerts, type SbNavItem, type TopAlertsProps } from "./SidebarParts";
 import { Sidebar, SidebarProvider, clearSidebarSwitch, initSidebarSwitch, useSidebarState } from "./Sidebar";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
@@ -43,6 +44,8 @@ const TAB_VIEWS: { id: View; label: string; icon: typeof LayoutGrid }[] = [
   { id: "issuance", label: ISSUANCE_COPY.viewLabel, icon: FileStack },
   { id: "settings", label: "설정", icon: Gear },
 ];
+/** 사이드바 화면 이동 (같은 5개 · 같은 순서) */
+const SB_NAV: SbNavItem[] = NAV_VIEWS.map((v) => ({ ...v, icon: TAB_VIEWS.find((t) => t.id === v.id)!.icon, shortcut: v.id === "shop" ? "M" : undefined }));
 const viewFromHash = (): View => {
   const h = location.hash.replace(/^#\/?/, "").split("/")[0] ?? "";
   return h === "ledger" || h === "expenses" || h === "settings" || h === "shop" || h === "issuance" ? h : "board";
@@ -258,9 +261,36 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   if (!hotel)
     return <div className="center-msg">{data.error ? `불러오지 못했어요: ${data.error}` : "장부를 불러오는 중…"}</div>;
 
+  // 특이사항·공지·확인 필요·설정: 헤더(꺼짐)와 사이드바 아래(켬)가 같은 단추 묶음을 쓴다
+  const alertProps: TopAlertsProps = {
+    issueBadge,
+    issueCount: handoffOpen.issues.length,
+    noticeBadge,
+    noticeCount: unresolvedNoticeCount(notices.list ?? []),
+    tangleBadge: badgeCountLabel(tangles.visible.length),
+    tangleCount: tangles.visible.length,
+    settingsOn: view === "settings",
+    onIssues: () => {
+      setNoticesTab(null);
+      setIssuesOpen(true);
+    },
+    onNotices: () => {
+      setIssuesOpen(false);
+      setNoticesTab("notices");
+    },
+    onTangles: () => {
+      setIssuesOpen(false);
+      setNoticesTab(null);
+      setTangleOpen(true);
+    },
+    onSettings: () => go("settings"),
+  };
+  const signOut = () => void supabase.auth.signOut();
+
   return (
     <SidebarProvider value={sb.ctx}>
     <div className={sb.active ? `app sb-active${sb.pinned ? " sb-pinned" : ""}` : "app"}>
+      {sb.active ? null : (
       <header className="top">
         <Brand sub={hotel.name} onHome={goHome} />
         <nav className="nav">
@@ -279,80 +309,34 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
         <div className="right">
           {hotel.isDemo ? <span className="demo">예시 데이터</span> : null}
           {data.error ? <span className="demo warn">연결 확인 중</span> : null}
-          <div className="top-alerts" role="group" aria-label="특이사항·공지·설정">
-            <button
-              type="button"
-              className={`top-alert-btn${issueBadge ? " has" : ""}`}
-              aria-label={issueBadge ? `특이사항 미해결 ${handoffOpen.issues.length}건` : "특이사항"}
-              title="특이사항"
-              onClick={() => {
-                setNoticesTab(null);
-                setIssuesOpen(true);
-              }}
-            >
-              <Bell size={18} strokeWidth={2.2} aria-hidden />
-              {issueBadge ? <span className="top-alert-badge danger">{issueBadge}</span> : null}
-            </button>
-            <button
-              type="button"
-              className={`top-alert-btn top-notice-btn${noticeBadge ? " has" : ""}`}
-              aria-label={noticeBadge ? `공지 미해결 ${unresolvedNoticeCount(notices.list ?? [])}건` : "공지"}
-              title="호텔 공지"
-              onClick={() => {
-                setIssuesOpen(false);
-                setNoticesTab("notices");
-              }}
-            >
-              <ClipboardList size={18} strokeWidth={2.2} aria-hidden />
-              <span className="top-notice-label">공지</span>
-              {noticeBadge ? <span className="top-alert-badge warn">{noticeBadge}</span> : null}
-            </button>
-            <button
-              type="button"
-              className={`top-alert-btn top-notice-btn${tangles.visible.length ? " has" : ""}`}
-              aria-label={tangles.visible.length ? `확인 필요 ${tangles.visible.length}건` : "확인 필요"}
-              title="확인 필요"
-              onClick={() => {
-                setIssuesOpen(false);
-                setNoticesTab(null);
-                setTangleOpen(true);
-              }}
-            >
-              <AlertTriangle size={18} strokeWidth={2.2} aria-hidden />
-              <span className="top-notice-label">확인 필요</span>
-              {tangles.visible.length ? <span className="top-alert-badge tng">{badgeCountLabel(tangles.visible.length)}</span> : null}
-            </button>
-            <button
-              type="button"
-              className={`top-alert-btn${view === "settings" ? " has" : ""}`}
-              aria-label="설정"
-              title="설정"
-              onClick={() => go("settings")}
-            >
-              <Gear size={18} strokeWidth={2.2} aria-hidden />
-            </button>
-          </div>
+          <TopAlerts {...alertProps} />
           <HeaderCTA onClick={() => openSimple({ checkIn: selDate })} />
-          <div className="menu-wrap">
-            <button className="av" aria-label="메뉴" onClick={() => setMenu((m) => !m)}>
-              <span className="av-l">{(email[0] ?? "H").toUpperCase()}</span>
-              <Menu className="av-m" size={18} />
-            </button>
-            {menu ? (
-              <div className="pop" onMouseLeave={() => setMenu(false)}>
-                <div className="pop-h">{email}</div>
-                <button className="pop-i" onClick={() => void supabase.auth.signOut()}>
-                  <LogOut size={15} /> 로그아웃
-                </button>
-              </div>
-            ) : null}
-          </div>
+          <AccountMenu email={email} open={menu} setOpen={setMenu} closeOnLeave onSignOut={signOut} />
         </div>
       </header>
+      )}
 
       {sb.active ? (
         <Sidebar
           st={sb}
+          top={
+            <SidebarTop
+              hotelName={hotel.name}
+              isDemo={!!hotel.isDemo}
+              hasError={!!data.error}
+              onHome={goHome}
+              onSimple={() => openSimple({ checkIn: selDate })}
+              nav={SB_NAV}
+              view={view}
+              onPick={(id) => setView(id as View)}
+            />
+          }
+          bottom={
+            <div className="sb-tools">
+              <TopAlerts {...alertProps} />
+              <AccountMenu email={email} open={menu} setOpen={setMenu} closeOnOutside onSignOut={signOut} />
+            </div>
+          }
           onOff={() => {
             clearSidebarSwitch();
             setSbSwitch(false);
