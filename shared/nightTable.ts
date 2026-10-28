@@ -3,7 +3,7 @@
 //  · 박별 금액을 고치면 총액이 합으로 바뀌어요
 //  · 박수·입실일이 바뀌면 이미 적은 박은 그대로, 새 박만 기본 요금으로 채워요
 import { weekday } from "./ledger";
-import { type StayNightRates, nightRatesFromTotal, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
+import { type NightAmountMap, type StayNightRates, nightRatesFromTotal, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
 import { isPeakNight } from "./surcharge";
 
 export interface NightRow {
@@ -72,4 +72,73 @@ export function tableSummary(rows: readonly NightRow[]): string {
   if (!rows.length) return "";
   const f = (n: number) => n.toLocaleString("ko-KR");
   return isUniform(rows) ? `${rows.length}박 · 1박 ${f(rows[0]!.amount)}원` : `${rows.length}박 · 평균 ${f(tableAverage(rows))}원 (박마다 달라요)`;
+}
+
+// ── 기록 정정: 적은 박만 진실 (빈 박은 비어 있어요 · 총액을 나눠 채우지 않아요) ──
+
+/** 점유 밤 중 실제로 적힌 박만 (0원 포함, 비어 있으면 빠져요) */
+export function enteredNightMap(checkIn: string, nights: number, map: Record<string, number | null | undefined> | null | undefined): NightAmountMap {
+  const out: NightAmountMap = {};
+  for (const d of occupiedNightDates(checkIn, nights)) {
+    const v = map?.[d];
+    if (v != null && Number.isFinite(Number(v)) && Number(v) >= 0) out[d] = Math.round(Number(v));
+  }
+  return out;
+}
+
+/** 빈 박만 제안값(타입 요금)으로 채워요 · 적어 둔 박은 그대로 */
+export function fillBlankNights(checkIn: string, nights: number, map: Record<string, number | null | undefined> | null | undefined, suggestions: Record<string, number>): NightAmountMap {
+  const out = enteredNightMap(checkIn, nights, map);
+  for (const d of occupiedNightDates(checkIn, nights)) if (out[d] == null && suggestions[d] != null && suggestions[d]! > 0) out[d] = Math.round(suggestions[d]!);
+  return out;
+}
+
+/**
+ * 입실일·박수를 바꿀 때 적어 둔 박 옮기기. 새로 생긴 박은 비워 둬요 (기본 요금으로 채우지 않아요).
+ *  · move: 1박째는 새 1박째로 (순번 따라)
+ *  · keep: 같은 날짜는 그 금액 그대로
+ */
+export function shiftEnteredNights(map: Record<string, number | null | undefined> | null | undefined, oldCheckIn: string, oldNights: number, newCheckIn: string, newNights: number, mode: "move" | "keep"): NightAmountMap {
+  const old = enteredNightMap(oldCheckIn, oldNights, map);
+  if (mode === "keep") return enteredNightMap(newCheckIn, newNights, old);
+  const od = occupiedNightDates(oldCheckIn, oldNights);
+  const nd = occupiedNightDates(newCheckIn, newNights);
+  const out: NightAmountMap = {};
+  for (let i = 0; i < Math.min(od.length, nd.length); i++) if (old[od[i]!] != null) out[nd[i]!] = old[od[i]!]!;
+  return out;
+}
+
+/** 옮기기/그대로 두기 결과가 다른 박이 있나 (있을 때만 직원에게 물어봐요) */
+export function nightShiftAmbiguous(map: Record<string, number | null | undefined> | null | undefined, oldCheckIn: string, oldNights: number, newCheckIn: string, newNights: number): boolean {
+  if (oldCheckIn === newCheckIn) return false;
+  const a = shiftEnteredNights(map, oldCheckIn, oldNights, newCheckIn, newNights, "move");
+  const b = shiftEnteredNights(map, oldCheckIn, oldNights, newCheckIn, newNights, "keep");
+  return occupiedNightDates(newCheckIn, newNights).some((d) => (a[d] ?? -1) !== (b[d] ?? -1));
+}
+
+/**
+ * 기록 정정 저장 계산.
+ *  · 예약 금액(판매가)은 기본 그대로 — 추가 항목이 바뀐 만큼만 더해요
+ *  · 박별 합계가 판매가와 다르면 `차액`을 알려 주고, `useSum`을 켠 때만 예약 금액을 박별 합계로 바꿔요
+ *  · 모든 박을 적은 경우에만 합계로 바꿀 수 있어요 (일부만 적은 합은 총액이 아니에요)
+ */
+export function nightEditPlan(p: { entered: NightAmountMap; nightCount: number; oldPrice: number; oldExtras: number; newExtras: number; addons: number; useSum: boolean }): {
+  sum: number;
+  count: number;
+  allEntered: boolean;
+  keepPrice: number;
+  sumTotal: number;
+  /** 박별 합계 − 판매가 (모든 박을 적었을 때만) */
+  diff: number | null;
+  price: number;
+  usesSum: boolean;
+} {
+  const count = Object.keys(p.entered).length;
+  const sum = sumNightAmounts(p.entered);
+  const allEntered = p.nightCount > 0 && count === p.nightCount;
+  const keepPrice = Math.max(0, Math.round(p.oldPrice) + Math.round(p.newExtras) - Math.round(p.oldExtras));
+  const sumTotal = sum + Math.max(0, p.newExtras) + Math.max(0, p.addons);
+  const diff = allEntered ? sumTotal - keepPrice : null;
+  const usesSum = allEntered && diff !== 0 && p.useSum;
+  return { sum, count, allEntered, keepPrice, sumTotal, diff, price: usesSum ? sumTotal : keepPrice, usesSum };
 }

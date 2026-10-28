@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { saveFailMessage } from "../shared/errors";
-import { type Booking, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won } from "../shared/ledger";
+import { type Booking, type HotelSettings, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won } from "../shared/ledger";
 import { stayAddons } from "../shared/extend";
 import { changesFor } from "../shared/changes";
 import { balanceLabel, diffLine, groupLedger } from "../shared/groupLedger";
 import { PAYMENT_METHOD_LABEL, PAY_MAX, type Payment, type PaymentEdit, type PaymentMethod } from "../shared/payment";
-import { extrasTotal, hasFullNightMatrix, nightRatesFromTotal, priceFromNightMatrix, sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
-import { type NightShiftMode, shiftDays, shiftDifferences, shiftNightRates } from "../shared/nightShift";
+import { extrasTotal, hasFullNightMatrix, occupiedNightDates, priceFromNightMatrix, type StayNightRates } from "../shared/nightrates";
+import { enteredNightMap, nightEditPlan, nightShiftAmbiguous, shiftEnteredNights } from "../shared/nightTable";
+import { resolveNightRate } from "../shared/salesCalendar";
+import { type NightShiftMode, shiftDays } from "../shared/nightShift";
 import { type ExtraDraft, draftsFromExtras, resolveExtras } from "../shared/groupRates";
 import {
   type TimelineRow,
@@ -25,7 +27,7 @@ import {
 } from "../shared/recordTimeline";
 import type { HotelData } from "./data";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
-import NightRatesTable from "./NightRatesTable";
+import NightRatesEntry from "./NightRatesEntry";
 import RoomExtrasEditor from "./RoomExtrasEditor";
 
 const METHODS: PaymentMethod[] = ["card", "cash", "transfer", "credit"];
@@ -220,6 +222,7 @@ export default function RecordSheet({
                       key={b.id}
                       booking={b}
                       roomName={roomNo(b.roomId)}
+                      settings={data.hotel?.settings ?? null}
                       onCancel={() => setOpen(null)}
                       onSave={async (patch, summary, kind) => {
                         setErr(null);
@@ -352,11 +355,13 @@ function PayEditor({
 function StayEditor({
   booking: b,
   roomName,
+  settings,
   onCancel,
   onSave,
 }: {
   booking: Booking;
   roomName: string;
+  settings?: HotelSettings | null;
   onCancel: () => void;
   onSave: (patch: Partial<Pick<Booking, "checkIn" | "nights" | "price" | "nightRates">>, summary: string, kind: "stay" | "rate") => Promise<void>;
 }) {
@@ -365,32 +370,49 @@ function StayEditor({
   const [checkIn, setCheckIn] = useState(b.checkIn);
   const [out, setOut] = useState(addDays(b.checkIn, bn));
   const nights = Math.max(1, Math.min(STAY_NIGHTS_MAX, daysBetween(checkIn, out)));
-  const [rates, setRates] = useState<StayNightRates | null>(() => (hasFullNightMatrix(b.checkIn, bn, b.nightRates) ? { ...b.nightRates!, extras: null } : nightRatesFromTotal(b.checkIn, bn, b.price - extrasTotal(b.nightRates) - stayAddons(b))));
+  // 적어 둔 박만 (요금표가 없으면 비어 있어요 — 총액을 나눠 채우지 않아요)
+  const [vals, setVals] = useState<Record<string, number>>(() => enteredNightMap(b.checkIn, bn, b.nightRates?.nights));
   const [extras, setExtras] = useState<ExtraDraft[]>(() => draftsFromExtras(b.nightRates?.extras));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  // 입실일을 바꿔서 박별 요금이 갈리는 경우 — 어떻게 할지 물어봐요 (고르기 전엔 저장 못 해요)
-  const [pend, setPend] = useState<{ ci: string; n: number; rates: StayNightRates; choice: NightShiftMode | null } | null>(null);
+  // 입실일을 바꿔서 적어 둔 박이 갈리는 경우 — 어떻게 할지 물어봐요 (고르기 전엔 저장 못 해요)
+  const [pend, setPend] = useState<{ ci: string; n: number; vals: Record<string, number>; choice: NightShiftMode | null } | null>(null);
   const addons0 = stayAddons(b);
-  const roomOnly0 = b.price - extrasTotal(b.nightRates) - addons0;
-  const fallback = Math.round(Math.max(0, roomOnly0) / bn);
-  const synced0 = syncStayNightRates(checkIn, nights, rates, { typeRate: fallback });
+  const oldExtras = extrasTotal(b.nightRates);
+  // 원래 박별 합 = 예약 금액이었던 예약은 박을 고치면 금액도 따라가요 (기본 ON) · 그 밖은 판매가 유지 (기본 OFF)
+  const consistent0 = hasFullNightMatrix(b.checkIn, bn, b.nightRates) && priceFromNightMatrix(b.nightRates, addons0) === b.price;
+  const [useSum, setUseSum] = useState(consistent0);
+  const suggestions = useMemo(() => {
+    const out2: Record<string, number> = {};
+    if (!settings) return out2;
+    for (const d of occupiedNightDates(checkIn, nights)) {
+      const r = resolveNightRate(settings, b.typeId, d);
+      if (r.amount > 0) out2[d] = r.amount;
+    }
+    return out2;
+  }, [settings, b.typeId, checkIn, nights]);
   const resolvedExtras = resolveExtras(extras, nights);
-  const synced: StayNightRates = { ...synced0, extras: resolvedExtras.length ? resolvedExtras : null };
-  const roomFee = sumNightAmounts(synced.nights);
-  const xTotal = extrasTotal(synced);
-  const total = priceFromNightMatrix(synced, addons0);
+  const xTotal = extrasTotal({ extras: resolvedExtras });
+  const entered = enteredNightMap(checkIn, nights, vals);
+  const plan = nightEditPlan({ entered, nightCount: nights, oldPrice: b.price, oldExtras, newExtras: xTotal, addons: addons0, useSum });
   const datesChanged = checkIn !== b.checkIn || nights !== bn;
-  const priceChanged = total !== b.price;
+  const priceChanged = plan.price !== b.price;
   const submit = async () => {
     setBusy(true);
     try {
-      const patch: Partial<Pick<Booking, "checkIn" | "nights" | "price" | "nightRates">> = { price: total, nightRates: synced };
+      const first = Object.values(entered)[0];
+      const nr: StayNightRates | null =
+        Object.keys(entered).length || resolvedExtras.length
+          ? { flat: first ?? null, weekday: null, weekend: null, nights: Object.keys(entered).length ? entered : null, ...(resolvedExtras.length ? { extras: resolvedExtras } : {}) }
+          : null;
+      const patch: Partial<Pick<Booking, "checkIn" | "nights" | "price" | "nightRates">> = { price: plan.price, nightRates: nr };
       if (datesChanged) {
         patch.checkIn = checkIn;
         patch.nights = nights;
       }
-      await onSave(patch, fixStaySummary(roomName, { checkIn: b.checkIn, nights: bn, price: roomOnly0, extras: extrasTotal(b.nightRates) }, { checkIn, nights, price: roomFee, extras: xTotal }), datesChanged ? "stay" : "rate");
+      const roomOnly0 = b.price - oldExtras - addons0;
+      const roomNew = plan.price - xTotal - addons0;
+      await onSave(patch, fixStaySummary(roomName, { checkIn: b.checkIn, nights: bn, price: roomOnly0, extras: oldExtras }, { checkIn, nights, price: roomNew, extras: xTotal }), datesChanged ? "stay" : "rate");
     } finally {
       setBusy(false);
     }
@@ -406,19 +428,17 @@ function StayEditor({
             if (!e.target.value) return;
             const n = nights;
             const next = e.target.value;
-            const snap = pend ?? { ci: checkIn, n, rates: synced0, choice: null };
+            const snap = pend ?? { ci: checkIn, n, vals: entered, choice: null };
             setCheckIn(next);
             setOut(addDays(next, n));
             setDirty(true);
             if (next === snap.ci) {
-              setRates({ ...snap.rates, extras: null });
+              setVals(snap.vals);
               setPend(null);
               return;
             }
-            const fb = { typeRate: fallback };
-            const diffs = shiftDifferences(snap.rates, snap.ci, snap.n, next, n, fb);
-            setRates({ ...shiftNightRates(snap.rates, snap.ci, snap.n, next, n, "move", fb), extras: null });
-            setPend(diffs.length ? { ci: snap.ci, n: snap.n, rates: snap.rates, choice: null } : null);
+            setVals(shiftEnteredNights(snap.vals, snap.ci, snap.n, next, n, "move"));
+            setPend(nightShiftAmbiguous(snap.vals, snap.ci, snap.n, next, n) ? { ci: snap.ci, n: snap.n, vals: snap.vals, choice: null } : null);
           }} />
         </label>
         <label className="rec-fld">
@@ -430,11 +450,11 @@ function StayEditor({
       {pend ? (
         <div className="rec-shift" role="group" aria-label="입실일이 바뀌었어요">
           <b>입실일이 {shiftDays(pend.ci, checkIn)}일 {shiftDays(pend.ci, checkIn) > 0 ? "뒤로" : "앞으로"} 바뀌었어요</b>
-          <span className="muted sm">고쳐 둔 박별 요금을 어떻게 할까요? (고르지 않으면 저장할 수 없어요)</span>
+          <span className="muted sm">적어 둔 박별 요금을 어떻게 할까요? (고르지 않으면 저장할 수 없어요)</span>
           <div className="rec-shift-opts">
             {([
               ["move", "요금을 박 따라 옮기기", "1박째 요금은 새 1박째로, 2박째는 새 2박째로"],
-              ["keep", "날짜에 그대로 두기", "같은 날짜는 그 요금 그대로, 새 날짜는 기본 요금"],
+              ["keep", "날짜에 그대로 두기", "같은 날짜는 그 요금 그대로, 새 날짜는 비워 둬요"],
             ] as [NightShiftMode, string, string][]).map(([mode, title, hint]) => (
               <button
                 key={mode}
@@ -442,7 +462,7 @@ function StayEditor({
                 className={`rec-shift-opt${pend.choice === mode ? " on" : ""}`}
                 aria-pressed={pend.choice === mode}
                 onClick={() => {
-                  setRates({ ...shiftNightRates(pend.rates, pend.ci, pend.n, checkIn, nights, mode, { typeRate: fallback }), extras: null });
+                  setVals(shiftEnteredNights(pend.vals, pend.ci, pend.n, checkIn, nights, mode));
                   setPend({ ...pend, choice: mode });
                 }}
               >
@@ -453,12 +473,22 @@ function StayEditor({
           </div>
         </div>
       ) : null}
-      <NightRatesTable checkIn={checkIn} nights={nights} rates={synced0} fallback={fallback} defaultOpen onChange={(r) => { setRates({ ...r, extras: null }); setDirty(true); setPend(null); }} />
+      <NightRatesEntry checkIn={checkIn} nights={nights} values={vals} suggestions={suggestions} onChange={(m) => { setVals(m); setDirty(true); setPend(null); }} />
       <div className="rec-fld col">
         <span>추가 항목 (인원 추가 · 추가 이불 · 계약 조건 …)</span>
         <RoomExtrasEditor label={roomName} extras={extras} onChange={(x) => { setExtras(x); setDirty(true); }} />
       </div>
-      <small className="muted">객실료 {won(roomFee)}원{xTotal ? ` + 추가 항목 ${won(xTotal)}원` : ""} = 소계 {won(total)}원</small>
+      <small className="muted" role="status">
+        {plan.count ? `적은 박 ${plan.count}/${nights} · 박별 합계 ${won(plan.sum)}원` : "박별 요금을 아직 안 적었어요"}
+        {xTotal ? ` + 추가 항목 ${won(xTotal)}원` : ""} · 예약 금액 {won(plan.keepPrice)}원
+        {plan.diff != null && plan.diff !== 0 ? ` · 차액 ${plan.diff > 0 ? "+" : "−"}${won(Math.abs(plan.diff))}원 (박별 합계 − 예약 금액)` : ""}
+      </small>
+      {plan.diff != null && plan.diff !== 0 ? (
+        <label className="rec-usesum">
+          <input type="checkbox" checked={useSum} onChange={(e) => { setUseSum(e.target.checked); setDirty(true); }} />
+          <span>예약 금액도 박별 합계로 바꾸기 <small className="muted">({won(plan.keepPrice)}원 → {won(plan.sumTotal)}원 · 끄면 예약 금액은 그대로)</small></span>
+        </label>
+      ) : null}
       <div className="rec-acts">
         <button type="button" className="btn line" disabled={busy} onClick={onCancel}>취소</button>
         <button type="button" className="btn dark" disabled={busy || (!!pend && !pend.choice) || (!dirty && !datesChanged && !priceChanged)} onClick={() => void submit()}>{busy ? "저장 중…" : "저장"}</button>

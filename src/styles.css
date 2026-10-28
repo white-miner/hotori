@@ -6062,3 +6062,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .smart-reg-nights-sum { margin-top: 6px; font-size: 12px; }
 .smart-reg-nights-diff { color: var(--amber, #b45309); }
 .nsel-rates-enter { font-size: 12px; }
+.nre-hint { flex: 1 1 100%; }
+.rec-usesum { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f0d9a8; font-size: 13px; font-weight: 700; cursor: pointer; }
+.rec-usesum input { margin-top: 3px; width: 18px; height: 18px; }
+.rec-usesum small { font-weight: 500; }
