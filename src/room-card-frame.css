@@ -1,0 +1,115 @@
+/* One frame contract for both boards. Content never determines track size. */
+.board-page {
+  --room-card-width: 208px;
+  --room-card-height: 320px;
+}
+.board-page:not(.one) .rooms.room-card-grid {
+  grid-template-columns: repeat(auto-fill, var(--room-card-width));
+  grid-auto-rows: var(--room-card-height);
+  align-items: start;
+  justify-content: start;
+}
+.board-page:not(.one) .rooms > .cell.room-card-frame {
+  width: var(--room-card-width);
+  min-width: 0;
+  max-width: var(--room-card-width);
+  height: var(--room-card-height);
+  min-height: 0;
+  max-height: var(--room-card-height);
+  padding: 0;
+  box-sizing: border-box;
+  align-self: start;
+}
+.board-page .room-card-frame > .room-card-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 36px 18px 22px 16px 40px 20px 28px 18px 26px 24px minmax(0, 1fr) 40px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 7px;
+  gap: 0;
+  box-sizing: border-box;
+  border-radius: inherit;
+  container-type: inline-size;
+}
+.room-card-content > * { min-width: 0; min-height: 0; margin: 0; }
+.room-card-content > .r1 { grid-row: 1; }
+.room-card-content > .tl-row { grid-row: 2; }
+.room-card-content > .nowdate-row,
+.room-card-content > .rc-period { grid-row: 3; }
+.room-card-content > .rc-link { grid-row: 4; }
+.room-card-content > .rc-pay { grid-row: 5; }
+.room-card-content > .rc-due { grid-row: 6; }
+.room-card-content > .nm { grid-row: 7; }
+.room-card-content > .rc-co { grid-row: 8; }
+.room-card-content > .rc-rate { grid-row: 9; }
+.room-card-content > .bdg-row { grid-row: 10; }
+.room-card-content > .rc-card-notes { grid-row: 11; }
+.room-card-content > .rc-card-actions,
+.room-card-content > .nowstatus-slot,
+.room-card-content > .emt { grid-row: 12; }
+.board-page .room-card-content > .nowdate-row {
+  align-self: stretch;
+  width: 100%;
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.board-page .room-card-content .nowdate-btn { width: 100%; min-height: 24px; }
+.board-page .room-card-content .rc-period { white-space: nowrap; font-size: 13px; letter-spacing: -.04em; padding-inline: 2px; }
+.board-page .room-card-content .rc-pay {
+  overflow: auto;
+  overflow-wrap: normal;
+  scrollbar-width: thin;
+  line-height: 18px;
+  padding-inline: 2px;
+  overscroll-behavior: contain;
+}
+.board-page .room-card-content .rc-pay-part { display: block; width: max-content; max-width: none; }
+.board-page .room-card-content .rc-due { white-space: nowrap; overflow: auto; scrollbar-width: thin; padding-inline: 2px; }
+.board-page .room-card-content .nm { margin: 0; align-items: center; }
+.board-page .room-card-content .nm .gn { white-space: nowrap; }
+.board-page .room-card-content .rc-co,
+.board-page .room-card-content .rc-link,
+.board-page .room-card-content .tl-row {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.board-page .room-card-content .rc-rate { margin: 0; overflow: auto; white-space: nowrap; scrollbar-width: thin; padding-inline: 2px; }
+.board-page .room-card-content .bdg-row { margin: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.board-page .room-card-content .rc-card-notes { overflow: auto; scrollbar-width: thin; font-size: 12px; }
+.board-page .room-card-content .rc-card-notes :is(.nowmove, .nowmeta, .r3) { margin: 0; white-space: nowrap; }
+.board-page .room-card-content > :is(.nowstatus-slot, .rc-card-actions) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.board-page .room-card-content :is(.nowstatus, .nowearly, .rc-grpbtn, .rc-detail) {
+  flex: 0 0 auto;
+  min-width: 24px;
+  min-height: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1;
+}
+.room-card-frame .rc-detail { border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; font: inherit; }
+.room-card-frame :is(button, [tabindex]):focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: -2px;
+}
+.room-card-frame:focus-within { z-index: 3; }
+@media (max-width: 760px) {
+  .board-page { --room-card-width: 168px; }
+  .board-page .room-card-content .rc-period { font-size: 12px; letter-spacing: -.05em; }
+  .board-page .room-card-content .nm { font-size: 18px; }
+}

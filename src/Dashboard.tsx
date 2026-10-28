@@ -2020,7 +2020,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           id={`rooms-room-${r.id}`}
           data-room-id={r.id}
           {...mvAttr}
-          className={`cell em ${held ? "held" : ""} ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          className={`cell room-card-frame em ${held ? "held" : ""} ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
           onClick={
             mvClick ??
             (() => {
@@ -2050,10 +2050,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               />
             </label>
           ) : null}
+          <div className="room-card-content">
           {head}
           {typeRow()}
           <div className={`emt ${held ? "held" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "빈 방"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
+          </div>
         </div>
       );
     }
@@ -2111,7 +2113,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`rooms-room-${r.id}`}
         data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell room-card-frame bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -2143,11 +2145,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           </span>
         ) : null}
         {pm}
+        <div className="room-card-content">
         {head}
         {typeRow(cancelled ? null : b.guests)}
         {factsEl("top")}
         {cardM?.isMember ? null : (
-          <div className="nm">
+          <div className="nm" title={b.guestName}>
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span className="gn">{b.guestName}</span>
           </div>
@@ -2159,6 +2162,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           />
         ) : null}
         {factsEl("who")}
+        <div className="rc-card-actions">
         {cardM?.isLead && !readOnly ? (
           <button
             type="button"
@@ -2172,6 +2176,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             단체 결제 ›
           </button>
         ) : null}
+          {!readOnly ? <button type="button" className="rc-detail" aria-label={`${r.no}호 예약 상세 보기`} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpen(b, selDate); } }} onClick={(e) => { e.stopPropagation(); onOpen(b, selDate); }}>상세</button> : null}
+        </div>
+        <div className="rc-card-notes">
         <div className="r3 rp">
           <span />
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
@@ -2205,6 +2212,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           cancelled ? [] : (turn.get(b.id) ?? []).filter((w) => w.date === selDate || w.date === addDays(selDate, 1)),
         )}
         {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
+        </div>
+        </div>
       </div>
     );
   };
@@ -3434,13 +3443,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           id={`now-room-${r.id}`}
           data-room-id={r.id}
           {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${held ? "held" : ""} ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls}`}
+          className={`cell room-card-frame em nowempty ${held ? "held" : ""} ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls}`}
           onClick={mvClick ?? (() => selectRoom(r.id))}
           onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
           title={held ? (hold!.note ? `${ROOM_HOLD_STATUS} · ${hold!.note}` : ROOM_HOLD_STATUS) : undefined}
         >
           {duMark}
-          <div className="cell-body nowstack sparse">
+          <div className="cell-body room-card-content nowstack sparse">
             {head}
             <TypeRow t={t} />
             <div className="nowstatus-slot">
@@ -3503,13 +3512,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         id={`now-room-${r.id}`}
         data-room-id={r.id}
         {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls}`}
+        className={`cell room-card-frame bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls}`}
         onClick={mvClick ?? (() => selectRoom(r.id))}
         onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
       >
         {duMark}
         {coMark}
-        <div className="cell-body nowstack dense">
+        <div className="cell-body room-card-content nowstack dense">
           {head}
           <TypeRow t={t} guests={b.guests} />
           <div className="nowdate-row">
@@ -3557,7 +3566,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             viewLabel={dayLabel(today)}
           />
           {cardM.isMember ? null : (
-            <div className="nm">
+            <div className="nm" title={b.guestName}>
               <PlatBadge p={L.plats.get(b.platformId)} />
               <span className="gn">{b.guestName}</span>
             </div>
@@ -3566,16 +3575,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: false }}
             group={f.group && b.groupId && !cardM.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
-          {((mvDue, mvNext) =>
-            mvDue ? (
-              <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
-                {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
-              </div>
-            ) : mvNext ? (
-              <div className="nowmove" title="객실 이동 예약">
-                {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
-              </div>
-            ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
           <RoomCardFacts
             slot="who"
             rate={cardM.rate}
@@ -3587,6 +3586,20 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             linkLabel={cardM.isMember ? gMark.label : null}
             viewLabel={dayLabel(today)}
           />
+          <div className="rc-card-notes">
+          {((mvDue, mvNext) =>
+            mvDue ? (
+              <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
+                {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
+              </div>
+            ) : mvNext ? (
+              <div className="nowmove" title="객실 이동 예약">
+                {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
+              </div>
+            ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
+          {meta ? <div className="nowmeta" title={meta}>{meta}</div> : null}
+          </div>
+          <div className="nowstatus-slot">
           {grpLine ? (
             <button
               type="button"
@@ -3601,8 +3614,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               단체 결제 ›
             </button>
           ) : null}
-          {meta ? <div className="nowmeta">{meta}</div> : null}
-          <div className="nowstatus-slot">
+          {!readOnly ? <button type="button" className="rc-detail" aria-label={`${r.no}호 예약 상세 보기`} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpen(b, today); } }} onClick={(e) => { e.stopPropagation(); onOpen(b, today); }}>상세</button> : null}
             {!readOnly && f.kind === "arriving" && !b.arrived ? (
               <button
                 type="button"
@@ -3801,7 +3813,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                             {f.name}
                           </span>
                         </div>
-                        <div className="rooms">{f.rooms.map((r) => nowCell(r, f.color))}</div>
+                        <div className="rooms room-card-grid">{f.rooms.map((r) => nowCell(r, f.color))}</div>
                       </div>
                     ))}
                   </section>
@@ -4476,7 +4488,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   <span className="fdot" style={floorPaint(f.color) ? { background: floorPaint(f.color)!.bg } : undefined} />
                   <span className="fln">{f.name}</span>
                 </div>
-                <div className="rooms">{f.rooms.map((r) => roomCell(r, f.color))}</div>
+                <div className="rooms room-card-grid">{f.rooms.map((r) => roomCell(r, f.color))}</div>
               </div>
             ))}
           </section>

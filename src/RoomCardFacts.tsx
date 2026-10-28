@@ -54,7 +54,7 @@ export default function RoomCardFacts({
         </div>
       ) : null}
       {top && payText ? (
-        <div className="rc-pay amt-paid" data-tone={tone} title={payTitle ?? "결제 수단 · 금액"}>
+        <div className="rc-pay amt-paid" data-tone={tone} tabIndex={0} aria-label={`결제 내역: ${spacedPay(payText)}`} title={`${payTitle ?? "결제 수단 · 금액"} · ${spacedPay(payText)}`}>
           {(() => {
             const parts = spacedPay(payText).split(" · ");
             return parts.map((part, i) => (
