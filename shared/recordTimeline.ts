@@ -3,10 +3,8 @@
 // 화면은 이걸 그리기만 해요. 저장은 booking_payments / bookings / booking_changes.
 import { type Booking, addDays, calendarDateOf, legsOf, md, stayEnd, won } from "./ledger";
 import type { Change } from "./changes";
-import { type GroupLedger, balanceLabel, paidThroughLabel } from "./groupLedger";
+import { type GroupLedger, balanceLabel } from "./groupLedger";
 import { PAYMENT_METHOD_LABEL, type Payment, type PaymentEdit } from "./payment";
-
-export type PayClass = "선수금" | "잔금" | "미수 수납";
 
 /** 이 줄의 대상 기간: 첫 박~마지막 박 (둘 다 있을 때만) */
 export function payPeriod(p: Pick<Payment, "nightDate" | "periodNights">): { from: string; to: string; nights: number } | null {
@@ -19,29 +17,16 @@ export function periodText(p: Pick<Payment, "nightDate" | "periodNights">): stri
   return x.from === x.to ? `${md(x.from)} · 1박` : `${md(x.from)}~${md(x.to)} · ${x.nights}박`;
 }
 
-/**
- * 구분 — 기간이 있으면 결제일과 견줘요: 기간이 결제일 뒤에 시작 = 선수금, 결제일 전에 끝남 = 미수 수납, 그 외 = 잔금.
- * 기간이 없으면 선금 → 선수금, 잔금 → 잔금.
- */
-export function payClassOf(p: Pick<Payment, "kind" | "bizDate" | "nightDate" | "periodNights">): PayClass {
-  const x = payPeriod(p);
-  if (!x) return p.kind === "deposit" ? "선수금" : "잔금";
-  if (x.from > p.bizDate) return "선수금";
-  if (x.to < p.bizDate) return "미수 수납";
-  return "잔금";
-}
-
 export interface PayLine {
   id: string;
   bizDate: string;
   method: string;
   amount: number;
-  /** 어느 객실(또는 단체 몫) */
+  /** 어느 객실(또는 단체) */
   scope: string;
   bookingId: string | null;
   groupId: string | null;
   period: string;
-  cls: PayClass;
   /** 처리자: 나 / 다른 직원 / 알 수 없음 */
   by: string;
   edited: boolean;
@@ -70,11 +55,10 @@ export function payLines(payments: readonly Payment[], o: PayLineOpts): PayLine[
       bizDate: p.bizDate,
       method: PAYMENT_METHOD_LABEL[p.method],
       amount: p.amount,
-      scope: p.bookingId ? o.roomName(p.bookingId) : "단체 몫",
+      scope: p.bookingId ? o.roomName(p.bookingId) : "단체",
       bookingId: p.bookingId || null,
       groupId: p.groupId ?? null,
-      period: periodText(p) ?? (p.bookingId ? "기간 미지정" : "기간 미지정 · 앞 박부터"),
-      cls: payClassOf(p),
+      period: periodText(p) ?? "",
       by: byLabel(p.createdBy, o.meId),
       edited: !!p.editedAt,
       note: p.note ?? null,
@@ -82,20 +66,26 @@ export function payLines(payments: readonly Payment[], o: PayLineOpts): PayLine[
     }));
 }
 
+/** 한 줄: `10/25 · 카드 · 690,000원` + (예전에 객실·기간을 적어 둔 줄이면) 객실·기간 + 메모 */
 export function payLineText(l: PayLine): string {
-  return `${md(l.bizDate)} · ${l.scope} · ${l.method} ${won(l.amount)}원 · ${l.period} · ${l.cls}${l.edited ? " · 정정됨" : ""}${l.note ? ` · ${l.note}` : ""}`;
+  const parts = [md(l.bizDate), l.method, `${won(l.amount)}원`];
+  if (l.bookingId) parts.push(l.scope);
+  if (l.period) parts.push(l.period);
+  if (l.note) parts.push(l.note);
+  if (l.edited) parts.push("정정됨");
+  return parts.join(" · ");
 }
 
-/** 복사해서 붙여 넣는 결제 내역 (카톡·메모용) */
-export function paymentCopyText(title: string, lines: readonly PayLine[], ledger?: Pick<GroupLedger, "paid" | "dueToday" | "owed" | "prepaid" | "paidThrough" | "balance" | "roomCount" | "firstUncovered" | "due" | "unpaidNightsToday" | "liveCount" | "rooms" | "lump" | "tonight" | "coverNights" | "lastPeriodNights"> | null): string {
+/** 복사해서 붙여 넣는 결제 내역 (카톡·메모용): 결제 줄 + 청구 − 결제 = 차액 */
+export function paymentCopyText(title: string, lines: readonly PayLine[], ledger?: Pick<GroupLedger, "due" | "paid" | "owed" | "prepaid" | "rooms" | "roomCount"> | null): string {
   const out = [`${title} · 결제 내역`];
   if (!lines.length) out.push("결제 내역 없음");
   for (const l of lines) out.push(payLineText(l));
   const total = lines.reduce((n, l) => n + l.amount, 0);
   out.push(`결제 합계 ${won(total)}원`);
   if (ledger) {
-    out.push(ledger.owed > 0 ? `미수금 ${won(ledger.owed)}원` : ledger.prepaid > 0 ? `선수금 ${won(ledger.prepaid)}원` : "미수금 없음");
-    out.push(paidThroughLabel(ledger as GroupLedger, md));
+    out.push(`청구 합계 ${won(ledger.due)}원`);
+    out.push(balanceLabel(ledger));
   }
   return out.join("\n");
 }
@@ -121,7 +111,7 @@ export type TimelineBooking = Pick<Booking, "id" | "roomId" | "checkIn" | "night
 
 export interface TimelineOpts {
   bookings: readonly TimelineBooking[];
-  /** 단체 몫 결제 */
+  /** 단체로 받은 결제 */
   groupPayments?: readonly Payment[];
   /** 객실 줄 결제는 bookings[].payments에서 와요 */
   payments?: (bookingId: string) => readonly Payment[];
@@ -197,7 +187,7 @@ function addPay(p: Payment, rows: TimelineRow[], o: TimelineOpts, roomName: (id:
     kind: "pay",
     date: p.bizDate,
     title: `결제 · ${line.method} ${won(p.amount)}원`,
-    sub: `${line.scope} · ${line.period} · ${line.cls}`,
+    sub: [line.scope, line.period, line.note].filter(Boolean).join(" · "),
     bookingId: p.bookingId || null,
     paymentId: p.id,
     future: false,
@@ -219,7 +209,7 @@ export function fixPaymentSummary(before: Payment, after: PaymentEdit, roomName:
   if (before.amount !== after.amount) parts.push(`금액 ${won(before.amount)} → ${won(after.amount)}원`);
   if (before.method !== after.method) parts.push(`수단 ${PAYMENT_METHOD_LABEL[before.method]} → ${PAYMENT_METHOD_LABEL[after.method]}`);
   if (before.bizDate !== after.bizDate) parts.push(`결제일 ${md(before.bizDate)} → ${md(after.bizDate)}`);
-  const scopeOf = (bookingId: string | null | undefined) => (bookingId ? roomName(bookingId) : "단체 몫");
+  const scopeOf = (bookingId: string | null | undefined) => (bookingId ? roomName(bookingId) : "단체");
   const from = scopeOf(before.bookingId || null);
   const to = scopeOf(after.bookingId);
   if (from !== to) parts.push(`대상 ${from} → ${to}`);
@@ -232,24 +222,24 @@ export function fixPaymentSummary(before: Payment, after: PaymentEdit, roomName:
 }
 export function fixPaymentAddSummary(p: Pick<Payment, "method" | "amount" | "bizDate" | "bookingId" | "nightDate" | "periodNights">, roomName: (bookingId: string) => string): string {
   const per = periodText(p);
-  return clip(`${FIX_PREFIX}결제 추가: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체 몫"}${per ? ` · ${per}` : ""}`);
+  return clip(`${FIX_PREFIX}결제 추가: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}${per ? ` · ${per}` : ""}`);
 }
 export function fixPaymentDeleteSummary(p: Payment, roomName: (bookingId: string) => string): string {
-  return clip(`${FIX_PREFIX}결제 삭제: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체 몫"}`);
+  return clip(`${FIX_PREFIX}결제 삭제: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}`);
 }
 export function fixPaymentRestoreSummary(p: Payment, roomName: (bookingId: string) => string): string {
-  return clip(`${FIX_PREFIX}결제 삭제 되돌림: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체 몫"}`);
+  return clip(`${FIX_PREFIX}결제 삭제 되돌림: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}`);
 }
 export function fixStaySummary(room: string, b: { checkIn: string; nights: number; price: number }, a: { checkIn: string; nights: number; price: number }): string {
   const parts: string[] = [];
   if (b.checkIn !== a.checkIn) parts.push(`입실 ${md(b.checkIn)} → ${md(a.checkIn)}`);
   if (b.nights !== a.nights) parts.push(`${b.nights}박 → ${a.nights}박`);
   if (b.price !== a.price) parts.push(`객실료 ${won(b.price)} → ${won(a.price)}원`);
-  return clip(`${FIX_PREFIX}${room} ${parts.join(", ") || "요금 배분 수정"}`);
+  return clip(`${FIX_PREFIX}${room} ${parts.join(", ") || "요금 수정"}`);
 }
 
 // ---------- 어긋남 안내 (참고용 · 아무것도 막지 않아요) ----------
-export function recordAdvisories(o: { bookings: readonly (TimelineBooking & { payments?: Payment[] })[]; groupPayments?: readonly Payment[]; ledger?: Pick<GroupLedger, "prepaid" | "owed" | "lump"> | null; roomName: (id: string | null | undefined) => string }): string[] {
+export function recordAdvisories(o: { bookings: readonly (TimelineBooking & { payments?: Payment[] })[]; groupPayments?: readonly Payment[]; ledger?: Pick<GroupLedger, "prepaid" | "owed"> | null; roomName: (id: string | null | undefined) => string }): string[] {
   const out: string[] = [];
   for (const b of o.bookings) {
     for (const p of b.payments ?? []) {
@@ -257,9 +247,7 @@ export function recordAdvisories(o: { bookings: readonly (TimelineBooking & { pa
       if (x && b.nights && (x.from < b.checkIn || x.to >= addDays(b.checkIn, b.nights))) out.push(`${o.roomName(b.roomId)} 결제 ${paymentLabel(p)}의 기간이 숙박 기간 밖이에요`);
     }
   }
-  const lump = (o.groupPayments ?? []).reduce((n, p) => n + p.amount, 0);
-  if (lump > 0) out.push(`객실에 안 나눈 단체 몫 ${won(lump)}원이 있어요 (앞 박부터 채워져요) · 객실별로 지정하면 더 정확해요`);
-  if (o.ledger && o.ledger.prepaid > 0) out.push(`선수금 ${won(o.ledger.prepaid)}원이 남아 있어요`);
+  if (o.ledger && o.ledger.prepaid > 0) out.push(`초과 수납 ${won(o.ledger.prepaid)}원이에요 (청구보다 더 받았어요)`);
   return out;
 }
 

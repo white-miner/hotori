@@ -7,7 +7,7 @@ import type { Payment } from "./payment";
 
 export type PeriodBooking = Pick<
   Booking,
-  "id" | "status" | "kind" | "checkIn" | "nights" | "price" | "priceUnset" | "earlyOut" | "refund" | "nightRates" | "payments" | "checkedOutAt" | "stayMode"
+  "id" | "status" | "kind" | "checkIn" | "nights" | "price" | "priceUnset" | "earlyOut" | "refund" | "nightRates" | "payments" | "checkedOutAt" | "stayMode" | "openEnded"
 >;
 
 export interface NightSlot {
@@ -136,111 +136,4 @@ export function coverageSummary(c: StayCoverage): string {
   const range = (r: CoverageRun) => (r.from === r.to ? md(r.from) : `${md(r.from)}~${md(r.to)}`);
   if (runs.length === 2 && runs[0]!.state === "paid") return `${runs[0]!.nights}박 결제 완료(~${md(runs[0]!.to)}) · 이후 미결제`;
   return runs.map((r) => `${range(r)} ${r.state === "paid" ? "결제" : "미결제"}`).join(" · ");
-}
-
-// ---------------- 단체 기간 ----------------
-export interface PeriodRow {
-  bookingId: string;
-  /** 이번 기간에 이 방이 납부액 (이미 낸 박은 뺌) */
-  amount: number;
-  /** 이번 기간에 이 방에서 결제할 박 수 */
-  nights: number;
-  /** 박당(이번 기간 첫 미결제 박) 요금 */
-  perNight: number;
-}
-export interface GroupPeriodPlan {
-  /** 첫 박 · 마지막 박 (둘 다 포함) · 박수 · 납부액이 없으면 null */
-  start: string | null;
-  end: string | null;
-  nights: number;
-  rows: PeriodRow[];
-  total: number;
-  /** 방 수 (이번 기간에 납부액이 있는 방) */
-  rooms: number;
-  /** 단체 전체에서 이 시작일 이후로 남은 최대 박 수 */
-  maxNights: number;
-}
-
-/** 단체에서 맨 앞 미결제 박 */
-export function groupFirstUnpaid(covs: readonly StayCoverage[]): string | null {
-  let best: string | null = null;
-  for (const c of covs) if (c.firstUnpaid && (!best || c.firstUnpaid < best)) best = c.firstUnpaid;
-  return best;
-}
-
-/**
- * 다음 N박 합계: start부터 N박 × 모든 방의 미결제 금액.
- * start 기본 = 단체의 맨 앞 미결제 박. 퇴실 뒤 박은 그 방 몫이 0 · 박수는 남은 박까지만 잘려요.
- */
-export function planGroupPeriod(covs: readonly StayCoverage[], nights: number, startDate?: string | null): GroupPeriodPlan {
-  const first = groupFirstUnpaid(covs);
-  const start = startDate && (!first || startDate >= first) ? startDate : first;
-  const empty: GroupPeriodPlan = { start: null, end: null, nights: 0, rows: [], total: 0, rooms: 0, maxNights: 0 };
-  if (!start) return empty;
-  let lastNight: string | null = null;
-  for (const c of covs) for (const n of c.nights) if (n.date >= start && n.covered < n.amount && (!lastNight || n.date > lastNight)) lastNight = n.date;
-  if (!lastNight) return empty;
-  const maxNights = daysBetween(start, lastNight) + 1;
-  const count = Math.max(1, Math.min(Math.round(nights) || 1, maxNights));
-  const end = addDays(start, count - 1);
-  const rows: PeriodRow[] = covs.map((c) => {
-    const win = c.nights.filter((n) => n.date >= start && n.date <= end);
-    const open = win.filter((n) => n.covered < n.amount);
-    return {
-      bookingId: c.bookingId,
-      amount: open.reduce((s, n) => s + n.amount - n.covered, 0),
-      nights: open.length,
-      perNight: open[0]?.amount ?? 0,
-    };
-  });
-  const total = rows.reduce((n, r) => n + r.amount, 0);
-  return { start, end, nights: count, rows, total, rooms: rows.filter((r) => r.amount > 0).length, maxNights };
-}
-
-/** 총액을 직접 고쳤을 때 방별로 나누기: 방 몫에 비례 · 최대잔여법(합 = total · 방 몫 0은 0) */
-export function allocateTotal(total: number, shares: readonly number[]): number[] {
-  const t = Math.max(0, Math.round(total));
-  const sum = shares.reduce((n, x) => n + Math.max(0, x), 0);
-  if (!shares.length || sum <= 0 || t <= 0) return shares.map(() => 0);
-  const raw = shares.map((s) => (Math.max(0, s) * t) / sum);
-  const out = raw.map((x) => Math.floor(x));
-  let rest = t - out.reduce((n, x) => n + x, 0);
-  const order = raw
-    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
-    .filter((x) => shares[x.i]! > 0)
-    .sort((a, b) => b.frac - a.frac || a.i - b.i);
-  for (let k = 0; rest > 0 && order.length; k = (k + 1) % order.length) {
-    out[order[k]!.i]!++;
-    rest--;
-  }
-  return out;
-}
-
-/** 저장할 결제 내역 (방마다 한 줄 · 납부액 0인 방은 빠짐) */
-export interface PeriodPayLine {
-  bookingId: string;
-  amount: number;
-  nightDate: string;
-  periodNights: number;
-  note: string;
-}
-export function periodPayLines(plan: GroupPeriodPlan, total: number | null = null): PeriodPayLine[] {
-  if (!plan.start || !plan.end || plan.total <= 0) return [];
-  const shares = plan.rows.map((r) => r.amount);
-  const amounts = total == null || total === plan.total ? shares : allocateTotal(total, shares);
-  const range = plan.nights === 1 ? md(plan.start) : `${md(plan.start)}~${md(plan.end)}`;
-  const note = `기간결제 ${range} ${plan.nights}박`.slice(0, 80);
-  const lines: PeriodPayLine[] = [];
-  plan.rows.forEach((r, i) => {
-    const amount = amounts[i]!;
-    if (amount > 0) lines.push({ bookingId: r.bookingId, amount, nightDate: plan.start!, periodNights: plan.nights, note });
-  });
-  return lines;
-}
-
-/** 확인 문구: `3박 × 3객실 = 690,000원` (방마다 박수가 다르면 `3박 · 3객실`) */
-export function periodHeadline(plan: GroupPeriodPlan, total = plan.total): string {
-  if (!plan.nights || !plan.rooms) return "결제할 박이 없어요";
-  const same = plan.rows.filter((r) => r.amount > 0).every((r) => r.nights === plan.nights);
-  return same ? `${plan.nights}박 × ${plan.rooms}객실 = ${won(total)}원` : `${plan.nights}박 · ${plan.rooms}객실 = ${won(total)}원`;
 }

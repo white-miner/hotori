@@ -551,3 +551,12 @@ test("단체 미수 색은 오늘 밤까지 기준 (기간 전체 대비가 아�
   const all = [g("a", "r1", 3_000_000)];
   assert.equal(nowAmountTone(all[0]!, null, { members: all }, today), "paid");
 });
+
+test("퇴실 미정 객실: 날짜 칩은 물결만 (10/25~) · 요약은 N박째", async () => {
+  const { nowNightRange, nowStaySummary } = await import("./nowboard");
+  const open = bk({ id: "o", roomId: "r1", checkIn: "2026-10-25", nights: 4, openEnded: true, arrived: true });
+  assert.equal(nowNightRange(open).label, "10/25~");
+  assert.equal(nowStaySummary(open, "2026-10-27"), "3박째");
+  const fixed = bk({ id: "f", roomId: "r1", checkIn: "2026-10-25", nights: 4 });
+  assert.equal(nowNightRange(fixed).label, "10/25~28");
+});

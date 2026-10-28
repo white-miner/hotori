@@ -1,17 +1,12 @@
-// 단체 기간 결제: 박별 금액 · 박별 결제 채움 · 다음 N박 합계 · 총액 배분 · 환불/조기 퇴실/박 초과
+// 박별 금액 · 박별 결제 채움(참고) · 환불/조기 퇴실/박 초과
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Booking } from "./ledger";
 import type { Payment } from "./payment";
 import {
-  allocateTotal,
-  coverageRuns,
+    coverageRuns,
   coverageSummary,
-  groupFirstUnpaid,
-  periodHeadline,
-  periodPayLines,
-  planGroupPeriod,
-  stayCoverage,
+    stayCoverage,
   stayNightAmounts,
   type PeriodBooking,
 } from "./periodPay";
@@ -122,106 +117,3 @@ test("stayCoverage: 조기 퇴실 뒤에는 청구액 줄고 낸 돈이 더 많�
 
 // 사용자 사례: 602호 7만 · 501호 · 301호 8만 = 하루 23만 · 3박 = 690,000
 const GROUP = () => [stay("602", 70_000, 30), stay("501", 80_000, 30), stay("301", 80_000, 30)];
-
-test("planGroupPeriod: (7+8+8만) × 3박 = 690,000 · 3객실", () => {
-  const covs = GROUP().map(stayCoverage);
-  const plan = planGroupPeriod(covs, 3);
-  assert.equal(plan.total, 690_000);
-  assert.equal(plan.rooms, 3);
-  assert.equal(plan.nights, 3);
-  assert.equal(plan.start, "2026-10-27");
-  assert.equal(plan.end, "2026-10-29");
-  assert.deepEqual(plan.rows.map((r) => r.amount), [210_000, 240_000, 240_000]);
-  assert.equal(periodHeadline(plan), "3박 × 3객실 = 690,000원");
-  const lines = periodPayLines(plan);
-  assert.equal(lines.length, 3);
-  assert.equal(lines.reduce((s, l) => s + l.amount, 0), 690_000);
-  assert.ok(lines.every((l) => l.nightDate === "2026-10-27" && l.periodNights === 3));
-  assert.equal(lines[0]!.note, "기간결제 10/27~10/29 3박");
-});
-
-test("planGroupPeriod: 결제 뒤 다음 3박 · 이미 낸 박은 안 겹침", () => {
-  let group = GROUP();
-  const plan1 = planGroupPeriod(group.map(stayCoverage), 3);
-  group = group.map((b) => ({ ...b, payments: periodPayLines(plan1).filter((l) => l.bookingId === b.id).map((l) => pay(b.id, l.amount, { nightDate: l.nightDate, periodNights: l.periodNights })) }));
-  const covs = group.map(stayCoverage);
-  assert.equal(groupFirstUnpaid(covs), "2026-10-30");
-  const plan2 = planGroupPeriod(covs, 3);
-  assert.equal(plan2.start, "2026-10-30");
-  assert.equal(plan2.total, 690_000);
-  // 같은 3박을 다시 골라도(시작일 지정) 이미 낸 박 몫은 0 → 앞으로 밀림
-  const again = planGroupPeriod(covs, 3, "2026-10-27");
-  assert.equal(again.start, "2026-10-30");
-  assert.equal(again.total, 690_000);
-});
-
-test("planGroupPeriod: 남은 박보다 길게 고르면 남은 박까지만 · 퇴실 뒤 박은 방 몫 0", () => {
-  const group = [stay("a", 70_000, 2), stay("b", 80_000, 5)];
-  const plan = planGroupPeriod(group.map(stayCoverage), 7);
-  assert.equal(plan.nights, 5);
-  assert.equal(plan.maxNights, 5);
-  assert.deepEqual(plan.rows.map((r) => [r.amount, r.nights]), [[140_000, 2], [400_000, 5]]);
-  assert.equal(periodHeadline(plan), "5박 · 2객실 = 540,000원");
-});
-
-test("planGroupPeriod: 오늘부터(시작일 지정) · 시작일이 더 이르면 첫 미결제 박으로 보정", () => {
-  const covs = GROUP().map(stayCoverage);
-  assert.equal(planGroupPeriod(covs, 1, "2026-10-30").start, "2026-10-30");
-  assert.equal(planGroupPeriod(covs, 1, "2026-10-01").start, "2026-10-27");
-  assert.equal(planGroupPeriod(covs, 3, "2026-10-30").total, 690_000);
-});
-
-test("planGroupPeriod: 다 냈으면 빈 계획 · 라인 없음", () => {
-  const b = stay("a", 70_000, 2, { payments: [pay("a", 140_000)] });
-  const plan = planGroupPeriod([stayCoverage(b)], 3);
-  assert.equal(plan.start, null);
-  assert.equal(plan.total, 0);
-  assert.deepEqual(periodPayLines(plan), []);
-  assert.equal(periodHeadline(plan), "결제할 박이 없어요");
-});
-
-test("planGroupPeriod: 일부 낸 박은 남은 금액만", () => {
-  const b = stay("a", 80_000, 3, { payments: [pay("a", 100_000)] });
-  const plan = planGroupPeriod([stayCoverage(b)], 2);
-  // 1박째 완납 · 2박째 20,000 낸 상태 → 이번 기간(10/28~10/29)은 60,000 + 80,000
-  assert.equal(plan.start, "2026-10-28");
-  assert.equal(plan.total, 140_000);
-});
-
-test("planGroupPeriod: 방마다 시작이 달라도 단체 첫 미결제 박부터", () => {
-  const a = stay("a", 70_000, 4, { payments: [pay("a", 140_000, { nightDate: "2026-10-27", periodNights: 2 })] });
-  const b = stay("b", 80_000, 4);
-  const plan = planGroupPeriod([a, b].map(stayCoverage), 2);
-  assert.equal(plan.start, "2026-10-27");
-  assert.deepEqual(plan.rows.map((r) => r.amount), [0, 160_000]);
-  assert.equal(plan.rooms, 1);
-});
-
-test("allocateTotal: 합 = 총액 · 비례 · 최대잔여법 · 0 몫은 0", () => {
-  assert.deepEqual(allocateTotal(690_000, [210_000, 240_000, 240_000]), [210_000, 240_000, 240_000]);
-  const a = allocateTotal(100_000, [1, 1, 1]);
-  assert.equal(a.reduce((s, x) => s + x, 0), 100_000);
-  assert.deepEqual(a, [33_334, 33_333, 33_333]);
-  const b = allocateTotal(680_000, [210_000, 240_000, 240_000]);
-  assert.equal(b.reduce((s, x) => s + x, 0), 680_000);
-  assert.deepEqual(allocateTotal(10, [0, 5, 0]), [0, 10, 0]);
-  assert.deepEqual(allocateTotal(0, [1, 2]), [0, 0]);
-  assert.deepEqual(allocateTotal(5, []), []);
-});
-
-test("periodPayLines: 총액을 고치면 방별로 비례 배분 · 납부액 0인 방은 줄 없음", () => {
-  const plan = planGroupPeriod(GROUP().map(stayCoverage), 3);
-  const lines = periodPayLines(plan, 680_000);
-  assert.equal(lines.reduce((s, l) => s + l.amount, 0), 680_000);
-  assert.equal(lines.length, 3);
-  const one = planGroupPeriod([stay("a", 70_000, 4, { payments: [pay("a", 140_000, { nightDate: "2026-10-27", periodNights: 2 })] }), stay("b", 80_000, 4)].map(stayCoverage), 2);
-  assert.deepEqual(periodPayLines(one).map((l) => l.bookingId), ["b"]);
-});
-
-test("기간 결제 내역을 장부 결제와 합쳐도 방 수납 합계 = 줄 합계 (기존 payState 호환)", async () => {
-  const { paidOf } = await import("./payment");
-  const plan = planGroupPeriod(GROUP().map(stayCoverage), 3);
-  const lines = periodPayLines(plan);
-  const b = stay("602", 70_000, 30, { payments: lines.filter((l) => l.bookingId === "602").map((l) => pay("602", l.amount, { nightDate: l.nightDate, periodNights: l.periodNights })) });
-  assert.equal(paidOf(book(b)), 210_000);
-});

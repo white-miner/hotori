@@ -336,6 +336,11 @@ export function nowNightsDays(b: Pick<Booking, "checkIn" | "nights" | "kind" | "
  * 1박 · 숙박예약(입실 전) · 진행 불가 → 길이만. 풀 문구(`N박 M일` · `N박 중 K박째`) 금지.
  */
 export function nowStaySummary(b: Booking, date: string, showProgress = true): string {
+  // 이용 기간 미정: 총 박수 대신 지금 몇 박째인지만 (끝이 없으니 「3/4박」은 거짓이에요)
+  if (b.openEnded && b.kind === "stay" && !b.earlyOut) {
+    const k = showProgress ? nowStayNightIndex(b, date) : null;
+    return k != null ? `${k}박째` : "";
+  }
   const nd = nowNightsDays(b);
   if (!nd.label) return "";
   if (!showProgress || nd.nights <= 1) return nd.label;
@@ -393,7 +398,9 @@ export function nowAmountTone(
       extras: (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
     });
     if (g.roomCount > 0) {
-      if (g.owed > 0) return "due";
+      // 오늘 밤까지 청구 vs 받은 돈 — 객실에 나누지 않고 합계끼리만 견줘요
+      const dueSoFar = g.rooms.reduce((n, r) => n + r.rows.filter((x) => x.date <= today).reduce((a, x) => a + x.amount, 0), 0) + g.extras;
+      if (g.paid < Math.min(dueSoFar, g.due)) return "due";
       if (g.due > g.paid) return "partial";
       return "paid";
     }
@@ -410,7 +417,7 @@ export function nowAmountTone(
  * 퇴실 아침(stayEnd)은 구간에 넣지 않음 (예: 2박 입19·퇴21 → `10/19~20`).
  * Entry는 입·퇴·박을 쓰고, 보드는 밤 구간만 쓴다.
  */
-export function nowNightRange(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut">): {
+export function nowNightRange(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut"> & { openEnded?: boolean }): {
   from: string;
   to: string;
   fromLabel: string;
@@ -424,6 +431,8 @@ export function nowNightRange(b: Pick<Booking, "checkIn" | "nights" | "kind" | "
   // 같은 달이면 `10/19~20`, 달 넘기면 `10/30~11/2`
   const sameMonth = b.checkIn.slice(0, 7) === lastNight.slice(0, 7);
   const rangeEnd = sameMonth ? String(Number(lastNight.slice(8, 10))) : toLabel;
+  // 이용 기간 미정: 끝 날짜를 보여 주지 않고 물결만 (`10/25~`)
+  if (b.openEnded && b.kind === "stay" && !b.earlyOut) return { from: b.checkIn, to: lastNight, fromLabel, toLabel, label: `${fromLabel}~` };
   return {
     from: b.checkIn,
     to: lastNight,

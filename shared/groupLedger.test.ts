@@ -1,125 +1,116 @@
-// 단체 결제 요약: 객실이 들어오고 나가도 · 며칠씩 묶어 결제해도 · 선수금/미수금이 한 줄로 맞는지
+// 단체 요금 · 결제 비교: 객실 요금(청구)과 결제 내역(받은 돈)을 따로 두고 차액만 봐요. 배분 없음.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addDays, md } from "./ledger";
+import { addDays } from "./ledger";
 import type { Payment } from "./payment";
 import type { PeriodBooking } from "./periodPay";
-import { balanceLabel, coverLabel, groupLedger, groupTone, paidThroughLabel, unpaidTodayLabel } from "./groupLedger";
+import { balanceLabel, diffLine, groupLedger, groupTone, rateLabel, stayRangeLabel } from "./groupLedger";
 
 let n = 0;
-const matrix = (checkIn: string, per: number, count: number) => ({
-  flat: per,
-  nights: Object.fromEntries(Array.from({ length: count }, (_, i) => [addDays(checkIn, i), per])),
-});
 const pay = (bookingId: string, amount: number, extra: Partial<Payment> = {}): Payment => ({
-  id: `p${++n}`, bookingId, kind: "balance", method: "card", amount, bizDate: "2026-10-28", createdAt: `2026-10-28T00:00:${String(n % 60).padStart(2, "0")}Z`, ...extra,
+  id: `p${++n}`, bookingId, kind: "balance", method: "card", amount, bizDate: "2026-10-25", createdAt: `2026-10-25T00:00:${String(n % 60).padStart(2, "0")}Z`, ...extra,
 });
-/** per원 × count박 (박별 요금 있음) */
-export const room = (id: string, per: number, count: number, checkIn = "2026-10-28", p: Partial<PeriodBooking> = {}): PeriodBooking =>
+/** per원 × count박 (같은 요금) */
+const room = (id: string, per: number, count: number, checkIn = "2026-10-25", p: Partial<PeriodBooking> = {}): PeriodBooking =>
   ({
     id, status: "active", kind: "stay", checkIn, nights: count, price: per * count, priceUnset: false, earlyOut: null, refund: null,
-    nightRates: matrix(checkIn, per, count), payments: [], checkedOutAt: null, stayMode: null, ...p,
+    nightRates: { flat: per, nights: Object.fromEntries(Array.from({ length: count }, (_, i) => [addDays(checkIn, i), per])) },
+    payments: [], checkedOutAt: null, stayMode: null, ...p,
   }) as PeriodBooking;
-const group3 = () => [room("r602", 70_000, 30), room("r501", 80_000, 30), room("r301", 80_000, 30)];
-/** 3박 결제(10/28~30) 한 줄씩 */
-const paid3 = (rooms: PeriodBooking[], from = "2026-10-28", nights = 3) =>
-  rooms.map((b) => ({ ...b, payments: [...(b.payments ?? []), pay(b.id, (b.nightRates!.flat ?? 0) * nights, { nightDate: from, periodNights: nights })] }) as PeriodBooking);
+const TODAY = "2026-10-25";
+const three = () => [room("r602", 70_000, 3), room("r501", 80_000, 3), room("r301", 80_000, 3)];
 
-test("결제 내역 없음: 오늘 밤 합계 = 미수금 · 결제 완료 날짜 없음", () => {
-  const g = groupLedger(group3(), 0, "2026-10-28");
-  assert.equal(g.roomCount, 3);
-  assert.equal(g.tonight, 230_000);
-  assert.equal(g.dueToday, 230_000);
-  assert.equal(g.owed, 230_000);
-  assert.equal(g.prepaid, 0);
-  assert.equal(g.paidThrough, null);
-  assert.equal(g.unpaidNightsToday, 1);
-  assert.equal(balanceLabel(g), "미수금 230,000원");
-  assert.equal(paidThroughLabel(g, md), "결제 내역 없음");
-  assert.equal(unpaidTodayLabel(g), "오늘 밤까지 1박 미결제");
-  assert.equal(groupTone(g), "owed");
+test("사례: 602(7만)+501(8만)+301(8만) 10/25~10/27 3박 = 청구 690,000 → 카드 690,000 결제 = 정산 완료", () => {
+  const open = groupLedger(three(), 0, TODAY);
+  assert.equal(open.due, 690_000);
+  assert.equal(open.paid, 0);
+  assert.equal(balanceLabel(open), "미수금 690,000원");
+  const settled = groupLedger(three(), 690_000, TODAY);
+  assert.equal(settled.owed, 0);
+  assert.equal(settled.prepaid, 0);
+  assert.equal(balanceLabel(settled), "정산 완료");
+  assert.equal(groupTone(settled), "even");
 });
 
-test("3객실 × 3박 카드 690,000원 결제 → 선수금 · 결제 완료 ~10/30 · 오늘 밤 미결제 없음", () => {
-  const g = groupLedger(paid3(group3()), 0, "2026-10-28");
-  assert.equal(g.paid, 690_000);
-  assert.equal(g.prepaid, 460_000);
-  assert.equal(g.owed, 0);
-  assert.equal(g.paidThrough, "2026-10-30");
-  assert.equal(g.firstUncovered, "2026-10-31");
-  assert.equal(g.unpaidNightsToday, 0);
-  assert.equal(g.coverNights, 2);
-  assert.equal(g.lastPeriodNights, 3);
-  assert.equal(coverLabel(g), "선수금으로 2박 더 커버");
-  assert.equal(paidThroughLabel(g, md), "결제 완료 ~10/30");
+test("객실 요금은 평균내지 않아요: 객실마다 박당 요금 · 소계가 자기 요금 그대로", () => {
+  const g = groupLedger(three(), 690_000, TODAY);
+  const by = Object.fromEntries(g.rooms.map((r) => [r.bookingId, r]));
+  assert.deepEqual([by.r602!.subtotal, by.r501!.subtotal, by.r301!.subtotal], [210_000, 240_000, 240_000]);
+  assert.deepEqual([by.r602!.rateMin, by.r602!.rateMax], [70_000, 70_000]);
+  assert.equal(rateLabel(by.r501!), "80,000원");
+  // 단체에 한 번에 낸 결제가 객실에 배분되지 않음 → 객실별 noted는 0
+  assert.equal(by.r602!.noted + by.r501!.noted + by.r301!.noted, 0);
 });
 
-test("기간이 지나면 미수금 · 밀린 박 수가 보여요", () => {
-  const g = groupLedger(paid3(group3()), 0, "2026-11-01"); // 31일 · 1일 두 밤 밀림
-  assert.equal(g.dueToday, 230_000 * 5); // 10/28~11/01
-  assert.equal(g.owed, 230_000 * 2);
-  assert.equal(g.unpaidNightsToday, 2);
-  assert.equal(g.paidThrough, "2026-10-30");
-  assert.equal(groupTone(g), "owed");
+test("요일별 요금: 최저~최고로 보이고 소계는 날짜별 합", () => {
+  const b = room("rw", 70_000, 3, "2026-10-23", { nightRates: { flat: 70_000, nights: { "2026-10-23": 90_000, "2026-10-24": 90_000, "2026-10-25": 70_000 } } as never, price: 250_000 });
+  const g = groupLedger([b], 0, "2026-10-23");
+  const r = g.rooms[0]!;
+  assert.equal(r.subtotal, 250_000);
+  assert.deepEqual([r.rateMin, r.rateMax], [70_000, 90_000]);
+  assert.equal(rateLabel(r), "70,000~90,000원 (요일별)");
 });
 
-test("객실 추가: 302호는 입실일부터 자기 요금(90,000)만 계산돼요", () => {
-  const rooms = [...paid3(group3()), room("r302", 90_000, 20, "2026-10-30")];
-  const g = groupLedger(rooms, 0, "2026-10-30");
-  assert.equal(g.roomCount, 4);
-  // 10/30 밤: 기존 3객실 230,000 + 302호 90,000
-  assert.equal(g.tonight, 320_000);
-  // 302호는 10/30부터 → 10/28·29 박은 없음
-  const r302 = g.rooms.find((r) => r.bookingId === "r302")!;
-  assert.equal(r302.firstNight, "2026-10-30");
-  assert.equal(r302.dueToday, 90_000);
-  assert.equal(r302.paidThrough, null);
-  // 오늘 밤까지: 기존 3일 × 230,000 = 690,000 (전부 결제) + 302호 90,000 미수
-  assert.equal(g.dueToday, 690_000 + 90_000);
-  assert.equal(g.owed, 90_000);
-  // 단체 결제 완료일: 302호 첫 밤(10/30)이 미결제라 10/29까지
-  assert.equal(g.paidThrough, "2026-10-29");
-  assert.equal(g.firstUncovered, "2026-10-30");
-});
-
-test("선수금(단체 몫)은 맨 앞 미결제 박부터 자동 반영 · 객실 몫을 넘은 돈도 풀로", () => {
-  const rooms = group3();
-  // 단체 몫 460,000 = 2박 분
-  const g = groupLedger(rooms, 460_000, "2026-10-28");
-  assert.equal(g.paid, 460_000);
-  assert.equal(g.paidThrough, "2026-10-29");
-  assert.equal(g.prepaid, 230_000); // 오늘 밤 230,000을 빼고도 남음
-  // 객실 하나가 자기 몫보다 많이 낸 경우
-  const over = [room("a", 100_000, 2, "2026-10-28", { payments: [pay("a", 300_000)] }), room("b", 100_000, 2)];
-  const g2 = groupLedger(over, 0, "2026-10-28");
-  assert.equal(g2.paid, 300_000);
-  assert.equal(g2.rooms.find((r) => r.bookingId === "b")!.paidThrough, "2026-10-28"); // a의 남는 100,000이 b 첫 밤을 채움
-  assert.equal(g2.paidThrough, "2026-10-28");
-});
-
-test("객실이 먼저 나가면 (박수 줄임) 그 객실 몫이 사라져 합계가 맞춰져요", () => {
-  const rooms = paid3(group3());
-  // 301호가 2박만 묵고 나감: 박수 2 · 판매가 160,000 · 결제 240,000(3박)은 그대로
-  const left = rooms.map((b) =>
-    b.id === "r301" ? ({ ...b, nights: 2, price: 160_000, nightRates: matrix("2026-10-28", 80_000, 2) } as PeriodBooking) : b,
+test("502호 추가(박당 8만) 3박: 청구 930,000 → 결제 690,000이면 미수금 240,000 → 카드 80,000 더 받으면 미수금 160,000", () => {
+  const rooms = [...three(), room("r502", 80_000, 3)];
+  const a = groupLedger(rooms, 690_000, TODAY);
+  assert.equal(a.due, 930_000);
+  assert.equal(a.owed, 240_000);
+  assert.equal(balanceLabel(a), "미수금 240,000원");
+  const b = groupLedger(
+    rooms.map((r) => (r.id === "r502" ? ({ ...r, payments: [pay("r502", 80_000)] } as PeriodBooking) : r)),
+    690_000,
+    TODAY,
   );
-  const g = groupLedger(left, 0, "2026-10-30");
-  assert.equal(g.roomCount, 3);
-  assert.equal(g.rooms.find((r) => r.bookingId === "r301")!.live, false);
-  // 301호가 더 낸 80,000은 단체 선수금으로 남아요 (결제 690,000 − 오늘 밤까지 610,000)
-  assert.equal(g.dueToday, 230_000 * 2 + 150_000);
-  assert.equal(g.prepaid, 80_000);
-  assert.equal(g.tonight, 150_000); // 10/30 밤에는 602 + 501만
+  assert.equal(b.paid, 770_000);
+  assert.equal(b.owed, 160_000);
+  assert.equal(diffLine(b), "청구 930,000원 − 결제 770,000원 = 미수금 160,000원");
 });
 
-test("취소·대실·장기 객실은 계산에서 빠져요", () => {
-  const rooms = [...group3(), room("x", 50_000, 2, "2026-10-28", { status: "cancelled" }), room("y", 50_000, 2, "2026-10-28", { kind: "dayuse" })];
-  const g = groupLedger(rooms, 0, "2026-10-28");
-  assert.equal(g.roomCount, 3);
+test("502호가 1박(8만)만이면 카드 8만 결제로 정확히 정산 완료", () => {
+  const rooms = [...three(), room("r502", 80_000, 1, "2026-10-26")];
+  const g = groupLedger(rooms.map((r) => (r.id === "r502" ? ({ ...r, payments: [pay("r502", 80_000, { bizDate: "2026-10-26" })] } as PeriodBooking) : r)), 690_000, "2026-10-26");
+  assert.equal(g.due, 770_000);
+  assert.equal(g.paid, 770_000);
+  assert.equal(balanceLabel(g), "정산 완료");
 });
 
-test("단체 추가 항목(식사 등)은 오늘 밤까지 금액에 들어가요", () => {
-  const g = groupLedger(paid3(group3()), 0, "2026-10-28", { extras: 100_000 });
-  assert.equal(g.dueToday, 330_000);
-  assert.equal(g.prepaid, 360_000);
+test("초과 수납: 더 받았으면 그만큼 표시", () => {
+  const g = groupLedger(three(), 700_000, TODAY);
+  assert.equal(g.prepaid, 10_000);
+  assert.equal(g.owed, 0);
+  assert.equal(balanceLabel(g), "초과 수납 10,000원");
+  assert.equal(groupTone(g), "prepaid");
+});
+
+test("예전에 객실·박에 나눠 적힌 결제도 그대로 합산돼요 (배분 여부와 무관)", () => {
+  const rooms = three().map((r) => ({ ...r, payments: [pay(r.id, (r.price as number) ?? 0, { nightDate: "2026-10-25", periodNights: 3 })] }) as PeriodBooking);
+  const g = groupLedger(rooms, 0, TODAY);
+  assert.equal(g.paid, 690_000);
+  assert.equal(g.owed, 0);
+  // 일부는 객실로, 일부는 단체로
+  const mixed = groupLedger([{ ...rooms[0]! }, rooms[1]!, three()[2]!], 240_000, TODAY);
+  assert.equal(mixed.paid, 210_000 + 240_000 + 240_000);
+  assert.equal(mixed.owed, 0);
+});
+
+test("이용 기간 미정: 「10/25 ~ 퇴실 미정」 · 청구는 지금까지 기록된 박만", () => {
+  const g = groupLedger([room("ro", 80_000, 2, "2026-10-25", { openEnded: true })], 0, "2026-10-26");
+  const r = g.rooms[0]!;
+  assert.equal(r.openEnded, true);
+  assert.equal(stayRangeLabel(r), "10/25 ~ 퇴실 미정");
+  assert.equal(g.due, 160_000);
+  assert.equal(stayRangeLabel(groupLedger(three(), 0, TODAY).rooms[0]!), "10/25 ~ 10/27 · 3박");
+});
+
+test("추가 항목(식사 등)은 청구에 더해요", () => {
+  const g = groupLedger(three(), 690_000, TODAY, { extras: 50_000 });
+  assert.equal(g.due, 740_000);
+  assert.equal(g.owed, 50_000);
+});
+
+test("취소·장기 숙박은 청구에서 빠져요", () => {
+  const g = groupLedger([...three(), room("rx", 80_000, 3, "2026-10-25", { status: "cancelled" })], 0, TODAY);
+  assert.equal(g.due, 690_000);
+  assert.equal(g.roomCount, 3);
 });
