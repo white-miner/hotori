@@ -24,7 +24,7 @@ import Ledger from "./Ledger";
 import Issuance from "./Issuance";
 import Settings from "./Settings";
 import Shop from "./Shop";
-import { AccountMenu, SidebarTop, TopAlerts, type SbNavItem, type TopAlertsProps } from "./SidebarParts";
+import { AccountMenu, AppTopBar, SidebarTop, TopAlerts, type SbNavItem, type TopAlertsProps } from "./SidebarParts";
 import { Sidebar, SidebarProvider, useSidebarState } from "./Sidebar";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
@@ -257,7 +257,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   if (!hotel)
     return <div className="center-msg">{data.error ? `불러오지 못했어요: ${data.error}` : "장부를 불러오는 중…"}</div>;
 
-  // 특이사항·공지·확인 필요·설정: 헤더(꺼짐)와 사이드바 아래(켬)가 같은 단추 묶음을 쓴다
+  // 특이사항·공지·확인 필요·설정: 모바일 헤더와 데스크톱 맨 위 가로 줄이 같은 단추 묶음을 쓴다
   const alertProps: TopAlertsProps = {
     issueBadge,
     issueCount: handoffOpen.issues.length,
@@ -313,27 +313,20 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
       )}
 
       {sb.active ? (
-        <Sidebar
-          st={sb}
-          top={
-            <SidebarTop
-              hotelName={hotel.name}
-              isDemo={!!hotel.isDemo}
-              hasError={!!data.error}
-              onHome={goHome}
-              onSimple={() => openSimple({ checkIn: selDate })}
-              nav={SB_NAV}
-              view={view}
-              onPick={(id) => setView(id as View)}
-            />
-          }
-          bottom={
-            <div className="sb-tools">
-              <TopAlerts {...alertProps} />
-              <AccountMenu email={email} open={menu} setOpen={setMenu} closeOnOutside onSignOut={signOut} />
-            </div>
-          }
-        />
+        <>
+          <AppTopBar
+            hotelName={hotel.name}
+            isDemo={!!hotel.isDemo}
+            hasError={!!data.error}
+            onHome={goHome}
+            alerts={alertProps}
+            account={{ email, open: menu, setOpen: setMenu, onSignOut: signOut }}
+          />
+          <Sidebar
+            st={sb}
+            top={<SidebarTop onSimple={() => openSimple({ checkIn: selDate })} nav={SB_NAV} view={view} onPick={(id) => setView(id as View)} />}
+          />
+        </>
       ) : null}
 
       {view === "board" ? (

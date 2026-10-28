@@ -134,8 +134,8 @@ export function useSidebarState(menuOpen: boolean, closeMenu: () => void): Sideb
   return { active, expanded, pinned, open: expanded || pinned, toggle, togglePin, ctx, setSlot };
 }
 
-/** 사이드바 틀. top = 로고·간단 예약·화면 이동 (A) · bottom = 특이사항·공지·확인 필요·설정·계정 (D) */
-export function Sidebar({ st, top, bottom }: { st: SidebarState; top?: ReactNode; bottom?: ReactNode }) {
+/** 사이드바 틀. top = 간단 예약·화면 이동 (A). 로고·호텔 이름·알림·공지·설정·계정은 페이지 맨 위 가로 줄(AppTopBar) */
+export function Sidebar({ st, top }: { st: SidebarState; top?: ReactNode }) {
   const cls = `sb ${st.open ? "open" : "rail"}${st.pinned ? " pinned" : ""}`;
   return (
     <aside className={cls} aria-label="사이드바">
@@ -176,7 +176,6 @@ export function Sidebar({ st, top, bottom }: { st: SidebarState; top?: ReactNode
           <div className="sb-slot sb-slot-ops" ref={st.setSlot("ops")} />
         </div>
       </div>
-      {bottom ? <div className="sb-d">{bottom}</div> : null}
     </aside>
   );
 }

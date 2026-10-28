@@ -3,7 +3,7 @@ import { AlertTriangle, Bell, ClipboardList, LogOut, Menu, Settings as Gear } fr
 import { Brand } from "./ui";
 import { HeaderCTA } from "./primitives/HeaderCTA";
 
-/** 특이사항·공지·확인 필요·설정 단추 묶음 — 상단 헤더(스위치 꺼짐)와 사이드바 아래(스위치 켬)가 같은 것을 쓴다. */
+/** 특이사항·공지·확인 필요·설정 단추 묶음 — 모바일 헤더와 데스크톱 맨 위 가로 줄이 같은 것을 쓴다. */
 export interface TopAlertsProps {
   issueBadge: string | null;
   issueCount: number;
@@ -59,7 +59,7 @@ export function TopAlerts(p: TopAlertsProps) {
   );
 }
 
-/** 계정 단추 + 메뉴(이메일·로그아웃). 헤더는 마우스가 벗어나면 닫히고(예전 그대로), 사이드바는 바깥 클릭·Esc 로 닫힌다. */
+/** 계정 단추 + 메뉴(이메일·로그아웃). 모바일 헤더는 마우스가 벗어나면 닫히고(예전 그대로), 데스크톱 맨 위 줄은 바깥 클릭·Esc 로 닫힌다. */
 export function AccountMenu({
   email,
   open,
@@ -109,21 +109,44 @@ export interface SbNavItem {
   shortcut?: string;
 }
 
-/** 사이드바 위: 로고(→ 보드 처음 화면) · 호텔 이름 · 표시 · 간단 예약 · 화면 이동 */
-export function SidebarTop({
+/** 페이지 맨 위 가로 줄(데스크톱): 로고(→ 보드 처음 화면) · 호텔 이름 · 표시 · 특이사항·공지·확인 필요·설정 · 계정. 모바일은 기존 헤더. */
+export function AppTopBar({
   hotelName,
   isDemo,
   hasError,
   onHome,
-  onSimple,
-  nav,
-  view,
-  onPick,
+  alerts,
+  account,
 }: {
   hotelName: string;
   isDemo: boolean;
   hasError: boolean;
   onHome: () => void;
+  alerts: TopAlertsProps;
+  account: { email: string; open: boolean; setOpen: (v: boolean | ((o: boolean) => boolean)) => void; onSignOut: () => void };
+}) {
+  return (
+    <header className="topbar">
+      <div className="topbar-l">
+        <Brand sub={hotelName} onHome={onHome} />
+        {isDemo ? <span className="demo">예시 데이터</span> : null}
+        {hasError ? <span className="demo warn">연결 확인 중</span> : null}
+      </div>
+      <div className="topbar-r">
+        <TopAlerts {...alerts} />
+        <AccountMenu {...account} closeOnOutside />
+      </div>
+    </header>
+  );
+}
+
+/** 사이드바 위: 간단 예약 · 화면 이동 */
+export function SidebarTop({
+  onSimple,
+  nav,
+  view,
+  onPick,
+}: {
   onSimple: () => void;
   nav: SbNavItem[];
   view: string;
@@ -131,23 +154,6 @@ export function SidebarTop({
 }) {
   return (
     <>
-      <div className="sb-brand">
-        <Brand sub={hotelName} onHome={onHome} />
-        {isDemo || hasError ? (
-          <div className="sb-flags">
-            {isDemo ? (
-              <span className="demo" title="예시 데이터" aria-label="예시 데이터">
-                <span className="sb-flag-t">예시 데이터</span>
-              </span>
-            ) : null}
-            {hasError ? (
-              <span className="demo warn" title="연결 확인 중" aria-label="연결 확인 중">
-                <span className="sb-flag-t">연결 확인 중</span>
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
       <HeaderCTA className="sb-cta" aria-label="간단 예약" onClick={onSimple} />
       <nav className="sb-nav" aria-label="화면">
         {nav.map((v) => (
