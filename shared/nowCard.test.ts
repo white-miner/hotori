@@ -55,7 +55,7 @@ test("회사명은 단체 정산 정보의 회사", () => {
 
 // ── 색 규칙: 객실 가격=빨강 · 받은 돈=검정 · 받아야 할 돈(미수금, 오늘 밤 기준)=파랑 ──
 import { readFileSync } from "node:fs";
-import { nowDueAmount, nowMetaLine } from "./nowboard";
+import { nowDueAmount } from "./nowboard";
 import type { Booking } from "./ledger";
 
 const open = (id: string, roomId: string, per: number, checkIn: string, nights: number): Booking =>
@@ -136,12 +136,7 @@ test("OTA 연박: 박별 요금이 있으면 박마다 자기 요금 · 없으�
   assert.equal(nowNightRate({ ...ota, nights: 1, price: 70_000, nightRates: null } as never, "2026-10-25").amount, 70_000);
 });
 
-test("카드 메모 줄에는 플랫폼 예약번호가 안 보여요 (메모 원문은 그대로)", () => {
-  assert.equal(nowMetaLine({ memo: ota.memo, guests: 2 }), "스탠다드");
-  assert.equal(nowMetaLine({ memo: "야놀자 예약번호 YN-1001", guests: 2 }), null);
-  assert.equal(nowMetaLine({ memo: "아고다 예약번호 2610211864975519\n금연 층", guests: 2 }), "금연 층");
-  assert.equal(nowMetaLine({ memo: "야놀자(아고다) 예약번호 AG-9 · 디럭스\n조식 포함", guests: 2 }), "디럭스\n조식 포함");
-  assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
+test("카드에는 메모 줄이 없어요 (메모 원문은 저장된 그대로)", () => {
   assert.equal(ota.memo, "야놀자 예약번호 YN-1001 · 스탠다드");
 });
 

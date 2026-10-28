@@ -22,7 +22,6 @@ import {
   nowDateLine,
   nowFlags,
   nowLists,
-  nowMetaLine,
   nowNightRange,
   nowLatestPayMethodLabel,
   nowPayMethodGlance,
@@ -498,12 +497,6 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
     }
   }
-  assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");
-  assert.equal(nowMetaLine({ memo: null, guests: 3 }), null);
-  assert.equal(nowMetaLine({ memo: null, guests: null }), null);
-  assert.equal(nowMetaLine({ memo: "[추가금·늦은 퇴실]", guests: 3 }), null);
-  assert.equal(nowMetaLine({ memo: "[추가금.늦은 퇴실]\n금연", guests: 2 }), "금연");
-  assert.equal(nowMetaLine({ memo: "금연\n[추가금·늦은 퇴실] 합의", guests: 2 }), "금연");
 });
 
 test("칸 마크: 늦은 퇴실 → N시 퇴실 · 결제수단 글랜스", () => {

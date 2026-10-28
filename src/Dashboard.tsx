@@ -20,7 +20,6 @@ import {
   nowCheckoutMark,
   nowFlags,
   nowLists,
-  nowMetaLine,
   nowNightRange,
   nowLatestPayMethodLabel,
   nowPayMethodPrefix,
@@ -3468,7 +3467,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       : null;
     const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
-    const meta = nowMetaLine(b);
     const coMark = coMarkLabel ? (
       <span className="comark" title={coMarkLabel}>
         {coMarkLabel}
@@ -3601,7 +3599,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               단체 결제 ›
             </button>
           ) : null}
-          {meta ? <div className="nowmeta">{meta}</div> : null}
           <div className="nowstatus-slot">
             {!readOnly && f.kind === "arriving" && !b.arrived ? (
               <button
