@@ -83,8 +83,13 @@ export function nowPayText(parts: readonly NowPayPart[], max = 2): string | null
   return more > 0 ? `${shown.join(" · ")} 외 ${more}건` : shown.join(" · ");
 }
 
-/** 회사명: 단체 정산 정보에 적은 회사 (개별 예약에는 회사 칸이 없어요) */
-export function nowCompanyOf(info: { payerCompany?: string | null } | null | undefined): string | null {
+/** 회사명: 예약에 적은 회사가 먼저 · 없으면 단체 정산 정보의 회사 */
+export function nowCompanyOf(
+  b: { company?: string | null } | null | undefined,
+  info?: { payerCompany?: string | null } | null,
+): string | null {
+  const own = b?.company?.trim();
+  if (own) return own;
   const c = info?.payerCompany?.trim();
   return c ? c : null;
 }

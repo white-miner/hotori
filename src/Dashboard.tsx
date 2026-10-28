@@ -2139,7 +2139,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   period={b.groupId ? `${nowRangeFull(b)}${lead && b.nights ? ` · ${b.nights}박` : ""}` : undefined}
                   payTitle={lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
                   tone={tone}
-                  company={nowCompanyOf(grpInfo)}
+                  company={nowCompanyOf(b, grpInfo)}
                   viewLabel={dayLabel(selDate)}
                 />
               );
@@ -3460,7 +3460,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const cardPayParts = nowPayParts(b.payments, grpLead ? groupCtx?.info?.payments : null);
     const cardPayRaw = (f.longStay ? nowAmountGlance(b, plat, groupCtx) : null) ?? nowPayText(cardPayParts) ?? (amountTone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
     const cardPay = b.groupId && !grpLead && groupCtx && groupCtx.members.length >= 2 ? null : cardPayRaw;
-    const cardCompany = nowCompanyOf(groupCtx?.info);
+    const cardCompany = nowCompanyOf(b, groupCtx?.info);
     const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);

@@ -333,6 +333,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   }, [kind, checkIn]);
   const [guestName, setName] = useState(base?.guestName ?? "");
   const [guestPhone, setPhone] = useState(base?.guestPhone ?? "");
+  const [company, setCompany] = useState(base?.company ?? "");
   const [price, setPrice] = useState(() =>
     base
       ? String(base.price)
@@ -1183,6 +1184,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             price: 0,
             guestName,
             guestPhone: guestPhone || null,
+            company: company.trim() || null,
             typeId,
             roomId,
             segments: null,
@@ -1231,6 +1233,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     priceUnset: !!(base?.priceUnset && !(Number(draftPrice) > 0)),
     guestName: guestName.trim() || guestName,
     guestPhone: guestPhone || null,
+    company: company.trim() || null,
     typeId,
     roomId,
     segments: kind === "stay" ? fitSegments(segs, roomId, nights) : null,
@@ -3153,6 +3156,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             ) : !isNew && !phoneRequired && isOnsite(curPlat) ? (
               <div className="muted sm">바로입실 예약 · 연락처는 비워도 돼요</div>
             ) : null}
+          </div>
+        </div>
+
+        <div className="fld">
+          <label htmlFor="entry-company">회사명</label>
+          <div className="payb">
+            <input
+              id="entry-company"
+              className="inp"
+              value={company}
+              maxLength={60}
+              placeholder="선택 · 예: 오서건설 (객실 카드에 보여요)"
+              onChange={(e) => setCompany(e.target.value)}
+              aria-label="회사명"
+            />
+            {base?.groupId && !company.trim() ? <div className="muted sm">비워 두면 단체 회사명이 카드에 보여요</div> : null}
           </div>
         </div>
 

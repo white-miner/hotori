@@ -605,6 +605,19 @@ export default function NowSidePanel({
                       </span>
                     </div>
                   ) : null}
+                  {b.company || !readOnly ? (
+                    <div className="nsel-row">
+                      <span className="nsel-k">회사</span>
+                      <span className="nsel-v">
+                        {b.company ?? <span className="muted">없음</span>}
+                        {!readOnly ? (
+                          <button type="button" className="nsel-editlink" onClick={() => onOpen(b, today)} aria-label="회사명 고치기">
+                            {b.company ? "고치기" : "추가"}
+                          </button>
+                        ) : null}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="nsel-row">
                     <span className="nsel-k">일정</span>
                     <span className="nsel-v">

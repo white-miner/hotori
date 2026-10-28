@@ -42,7 +42,11 @@ test("결제는 수단+금액 (이체690,000) · 같은 수단은 합쳐요", ()
 });
 
 test("회사명은 단체 정산 정보의 회사", () => {
-  assert.equal(nowCompanyOf({ payerCompany: " (주)호토리 " }), "(주)호토리");
-  assert.equal(nowCompanyOf({ payerCompany: "" }), null);
-  assert.equal(nowCompanyOf(null), null);
+  assert.equal(nowCompanyOf(null, { payerCompany: " (주)호토리 " }), "(주)호토리");
+  assert.equal(nowCompanyOf({}, { payerCompany: "" }), null);
+  assert.equal(nowCompanyOf(null, null), null);
+  // 예약 회사명이 먼저 · 비면 단체 회사명으로
+  assert.equal(nowCompanyOf({ company: " 오서건설 " }, { payerCompany: "(주)호토리" }), "오서건설");
+  assert.equal(nowCompanyOf({ company: "  " }, { payerCompany: "(주)호토리" }), "(주)호토리");
+  assert.equal(nowCompanyOf({ company: "오서건설" }, null), "오서건설");
 });
