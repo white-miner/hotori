@@ -97,3 +97,9 @@ test("어긋남 안내: 숙박 밖 기간 · 초과 수납", () => {
   assert.match(adv[1]!, /초과 수납 30,000원/);
   assert.equal(recordAdvisories({ bookings: [], roomName, ledger: { prepaid: 0, owed: 0 } }).length, 0);
 });
+
+test("퇴실 미정 객실의 퇴실 줄은 '퇴실 미정'으로 보여요", () => {
+  const b = room("b1", "r602", "2026-10-25", 3, 210_000, { openEnded: true });
+  const rows = recordTimeline({ bookings: [b as TimelineBooking], roomName, today: "2026-10-26" });
+  assert.equal(rows.find((r) => r.kind === "checkout")!.title, "퇴실 미정 · 602호");
+});

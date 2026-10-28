@@ -5821,7 +5821,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .mvs .mvs-go{height:48px;font-size:15px;font-weight:800}
 
 /* ===== 객실별 요금 · 결제 내역 (배분 없음) ===== */
-.gch { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 10px; border-radius: 16px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
+.gch { container-type: inline-size; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 10px; border-radius: 16px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
 .gch-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 14px; }
 .gch-grp { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .gch-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); background: #fff; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink); cursor: pointer; }
@@ -5855,7 +5855,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .grc-pays { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
 .grc-leave { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 .ghead-diff { font-variant-numeric: tabular-nums; }
-@media (max-width: 760px) {
+@container (max-width: 520px) {
   .gch-hd { display: none; }
   .gch-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "no sub" "range range" "rate rate"; }
   .gch-row > :nth-child(1) { grid-area: no; }

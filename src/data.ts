@@ -245,7 +245,7 @@ function groupFromRow(r: GroupRow): GroupInfo {
     payerPhone: r.payer_phone,
     rates: Object.keys(rates).length ? rates : null,
     extras,
-    payments: (r.booking_payments ?? []).map((x) => payFromRow(x, r.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    payments: (r.booking_payments ?? []).map((x) => payFromRow(x)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     badgeColor: isGroupBadgeColor(r.badge_color) ? r.badge_color : null,
     leadBookingId: r.lead_booking_id ?? null,
   };
@@ -1011,7 +1011,7 @@ export function useHotelData(hotelId: string) {
         .select(PAY_COLS)
         .single();
       if (error) throw error;
-      const saved = payFromRow(data as PaymentRow, id);
+      const saved = { ...payFromRow(data as PaymentRow), groupId: id };
       setGroups((m) => {
         const n = new Map(m);
         const g = n.get(id) ?? emptyGroupInfo(id);

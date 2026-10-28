@@ -107,7 +107,7 @@ export interface TimelineRow {
 }
 const KIND_ORDER: Record<TimelineKind, number> = { checkin: 0, join: 1, pay: 2, move: 3, checkout: 4, fix: 5 };
 
-export type TimelineBooking = Pick<Booking, "id" | "roomId" | "checkIn" | "nights" | "segments" | "earlyOut" | "checkedOutAt" | "arrived" | "status" | "kind" | "guestName">;
+export type TimelineBooking = Pick<Booking, "id" | "roomId" | "checkIn" | "nights" | "segments" | "earlyOut" | "checkedOutAt" | "arrived" | "status" | "kind" | "guestName" | "openEnded">;
 
 export interface TimelineOpts {
   bookings: readonly TimelineBooking[];
@@ -164,8 +164,8 @@ export function recordTimeline(o: TimelineOpts): TimelineRow[] {
       key: `out-${b.id}`,
       kind: "checkout",
       date: outDate,
-      title: `${done ? "퇴실" : b.earlyOut ? "조기 퇴실 예정" : "퇴실 예정"} · ${o.roomName(legs[legs.length - 1]?.roomId ?? b.roomId)}`,
-      sub: "",
+      title: `${done ? "퇴실" : b.openEnded ? "퇴실 미정" : b.earlyOut ? "조기 퇴실 예정" : "퇴실 예정"} · ${o.roomName(legs[legs.length - 1]?.roomId ?? b.roomId)}`,
+      sub: !done && b.openEnded ? "날짜는 퇴실할 때 정해요" : "",
       bookingId: b.id,
       paymentId: null,
       future: !done && outDate >= o.today,
