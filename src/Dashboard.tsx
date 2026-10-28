@@ -11,6 +11,7 @@ import {
   isCheckedOut,
   isDepartingStatus,
   groupStayPeers,
+  cancelledCardsByRoom,
   listUnassignedBookings,
   nowAmountGlance,
   nowGroupLine,
@@ -39,7 +40,7 @@ import AssignSwapConfirm from "./AssignSwapConfirm";
 import AssignTypeConfirm from "./AssignTypeConfirm";
 import AutoAssignModal from "./AutoAssignModal";
 import { useBoardDrag } from "./useBoardDrag";
-import { resolveDrop } from "../shared/dragTarget";
+import { dragStartNight, resolveDrop } from "../shared/dragTarget";
 import { revalidateItem, type AutoAssignItem } from "../shared/autoAssign";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import DayuseSaleModal from "./DayuseSaleModal";
@@ -501,6 +502,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     [bookings, viewDate, today],
   );
   const nowBoardMap = useMemo(() => nowByRoom(nowBookings, viewDate), [nowBookings, viewDate]);
+  /** 취소·노쇼 카드 (옛 「배치」 칸): 그 밤 그 방에 살아 있는 예약이 없을 때 취소된 예약을 줄 그어 보여요 — 같은 자리에 새 예약이 들어오면 사라져요 */
+  const cxByRoom = useMemo(() => cancelledCardsByRoom(s, nowBookings, viewDate, today, nowBoardMap), [s, nowBookings, viewDate, today, nowBoardMap]);
   /** 좌측 사이드바(스위치 ON · 데스크톱) — 조회 조건·운영 패널을 사이드바 칸으로 포털. 꺼져 있으면 모두 제자리 */
   const sbx = useSidebarSlots();
   const sbOn = sbx.active;
@@ -1312,7 +1315,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     getStart: (roomId) => {
       if (readOnly || mvB || moving || assignBusy || assigning || autoTargets) return null;
       const b = nowBoardMap.get(roomId);
-      return b && isActive(b) && b.kind === "stay" ? { id: b.id, night: b.checkIn } : null;
+      if (!b || !isActive(b) || b.kind !== "stay") return null;
+      // 옛 「배치」처럼 보는 밤부터 옮겨요: 입실 다음 밤 이후(묵는 중)면 그 밤부터 퇴실까지, 입실일·퇴실하는 날 카드는 숙박 전체 (맞교환은 늘 전체)
+      return { id: b.id, night: dragStartNight(b, viewDate) };
     },
     onStart: (m) => {
       setAssigningMode(null);
@@ -3202,6 +3207,53 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         />
       </label>
     ) : null;
+    const cx = !b ? cxByRoom.get(r.id) : undefined;
+    if (cx) {
+      // 취소·노쇼 카드 — 옛 「배치」와 같아요: 줄 그은 이름 + 「취소/노쇼」 표시 · 누르면 그 예약 열기 · 드래그 안 돼요 · 자리(slot)는 활성 카드와 같은 칸
+      if (nowFilter === "tentative") return null;
+      const flash = flashRoomId === r.id;
+      const gs = gsCellClass(r.id);
+      const cxMark = groupBoardMark(cx);
+      return (
+        <div
+          key={r.id}
+          id={`now-room-${r.id}`}
+          data-room-id={r.id}
+          {...(mvB ? mvAttr : act)}
+          className={`cell bk cx ${du.length ? "hasdu" : ""} ${cx.groupId ? `grp${cxMark.stripe}` : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(cx)} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          onClick={
+            mvClick ??
+            (() => {
+              if (assignMode) {
+                if (canAssign) requestAssign(assignBk!, r.id);
+                return;
+              }
+              onOpen(cx, viewDate);
+            })
+          }
+          onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
+        >
+          {canAssign ? assignCheck : null}
+          {duMark}
+          <div className="cell-body nowstack dense rc-grid">
+            {head}
+            <TypeRow t={t} />
+            <RoomCardFacts slot="top" rate={null} payText={null} tone="neutral" company={null} linkLabel={null} viewLabel={dayLabel(viewDate)} period="" />
+            <div className="nm" data-slot="name">
+              <PlatBadge p={L.plats.get(cx.platformId)} />
+              <span className="gn">{cx.guestName}</span>
+            </div>
+            <div className="rc-slot" data-slot="badges" />
+            <div className="rc-slot rc-mvx" data-slot="move">
+              <span className="cxt">{STATUS[cx.status]}</span>
+            </div>
+            <RoomCardFacts slot="who" rate={null} payText={null} tone="neutral" company={null} linkLabel={null} viewLabel={dayLabel(viewDate)} />
+            <div className="rc-slot" data-slot="grp" />
+            <div className="nowstatus-slot" data-slot="status" />
+          </div>
+        </div>
+      );
+    }
     if (!b || !isActive(b)) {
       if (nowFilter === "tentative") return null;
       const emptySel = !mvB && selectedRoomIds.includes(r.id);

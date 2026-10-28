@@ -3,6 +3,17 @@
  * (포인터 이벤트 연결은 src/useBoardDrag.ts, 옮기기 자체는 기존 옮기기 모드)
  */
 
+import { type Booking, occupiesNight } from "./ledger";
+
+/**
+ * 현황 카드를 끌 때 어느 밤부터 옮기나 (옛 「배치」와 같아요):
+ * 입실 다음 밤 이후 묵는 중이면 보는 밤부터 퇴실까지, 입실일·퇴실하는 날 카드는 숙박 전체(입실일부터).
+ * 맞교환은 보는 밤과 상관없이 늘 숙박 전체예요 (proposeRoomSwap).
+ */
+export function dragStartNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "status" | "earlyOut" | "segments" | "roomId">, viewDate: string): string {
+  return viewDate > b.checkIn && occupiesNight(b as Booking, viewDate) ? viewDate : b.checkIn;
+}
+
 /** 마우스: 이만큼 움직이면 끌기 시작 (그 전엔 그냥 클릭) */
 export const DRAG_MOUSE_PX = 6;
 /** 터치: 이만큼 꾹 누르면 끌기 시작 (그 전에 움직이면 스크롤) */

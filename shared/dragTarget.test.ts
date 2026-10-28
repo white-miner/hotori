@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DRAG_MOUSE_PX, DRAG_TOUCH_HOLD_MS, DRAG_TOUCH_SLOP_PX, dragIntent, edgeScrollDelta, resolveDrop } from "./dragTarget";
+import { DRAG_MOUSE_PX, DRAG_TOUCH_HOLD_MS, DRAG_TOUCH_SLOP_PX, dragIntent, dragStartNight, edgeScrollDelta, resolveDrop } from "./dragTarget";
+import { type Booking, normalizeSettings } from "./ledger";
+import { cancelledCardsByRoom } from "./nowboard";
 
 describe("dragIntent", () => {
   it("마우스: 조금 움직인 건 클릭, 기준 넘으면 시작", () => {
@@ -48,4 +50,43 @@ describe("edgeScrollDelta", () => {
   it("영역이 비정상이면 0", () => {
     assert.equal(edgeScrollDelta(5, 10, 10), 0);
   });
+});
+
+// ─── 현황 카드 끌기: 어느 밤부터 · 취소 카드 (옛 「배치」와 같은 규칙) ───
+const SX = normalizeSettings({
+  types: [{ id: "s", name: "스탠다드" }],
+  platforms: [{ id: "p", name: "야놀자", abbr: "야" }],
+  floors: [{ id: "f6", name: "6층", rooms: [{ id: "r601", no: "601", typeId: "s" }, { id: "r602", no: "602", typeId: "s" }, { id: "r603", no: "603", typeId: "s" }] }],
+});
+let nx = 0;
+const bx = (p: Partial<Booking>): Booking => ({
+  id: `x${++nx}`, kind: "stay", status: "active", platformId: "p", price: 300000, guestName: `손님${nx}`, typeId: "s", roomId: "r601",
+  checkIn: "2026-10-26", nights: 3, startTime: null, endTime: null, arrived: false, memo: null, cancelledAt: null,
+  createdAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", segments: null, ...p,
+});
+
+it("끌기 시작 밤: 입실일·퇴실하는 날은 숙박 전체(입실일), 묵는 중이면 보는 밤부터", () => {
+  const b = bx({}); // 10/26 3박 → 밤 26·27·28, 퇴실 29
+  assert.equal(dragStartNight(b, "2026-10-26"), "2026-10-26");
+  assert.equal(dragStartNight(b, "2026-10-27"), "2026-10-27");
+  assert.equal(dragStartNight(b, "2026-10-28"), "2026-10-28");
+  assert.equal(dragStartNight(b, "2026-10-29"), "2026-10-26"); // 퇴실하는 날 카드
+});
+
+it("취소 카드: 살아 있는 카드가 없는 방에만 · 새 예약이 같은 자리를 채우면 사라져요", () => {
+  const live = bx({ roomId: "r601" });
+  const cx = bx({ roomId: "r602", status: "cancelled", cancelledAt: "2026-10-20T00:00:00Z" });
+  const ns = bx({ roomId: "r603", status: "noshow", cancelledAt: "2026-10-20T00:00:00Z" });
+  const refilled = bx({ roomId: "r603" }); // r603 을 새 예약이 채움
+  const all = [live, cx, ns];
+  const m = cancelledCardsByRoom(SX, all, "2026-10-27", "2026-10-27", new Set(["r601"]));
+  assert.deepEqual([...m.keys()].sort(), ["r602", "r603"]);
+  assert.equal(m.get("r602")!.status, "cancelled");
+  assert.equal(m.get("r603")!.status, "noshow");
+  // 살아 있는 카드가 있는 방은 빼요
+  assert.equal(cancelledCardsByRoom(SX, all, "2026-10-27", "2026-10-27", new Set(["r601", "r602"])).has("r602"), false);
+  // 새 예약이 같은 자리를 채우면 취소 카드는 안 나와요
+  assert.equal(cancelledCardsByRoom(SX, [...all, refilled], "2026-10-27", "2026-10-27", new Set(["r601", "r603"])).has("r603"), false);
+  // 취소 예약이 없는 밤엔 없어요
+  assert.equal(cancelledCardsByRoom(SX, all, "2026-11-20", "2026-10-27", new Set()).size, 0);
 });

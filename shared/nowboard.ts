@@ -1,6 +1,6 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours, outTimeOf } from "./extratime";
-import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
+import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, nightBoard, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { PAYMENT_METHOD_LABEL, payState, type Payment, type PaymentMethod } from "./payment";
 import { type GroupInfo, settle } from "./settle";
 import { balanceLabel, groupLedger, type GroupLedger } from "./groupLedger";
@@ -681,4 +681,16 @@ export function canCheckOut(b: Booking, today: string): boolean {
  */
 export function canEndDayuse(b: Pick<Booking, "kind" | "status" | "checkedOutAt">): boolean {
   return b.kind === "dayuse" && isActive(b) && !isCheckedOut(b);
+}
+
+/**
+ * 현황의 취소·노쇼 카드 (옛 「배치」 칸과 같은 규칙): 그 밤 그 방에 살아 있는 카드(`liveRoomIds`)가 없고,
+ * 취소된 숙박이 그 방에 남아 있으며 같은 자리를 새 예약이 채우지 않았을 때만 방별로 하나 보여요.
+ */
+export function cancelledCardsByRoom(s: HotelSettings, bookings: Booking[], date: string, today: string, liveRoomIds: { has(id: string): boolean }): Map<string, Booking> {
+  const out = new Map<string, Booking>();
+  for (const [rid, b] of nightBoard(s, bookings, date, today).byRoom) {
+    if (!isActive(b) && !liveRoomIds.has(rid)) out.set(rid, b);
+  }
+  return out;
 }

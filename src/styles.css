@@ -6121,6 +6121,8 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rc-grid .rc-grpbtn { align-self: center; margin: 0 4px; padding: 0 8px; line-height: calc(var(--rc-h-grp) - 2px); height: var(--rc-h-grp); }
 /* 현황 아래쪽 자리 */
 .now-page .rc-grid > [data-slot="move"] { grid-row: 9; line-height: var(--rc-h-move); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+/* 취소·노쇼 표시(.cxt)는 이동 자리(13px) 안에 들어가게 위아래 여백만 뺐어요 */
+.now-page .rc-grid > [data-slot="move"] .cxt { padding-top: 0; padding-bottom: 0; line-height: var(--rc-h-move); display: inline-block; }
 .now-page .rc-grid > [data-slot="company"] { grid-row: 10; }
 .now-page .rc-grid > [data-slot="rate"] { grid-row: 11; }
 .now-page .rc-grid > [data-slot="grp"] { grid-row: 12; }
