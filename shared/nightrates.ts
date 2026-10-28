@@ -19,7 +19,39 @@ export interface StayNightRates {
   weekday?: number | null;
   weekend?: number | null;
   nights?: NightAmountMap | null;
+  /** 이 객실만의 추가 항목(인원 추가·추가 이불·계약 조건 …) — amount는 이 객실에 붙는 합계 */
+  extras?: RoomExtra[] | null;
 }
+
+/** 객실 추가 항목 한 줄. amount = 객실 소계에 더해지는 합계, perNight가 있으면 박당 금액 × 박수로 만든 값 */
+export interface RoomExtra {
+  name: string;
+  amount: number;
+  perNight?: number | null;
+}
+
+export const ROOM_EXTRA_MAX = 8;
+export const ROOM_EXTRA_NAME_MAX = 20;
+
+/** 추가 항목 정리: 이름 · 금액이 있는 줄만, 개수·길이 제한 */
+export function cleanRoomExtras(raw: unknown): RoomExtra[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RoomExtra[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const name = typeof o.name === "string" ? o.name.trim().slice(0, ROOM_EXTRA_NAME_MAX) : "";
+    const amount = Math.round(Number(o.amount));
+    if (!name || !Number.isFinite(amount) || amount <= 0 || amount > PAY_MAX) continue;
+    const pn = Math.round(Number(o.perNight));
+    out.push(pn > 0 && Number.isFinite(pn) ? { name, amount, perNight: pn } : { name, amount });
+    if (out.length >= ROOM_EXTRA_MAX) break;
+  }
+  return out;
+}
+
+export const extrasTotal = (rates: Pick<StayNightRates, "extras"> | null | undefined): number =>
+  (rates?.extras ?? []).reduce((n, x) => n + Math.max(0, Math.round(x.amount || 0)), 0);
 
 export function occupiedNightDates(checkIn: string, nights: number): string[] {
   const n = Math.max(0, Math.min(STAY_NIGHTS_MAX, Math.round(nights)));
@@ -96,11 +128,13 @@ export function syncStayNightRates(
   const weekend = prev?.weekend != null && prev.weekend > 0 ? Math.round(prev.weekend) : null;
   const defaults = { flat, weekday, weekend, typeRate: fallbacks.typeRate };
   const map = fillNightAmounts(checkIn, nights, defaults, prev?.nights ?? null, special);
+  const extras = cleanRoomExtras(prev?.extras);
   return {
     flat: flat ?? (Object.values(map)[0] != null ? Object.values(map)[0]! : null),
     weekday,
     weekend,
     nights: map,
+    ...(extras.length ? { extras } : {}),
   };
 }
 
@@ -113,6 +147,7 @@ export function appendNightAmount(rates: StayNightRates | null | undefined, nigh
     weekday: rates?.weekday ?? null,
     weekend: rates?.weekend ?? null,
     nights,
+    ...(rates?.extras?.length ? { extras: rates.extras } : {}),
   };
 }
 
@@ -139,8 +174,9 @@ export function refillFromDefaults(
   };
 }
 
+/** 판매가 = 박별 합 + 객실 추가 항목 + 가산분 */
 export function priceFromNightMatrix(rates: StayNightRates | null | undefined, addons = 0): number {
-  return Math.max(0, sumNightAmounts(rates?.nights) + Math.max(0, addons));
+  return Math.max(0, sumNightAmounts(rates?.nights) + extrasTotal(rates) + Math.max(0, addons));
 }
 
 /** DB jsonb → StayNightRates. 잘못된 값은 null */
@@ -165,7 +201,8 @@ export function parseStayNightRates(raw: unknown): StayNightRates | null {
     if (!Object.keys(nights).length) nights = null;
   }
   if (flat == null && weekday == null && weekend == null && !nights) return null;
-  return { flat, weekday, weekend, nights };
+  const extras = cleanRoomExtras(o.extras);
+  return { flat, weekday, weekend, nights, ...(extras.length ? { extras } : {}) };
 }
 
 export function stayNightRatesToJson(r: StayNightRates | null | undefined): StayNightRates | null {
@@ -181,6 +218,8 @@ export function stayNightRatesToJson(r: StayNightRates | null | undefined): Stay
     }
     if (Object.keys(nights).length) out.nights = nights;
   }
+  const extras = cleanRoomExtras(r.extras);
+  if (extras.length) out.extras = extras;
   return out.flat != null || out.weekday != null || out.weekend != null || out.nights ? out : null;
 }
 

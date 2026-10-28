@@ -122,6 +122,20 @@ function RoomRow({ r, name, today, open, can, busy, onToggle, onSetEnd, onEdit }
         <span className="r gch-rate">{rateLabel(r)}</span>
         <span className="r gch-sub">{won(r.subtotal)}원</span>
       </div>
+      {r.extraLines.length ? (
+        <ul className="gch-xl" aria-label={`${name} 추가 항목`}>
+          {r.extraLines.map((x, i) => (
+            <li key={`${x.name}-${i}`}>
+              <span>
+                + {x.name}
+                {x.perNight ? <small className="muted"> · 1박 {won(x.perNight)}원</small> : <small className="muted"> · 한 번</small>}
+              </span>
+              <b className="num">{won(x.amount)}원</b>
+            </li>
+          ))}
+          <li className="gch-xl-n muted sm">객실 소계에 포함돼요 (객실료 {won(r.subtotal - r.extraTotal)}원 + 추가 {won(r.extraTotal)}원)</li>
+        </ul>
+      ) : null}
       {open ? (
         <div className="gch-ed" role="group" aria-label={`${name} 퇴실`}>
           <button type="button" className={`gch-tog${r.openEnded ? " on" : ""}`} aria-pressed={r.openEnded} disabled={busy} onClick={() => onSetEnd(r.openEnded ? r.checkOut : null)}>

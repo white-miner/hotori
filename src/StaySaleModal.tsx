@@ -28,6 +28,8 @@ import { EARLY_IN_HOUR_CHIPS, EARLY_IN_PAY_LABEL, EARLY_IN_PAY_METHODS, type Ear
 import { canExtend } from "../shared/extend";
 import { Chip, ChipGroup, GuestNamePhone, PriceInp, PriceRow, Stepper } from "./primitives";
 import OnsitePayModeFields from "./OnsitePayModeFields";
+import GroupRoomRates from "./GroupRoomRates";
+import { type RateEdits, groupTotal, roomSlots, slotRows, unpricedMessage } from "../shared/groupRates";
 import { PlatBadge, lookups } from "./ui";
 
 /**
@@ -71,6 +73,8 @@ export default function StaySaleModal({
   const [salesMode, setSalesMode] = useState<StaySaleSalesMode>("total");
   const [perNight, setPerNight] = useState("");
   const [priceUnset, setPriceUnset] = useState(false);
+  /** 2실 이상: 객실별 요금 수정분 (비면 호텔 요금표 제안) */
+  const [rateEdits, setRateEdits] = useState<RateEdits>({});
   const [payMode, setPayMode] = useState<OnsitePayMode>("prepaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
@@ -100,6 +104,7 @@ export default function StaySaleModal({
     setSalesMode("total");
     setPerNight("");
     setPriceUnset(false);
+    setRateEdits({});
     setPayMode("prepaid");
     setDepAmt("");
     setDepMethod("card");
@@ -122,6 +127,38 @@ export default function StaySaleModal({
     });
   }, [s, roomIds, occupied, L.types]);
 
+  const multi = !isOcc && roomIds.length > 1;
+  const slots = useMemo(() => {
+    const rmap = new Map(allRooms(s).map((r) => [r.id, r]));
+    return roomSlots(roomIds, (id) => {
+      const tid = rmap.get(id)?.typeId ?? "";
+      const i = roomIds.indexOf(id);
+      return { typeId: tid, label: `${roomLabels[i] ?? ""}호`, sub: typeNames[i] ?? "" };
+    });
+  }, [s, roomIds, roomLabels, typeNames]);
+  const rateRows = slotRows(s, slots, rateEdits, today, nights);
+  const multiPriceUi = (
+    <div className="fld">
+      <label>객실별 요금</label>
+      <label className="ck">
+        <input
+          type="checkbox"
+          checked={priceUnset}
+          disabled={busy}
+          onChange={(e) => {
+            setPriceUnset(e.target.checked);
+            setErr(null);
+          }}
+        />
+        금액미정
+      </label>
+      {!priceUnset ? (
+        <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={(x) => (setRateEdits(x), setErr(null))} checkIn={today} nights={nights} disabled={busy} />
+      ) : (
+        <div className="muted sm">금액은 나중에 객실마다 정해요.</div>
+      )}
+    </div>
+  );
   const headLine = roomLabels.map((n, i) => `${n}호 · ${typeNames[i] ?? ""}`).join(" · ");
   const stayCompact = !isOcc ? staySaleNightsSummary(today, nights) : null;
 
@@ -175,7 +212,14 @@ export default function StaySaleModal({
       setErr("현장·전화 채널이 없어요.");
       return;
     }
-    const resolved = staySaleResolvePrice({
+    if (multi && !priceUnset) {
+      const bad = unpricedMessage(rateRows);
+      if (bad) {
+        setErr(bad);
+        return;
+      }
+    }
+    const resolved = multi && !priceUnset ? groupTotal(rateRows) : staySaleResolvePrice({
       channel,
       salesMode,
       priceUnset,
@@ -191,6 +235,7 @@ export default function StaySaleModal({
       guestPhone,
       guests,
       price: resolved,
+      roomRates: multi && !priceUnset ? rateRows.map((r) => r.rates) : undefined,
       priceUnset: priceUnset || undefined,
       platformId,
       payMode: onsite ? payMode : "postpaid",
@@ -347,6 +392,9 @@ export default function StaySaleModal({
                     onDepMethod={setDepMethod}
                     disabled={busy}
                   />
+                  {multi ? (
+                    multiPriceUi
+                  ) : (
                   <div className="fld">
                     <label>판매가</label>
                     <PriceInp sm>
@@ -365,6 +413,7 @@ export default function StaySaleModal({
                       />
                     </PriceInp>
                   </div>
+                  )}
                   <OnsitePayModeFields
                     part="take"
                     payMode={payMode}
@@ -377,6 +426,9 @@ export default function StaySaleModal({
                   />
                 </>
               ) : (
+                multi ? (
+                  multiPriceUi
+                ) : (
                 <div className="fld">
                   <label>판매금</label>
                   <div className="stay-sale-plat-price">
@@ -483,6 +535,7 @@ export default function StaySaleModal({
                     ) : null}
                   </div>
                 </div>
+                )
               )}
             </>
           ) : null}

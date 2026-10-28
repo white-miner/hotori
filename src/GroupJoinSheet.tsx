@@ -1,22 +1,21 @@
 import { joinSummary } from "../shared/changes";
 import { useEffect, useMemo, useState } from "react";
-import NightRatesTable from "./NightRatesTable";
+import GroupRoomRates from "./GroupRoomRates";
 import OpenStayToggle from "./OpenStayToggle";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
-import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
+import { type RateEdits, draftRates, roomSlots, slotRows, unpricedMessage } from "../shared/groupRates";
 import { saveFailMessage } from "../shared/errors";
 import { addDays, allRooms, daysBetween, dayLabel, md, stayEnd, STAY_NIGHTS_MAX, typeLabel, won, type Booking } from "../shared/ledger";
 import { freeForStay, groupDrafts, validateGroupAttach } from "../shared/group";
-import { roomNightRate } from "../shared/extend";
 import { typeGuests } from "../shared/surcharge";
 import type { HotelData } from "./data";
-import { Chip, ChipGroup, PriceInp, Stepper } from "./primitives";
+import { Chip, ChipGroup, Stepper } from "./primitives";
 import { lookups } from "./ui";
 import RoomClashNote from "./RoomClashNote";
 
 /**
  * 객실 추가 — 이미 머무는 단체에 방을 더해요. 입실일·박수·객실별 1박 요금을 자유롭게:
- * 기본값은 「오늘 입실 · 단체가 끝나는 날까지 · 같은 타입 요금」이고, 방마다 요금을 따로 적을 수 있어요.
+ * 기본값은 「오늘 입실 · 단체가 끝나는 날까지」이고, 요금은 객실마다 박별로 적어요 (호텔 요금표는 제안일 뿐 · 같은 타입도 방마다 달라요).
  * 새 객실은 입실일부터 자기 요금으로만 계산되고, 다음 결제 등록에 자동으로 들어가요.
  */
 export default function GroupJoinSheet({
@@ -38,7 +37,6 @@ export default function GroupJoinSheet({
   const first = members[0]!;
   const groupId = first.groupId!;
   const groupName = first.groupName ?? first.guestName;
-  const info = data.groups.get(groupId);
   const live = members.filter((m) => m.status === "active" && m.kind === "stay");
   const groupEnd = live.reduce<string | null>((e, m) => {
     const x = stayEnd(m);
@@ -49,9 +47,8 @@ export default function GroupJoinSheet({
   const defNights = groupEnd && groupEnd > today ? Math.min(STAY_NIGHTS_MAX, daysBetween(today, groupEnd)) : 1;
   const [nights, setNights] = useState(defNights);
   const [picked, setPicked] = useState<string[]>([]);
-  const [rates, setRates] = useState<Record<string, string>>({});
-  /** 객실별 박별 요금표 (고치면 그 객실 금액 = 박별 합) */
-  const [tables, setTables] = useState<Record<string, StayNightRates>>({});
+  /** 객실별 요금 수정분 — 비어 있으면 호텔 요금표 제안 그대로 */
+  const [rateEdits, setRateEdits] = useState<RateEdits>({});
   /** 이용 기간 미정 */
   const [openOn, setOpenOn] = useState(false);
   const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
@@ -65,32 +62,26 @@ export default function GroupJoinSheet({
   const rooms = allRooms(s);
   const free = useMemo(() => freeForStay(s, data.bookings, checkIn, nights), [s, data.bookings, checkIn, nights]);
   const rmap = new Map(rooms.map((r) => [r.id, r]));
-  const suggestRate = (roomId: string): number => {
-    const tid = rmap.get(roomId)?.typeId ?? "";
-    const typeRate = (info?.rates as Record<string, number> | undefined)?.[tid];
-    const peer = live.find((m) => m.typeId === tid) ?? live[0];
-    return peer ? roomNightRate(peer, typeRate ?? null) : typeRate ?? 0;
-  };
-  const rateOf = (id: string) => (rates[id] != null ? Number(rates[id] || 0) : suggestRate(id));
-  const tableOf = (id: string): StayNightRates | null => (tables[id] ? syncStayNightRates(checkIn, nights, tables[id]) : null);
-  const totalOf = (id: string) => {
-    const t = tableOf(id);
-    return t ? sumNightAmounts(t.nights) : rateOf(id) * nights;
-  };
   const toggle = (id: string) => {
     setErr(null);
     setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   };
   const out = addDays(checkIn, nights);
-  const sum = picked.reduce((n, id) => n + totalOf(id), 0);
+  const slots = roomSlots(picked, (id) => {
+    const tid = rmap.get(id)?.typeId ?? "";
+    return { typeId: tid, label: `${L.roomLabel(id)}호`, sub: typeLabel(L.types.get(tid)) };
+  });
+  const rows = slotRows(s, slots, rateEdits, checkIn, nights);
+  const { memberNightRates, prices } = draftRates(rows);
+  const sum = prices.reduce((a, b) => a + b, 0);
   const dates = [today, addDays(today, 1), addDays(today, 2)];
 
   const save = async () => {
     if (busy) return;
-    const prices = picked.map(totalOf);
     const v = validateGroupAttach({ nights, roomIds: picked, prices, free });
     if (v) return setErr(v);
-    if (picked.some((id) => totalOf(id) <= 0)) return setErr("객실마다 1박 요금을 입력해 주세요.");
+    const unpriced = unpricedMessage(rows);
+    if (unpriced) return setErr(unpriced);
     setBusy(true);
     setErr(null);
     try {
@@ -102,8 +93,7 @@ export default function GroupJoinSheet({
         nights,
         roomIds: picked,
         prices,
-        memberRates: picked.map(rateOf),
-        memberNightRates: picked.map(tableOf),
+        memberNightRates,
         openHold: openOn ? openHold : null,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
@@ -111,7 +101,7 @@ export default function GroupJoinSheet({
       });
       await data.saveGroup(list);
       for (const id of picked) {
-        void data.logChange({ kind: "room", groupId, effectiveOn: checkIn, summary: joinSummary({ roomNo: L.roomLabel(id) ?? "?", checkIn, nights, rate: rateOf(id) }) });
+        void data.logChange({ kind: "room", groupId, effectiveOn: checkIn, summary: joinSummary({ roomNo: L.roomLabel(id) ?? "?", checkIn, nights, rate: rows[picked.indexOf(id)]?.uniform ?? null }) });
       }
       onSaved(`${groupName}에 ${picked.map((id) => L.roomLabel(id) + "호").join(", ")} 추가 · ${md(checkIn)}부터 ${openOn ? "∞ 미정" : `${nights}박`}`);
     } catch (e) {
@@ -177,45 +167,7 @@ export default function GroupJoinSheet({
             onSwap={(from, to) => setPicked((p) => p.map((x) => (x === from ? to : x)))}
           />
 
-          {picked.length ? (
-            <ul className="gpp-rows" aria-label="객실별 1박 요금">
-              {picked.map((id) => (
-                <li key={id} className="gpp-row">
-                  <span className="gpp-no"><b>{L.roomLabel(id)}호</b><small className="muted">{typeLabel(L.types.get(rmap.get(id)?.typeId ?? ""))}</small></span>
-                  <span className="gpp-amt">
-                    <PriceInp sm>
-                      <span className="pl">1박</span>
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label={`${L.roomLabel(id)}호 1박 요금`}
-                        value={won(rateOf(id)) === "0" ? "" : won(rateOf(id))}
-                        placeholder="0"
-                        onChange={(e) => {
-                          setTables((m) => {
-                            const { [id]: _drop, ...rest } = m;
-                            return rest;
-                          });
-                          setRates((m) => ({ ...m, [id]: e.target.value.replace(/\D/g, "").slice(0, 9) }));
-                        }}
-                      />
-                    </PriceInp>
-                  </span>
-                  <span className="gpp-st muted sm">{tableOf(id) ? `박별 합계 ${won(totalOf(id))}원` : `${nights}박 × ${won(rateOf(id))} = ${won(totalOf(id))}원`}</span>
-                  <div className="gpp-nrt">
-                    <NightRatesTable
-                      checkIn={checkIn}
-                      nights={nights}
-                      rates={tableOf(id)}
-                      fallback={rateOf(id)}
-                      label={`${L.roomLabel(id)}호`}
-                      onChange={(r) => setTables((m) => ({ ...m, [id]: r }))}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          {picked.length ? <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={setRateEdits} checkIn={checkIn} nights={nights} /> : null}
 
           {checkIn <= today ? (
             <label className="gjn-arr">

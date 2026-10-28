@@ -1,8 +1,7 @@
 // 기존 단체에 객실(또는 타입만) 추가 · group_id는 그대로, booking_groups는 새로 만들지 않아요
 import { useEffect, useMemo, useState } from "react";
 import OpenStayToggle from "./OpenStayToggle";
-import NightRatesTable from "./NightRatesTable";
-import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
+import GroupRoomRates from "./GroupRoomRates";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import { saveFailMessage } from "../shared/errors";
 import { askConfirm } from "./ConfirmDialog";
@@ -30,18 +29,16 @@ import {
   groupDrafts,
   groupStockImpact,
   groupStockImpactByTypes,
-  splitTotal,
   validateGroupAttach,
   GROUP_ROOMS_MAX,
 } from "../shared/group";
 import { typeGuests } from "../shared/surcharge";
-import { rateFormula, ratePrices } from "../shared/settle";
+import { type RateEdits, draftRates, roomSlots, slotRows, typeSlots, unpricedMessage } from "../shared/groupRates";
 import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 import RoomClashNote from "./RoomClashNote";
 
 type AssignMode = "rooms" | "typeOnly";
-type PriceMode = "rate" | "member" | "room" | "total" | "line" | "night";
 
 interface Props {
   data: HotelData;
@@ -61,7 +58,6 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const first = members[0];
   const groupId = first.groupId!;
   const groupName = first.groupName ?? first.guestName;
-  const info = data.groups.get(groupId);
   const [platformId, setPlatformId] = useState(first.platformId);
   const [checkIn, setCheckIn] = useState(first.checkIn);
   const [nights, setNights] = useState(clampStayNights(first.nights ?? 1));
@@ -76,16 +72,8 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const setStayNights = (n: number) => setNights(clampStayNights(n));
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
   const [assignMode, setAssignMode] = useState<AssignMode>("typeOnly");
-  const [mode, setMode] = useState<PriceMode>(info?.rates && Object.keys(info.rates).length ? "rate" : "line");
-  const [rates, setRates] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.entries(info?.rates ?? {}).map(([k, v]) => [k, String(v)])),
-  );
-  const [roomPrice, setRoomPrice] = useState("");
-  const [total, setTotal] = useState("");
-  const [linePrices, setLinePrices] = useState<string[]>([]);
-  /** 박별 요금표 (방 순서대로) — 방이 바뀌면 비워요 */
-  const [nightTables, setNightTables] = useState<Record<number, StayNightRates>>({});
-  const [memberRates, setMemberRates] = useState<string[]>([]);
+  /** 객실별 요금 수정분 (객실 줄 키 기준) — 비어 있으면 호텔 요금표 제안 그대로 */
+  const [rateEdits, setRateEdits] = useState<RateEdits>({});
   const [picked, setPicked] = useState<string[]>([]);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [view, setView] = useState<"count" | "board">("board");
@@ -98,7 +86,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   const free = useMemo(() => freeForStay(s, data.bookings, checkIn, nights), [s, data.bookings, checkIn, nights]);
   const order = useMemo(() => roomOrder(s), [s]);
   const rmap = useMemo(() => new Map(allRooms(s).map((r) => [r.id, r])), [s]);
-  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, mode, roomPrice, total, rates, assignMode, linePrices, memberRates]);
+  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, rateEdits, assignMode]);
 
   const types = usableTypes(s.types);
   const sorted = [...picked].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
@@ -129,57 +117,15 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
     setNote(null);
   };
 
-  const rateNum: Record<string, number> = Object.fromEntries(Object.entries(rates).map(([k, v]) => [k, Number(v || 0)]));
-  const prefills = ratePrices(typeIds, rateNum, nights);
-  useEffect(() => {
-    setLinePrices((prev) => {
-      if (prev.length === typeIds.length) return prev;
-      return typeIds.map((tid, i) => {
-        if (i < prev.length && prev[i] !== "") return prev[i];
-        const p = prefills[i];
-        return p ? String(p) : "";
-      });
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeIds.join("|"), nights]);
-
-  useEffect(() => {
-    setMemberRates((prev) =>
-      typeIds.map((tid, i) => {
-        const r = rateNum[tid];
-        if (r) return String(r);
-        if (i < prev.length && prev[i] !== "") return prev[i];
-        return "";
-      }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typeIds.join("|"), Object.values(rateNum).join("|")]);
-
-  const tableOf = (i: number): StayNightRates | null => (nightTables[i] ? syncStayNightRates(checkIn, nights, nightTables[i]) : null);
-  const nightTotal = (i: number) => {
-    const t = tableOf(i);
-    return t ? sumNightAmounts(t.nights) : (rateNum[typeIds[i] ?? ""] ?? 0) * nights;
-  };
-  const roomsKey = typeIds.join("|") + "#" + (assignMode === "rooms" ? sorted.join(",") : "");
-  useEffect(() => setNightTables({}), [roomsKey]);
-  const memberRateNums = memberRates.map((x) => Number(x || 0));
-  const prices =
-    mode === "rate"
-      ? prefills
-      : mode === "member"
-        ? memberRateNums.map((r) => r * nights)
-        : mode === "room"
-          ? typeIds.map(() => Number(roomPrice || 0))
-          : mode === "total"
-            ? splitTotal(Number(total || 0), n)
-            : mode === "night"
-              ? typeIds.map((_, i) => nightTotal(i))
-              : linePrices.map((x) => Number(x || 0));
-  const pickedTypes = types.filter((t) => countOf(t.id) > 0);
-  const formula = rateFormula(
-    pickedTypes.map((t) => ({ label: typeLabel(t), n: countOf(t.id), rate: rateNum[t.id] ?? 0 })),
-    nights,
-  );
+  const slots =
+    assignMode === "typeOnly"
+      ? typeSlots(typeIds, (tid) => ({ name: typeLabel(L.types.get(tid)) }))
+      : roomSlots(sorted, (id) => {
+          const tid = rmap.get(id)?.typeId ?? "";
+          return { typeId: tid, label: `${L.roomLabel(id)}호`, sub: typeLabel(L.types.get(tid)) };
+        });
+  const rows = slotRows(s, slots, rateEdits, checkIn, nights);
+  const { memberNightRates, prices } = draftRates(rows);
   const sum = prices.reduce((a, b) => a + b, 0);
   const impact =
     assignMode === "typeOnly"
@@ -216,23 +162,11 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
       });
       if (!overOk) return;
     }
-    if (mode === "rate" && pickedTypes.some((t) => !rateNum[t.id])) return setErr("타입마다 1박 요금을 입력해 주세요.");
-    if (mode === "member" && memberRateNums.some((x) => !x)) return setErr("방마다 1박 요금을 입력해 주세요.");
-    if (mode === "line" && prices.some((x) => !x)) return setErr("방마다 금액을 입력해 주세요.");
-    if (mode === "night" && prices.some((x) => !x)) return setErr("방마다 박별 요금을 입력해 주세요.");
-    if (!sum)
-      return setErr(
-        mode === "room" ? "1실 가격을 입력해 주세요." : mode === "line" || mode === "member" || mode === "night" ? "방마다 요금을 입력해 주세요." : "총액을 입력해 주세요.",
-      );
+    const unpriced = unpricedMessage(rows);
+    if (unpriced) return setErr(unpriced);
     setBusy(true);
     setErr(null);
     try {
-      const memberFlats =
-        mode === "member"
-          ? memberRateNums
-          : mode === "rate"
-            ? typeIds.map((tid) => rateNum[tid] ?? 0)
-            : prices.map((p) => (nights > 0 ? Math.round(p / nights) : 0));
       const list = groupDrafts({
         groupId,
         groupName,
@@ -242,8 +176,7 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
         roomIds: assignMode === "rooms" ? sorted : undefined,
         typeIds: assignMode === "typeOnly" ? typeIds : undefined,
         prices,
-        memberRates: memberFlats.some((x) => x > 0) ? memberFlats : undefined,
-        memberNightRates: mode === "night" ? typeIds.map((_, i) => tableOf(i)) : undefined,
+        memberNightRates,
         s,
         guestsOf: (tid) => typeGuests(L.types.get(tid)).base,
         tentative: assignMode === "rooms" && tentative,
@@ -263,17 +196,6 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
   };
 
   const dateChips = [today, addDays(today, 1), addDays(today, 2)];
-  const lineRows =
-    assignMode === "typeOnly"
-      ? typeIds.map((tid, i) => ({ key: `t${i}-${tid}`, label: typeLabel(L.types.get(tid)), sub: "호실 미정", typeId: tid, i }))
-      : sorted.map((id, i) => ({
-          key: id,
-          label: `${L.roomLabel(id)}호`,
-          sub: typeLabel(L.types.get(rmap.get(id)?.typeId ?? "")),
-          typeId: rmap.get(id)?.typeId ?? "",
-          i,
-        }));
-
   return (
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
@@ -530,166 +452,10 @@ export default function GroupAdd({ data, today, members, onClose, onSaved }: Pro
 
         <div className="fld">
           <label>
-            가격<em>*</em>
+            객실별 요금<em>*</em>
           </label>
           <div className="payb">
-            <div className="seg sm wrap">
-              <button type="button" className={mode === "rate" ? "on" : ""} onClick={() => setMode("rate")}>
-                타입별 1박 요금
-              </button>
-              <button type="button" className={mode === "member" ? "on" : ""} onClick={() => setMode("member")}>
-                방별 1박 요금
-              </button>
-              <button type="button" className={mode === "line" ? "on" : ""} onClick={() => setMode("line")}>
-                방별 총액
-              </button>
-              <button type="button" className={mode === "night" ? "on" : ""} onClick={() => setMode("night")} title="방마다 박별(날짜별) 요금 · 총액 ⇄ 박별">
-                박별 요금
-              </button>
-              <button type="button" className={mode === "room" ? "on" : ""} onClick={() => setMode("room")}>
-                1실 가격
-              </button>
-              <button type="button" className={mode === "total" ? "on" : ""} onClick={() => setMode("total")}>
-                총액 나누기
-              </button>
-            </div>
-            {mode === "rate" || mode === "line" || mode === "member" || mode === "night" ? (
-              <div className="grates">
-                {pickedTypes.length ? (
-                  pickedTypes.map((t) => (
-                    <label className="grate" key={t.id}>
-                      <TypeBadge t={t} />
-                      <span className="muted sm">{countOf(t.id)}실 · 1박</span>
-                      <span className="inp price sm">
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          aria-label={`${typeLabel(t)} 1박 요금`}
-                          value={rates[t.id] ? won(Number(rates[t.id])) : ""}
-                          onChange={(e) => setRates({ ...rates, [t.id]: num(e.target.value) })}
-                        />
-                        원
-                      </span>
-                    </label>
-                  ))
-                ) : (
-                  <span className="muted sm">방을 고르면 요금 칸이 생겨요</span>
-                )}
-              </div>
-            ) : null}
-            {mode === "member" ? (
-              <div className="glines">
-                {lineRows.map((row) => (
-                  <label className="gline-row" key={row.key}>
-                    <span className="gl-lab">
-                      <b>{row.label}</b>
-                      <span className="muted sm">
-                        {row.sub} · {nights}박 = {won((Number(memberRates[row.i] || 0) || 0) * nights)}원
-                      </span>
-                    </span>
-                    <span className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label={`${row.label} 1박 요금`}
-                        value={memberRates[row.i] ? won(Number(memberRates[row.i])) : ""}
-                        onChange={(e) => {
-                          const v = num(e.target.value);
-                          setMemberRates((prev) => {
-                            const next = typeIds.map((_, i) => prev[i] ?? "");
-                            next[row.i] = v;
-                            return next;
-                          });
-                        }}
-                      />
-                      원/박
-                    </span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-            {mode === "night" ? (
-              <div className="glines gnight">
-                {lineRows.length ? (
-                  lineRows.map((row) => (
-                    <div className="gline-night" key={row.key}>
-                      <span className="gl-lab">
-                        <b>{row.label}</b>
-                        <span className="muted sm">{row.sub}</span>
-                      </span>
-                      <NightRatesTable
-                        checkIn={checkIn}
-                        nights={nights}
-                        rates={tableOf(row.i)}
-                        fallback={rateNum[row.typeId] ?? 0}
-                        label={row.label}
-                        onChange={(r) => setNightTables((m) => ({ ...m, [row.i]: r }))}
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <span className="muted sm">방을 고르면 방마다 총액을 쓰거나 박별로 나눠 쓸 수 있어요.</span>
-                )}
-                <div className="muted sm gnote">총액을 쓰면 박별로 나뉘고, 박별 금액을 고치면 총액이 바뀌어요.</div>
-              </div>
-            ) : null}
-            {mode === "line" ? (
-              <div className="glines">
-                {lineRows.map((row) => (
-                  <label className="gline-row" key={row.key}>
-                    <span className="gl-lab">
-                      <b>{row.label}</b>
-                      <span className="muted sm">{row.sub}</span>
-                    </span>
-                    <span className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label={`${row.label} 금액`}
-                        value={linePrices[row.i] ? won(Number(linePrices[row.i])) : ""}
-                        onChange={(e) => {
-                          const v = num(e.target.value);
-                          setLinePrices((prev) => {
-                            const next = typeIds.map((_, i) => prev[i] ?? "");
-                            next[row.i] = v;
-                            return next;
-                          });
-                        }}
-                      />
-                      원
-                    </span>
-                  </label>
-                ))}
-              </div>
-            ) : null}
-            {mode === "room" || mode === "total" ? (
-              <div className="paydep">
-                {mode === "room" ? (
-                  <label className="inp price">
-                    <input className="num" inputMode="numeric" placeholder={`1실 ${nights}박 금액`} aria-label="1실 가격" value={roomPrice ? won(Number(roomPrice)) : ""} onChange={(e) => setRoomPrice(num(e.target.value))} />원
-                  </label>
-                ) : (
-                  <label className="inp price">
-                    <input className="num" inputMode="numeric" placeholder="추가분 총액" aria-label="추가분 총액" value={total ? won(Number(total)) : ""} onChange={(e) => setTotal(num(e.target.value))} />원
-                  </label>
-                )}
-              </div>
-            ) : null}
-            <span className="gline gtotal">
-              {n && sum ? (
-                mode === "rate" ? (
-                  <>
-                    {formula} = <b>{won(sum)}원</b>
-                  </>
-                ) : (
-                  <>
-                    합계 <b>{won(sum)}원</b>
-                  </>
-                )
-              ) : (
-                <span className="muted">방을 고르고 금액을 입력하면 합계가 보여요</span>
-              )}
-            </span>
+            <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={setRateEdits} checkIn={checkIn} nights={nights} />
           </div>
         </div>
 

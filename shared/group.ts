@@ -1,28 +1,11 @@
-// 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 금액 나누기, 장부 묶음
+// 단체 예약: 방 고르기(타입 수 → 같은 층 · 붙은 방), 장부 묶음 (요금은 객실마다 — shared/groupRates)
 import { type Booking, type HotelSettings, type PlacedRoom, STAY_NIGHTS_MAX, addDays, allRooms, freeRooms, isActive, revenueOf, stayEnd, stockTable } from "./ledger";
-import { sumNightAmounts, syncStayNightRates, type StayNightRates } from "./nightrates";
+import { priceFromNightMatrix, syncStayNightRates, type StayNightRates } from "./nightrates";
 import { paidOf } from "./payment";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "./settle";
 
 export const GROUP_NAME_MAX = 40;
 export const GROUP_ROOMS_MAX = 60;
-
-/** 총액을 방 수로 똑같이 나누고 남는 원은 첫 방에 (레거시 · 단체 Entry 총액 모드 등) */
-export function splitTotal(total: number, n: number): number[] {
-  if (n <= 0) return [];
-  const per = Math.floor(total / n);
-  return Array.from({ length: n }, (_, i) => (i === 0 ? total - per * (n - 1) : per));
-}
-
-/**
- * 다실 lump/총액: 대장(첫 방)에 전액 · 형제 0.
- * 바로입실·숙박판매 1/n 분배 중지 SoT.
- */
-export function leadPrices(total: number, n: number): number[] {
-  if (n <= 0) return [];
-  const t = Math.max(0, Math.round(total));
-  return Array.from({ length: n }, (_, i) => (i === 0 ? t : 0));
-}
 
 /** groupId → 안정 6색 (create 시 badgeColor 자동) */
 export function hashGroupBadgeColor(groupId: string): GroupBadgeColor {
@@ -210,7 +193,7 @@ export function groupDrafts(p: {
   prices: number[];
   /** 방별 1박 단가 (있으면 night_rates 행렬을 채워요) */
   memberRates?: number[];
-  /** 방별 박별 요금표 (있으면 1박 단가보다 먼저 쓰고, 방 금액 = 박별 합) */
+  /** 방별 박별 요금표 (있으면 1박 단가보다 먼저 쓰고, 방 금액 = 박별 합 + 객실 추가 항목) */
   memberNightRates?: (StayNightRates | null | undefined)[];
   s: HotelSettings;
   guestsOf?: (typeId: string) => number | null;
@@ -232,7 +215,7 @@ export function groupDrafts(p: {
     const table = p.memberNightRates?.[i];
     if (table && b.nights) {
       const r = syncStayNightRates(b.checkIn, b.nights, table);
-      return { ...b, nightRates: r, price: sumNightAmounts(r.nights) };
+      return { ...b, nightRates: r, price: priceFromNightMatrix(r) };
     }
     const flat = p.memberRates?.[i];
     if (flat == null || flat <= 0 || !b.nights) return b;

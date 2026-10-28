@@ -444,16 +444,17 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       payments: [{ id: "gp", bookingId: "", kind: "balance" as const, method: "card" as const, amount: 150000, bizDate: "2026-10-22", createdAt: "t" }],
     };
     const ctx = { members: [a, b], info };
-    assert.equal(nowAmountGlance(a, onsite, ctx), "₩150,000");
+    // 칸에는 객실 자기 요금 — 단체 결제 150,000을 객실마다 되풀이하지 않음
+    assert.equal(nowAmountGlance(a, onsite, ctx), "₩80,000");
     assert.equal(nowAmountTone(a, onsite, ctx), "paid");
-    assert.equal(nowAmountGlance(b, onsite, ctx), "₩150,000");
+    assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
     assert.equal(nowAmountTone(b, onsite, ctx), "paid");
     assert.equal(nowPayMethodGlance(a, info.payments), "카드");
     // 완납: 수단+최근액 OK · 「잔금」 금지
     assert.equal(nowPayMethodPrefix("₩150,000", "카드"), "카드");
     // 단체 수납 없으면 방만 볼 때와 같이 잔금(단체 합) · 수단+잔금 합침 금지
     const unpaid = { members: [a, b], info: emptyGroupInfo("g1") };
-    assert.equal(nowAmountGlance(a, onsite, unpaid), "잔금 ₩150,000");
+    assert.equal(nowAmountGlance(a, onsite, unpaid), "₩80,000");
     assert.equal(nowAmountTone(a, onsite, unpaid), "due");
     assert.equal(nowPayMethodPrefix("잔금 ₩150,000", "카드"), null);
   }
@@ -481,7 +482,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
     assert.equal(nowPayMethodPrefix(paidAmt, nowLatestPayMethodLabel(paid)), "이체");
     assert.equal(nowPayMethodPrefix("미수 ₩80,000", "현금"), null);
     assert.equal(nowPayMethodPrefix(null, "카드"), "카드");
-    // 대납: 형제 방만 수납 · 이 방·단체 내역 없음 → left=0이어도 최근 후보 없음 → 판매가 폴백
+    // 대납: 형제 방만 수납 — 칸에는 이 객실 자기 요금(수납액을 객실 금액으로 쓰지 않음)
     {
       const a = bk({ id: "da", groupId: "gd", price: 80000, payments: [] });
       const b = bk({
@@ -494,7 +495,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       const ctx = { members: [a, b], info: emptyGroupInfo("gd") };
       assert.equal(nowAmountGlance(a, onsite, ctx), "₩80,000");
       assert.equal(nowAmountTone(a, onsite, ctx), "paid");
-      assert.equal(nowAmountGlance(b, onsite, ctx), "₩150,000");
+      assert.equal(nowAmountGlance(b, onsite, ctx), "₩70,000");
     }
   }
   assert.equal(nowMetaLine({ memo: "금연", guests: 2 }), "금연");

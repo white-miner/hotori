@@ -180,26 +180,32 @@ test("현장 회귀: 선금 검증 · 호실 고정 draft", () => {
   assert.equal(ok[0]!.platformId, "walk");
 });
 
-test("다실 바로입실: 대장(첫 호)에 판매가 전액 · 형제 0 · 같은 groupId", () => {
-  const drafts = buildStaySaleDrafts(s, {
+test("다실 바로입실: 객실마다 자기 요금 · 총액 나누기·대장 몰아주기 없음 · 같은 groupId", () => {
+  const base = {
     roomIds: ["r1", "r2"],
     checkIn: "2026-10-23",
     nights: 1,
     guestName: "김다실",
     guestPhone: "01012345678",
     guests: 2,
-    price: 300000,
+    price: 280000,
     platformId: "walk",
-    payMode: "prepaid",
+    payMode: "prepaid" as const,
     depAmt: "",
-    depMethod: "card",
+    depMethod: "card" as const,
     bizDate: "2026-10-23",
     walkInImmediate: true,
+  };
+  // 객실 요금 없이는 2실을 저장하지 않아요
+  assert.ok("err" in buildStaySaleDrafts(s, base) || validateStaySaleCreate(s, base) != null);
+  const drafts = buildStaySaleDrafts(s, {
+    ...base,
+    roomRates: [{ nights: { "2026-10-23": 100000 } }, { nights: { "2026-10-23": 180000 } }],
   });
   assert.ok(!("err" in drafts));
   assert.equal(drafts.length, 2);
-  assert.equal(drafts[0]!.price, 300000);
-  assert.equal(drafts[1]!.price, 0);
+  assert.equal(drafts[0]!.price, 100000);
+  assert.equal(drafts[1]!.price, 180000);
   assert.equal(drafts[0]!.groupId, drafts[1]!.groupId);
   assert.ok(drafts[0]!.groupId);
   assert.equal(drafts[0]!.roomId, "r1");

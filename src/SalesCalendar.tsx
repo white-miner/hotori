@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { saveFailMessage } from "../shared/errors";
-import { Ban, CalendarPlus, Check, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Ban, CalendarPlus, Check, ChevronDown, ChevronUp, Tag, X } from "lucide-react";
 import {
   type Booking,
   type HotelSettings,
@@ -20,21 +20,22 @@ import {
 import {
   applyBulkTypeDates,
   baseRateFor,
+  resolveNightRate,
   bookedCount,
   isStopSell,
   isWeekendNight,
   sellableRemaining,
   sellStatus,
   setTypeDateRate,
-  setTypeRateDefaults,
   setTypeStopSell,
   shortStayHint,
-  typeRateDefaults,
 } from "../shared/salesCalendar";
 import { hasSubsForNight } from "../shared/overbookSub";
 import type { HotelData } from "./data";
 import { Chip, ChipGroup, PriceInp, PriceRow, TypeStockChip } from "./primitives";
 import { TypeBadge } from "./ui";
+import RateSheet from "./RateSheet";
+import { sourceTag } from "../shared/rateSheet";
 
 type CellKey = { typeId: string; date: string };
 type StopMode = "keep" | "open" | "stop";
@@ -226,6 +227,11 @@ export default function SalesCalendar({
             </div>
             {over ? null : <div className="hl-ok">이 창 오버부킹 없음</div>}
             <p className="muted sm sales-hint">여기 숫자는 타입 기본가예요. 예약마다 방 요금은 따로 둘 수 있어요.</p>
+            {readOnly ? null : (
+              <button type="button" className="btn red sm sales-rate-btn" onClick={() => setTypeEdit("")}>
+                <Tag size={14} strokeWidth={2.2} /> 요금 설정
+              </button>
+            )}
           </div>
           <div className="lg">
             <span>
@@ -288,7 +294,7 @@ export default function SalesCalendar({
                     ? undefined
                     : openOver
                       ? "지정 대체 객실"
-                      : "평일·주말 기본 요금"
+                      : "요금 설정"
                 }
               />
             );
@@ -372,7 +378,9 @@ export default function SalesCalendar({
                         const booked = bookedCount(total, rem);
                         const stopped = isStopSell(s, t.id, d);
                         const status = sellStatus(rem, stopped);
-                        const rate = baseRateFor(s, t.id, d);
+                        const rr = resolveNightRate(s, t.id, d);
+                        const rate = rr.amount;
+                        const tag = sourceTag(rr.source);
                         const lv =
                           status === "closed"
                             ? "closed"
@@ -422,6 +430,7 @@ export default function SalesCalendar({
                             </span>
                             <span className="sales-tcard-meta">
                               <span className="sales-tcard-rate">{rate > 0 ? won(rate) : "—"}</span>
+                              {tag ? <em className={`sales-src ${tag.tone}`}>{tag.text}</em> : null}
                             </span>
                           </button>
                         );
@@ -522,18 +531,14 @@ export default function SalesCalendar({
         />
       ) : null}
 
-      {typeEdit ? (
-        <TypeRateSheet
+      {typeEdit !== null ? (
+        <RateSheet
           s={s}
-          typeId={typeEdit}
-          readOnly={readOnly}
+          initialTypeId={typeEdit || null}
           busy={busy}
           onClose={() => setTypeEdit(null)}
-          onSave={async (wd, we, flat) => {
-            await saveSettings(
-              setTypeRateDefaults(s, typeEdit, { weekday: wd, weekend: we, flat }),
-              "타입 기본 요금을 저장했어요",
-            );
+          onSave={async (next) => {
+            await saveSettings(next, "요금 설정을 저장했어요 · 새 예약부터 적용돼요");
             setTypeEdit(null);
           }}
         />
@@ -682,7 +687,9 @@ function CellSheet({
   const t = s.types.find((x) => x.id === typeId);
   const stopped = isStopSell(s, typeId, date);
   const status = sellStatus(remaining, stopped);
-  const rate = baseRateFor(s, typeId, date);
+  const resolved = resolveNightRate(s, typeId, date);
+  const rate = resolved.amount;
+  const srcTag = sourceTag(resolved.source);
   const override = s.typeRateOverrides?.[typeId]?.[date];
   const booked = bookedCount(total, remaining);
   const [rateStr, setRateStr] = useState(rate > 0 ? String(rate) : "");
@@ -710,7 +717,7 @@ function CellSheet({
 
         {!readOnly ? (
           <div className="fld">
-            <label>기본 1박 요금</label>
+            <label>이 날 1박 요금 <small>(특별일 요금)</small></label>
             <PriceRow>
               <PriceInp sm>
                 <input
@@ -734,16 +741,20 @@ function CellSheet({
               </button>
               {override != null ? (
                 <button type="button" className="chip sm" disabled={busy} onClick={() => void onSaveRate(null)}>
-                  기본값으로
+                  특별일 해제
                 </button>
               ) : null}
             </PriceRow>
-            <p className="muted sm">날짜 오버라이드예요. 비우면 평일·주말 기본을 써요.</p>
+            <p className="muted sm">
+              지금 적용: {rate > 0 ? `${won(rate)}원` : "요금 없음"}
+              {srcTag ? ` · ${srcTag.text === "시즌" ? `시즌 요금${resolved.seasonName ? ` (${resolved.seasonName})` : ""}` : srcTag.text === "주말" ? "주말 요금" : "특별일 요금"}` : resolved.source === "weekday" ? " · 평일 요금" : resolved.source === "flat" ? " · 공통 요금" : ""}.
+              이 날만 다르게 정하면 특별일 요금이 되고, 이미 만든 예약은 바뀌지 않아요.
+            </p>
           </div>
         ) : (
           <div className="fld">
-            <label>기본 1박 요금</label>
-            <div className="muted">{rate > 0 ? `${won(rate)}원` : "미정"}</div>
+            <label>1박 요금</label>
+            <div className="muted">{rate > 0 ? `${won(rate)}원${srcTag ? ` · ${srcTag.text}` : ""}` : "미정"}</div>
           </div>
         )}
 
@@ -778,98 +789,6 @@ function CellSheet({
             </button>
           ) : null}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function TypeRateSheet({
-  s,
-  typeId,
-  readOnly,
-  busy,
-  onClose,
-  onSave,
-}: {
-  s: HotelSettings;
-  typeId: string;
-  readOnly: boolean;
-  busy: boolean;
-  onClose: () => void;
-  onSave: (wd: number | null, we: number | null, flat: number | null) => Promise<void>;
-}) {
-  const t = s.types.find((x) => x.id === typeId);
-  const d = typeRateDefaults(s, typeId);
-  const [wd, setWd] = useState(d.weekday != null && d.weekday > 0 ? String(d.weekday) : "");
-  const [we, setWe] = useState(d.weekend != null && d.weekend > 0 ? String(d.weekend) : "");
-  const [flat, setFlat] = useState(d.flat != null && d.flat > 0 ? String(d.flat) : "");
-
-  return (
-    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal sales-sheet" role="dialog" aria-label="타입 기본 요금">
-        <div className="grab" />
-        <div className="mh">
-          <h2>{typeLabel(t)} 기본 요금</h2>
-          <span className="muted sm">평일 · 주말(금·토·특별일) · 공통</span>
-          <button type="button" className="x" onClick={onClose} aria-label="닫기">
-            <X size={18} />
-          </button>
-        </div>
-        {readOnly ? (
-          <p className="muted">보기 전용</p>
-        ) : (
-          <>
-            <div className="fld">
-              <label>평일</label>
-              <PriceInp sm>
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  value={wd !== "" ? won(Number(wd) || 0) : ""}
-                  placeholder="평일"
-                  onChange={(e) => setWd(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                />
-              </PriceInp>
-            </div>
-            <div className="fld">
-              <label>주말</label>
-              <PriceInp sm>
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  value={we !== "" ? won(Number(we) || 0) : ""}
-                  placeholder="주말"
-                  onChange={(e) => setWe(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                />
-              </PriceInp>
-            </div>
-            <div className="fld">
-              <label>공통(평·주 없을 때)</label>
-              <PriceInp sm>
-                <input
-                  className="num"
-                  inputMode="numeric"
-                  value={flat !== "" ? won(Number(flat) || 0) : ""}
-                  placeholder="기본"
-                  onChange={(e) => setFlat(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                />
-              </PriceInp>
-            </div>
-            <div className="actrow">
-              <button type="button" className="btn line" onClick={onClose}>
-                취소
-              </button>
-              <button
-                type="button"
-                className="btn red"
-                disabled={busy}
-                onClick={() => void onSave(wd ? Number(wd) : null, we ? Number(we) : null, flat ? Number(flat) : null)}
-              >
-                저장
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

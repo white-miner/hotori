@@ -3,7 +3,8 @@ import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { PAYMENT_METHOD_LABEL, payState, type Payment, type PaymentMethod } from "./payment";
 import { type GroupInfo, settle } from "./settle";
-import { groupLedger } from "./groupLedger";
+import { balanceLabel, groupLedger, type GroupLedger } from "./groupLedger";
+import { isPeriodPayable, stayNightAmounts } from "./periodPay";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /**
@@ -495,6 +496,11 @@ export function nowAmountGlance(
     const left = payState(b, plat).left;
     return left > 0 ? `미수 ₩${won(left)}` : null;
   }
+  // 단체 객실: 칸에는 이 객실 자기 요금만 — 단체 결제·잔금·합계를 객실마다 되풀이해 적지 않아요 (단체 합계는 단체 머리글·대장 칸에만)
+  if (group && b.groupId && !b.priceUnset && group.members.length > 0) {
+    const own = isPeriodPayable(b) ? stayNightAmounts(b).reduce((n, r) => n + r.amount, 0) : b.price;
+    return own > 0 ? `₩${won(own)}` : null;
+  }
   const ps = nowPaySnap(b, plat, group);
   if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
   if (ps.tracked && ps.left === 0) {
@@ -505,6 +511,15 @@ export function nowAmountGlance(
   }
   if (b.price > 0) return `₩${won(b.price)}`;
   return null;
+}
+
+/**
+ * 단체 한 줄 (대장 칸에서 한 번만): `단체 미수금 610,000원` · `단체 초과 수납 …` · `단체 정산 완료`.
+ * 청구 합계 − 결제 합계 하나뿐이고 객실에 나누지 않아요.
+ */
+export function nowGroupLine(ledger: Pick<GroupLedger, "owed" | "prepaid" | "roomCount">): string | null {
+  if (!ledger.roomCount) return null;
+  return `단체 ${balanceLabel(ledger)}`;
 }
 
 /**

@@ -11,8 +11,8 @@ import {
   validateBooking,
   won,
 } from "./ledger";
-import { GROUP_ROOMS_MAX, groupDrafts, leadPrices } from "./group";
-import { nightRatesFromTotal } from "./nightrates";
+import { GROUP_ROOMS_MAX, groupDrafts } from "./group";
+import { type StayNightRates, nightRatesFromTotal, priceFromNightMatrix } from "./nightrates";
 import {
   type BookPayMethod,
   type OnsitePayMode,
@@ -115,7 +115,10 @@ export interface StaySaleCreateInput {
   guestName: string;
   guestPhone?: string | null;
   guests: number;
+  /** 1실이면 판매가 · 2실 이상이면 객실별 요금(roomRates)의 합 (나눠 담지 않아요) */
   price: number;
+  /** 2실 이상: 객실별(roomIds 순서) 박별 요금표 — 같은 타입이어도 방마다 따로 */
+  roomRates?: StayNightRates[];
   priceUnset?: boolean;
   platformId: string;
   payMode: OnsitePayMode;
@@ -158,6 +161,11 @@ export function validateStaySaleCreate(s: HotelSettings, input: StaySaleCreateIn
   if (!name) return "이름을 입력해 주세요.";
   const phoneErr = validateGuestPhone(plat, input.guestPhone, { walkInImmediate: !!input.walkInImmediate });
   if (phoneErr) return phoneErr;
+  if (input.roomIds.length > 1 && !input.priceUnset) {
+    const rr = input.roomRates;
+    if (!rr || rr.length !== input.roomIds.length) return "객실마다 요금을 입력해 주세요.";
+    if (rr.some((r) => !(priceFromNightMatrix(r) > 0))) return "객실마다 요금을 입력해 주세요.";
+  }
   if (!input.priceUnset && !(input.price > 0)) {
     return isOnsite(plat) ? "판매가를 적거나 금액미정을 켜 주세요." : "판매금을 적거나 금액미정을 켜 주세요.";
   }
@@ -201,10 +209,12 @@ export function buildStaySaleDrafts(
   const rmap = new Map(allRooms(s).map((r) => [r.id, r]));
   const nights = Math.max(1, Math.round(input.nights));
   const name = input.guestName.trim() || walkInDisplayName(input.checkIn);
-  // 다실: 대장(첫 호)에 판매가 전액 · 형제 0 (1/n splitTotal 폐기)
+  // 다실: 객실마다 자기 요금표의 합 (총액을 나누거나 첫 방에 몰지 않아요) · 1실: 판매가
   const prices = input.priceUnset
     ? input.roomIds.map(() => 0)
-    : leadPrices(Math.round(input.price), input.roomIds.length);
+    : input.roomIds.length === 1
+      ? [Math.round(input.price)]
+      : (input.roomRates ?? []).map((r) => priceFromNightMatrix(r));
   const earlyH = clampHours(input.earlyInHours ?? 0);
   const lateH = clampHours(input.lateOutHours ?? 0);
   const earlyAmt =
@@ -262,7 +272,7 @@ export function buildStaySaleDrafts(
   }
 
   const groupId = crypto.randomUUID();
-  // 대장(i=0)에 판매가+timeFee 전액 · 형제 0
+  // 빠른 입실·늦은 퇴실 요금은 한 번만 — 대표(첫 호실) 한 줄에만 더해요 (객실 요금은 그대로)
   const withTime = prices.map((p, i) => (i === 0 ? p + timeExtra : p));
   const drafts = groupDrafts({
     groupId,
@@ -272,6 +282,7 @@ export function buildStaySaleDrafts(
     nights,
     roomIds: input.roomIds,
     prices: withTime,
+    memberNightRates: input.priceUnset ? undefined : input.roomRates,
     s,
     guestsOf: () => (input.guests > 0 ? input.guests : null),
     arrived: !!input.walkInImmediate,
@@ -283,10 +294,7 @@ export function buildStaySaleDrafts(
     earlyIn: earlyH || null,
     lateOut: lateH || null,
     timeFee: i === 0 && timeExtra > 0 ? timeExtra : null,
-    nightRates:
-      input.priceUnset || !((prices[i] ?? 0) > 0)
-        ? null
-        : nightRatesFromTotal(input.checkIn, nights, prices[i] ?? 0),
+    nightRates: input.priceUnset || !((prices[i] ?? 0) > 0) ? null : (b.nightRates ?? nightRatesFromTotal(input.checkIn, nights, prices[i] ?? 0)),
   }));
   return drafts;
 }

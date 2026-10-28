@@ -212,9 +212,9 @@ export function RateSettings({ s, update, notify }: { s: HotelSettings; update: 
   return (
     <>
       <ol className="rs-prec" aria-label="요금 우선순위">
-        <li><b>1</b> 특별일 요금<small>판매 캘린더에서 날짜별로 정한 금액</small></li>
+        <li><b>1</b> 특별일 요금<small>판매 캘린더에서 날짜별로 정한 금액 · 요일별·시즌도 거기 ‘요금 설정’에서 같이 바꿔요</small></li>
         <li><b>2</b> 시즌<small>성수기 등 기간 요금</small></li>
-        <li><b>3</b> 평일 / 주말<small>요일별 기본 요금</small></li>
+        <li><b>3</b> 요일 · 평일 / 주말<small>요일별 값이 있으면 그 요일 먼저</small></li>
         <li><b>4</b> 기본<small>평일·주말이 비었을 때</small></li>
       </ol>
       <WeekendDaysSettings s={s} update={update} notify={notify} />
@@ -228,7 +228,7 @@ export function RateSettings({ s, update, notify }: { s: HotelSettings; update: 
         const seasons = s.typeSeasons[t.id] ?? [];
         const ds = drafts[t.id] ?? [];
         const isOpen = open.includes(t.id);
-        const sum = [r?.weekday ? `평일 ${shortWon(r.weekday)}` : "", r?.weekend ? `주말 ${shortWon(r.weekend)}` : "", !r?.weekday && !r?.weekend && r?.flat ? `기본 ${shortWon(r.flat)}` : "", seasons.length ? `시즌 ${seasons.length}` : ""].filter(Boolean).join(" · ");
+        const sum = [r?.weekday ? `평일 ${shortWon(r.weekday)}` : "", r?.weekend ? `주말 ${shortWon(r.weekend)}` : "", !r?.weekday && !r?.weekend && r?.flat ? `기본 ${shortWon(r.flat)}` : "", r?.dow?.some((v) => v && v > 0) ? "요일별" : "", seasons.length ? `시즌 ${seasons.length}` : ""].filter(Boolean).join(" · ");
         return (
           <div className="rs-type" key={t.id}>
             <button className="rs-thead" aria-expanded={isOpen} onClick={() => setOpen((o) => (isOpen ? o.filter((x) => x !== t.id) : [...o, t.id]))}>

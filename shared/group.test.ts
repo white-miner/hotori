@@ -16,8 +16,6 @@ import {
   groupStockImpactByTypes,
   groupSummaries,
   hashGroupBadgeColor,
-  leadPrices,
-  splitTotal,
   validateGroup,
   validateGroupAttach,
 } from "./group";
@@ -39,18 +37,17 @@ const bk = (p: Partial<Booking>): Booking => ({
   createdAt: "", updatedAt: "", segments: null, earlyOut: null, refund: null, ...p,
 });
 
-test("총액 나누기: 똑같이, 남는 원은 첫 방", () => {
-  assert.deepEqual(splitTotal(1000000, 3), [333334, 333333, 333333]);
-  assert.deepEqual(splitTotal(900000, 3), [300000, 300000, 300000]);
-  assert.equal(splitTotal(1000001, 10).reduce((a, b) => a + b, 0), 1000001);
-  assert.deepEqual(splitTotal(5, 0), []);
-});
-
-test("leadPrices: 대장 전액 · 형제 0 · 합=총액", () => {
-  assert.deepEqual(leadPrices(300000, 3), [300000, 0, 0]);
-  assert.deepEqual(leadPrices(100000, 1), [100000]);
-  assert.deepEqual(leadPrices(5, 0), []);
-  assert.equal(leadPrices(1000001, 4).reduce((a, b) => a + b, 0), 1000001);
+test("groupDrafts: 방마다 자기 박별 요금표 — 같은 금액 복사·총액 나누기 없음", () => {
+  const rates = [
+    { nights: { "2026-10-19": 70000, "2026-10-20": 70000 } },
+    { nights: { "2026-10-19": 80000, "2026-10-20": 90000 } },
+  ];
+  const ds = groupDrafts({
+    groupId: "g1", groupName: "단체", platformId: "p", checkIn: "2026-10-19", nights: 2,
+    roomIds: ["r301", "r302"], prices: [0, 0], memberNightRates: rates, s: S, guestsOf: () => 2, arrived: false,
+  });
+  assert.deepEqual(ds.map((d) => d.price), [140000, 170000]);
+  assert.deepEqual(ds[1].nightRates?.nights, { "2026-10-19": 80000, "2026-10-20": 90000 });
 });
 
 test("hashGroupBadgeColor: 안정 · 팔레트 안", () => {

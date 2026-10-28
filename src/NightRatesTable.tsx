@@ -20,6 +20,8 @@ export default function NightRatesTable({
   disabled,
   addons = 0,
   hideTotal,
+  bare,
+  notes,
 }: {
   checkIn: string;
   nights: number;
@@ -34,6 +36,10 @@ export default function NightRatesTable({
   addons?: number;
   /** 총액 칸은 부모 화면에 이미 있을 때 숨겨요 */
   hideTotal?: boolean;
+  /** 객실별 요금 줄 안에서: 총액·요약·평균 없이 박별 칸만 (소계는 부모가 보여 줘요) */
+  bare?: boolean;
+  /** 날짜별 보조 문구 (예: 주말 요금) */
+  notes?: Record<string, string>;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const rows = tableRows(checkIn, nights, rates, fallback);
@@ -42,7 +48,7 @@ export default function NightRatesTable({
   return (
     <div className="nrt" aria-label={label ? `${label} 박별 요금` : "박별 요금"}>
       <div className="nrt-top">
-        {hideTotal ? <span className="muted sm">총액 ⇄ 박별 · 한쪽을 고치면 다른 쪽이 맞춰져요</span> : <label className="nrt-total">
+        {bare ? null : hideTotal ? <span className="muted sm">총액 ⇄ 박별 · 한쪽을 고치면 다른 쪽이 맞춰져요</span> : <label className="nrt-total">
           <span>{label ? `${label} 총액` : "총액"}</span>
           <input
             className="num"
@@ -56,13 +62,15 @@ export default function NightRatesTable({
           <span>원</span>
         </label>}
         <button type="button" className="nrt-tg" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-          {open ? "박별 접기" : "박별 요금"}
+          {open ? "박별 접기" : bare ? "박마다 고치기" : "박별 요금"}
         </button>
       </div>
-      <div className="muted sm nrt-sum">
-        {tableSummary(rows)}
-        {addons > 0 ? ` · 가산 ${won(addons)}원 별도` : ""}
-      </div>
+      {bare ? null : (
+        <div className="muted sm nrt-sum">
+          {tableSummary(rows)}
+          {addons > 0 ? ` · 가산 ${won(addons)}원 별도` : ""}
+        </div>
+      )}
       {open ? (
         <>
           <ul className="nrt-list" aria-label="박별 금액">
@@ -71,6 +79,7 @@ export default function NightRatesTable({
                 <span className="nrt-d">
                   {md(r.date)}
                   <small>({r.weekday})</small>
+                  {notes?.[r.date] ? <em className="nrt-note">{notes[r.date]}</em> : null}
                 </span>
                 <input
                   className="num"

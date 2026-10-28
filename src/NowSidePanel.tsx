@@ -44,7 +44,7 @@ import {
   opsPayHistoryLines,
   paymentDeskGlance,
 } from "../shared/paymentDesk";
-import { groupSettleGlance, type GroupInfo } from "../shared/settle";
+import type { GroupInfo } from "../shared/settle";
 import { LATE_OUT_CTA, canAddTime } from "../shared/addTime";
 import { EARLY_IN_CTA } from "../shared/earlyInPay";
 import { EXTEND_COPY, canExtend, planThroughToday } from "../shared/extend";
@@ -324,22 +324,6 @@ export default function NowSidePanel({
     if (b && !b.priceUnset) return paymentDeskGlance([b], plat);
     return null;
   }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
-  /** P1 단체 N/K 스트립 · 단체납/대납 (settleMode 없음) */
-  const grpGlance = useMemo(() => {
-    if (settleMembers.length >= 1 && settleMembers[0]?.groupId) {
-      const p0 = L.plats.get(settleMembers[0]!.platformId);
-      return groupSettleGlance(settleMembers, settleGroupInfo, p0);
-    }
-    if (multiGroup && selectedGroupBookings.length > 1) {
-      const p0 = L.plats.get(selectedGroupBookings[0]!.platformId);
-      return groupSettleGlance(selectedGroupBookings, selectedGroupInfo, p0);
-    }
-    if (b?.groupId && settleMembers.length === 0) {
-      // 형제 미전달 시 단실만 — N=1 글랜스
-      return groupSettleGlance([b], settleGroupInfo, plat);
-    }
-    return null;
-  }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
   /** 운영 = 통합 원장: 받을·받은·남은 + 이력(최신 위). 칸 하이브리드(최근액)와 분리 */
   const payHistMembers =
     settleMembers.length >= 1 && settleMembers[0]?.groupId
@@ -363,6 +347,11 @@ export default function NowSidePanel({
   const feeDisplay = (() => {
     if (!b) return null;
     if (b.priceUnset) return "금액미정";
+    // 단체 객실: 이 객실 자기 요금만 (단체 잔금·결제 합계는 단체 머리글에 한 번)
+    if (groupHead) {
+      const own = groupHead.ledger.rooms.find((r) => r.bookingId === b.id)?.subtotal ?? b.price;
+      return own > 0 ? `₩${won(own)}` : "—";
+    }
     if (balGlance?.tracked && balGlance.left > 0) return `잔금 ₩${won(balGlance.left)}`;
     if (!balGlance && ps?.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
     if (b.price > 0) return `₩${won(b.price)}`;
@@ -594,12 +583,24 @@ export default function NowSidePanel({
                     <span className="nsel-k">게스트</span>
                     <span className="nsel-v">
                       <PlatBadge p={plat} /> {b.guestName}
+                      {!readOnly ? (
+                        <button type="button" className="nsel-editlink" onClick={() => onOpen(b, today)} aria-label="게스트·연락처·인원·일정 고치기">
+                          고치기
+                        </button>
+                      ) : null}
                     </span>
                   </div>
-                  {b.guestPhone ? (
+                  {b.guestPhone || !readOnly ? (
                     <div className="nsel-row">
                       <span className="nsel-k">연락</span>
-                      <span className="nsel-v">{b.guestPhone}</span>
+                      <span className="nsel-v">
+                        {b.guestPhone ?? <span className="muted">없음</span>}
+                        {!readOnly ? (
+                          <button type="button" className="nsel-editlink" onClick={() => onOpen(b, today)}>
+                            {b.guestPhone ? "고치기" : "추가"}
+                          </button>
+                        ) : null}
+                      </span>
                     </div>
                   ) : null}
                   <div className="nsel-row">
@@ -628,27 +629,20 @@ export default function NowSidePanel({
                     <span className="nsel-k">
                       {b.priceUnset
                         ? "요금"
-                        : (balGlance?.tracked ? balGlance.left > 0 : !!(ps?.tracked && ps.left > 0))
+                        : groupHead
+                          ? "판매금"
+                          : (balGlance?.tracked ? balGlance.left > 0 : !!(ps?.tracked && ps.left > 0))
                           ? "잔금"
                           : "판매금"}
                     </span>
                     <span className="nsel-v">{feeDisplay}</span>
                   </div>
-                  {balGlance?.tracked ? (
+                  {balGlance?.tracked && !groupHead ? (
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        청구 {won(balGlance.due)} · 수납 {won(balGlance.paid)} · 잔액{" "}
+                        청구 {won(balGlance.due)} − 결제 {won(balGlance.paid)} = 미수금{" "}
                         <b>{won(balGlance.left)}</b>
-                      </span>
-                    </div>
-                  ) : null}
-                  {grpGlance ? (
-                    <div className="nsel-row nsel-grp-settle" aria-label="단체 정산 글랜스">
-                      <span className="nsel-k">단체</span>
-                      <span className={`nsel-v nsel-bal-v${grpGlance.k > 0 ? " due" : ""}`}>
-                        {grpGlance.strip.replace(/^단체 · /, "")}
-                        {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
                       </span>
                     </div>
                   ) : null}
@@ -953,17 +947,8 @@ export default function NowSidePanel({
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        청구 {won(balGlance.due)} · 수납 {won(balGlance.paid)} · 잔액{" "}
+                        청구 {won(balGlance.due)} − 결제 {won(balGlance.paid)} = 미수금{" "}
                         <b>{won(balGlance.left)}</b>
-                      </span>
-                    </div>
-                  ) : null}
-                  {grpGlance ? (
-                    <div className="nsel-row nsel-grp-settle" aria-label="단체 정산 글랜스">
-                      <span className="nsel-k">단체</span>
-                      <span className={`nsel-v nsel-bal-v${grpGlance.k > 0 ? " due" : ""}`}>
-                        {grpGlance.strip.replace(/^단체 · /, "")}
-                        {grpGlance.badge ? ` · ${grpGlance.badge}` : ""}
                       </span>
                     </div>
                   ) : null}

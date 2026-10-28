@@ -184,6 +184,8 @@ import RecordSheet from "./RecordSheet";
 import { payLines } from "../shared/recordTimeline";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
 import { groupDrafts, hashGroupBadgeColor } from "../shared/group";
+import GroupRoomRates from "./GroupRoomRates";
+import { type RateEdits, roomSlots, slotRows, unpricedMessage } from "../shared/groupRates";
 import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
@@ -278,6 +280,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [openOn, setOpenOn] = useState(base?.openEnded === true);
   const [openHold, setOpenHold] = useState(base?.holdAhead ?? OPEN_HOLD_DEFAULT);
   const [extraRooms, setExtraRooms] = useState<string[]>([]);
+  /** 방이 2개 이상일 때 객실별 요금 수정분 (비어 있으면 호텔 요금표 제안) */
+  const [rateEdits, setRateEdits] = useState<RateEdits>({});
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
@@ -1184,8 +1188,23 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           longRate,
         )
       : null;
+  // 2실 이상: 객실마다 자기 요금표 — 총액을 나누지도 같은 금액을 복사하지도 않아요
+  const multi = isNew && kind === "stay" && !long && !!roomId && extraRooms.length > 0;
+  const multiIds = multi && roomId ? [roomId, ...extraRooms] : [];
+  const multiSlots = roomSlots(multiIds, (id) => {
+    const tid = L.rooms.get(id)?.typeId ?? "";
+    return { typeId: tid, label: `${L.roomLabel(id) ?? "?"}호`, sub: typeLabel(L.types.get(tid)) };
+  });
+  const multiRows = multi ? slotRows(s, multiSlots, rateEdits, checkIn, nights) : [];
+  const multiAddons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+  const multiPrices = multiRows.map((r) => r.subtotal + multiAddons);
+  const multiTotal = multiPrices.reduce((a, b) => a + b, 0);
   const draftPrice =
-    long && draftLongPreview && !("err" in draftLongPreview) ? draftLongPreview.price : Number(price || 0);
+    long && draftLongPreview && !("err" in draftLongPreview)
+      ? draftLongPreview.price
+      : multi
+        ? (multiPrices[0] ?? 0)
+        : Number(price || 0);
   const draftBase: Booking = {
     id: base?.id ?? "__draft__",
     kind,
@@ -1216,7 +1235,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     memo: memo || null,
     groupId: base?.groupId ?? null,
     groupName: base?.groupName ?? null,
-    nightRates: kind === "stay" && !long ? nightRates : null,
+    nightRates: kind === "stay" && !long ? (multi ? (multiRows[0]?.rates ?? null) : nightRates) : null,
     ...(openOn && kind === "stay" && !long ? { openEnded: true, holdAhead: openHold } : {}),
     guests,
     extraFee: long ? null : extraFee || null,
@@ -1390,7 +1409,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         payments: livePays,
       })
     : null;
-  const payDue = longPay ? longPay.accrued : revenueOf({ ...draftBase, status: "active" });
+  const payDue = longPay ? longPay.accrued : multi ? multiTotal : revenueOf({ ...draftBase, status: "active" });
   const payLeft = longPay ? Math.max(0, longPay.accrued - payPaid) : Math.max(0, payDue - payPaid);
   // 잔금이 생겼는데 금액 칸이 비어 있으면 기본값으로 채워요 (선금용으로 비운 경우는 유지)
   useEffect(() => {
@@ -1405,8 +1424,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       : long
         ? `${guestName} 님 미수 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 잔액 ${won(left)}원` : " · 정산됨"}`
         : `${guestName} 님 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : " · 완납"}`;
-  /** 새 숙박 저장: 방이 여러 개면 한 단체로 묶어 저장 (방마다 같은 판매금 · 박별 요금 그대로) */
+  /** 새 숙박 저장: 방이 여러 개면 한 단체로 묶어 저장 (객실마다 자기 요금표 · 합계는 소계의 합) */
   const nRooms = isNew && kind === "stay" && !long ? 1 + extraRooms.length : 1;
+  /** 이 예약(단체면 전체)의 판매 합계 */
+  const saleAll = multi ? multiTotal : draftBase.price;
   const saveNewDraft = async (d: Booking): Promise<Booking> => {
     if (!isNew || d.kind !== "stay" || !d.roomId || !extraRooms.length) return data.saveBooking(d, true);
     const groupId = crypto.randomUUID();
@@ -1417,16 +1438,17 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       checkIn: d.checkIn,
       nights: d.nights ?? 1,
       roomIds: [d.roomId, ...extraRooms],
-      prices: [d.price, ...extraRooms.map(() => d.price)],
+      prices: multiPrices,
+      memberNightRates: multiRows.map((r) => r.rates),
       s,
       guestsOf: () => d.guests ?? 1,
       arrived: !!d.arrived,
-    }).map((g) => ({
+    }).map((g, i) => ({
       ...d,
       ...g,
       id: g.id,
-      price: d.price,
-      nightRates: d.nightRates ?? g.nightRates,
+      price: multiPrices[i] ?? g.price,
+      nightRates: g.nightRates,
       memo: d.memo,
     }));
     const list = await data.saveGroup(drafts, {
@@ -1447,10 +1469,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const amount = Number(recv.amount || 0);
     const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
-    if (!long && kind === "deposit" && amount > draftBase.price * nRooms) return setPayErr("선금이 판매 가격보다 커요.");
+    if (!long && kind === "deposit" && amount > saleAll) return setPayErr("선금이 판매 가격보다 커요.");
     // 신규: 저장과 같은 턴에 결제 내역 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
+      if (multi) {
+        const unpriced = unpricedMessage(multiRows);
+        if (unpriced) return setPayErr(unpriced);
+      }
       {
         const phoneErr = validateGuestPhone(curPlat, guestPhone);
         if (phoneErr) return setPayErr(phoneErr);
@@ -1614,6 +1640,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       const phoneErr = validateGuestPhone(curPlat, guestPhone, phoneOpts);
       if (phoneErr) return setErr(phoneErr);
     }
+    if (multi) {
+      const unpriced = unpricedMessage(multiRows);
+      if (unpriced) return setErr(unpriced);
+    }
     if (walkInImmediate && draft.kind === "stay" && !draft.roomId) return setErr("바로 입실은 호실을 골라 주세요.");
     if (!walkInImmediate && !draft.guestName.trim()) return setErr("이름을 입력해 주세요.");
     if (draft.kind === "stay" && draft.stayMode === "long_stay") {
@@ -1624,7 +1654,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     // 신규 현장 progressive: 선금 액수 검증 (판매금은 validateBooking)
     if (createOnsitePay) {
       const depErr = validateOnsiteCreateDeposit(createPayMode, {
-        saleTotal: Number(draft.price || 0) * nRooms,
+        saleTotal: saleAll,
         depAmt: createDepAmt,
         depMethod: createDepMethod,
         bizDate: today,
@@ -1695,7 +1725,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         isOnsite(s.platforms.find((x) => x.id === saved.platformId))
       ) {
         const plan = planOnsiteCreatePay(createPayMode, {
-          saleTotal: saved.price * nRooms,
+          saleTotal: saleAll,
           depAmt: createDepAmt,
           depMethod: createDepMethod,
         });
@@ -3388,12 +3418,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               ) : null}
             </div>
           </div>
+        ) : multi ? (
+          <div className="fld">
+            <label>
+              객실별 요금<em>*</em>
+            </label>
+            <div className="payb">
+              <GroupRoomRates s={s} slots={multiSlots} edits={rateEdits} onEdits={setRateEdits} checkIn={checkIn} nights={nights} />
+              {multiAddons ? <div className="muted sm">객실마다 가산 {won(multiAddons)}원(차량·시간 등)이 더해져요.</div> : null}
+            </div>
+          </div>
         ) : (
           <div className="fld">
             <label>
               {kind === "stay" ? (
                 <>
-                  판매금{nRooms > 1 ? " (객실당)" : ""}<em>*</em>
+                  판매금<em>*</em>
                 </>
               ) : (
                 <>

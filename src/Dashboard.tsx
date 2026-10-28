@@ -13,6 +13,7 @@ import {
   groupStayPeers,
   listUnassignedBookings,
   nowAmountGlance,
+  nowGroupLine,
   nowAmountTone,
   nowByRoom,
   nowCheckoutMark,
@@ -30,7 +31,7 @@ import {
 import { isLongStay, nightsAtCheckout } from "../shared/longstay";
 import type React from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, TriangleAlert, UserRound, Wand2, X, Zap } from "lucide-react";
+import { Car, ChevronLeft, ChevronRight, Footprints, MessageCircle, PanelLeftOpen, PanelRightClose, Search, Tag, TriangleAlert, UserRound, Wand2, X, Zap } from "lucide-react";
 import { boardGuestSearch, filterOpsBookings, type GuestSearchChip } from "../shared/guestSearch";
 import NowNightPopover from "./NowNightPopover";
 import AssignCheckoutChoice from "./AssignCheckoutChoice";
@@ -209,10 +210,11 @@ import {
 import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
+import RateSheet from "./RateSheet";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
-import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
+import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
 import PlatformFilterBar from "./PlatformFilterBar";
 import { groupDisplayColor } from "../shared/cellBadges";
@@ -615,6 +617,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
   /** 글랜스 칩 → 판매 캘린더 오늘·타입 포커스 */
   const [stockFocus, setStockFocus] = useState<{ typeId: string; date: string } | null>(null);
+  /** 룸 타임라인 헤더 ‘요금 설정’ (판매 캘린더와 같은 시트) */
+  const [calRateSheet, setCalRateSheet] = useState(false);
+  const [calRateBusy, setCalRateBusy] = useState(false);
   /** 고객 이름·연락처 검색 (현황·배치 공통 · 칸 비율 무변경) */
   const [guestQuery, setGuestQuery] = useState("");
   const [guestQueryLive, setGuestQueryLive] = useState("");
@@ -3420,9 +3425,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const amount = nowAmountGlance(b, plat, groupCtx);
     const amountTone = nowAmountTone(b, plat, groupCtx, today);
     // 하이브리드 완납: 최근 1줄 수단만 · 잔금 라벨이면 prefix null
-    const payMethod = nowPayMethodPrefix(amount, nowLatestPayMethodLabel(b, groupCtx?.info?.payments));
-    const grpGlance =
-      groupCtx && groupCtx.members.length > 0 ? groupSettleGlance(groupCtx.members, groupCtx.info, plat) : null;
+    // 단체 객실 칸에는 단체 결제 수단·금액을 쓰지 않아요 (이 객실 요금만) — 단체 합계는 대장 칸에 한 줄
+    const payMethod = groupCtx ? null : nowPayMethodPrefix(amount, nowLatestPayMethodLabel(b, undefined));
+    // 단체 결제 마크: 대장 칸 모서리에 작게 한 번 — 누르면 단체 상세(객실·박별 요금·결제 내역·차액)
+    const grpLead =
+      !!groupCtx && groupCtx.members.length >= 2 && b.stayMode !== "long_stay" && groupLeadOf(b.groupId!, groupCtx.members)?.id === b.id;
+    const grpLine = grpLead
+      ? nowGroupLine(
+          groupLedger(groupCtx!.members, (groupCtx!.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
+            extras: (groupCtx!.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+          }),
+        )
+      : null;
     const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
     const meta = nowMetaLine(b);
@@ -3530,11 +3544,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               {amount}
             </div>
           ) : null}
-          {grpGlance ? (
-            <div className="nowgrp-settle" title={grpGlance.strip} aria-label={grpGlance.strip}>
-              <span className="nowgrp-settle-k">{grpGlance.compact}</span>
-              {grpGlance.badge ? <span className="nowgrp-settle-badge">{grpGlance.badge}</span> : null}
-            </div>
+          {grpLine ? (
+            <button
+              type="button"
+              className="nowgrp-mark"
+              title={`${grpLine} · 눌러서 단체 상세`}
+              aria-label={`단체 결제 · ${grpLine}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                openGroupPay(b.groupId!);
+              }}
+            >
+              단체 결제
+            </button>
           ) : null}
           {meta ? <div className="nowmeta">{meta}</div> : null}
           <div className="nowstatus-slot">
@@ -4182,8 +4204,32 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <div className="when">
                 {nowLabel()} · 방마다 숙박 막대{scopeId ? ` · ${bName(scopeId)}만` : ""}
               </div>
+              {readOnly ? null : (
+                <button type="button" className="btn red sm sales-rate-btn" onClick={() => setCalRateSheet(true)}>
+                  <Tag size={14} strokeWidth={2.2} /> 요금 설정
+                </button>
+              )}
             </div>
           </div>
+          {calRateSheet ? (
+            <RateSheet
+              s={s}
+              busy={calRateBusy}
+              onClose={() => setCalRateSheet(false)}
+              onSave={async (next) => {
+                setCalRateBusy(true);
+                try {
+                  await data.saveHotel({ settings: next });
+                  notify("요금 설정을 저장했어요 · 새 예약부터 적용돼요");
+                  setCalRateSheet(false);
+                } catch (e) {
+                  notify(saveFailMessage(e, "저장하지 못했어요"));
+                } finally {
+                  setCalRateBusy(false);
+                }
+              }}
+            />
+          ) : null}
           {rangeNav}
           {buildingTabs}
           {scopeId && unassigned ? (

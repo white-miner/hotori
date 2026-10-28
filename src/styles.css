@@ -5866,3 +5866,97 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   .gch-tot > :nth-child(2), .gch-tot > :nth-child(3), .gch-ex > :nth-child(3) { display: none; }
   .gch-tog { flex: 1 1 100%; justify-content: center; }
 }
+
+/* ── 객실별 요금표 (단체·다실) ───────────────────────── */
+.grr { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.grr-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.grr-set { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); background: #fff; font-size: 13px; font-weight: 750; color: #2a52be; text-decoration: none; white-space: nowrap; }
+.grr-set:hover { background: #eef3ff; }
+.grr-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.grr-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 16px; border: 1px solid var(--line, #e7e7ea); background: #fff; min-width: 0; }
+.grr-row.empty { border-color: #f1c9c4; background: #fffafa; }
+.grr-top { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.grr-no { display: flex; flex-direction: column; min-width: 4.8em; line-height: 1.25; }
+.grr-no b { font-size: 16px; }
+.grr-no small { font-size: 11.5px; }
+.grr-inp { flex: 1 1 150px; min-width: 0; }
+.grr-sub { margin-left: auto; text-align: right; white-space: nowrap; }
+.grr-sub b { font-size: 16px; }
+.grr-meta { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.grr-src { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.grr-src i { font-style: normal; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--panel); color: var(--ink2); }
+.grr-src i.ed { background: #fff3d6; color: #8a5a00; }
+.grr-flag { font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #fff3d6; color: #8a5a00; }
+.grr-reset { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line, #d9d9de); background: #fff; font: inherit; font-size: 12px; font-weight: 700; color: var(--ink2); cursor: pointer; }
+.grr-x { display: flex; flex-direction: column; gap: 8px; }
+.grr-xtg { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px dashed var(--line, #c9c9d0); background: transparent; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink2); cursor: pointer; }
+.grr-xtg.on { border-style: solid; background: #eef3ff; border-color: #9db6f2; color: #2a52be; }
+.grr-xbody { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: var(--panel); }
+.grr-xline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.grr-xline > input.inp { flex: 1 1 120px; min-width: 0; }
+.grr-xline > label.inp { flex: 1 1 120px; min-width: 0; }
+.grr-xadd { display: flex; gap: 6px; flex-wrap: wrap; }
+.grr-xdel { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent; color: var(--ink3); cursor: pointer; }
+.grr-tot { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-radius: 14px; background: var(--panel); }
+.grr-tot b { font-size: 20px; }
+.grr-empty { padding: 10px 2px; }
+.nrt-note { display: block; font-style: normal; font-size: 10.5px; line-height: 1.1; color: var(--ink3); }
+.gch-xl { list-style: none; margin: 2px 0 6px 12px; padding: 0 0 0 10px; border-left: 2px solid var(--line, #e7e7ea); display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
+.gch-xl li { display: flex; justify-content: space-between; gap: 8px; }
+.gch-xl .gch-xl-n { display: block; }
+
+/* 설정: 바로가기 이동 시 제목이 위쪽 바에 가리지 않게 */
+.sgrid > .card, .sgrid .hbiz, #set-paint { scroll-margin-top: 84px; }
+@media (max-width: 760px) { .sgrid > .card, .sgrid .hbiz, #set-paint { scroll-margin-top: 78px; } }
+
+/* 판매 캘린더 · 요금 설정 시트 · 칸 출처 태그 */
+.sales-rate-btn { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; }
+.sales-tcard-meta { gap: 4px; flex-wrap: wrap; }
+.sales-src { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 2px 5px; border-radius: 5px; background: var(--bg2, #eef0f3); color: var(--ink2, #555); letter-spacing: 0; }
+.sales-src.season { background: #e6f0ff; color: #1d4fa8; }
+.sales-src.weekend { background: #fff0e0; color: #a85a00; }
+.sales-src.date { background: #ffe6ea; color: #b01e3c; }
+.rsh { max-height: 92vh; overflow-y: auto; }
+.rsh-sec { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.rsh-h { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; flex-wrap: wrap; }
+.rsh-h small { font-weight: 500; color: var(--ink3); font-size: 11.5px; }
+.rsh-h .chip { margin-left: auto; }
+.rsh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--red, #e5484d); margin-left: 5px; vertical-align: middle; }
+.rsh-three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rsh-three .tierin { flex-direction: column; align-items: stretch; gap: 4px; }
+.rsh-three .tierin > span { font-size: 12px; color: var(--ink2); }
+.rsh-three .tierin > span small { font-size: 10.5px; color: var(--ink3); display: block; }
+.rsh-three input, .rsh-dow input { width: 100%; min-width: 0; text-align: right; }
+.rsh-dow { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.rsh-day { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.rsh-day > span { text-align: center; font-size: 12px; font-weight: 700; color: var(--ink2); }
+.rsh-day.we > span { color: #a85a00; }
+.rsh-day.we input { background: #fff7ec; }
+.rsh-day input { padding-left: 4px; padding-right: 4px; font-size: 12.5px; }
+.rsh-note { margin-top: 12px; }
+@media (max-width: 760px) {
+  .rsh-three { grid-template-columns: 1fr 1fr; }
+  .rsh-dow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 단체 결제 마크 — 대장 칸 모서리 작은 배지 (누르면 단체 상세) */
+.nowgrp-mark {
+  position: absolute;
+  top: 8px;
+  right: 40px;
+  z-index: 2;
+  padding: 2px 7px;
+  border: 1px solid var(--badge-info, #2f5fd0);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--badge-info, #2f5fd0);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+}
+.nowgrp-mark:hover { background: #eef3ff; }
+
+/* 보이는 값은 고칠 수 있어야 해요 — 옆 패널 행의 작은 「고치기」 링크 (기존 예약 상세 열기) */
+.nsel-editlink { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--badge-info, #2f5fd0); font-size: 11.5px; font-weight: 700; cursor: pointer; text-decoration: underline; }

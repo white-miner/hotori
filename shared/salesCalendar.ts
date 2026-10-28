@@ -4,12 +4,14 @@
  * (ledger와 순환 import 금지 — 날짜 헬퍼는 여기 최소 복제)
  */
 import { defaultNightAmount, isWeekendNight, occupiedNightDates } from "./nightrates";
-import { type ResolvedRate, type TypeSeasonsMap, seasonAmount, seasonOn } from "./seasonRates";
+import { type ResolvedRate, type TypeSeasonsMap, dowOf, seasonAmount, seasonOn } from "./seasonRates";
 
 export interface TypeRateDefaults {
   weekday?: number | null;
   weekend?: number | null;
   flat?: number | null;
+  /** 요일별 요금 (0=일 … 6=토, 길이 7, 비면 null → 평일/주말 요금을 따라요). 특별일에는 안 써요 */
+  dow?: Array<number | null>;
 }
 
 /** typeId → 평일/주말/기본 1박 */
@@ -43,6 +45,16 @@ function numAmt(v: unknown): number | null {
   return n;
 }
 
+/** 요일별 요금: 7칸(일~토), 0·잘못된 값은 null, 전부 비면 undefined */
+export function normalizeDow(raw: unknown): Array<number | null> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const arr = Array.from({ length: 7 }, (_, i) => {
+    const n = numAmt(raw[i]);
+    return n != null && n > 0 ? n : null;
+  });
+  return arr.some((v) => v != null) ? arr : undefined;
+}
+
 export function normalizeTypeRates(raw: unknown): TypeRatesMap {
   if (!raw || typeof raw !== "object") return {};
   const out: TypeRatesMap = {};
@@ -51,9 +63,10 @@ export function normalizeTypeRates(raw: unknown): TypeRatesMap {
     const o = v as Record<string, unknown>;
     const weekday = numAmt(o.weekday);
     const weekend = numAmt(o.weekend);
-    const flat = numAmt(o.flat);
-    if (weekday == null && weekend == null && flat == null) continue;
-    out[tid] = { weekday, weekend, flat };
+    const flat = numAmt(o.flat) || null;
+    const dow = normalizeDow(o.dow);
+    if (!weekday && !weekend && !flat && !dow) continue;
+    out[tid] = { weekday, weekend, flat, ...(dow ? { dow } : {}) };
   }
   return out;
 }
@@ -108,6 +121,9 @@ export function resolveNightRate(s: SalesSettings, typeId: string, date: string)
     if (a > 0) return { amount: a, source: "season", seasonName: season.name, weekend };
   }
   const d = typeRateDefaults(s, typeId);
+  // 요일별 요금: 평일/주말보다 먼저 (특별일로 켠 날은 주말 요금)
+  const dowAmt = special.includes(date) ? null : d.dow?.[dowOf(date)];
+  if (dowAmt != null && dowAmt > 0) return { amount: Math.round(dowAmt), source: weekend ? "weekend" : "weekday", weekend };
   const amount = defaultNightAmount(date, { weekday: d.weekday, weekend: d.weekend, flat: d.flat }, special, s.weekendDays);
   if (amount <= 0) return { amount: 0, source: "none", weekend };
   const source = weekend && d.weekend != null && d.weekend > 0 ? "weekend" : !weekend && d.weekday != null && d.weekday > 0 ? "weekday" : "flat";
@@ -201,8 +217,9 @@ export function setTypeRateDefaults<T extends SalesSettings>(s: T, typeId: strin
   const weekday = next.weekday != null && next.weekday > 0 ? Math.round(next.weekday) : null;
   const weekend = next.weekend != null && next.weekend > 0 ? Math.round(next.weekend) : null;
   const flat = next.flat != null && next.flat > 0 ? Math.round(next.flat) : null;
-  if (weekday == null && weekend == null && flat == null) delete cur[typeId];
-  else cur[typeId] = { weekday, weekend, flat };
+  const dow = next.dow === undefined ? normalizeDow(cur[typeId]?.dow) : normalizeDow(next.dow);
+  if (weekday == null && weekend == null && flat == null && !dow) delete cur[typeId];
+  else cur[typeId] = { weekday, weekend, flat, ...(dow ? { dow } : {}) };
   return { ...s, typeRates: cur };
 }
 
