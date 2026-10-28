@@ -5,7 +5,8 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import RoomCardFacts from "./RoomCardFacts";
 import { CARD_CASES, TODAY, type CardCase } from "../shared/roomCardCases";
-import { cardRoomHead, roomCardModel } from "../shared/roomCard";
+import { roomCardModel } from "../shared/roomCard";
+import { groupLeadChipLabel, groupPeerRoomItems } from "../shared/group";
 import { nowRateText } from "../shared/nowCard";
 
 const model = (c: CardCase, site: "now" | "board") =>
@@ -87,10 +88,20 @@ test("카드 · 퇴실 미정은 `10/25 ~` · 단체 대표객실의 단체 결�
   for (const c of CARD_CASES.filter((x) => x.expect.member)) assert.equal(model(c, "now").due, 0);
 });
 
-test("카드 · 건물이 여러 개일 때만 머리줄에 건물 이름", () => {
-  assert.deepEqual(cardRoomHead({ no: "602" }, "본관", true), { building: "본관", no: "602" });
-  assert.deepEqual(cardRoomHead({ no: "602" }, "본관", false), { building: null, no: "602" });
-  assert.deepEqual(cardRoomHead({ no: "602" }, "  ", true), { building: null, no: "602" });
+test("카드 · 건물 이름은 다른 객실을 가리킬 때만 (구성원 카드의 대표객실 표시 · 대표객실 연동 목록)", () => {
+  const lead = { id: "a", roomId: "r602" };
+  const label = (id: string) => (id === "r602" ? "본관 602" : "별관 301");
+  assert.equal(groupLeadChipLabel("b", lead, label), "본관 602호", "구성원 카드는 대표객실을 건물+호수로 가리켜요");
+  assert.equal(groupLeadChipLabel("a", lead, label), "대표객실", "대표객실 카드는 글자만");
+  const mk = (id: string, roomId: string) => ({ id, roomId, payments: [], createdAt: "2026-10-25T00:00:00Z" });
+  const items = groupPeerRoomItems([mk("a", "r602"), mk("b", "r301")], label, { preferredId: "a" });
+  assert.deepEqual(items, [{ no: "별관 301", lead: false }, { no: "본관 602", lead: true }], "연동 객실 목록도 건물+호수");
+  const src = readFileSync(new URL("./Dashboard.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /rc-bld|bldTag/, "일반 카드 머리줄에는 건물 이름을 붙이지 않아요");
+  assert.match(src, /groupPeerRoomItems\(groupStayPeers\(bookings, b\.groupId\), \(id\) => L\.roomLabel\(id\)/, "연동 목록은 roomLabel(건물+호수)");
+  assert.match(src, /groupLeadChipLabel\(b\.id, lead, \(id\) => L\.roomLabel\(id\)/, "구성원 칩은 roomLabel");
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /rc-bld/);
 });
 
 test("카드 · 현황과 배치는 같은 모델을 쓰고, 그림 순서는 이름 위에 기간·결제 → 이름 → 회사·박당 요금", () => {

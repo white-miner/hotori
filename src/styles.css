@@ -6077,4 +6077,3 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nrt-note { font-style: normal; }
 
 /* 객실 카드 머리: 건물이 여러 개일 때 건물 이름 (작고 흐리게 — 호수가 주인공) */
-.cell .rc-bld { font-style: normal; font-size: 9px; font-weight: 700; color: var(--ink4, #8a8a93); margin-right: 3px; white-space: nowrap; max-width: 48px; overflow: hidden; text-overflow: ellipsis; vertical-align: 1px; }

@@ -71,12 +71,6 @@ export interface RoomCardModel {
   groupCtx: NowPayGroupCtx | null;
 }
 
-/** 카드 머리줄 객실번호: 여러 건물이면 건물 이름도 (같은 번호가 건물마다 있을 수 있어요) */
-export function cardRoomHead(room: { no: string }, buildingName: string | null | undefined, multiBuilding: boolean): { building: string | null; no: string } {
-  const name = buildingName?.trim();
-  return { building: multiBuilding && name ? name : null, no: room.no };
-}
-
 export function roomCardModel(i: RoomCardInput): RoomCardModel {
   const { b, plat, view, today } = i;
   const active = isActive(b);

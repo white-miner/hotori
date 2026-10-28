@@ -217,7 +217,7 @@ import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholder
 import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
 import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowPlatformPayPart, nowRangeFull } from "../shared/nowCard";
 import RoomCardFacts from "./RoomCardFacts";
-import { cardRoomHead, roomCardModel } from "../shared/roomCard";
+import { roomCardModel } from "../shared/roomCard";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
@@ -1781,15 +1781,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       today: todayNow,
       preferredLeadId: b.groupId ? (data.groups.get(b.groupId)?.leadBookingId ?? null) : null,
     });
-  /** 건물이 여러 개면 예약이 있는 카드 머리에 건물 이름 (같은 호수가 건물마다 있어요) */
-  const bldTag = (roomId: string, b: Booking | null | undefined) => {
-    const h = cardRoomHead({ no: L.rooms.get(roomId)?.no ?? "" }, L.rooms.get(roomId)?.building?.name, L.multi);
-    return b && isActive(b) && h.building ? (
-      <em className="rc-bld" title={`${h.building} ${h.no}`}>
-        {h.building}
-      </em>
-    ) : null;
-  };
   const leadTag = (b: Booking | null | undefined) =>
     isLeadRoom(b) ? (
       <em className="grp-lead-tag" title="대표객실 — 누르면 같은 단체 객실 번호">
@@ -1812,7 +1803,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   const groupRoomsFor = (b: Booking | null | undefined) => {
     if (!b?.groupId) return [];
-    return groupPeerRoomItems(groupStayPeers(bookings, b.groupId), (id) => L.rooms.get(id)?.no ?? null, {
+    return groupPeerRoomItems(groupStayPeers(bookings, b.groupId), (id) => L.roomLabel(id), {
       preferredId: data.groups.get(b.groupId)?.leadBookingId ?? null,
       today,
     });
@@ -1994,7 +1985,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onToggle={() => toggleGroupPop(r.id)}
           groupName={b?.groupName}
         >
-          {bldTag(r.id, b)}
           <FitText className={`no ${k}`} text={r.no} />
           {leadTag(b)}
         </GroupRoomNoHit>
@@ -3406,7 +3396,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           onToggle={() => toggleGroupPop(r.id)}
           groupName={b?.groupName}
         >
-          {bldTag(r.id, b)}
           <span className={`no ${k}`} title={r.no}>
             {r.no}
           </span>
