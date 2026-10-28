@@ -204,7 +204,7 @@ export default function GroupReceiptSheet({
 
           {!readOnly ? (
             <details className="gpp-more">
-              <summary>객실 관리 · 대장 · 뱃지 색{lead ? ` — 대장 ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</summary>
+              <summary>객실 관리 · 대표객실 · 뱃지 색{lead ? ` — 대표객실 ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</summary>
               <div className="gpp-lead-pick">
                 {onLeave ? (
                   <div className="grc-leave">
@@ -218,10 +218,10 @@ export default function GroupReceiptSheet({
                     })}
                   </div>
                 ) : null}
-                <p className="muted sm">대장은 칸의 「대장」 뱃지에 나와요. 지정하면 결제·퇴실이 있어도 바뀌지 않아요.</p>
-                <ChipGroup role="group" aria-label="대장 객실">
+                <p className="muted sm">대표객실은 칸의 「대표객실」 뱃지에 나와요. 지정하면 결제·퇴실이 있어도 바뀌지 않아요.</p>
+                <ChipGroup role="group" aria-label="대표객실 객실">
                   {members.filter((m) => isPeriodPayable(m) || m.id === leadId).map((m) => (
-                    <Chip key={m.id} sm active={m.id === leadId} disabled={busy} onClick={() => void onSetLead(m.id).catch((e) => setErr(e instanceof Error ? e.message : "대장을 바꾸지 못했어요"))}>
+                    <Chip key={m.id} sm active={m.id === leadId} disabled={busy} onClick={() => void onSetLead(m.id).catch((e) => setErr(e instanceof Error ? e.message : "대표객실을 바꾸지 못했어요"))}>
                       {roomLabel(m)}
                     </Chip>
                   ))}

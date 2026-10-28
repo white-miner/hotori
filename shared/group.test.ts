@@ -57,7 +57,7 @@ test("hashGroupBadgeColor: 안정 · 팔레트 안", () => {
   assert.ok((GROUP_BADGE_COLORS as readonly string[]).includes(hashGroupBadgeColor("other-id")));
 });
 
-test("groupLeadBooking: 수납 최대 = 대장 · 칩 라벨", () => {
+test("groupLeadBooking: 수납 최대 = 대표객실 · 칩 라벨", () => {
   const a = bk({ id: "a", roomId: "r301", payments: [] });
   const b = bk({
     id: "b",
@@ -66,11 +66,11 @@ test("groupLeadBooking: 수납 최대 = 대장 · 칩 라벨", () => {
   });
   const lead = groupLeadBooking([a, b]);
   assert.equal(lead?.id, "b");
-  assert.equal(groupLeadChipLabel("b", lead, (id) => (id === "r303" ? "303" : null)), "대장");
-  assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "대장 303호");
+  assert.equal(groupLeadChipLabel("b", lead, (id) => (id === "r303" ? "303" : null)), "대표객실");
+  assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "대표객실 303호");
 });
 
-test("groupPeerRoomItems: 호수 정렬 · 대장 마크 · 말풍선 줄", () => {
+test("groupPeerRoomItems: 호수 정렬 · 대표객실 마크 · 말풍선 줄", () => {
   const members = [
     bk({ id: "a", roomId: "r305", payments: [] }),
     bk({
@@ -212,7 +212,7 @@ test("단체 날짜 바꾸기: 다른 예약과 겹치는 방 · 객실 이동�
   assert.match(groupDateBlock(S, [mv, m2], [mv, m2], "2026-10-20", 2)!, /객실 이동/);
 });
 
-test("groupLeadBooking: 조기 퇴실로 빈 방은 대장 후보에서 뒤로 (본관 302호 사례) · 수납 0 동률", () => {
+test("groupLeadBooking: 조기 퇴실로 빈 방은 대표객실 후보에서 뒤로 (본관 302호 사례) · 수납 0 동률", () => {
   const gone = bk({ id: "g302", roomId: "r302", checkIn: "2026-10-11", nights: 30, earlyOut: "2026-10-21", payments: [] });
   const a = bk({ id: "a602", roomId: "r301", checkIn: "2026-10-11", nights: 30, payments: [] });
   const b = bk({ id: "a501", roomId: "r303", checkIn: "2026-10-11", nights: 30, payments: [] });
@@ -225,7 +225,7 @@ test("groupLeadBooking: 조기 퇴실로 빈 방은 대장 후보에서 뒤로 (
   assert.equal(groupLeadBooking([dep, a], { today: "2026-10-27" })?.id, "dep");
 });
 
-test("groupLeadBooking: 직원이 지정한 대장이 항상 우선 · 구성원이 아니면 자동", () => {
+test("groupLeadBooking: 직원이 지정한 대표객실이 항상 우선 · 구성원이 아니면 자동", () => {
   const a = bk({ id: "a", roomId: "r301", payments: [] });
   const b = bk({ id: "b", roomId: "r303", payments: [{ id: "p", bookingId: "b", kind: "balance", method: "card", amount: 200000, bizDate: "2026-10-19", createdAt: "" }] });
   assert.equal(groupLeadBooking([a, b], { preferredId: "a" })?.id, "a");

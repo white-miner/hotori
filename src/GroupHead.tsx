@@ -33,7 +33,7 @@ export default function GroupHead({
   onJoin?: () => void;
   onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
   onEditRoom?: (bookingId: string) => void;
-  /** 대장 객실 표시 · 바꾸기 */
+  /** 대표객실 객실 표시 · 바꾸기 */
   lead?: { id: string | null; pinned: boolean; onSet: (bookingId: string | null) => Promise<void> | void } | null;
   /** 객실을 다른 단체로 옮기기 / 단체에서 빼기 */
   moves?: { targets: GroupMoveTarget[]; roomNoOf: (roomId: string) => string; onMove: (bookingId: string, groupId: string | null) => Promise<void> } | null;

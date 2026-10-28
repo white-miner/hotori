@@ -5972,3 +5972,58 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rec-shift-opt { display: grid; gap: 2px; text-align: left; min-height: 44px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); background: #fff; font: inherit; color: var(--ink); cursor: pointer; }
 .rec-shift-opt small { color: var(--muted, #6b6b76); font-size: 12px; }
 .rec-shift-opt.on { border-color: #2a52be; background: #eef3ff; }
+
+/* 객실 카드 사실 줄: 회사 · 하루 객실 요금(+변동) · 결제수단+금액 — 총액은 카드에 쓰지 않아요 */
+.cell .rc-co,
+.cell .rc-rate,
+.cell .rc-pay {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.cell .rc-co {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.78;
+}
+.cell .rc-rate {
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.cell .rc-var {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  background: #fff1d6;
+  color: #9a5b00;
+  vertical-align: 1px;
+}
+.cell .rc-var.est {
+  background: #eceff3;
+  color: #5b6573;
+}
+.cell .rc-pay {
+  font-size: 11px;
+  font-weight: 700;
+}
+.grp-lead-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  background: #e8efff;
+  color: #2a52be;
+  white-space: nowrap;
+  vertical-align: 1px;
+}

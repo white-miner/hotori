@@ -30,10 +30,10 @@ export default function GroupCharges({
   onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
   /** 객실 하나의 입퇴실 · 박별 요금 고치기 */
   onEditRoom?: (bookingId: string) => void;
-  /** 대장 객실 (뱃지가 붙는 칸) · 직접 지정했는지 */
+  /** 대표객실 객실 (뱃지가 붙는 칸) · 직접 지정했는지 */
   leadId?: string | null;
   leadPinned?: boolean;
-  /** 대장 바꾸기 (null = 자동) */
+  /** 대표객실 바꾸기 (null = 자동) */
   onSetLead?: (bookingId: string | null) => Promise<void> | void;
   /** 옮겨 갈 수 있는 다른 단체 */
   moveTargets?: GroupMoveTarget[];
@@ -143,7 +143,7 @@ function RoomRow({
   return (
     <div className={`gch-item${open ? " on" : ""}`} role="rowgroup">
       <div className="gch-row" role="row">
-        <span className="gch-no">{name}{isLead ? <i className="gch-lead" title={leadPinned ? "직접 지정한 대장" : "자동 대장"}>대장</i> : null}</span>
+        <span className="gch-no">{name}{isLead ? <i className="gch-lead" title={leadPinned ? "직접 지정한 대표객실" : "자동 대표객실"}>대표객실</i> : null}</span>
         <span className="gch-range">
           {r.openEnded ? (
             <button type="button" className="gch-open" disabled={!can} onClick={onToggle} aria-expanded={open} title="끝 날짜 없이 계속 묵어요">
@@ -193,11 +193,11 @@ function RoomRow({
           {onSetLead ? (
             isLead && leadPinned ? (
               <button type="button" className="gch-link" disabled={busy} onClick={() => onSetLead(false)}>
-                대장 지정 풀기 (자동으로)
+                대표객실 지정 풀기 (자동으로)
               </button>
             ) : !isLead ? (
               <button type="button" className="gch-link" disabled={busy} onClick={() => onSetLead(true)}>
-                {name}을 대장으로 지정
+                {name}을 대표객실으로 지정
               </button>
             ) : null
           ) : null}

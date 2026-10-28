@@ -19,7 +19,7 @@ type LeadPick = Pick<Booking, "id" | "payments" | "roomId" | "createdAt"> &
 
 /**
  * 아직 방을 쓰는 단체 구성원: 활성 · 퇴실처리 전 · (today가 있으면) 실제 퇴실일이 오늘 이후.
- * 조기 퇴실로 비어 버린 방(status는 active)은 대장 후보에서 뒤로 밀려요.
+ * 조기 퇴실로 비어 버린 방(status는 active)은 대표객실 후보에서 뒤로 밀려요.
  */
 export function isLiveGroupMember(b: LeadPick, today?: string | null): boolean {
   if (b.status && b.status !== "active") return false;
@@ -31,10 +31,10 @@ export function isLiveGroupMember(b: LeadPick, today?: string | null): boolean {
 }
 
 /**
- * 대장 예약:
- *  1) 직원이 지정한 대장(preferredId · booking_groups.lead_booking_id)이 구성원이면 그 방
+ * 대표객실 예약:
+ *  1) 직원이 지정한 대표객실(preferredId · booking_groups.lead_booking_id)이 구성원이면 그 방
  *  2) 아니면 자동: 투숙 중인 방 먼저 → 수납액 최대 → 목록 앞(create 시 drafts[0]).
- *     (예전: 수납 동률이면 목록 첫 방 → 조기 퇴실로 빈 방이 대장으로 뜨던 문제)
+ *     (예전: 수납 동률이면 목록 첫 방 → 조기 퇴실로 빈 방이 대표객실으로 뜨던 문제)
  */
 export function groupLeadBooking<T extends LeadPick>(
   members: readonly T[],
@@ -61,19 +61,19 @@ export function groupLeadBooking<T extends LeadPick>(
   return best;
 }
 
-/** 보드 칩: 대장이면 `대장` · 형제면 `대장 {호}호` */
+/** 보드 칩: 대표객실이면 `대표객실` · 형제면 `대표객실 {호}호` */
 export function groupLeadChipLabel(
   bookingId: string,
   lead: Pick<Booking, "id" | "roomId"> | null | undefined,
   roomLabel: (roomId: string) => string | null | undefined,
 ): string | null {
   if (!lead) return null;
-  if (bookingId === lead.id) return "대장";
+  if (bookingId === lead.id) return "대표객실";
   const no = lead.roomId ? roomLabel(lead.roomId) : null;
-  return no ? `대장 ${no}호` : "대장";
+  return no ? `대표객실 ${no}호` : "대표객실";
 }
 
-/** 다실 보드 호수 말풍선: 배정된 형제 호수 (숫자 정렬 · 대장 표시) */
+/** 다실 보드 호수 말풍선: 배정된 형제 호수 (숫자 정렬 · 대표객실 표시) */
 export type GroupPeerRoomItem = { no: string; lead: boolean };
 
 export function groupPeerRoomItems(
@@ -94,7 +94,7 @@ export function groupPeerRoomItems(
   return items;
 }
 
-/** 말풍선 한 줄: `201 · 203 · 205 · 305` (대장은 UI에서 강조) */
+/** 말풍선 한 줄: `201 · 203 · 205 · 305` (대표객실은 UI에서 강조) */
 export function groupPeerRoomsLine(items: readonly GroupPeerRoomItem[]): string {
   return items.map((x) => x.no).join(" · ");
 }

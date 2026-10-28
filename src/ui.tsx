@@ -149,14 +149,14 @@ const BADGE_TITLE: Record<CellBadgeKind, string> = {
   longStay: "장기 · 퇴실 미정",
   openEnded: "끝 날짜 없이 계속 묵어요 · 앱이 오늘 밤까지 이어 줘요",
 };
-/** 칸 「단체」/「대장」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
+/** 칸 「단체」/「대표객실」뱃지 · 탭 → 6색 팔레트 · group.badgeColor 저장 */
 export function GroupBadge({
   groupName,
   color,
   readOnly,
   onPick,
   onOpen,
-  /** 다실 대장 칩: `대장` / `대장 601호` · 없으면 「단체」 */
+  /** 다실 대표객실 칩: `대표객실` / `대표객실 601호` · 없으면 「단체」 */
   label,
   showName,
 }: {
@@ -314,9 +314,9 @@ export function GroupRoomNoHit({
           {rooms.map((x, i) => (
             <span key={`${x.no}-${i}`}>
               {i > 0 ? <span className="grp-rooms-sep"> · </span> : null}
-              <span className={x.lead ? "grp-rooms-lead" : undefined} title={x.lead ? "대장객실" : undefined}>
+              <span className={x.lead ? "grp-rooms-lead" : undefined} title={x.lead ? "대표객실" : undefined}>
                 {x.no}
-                {x.lead ? <em className="grp-rooms-lead-mark">대장</em> : null}
+                {x.lead ? <em className="grp-rooms-lead-mark">대표객실</em> : null}
               </span>
             </span>
           ))}
