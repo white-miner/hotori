@@ -10,8 +10,9 @@ import { SIDEBAR_PIN_KEY, SIDEBAR_SWITCH_KEY, escSidebarAction, parsePinned, res
  */
 
 /** Dashboard 가 그려 넣는 칸 이름 */
-export type SbSlot = "views" | "date" | "search" | "filters" | "minimap" | "ops";
-const SLOTS: SbSlot[] = ["views", "date", "search", "filters", "minimap", "ops"];
+export type SbSlot = "views" | "date" | "building" | "search" | "platform" | "status" | "minimap" | "ops";
+/** 사이드바 안 고정 순서 (포털 순서에 기대지 않음) — 기획서 B: 보기 · 날짜 · 건물 · 검색 · 플랫폼 · 현황 필터/층 · 미니맵 */
+const SLOTS: SbSlot[] = ["views", "date", "building", "search", "platform", "status", "minimap", "ops"];
 
 interface SbCtx {
   /** 사이드바를 쓰는 중 (스위치 켬 + 데스크톱) */

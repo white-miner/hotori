@@ -221,6 +221,8 @@ import { roomCardModel } from "../shared/roomCard";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
+import { useSidebarSlots } from "./Sidebar";
+import { selectionAfterFilter, visibleNowRoomIds } from "../shared/sidebar";
 import PlatformFilterBar from "./PlatformFilterBar";
 import { groupDisplayColor } from "../shared/cellBadges";
 import { normalizePlatformFilter, platformChips, platformMatch, PLATFORM_FILTER_STORAGE_KEY, togglePlatformChoice } from "../shared/platformFilter";
@@ -491,6 +493,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   }, []);
   const nowOpts = useMemo(() => ({ stayTimes: s.stayTimes, clock: hotelWallClock() }), [s.stayTimes, data.syncedAt, nowTick]);
   const nowBoardMap = useMemo(() => nowByRoom(bookings, today), [bookings, today]);
+  /** 좌측 사이드바(스위치 ON · 데스크톱) — 조회 조건·운영 패널을 사이드바 칸으로 포털. 꺼져 있으면 모두 제자리 */
+  const sbx = useSidebarSlots();
+  const sbOn = sbx.active;
   const nowSide = useMemo(() => nowLists(bookings, today, nowOpts), [bookings, today, nowOpts]);
   const [coBusy, setCoBusy] = useState<string | null>(null);
   const [ncxBusy, setNcxBusy] = useState<string | null>(null);
@@ -1067,6 +1072,22 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   }, [s, bookings]);
   const roomCount = s.floors.reduce((n, f) => n + f.rooms.length, 0);
   const [floorTab, setFloorTab] = useState<string>("all");
+  /** 사이드바 ON · 현황: 건물·층·임시만 필터가 선택 객실을 감추면 선택에서 뺀다 (사용자 결정 · 플랫폼·검색·미니맵은 흐림만이라 해당 없음) */
+  useEffect(() => {
+    if (!sbOn || tab !== "now" || !selectedRoomIds.length) return;
+    const vis = visibleNowRoomIds(orderedFloors(s), {
+      buildingScope: bScope === "all" ? null : bScope,
+      floorTab,
+      tentativeOnly: nowFilter === "tentative",
+      isTentative: (id) => {
+        const bk = nowBoardMap.get(id);
+        return !!bk && isActive(bk) && nowFlags(bk, today, nowOpts).tentative;
+      },
+    });
+    const next = selectionAfterFilter(selectedRoomIds, vis);
+    if (next !== selectedRoomIds) setSelectedRoomIds([...next]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sbOn, tab, selectedRoomIds, bScope, floorTab, nowFilter, s, nowBoardMap, today, nowOpts]);
   const [sideCollapsed, setSideCollapsed] = useState(() => lsGet(SIDE_COLLAPSE_KEY) === "1");
   const rememberSideCollapsed = (v: boolean) => {
     setSideCollapsed(v);
@@ -2230,7 +2251,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const roomsIn = (fl: typeof floors) => fl.reduce((n, f) => n + f.rooms.length, 0);
 
   const tabCount = 5 + (s.parking.enabled ? 1 : 0); // 현황 · 배치 · 스마트 등록 · 판매 캘린더 · 월간 예약 (+주차)
-  const tabs = (
+  const tabsEl = (
     <div className={`boardtabs seg n${tabCount}`} role="tablist" aria-label="현황판">
       <button role="tab" aria-selected={tab === "now"} className={tab === "now" ? "on" : ""} onClick={() => setTab("now")}>
         현황
@@ -2264,6 +2285,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null}
     </div>
   );
+  const tabs = sbx.into("views", tabsEl);
   // 오버부킹이 하나라도 있으면 맨 위 빨간 알림 (누르면 판매 캘린더)
   const bName = (id: string) => (id === "all" ? "전체" : (L.buildings.get(id)?.name ?? ""));
   const shownOver = over ?? overAll;
@@ -2288,7 +2310,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </span>
     </button>
   ) : null;
-  const buildingTabs = multi ? (
+  const buildingTabsEl = multi ? (
     <div className="btabs" role="tablist" aria-label="건물">
       {["all", ...s.buildings.map((x) => x.id)].map((id) => (
         <button
@@ -2308,7 +2330,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   ) : null;
-  const platformFilterBar =
+  const buildingTabs = sbx.into("building", buildingTabsEl);
+  const platformFilterBarEl =
     tab === "now" || tab === "rooms" ? (
       <PlatformFilterBar
         chips={platformChips(s.platforms, bookings)}
@@ -2318,8 +2341,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         paused={!!mvB || !!assigning}
       />
     ) : null;
+  const platformFilterBar = sbx.into("platform", platformFilterBarEl);
   /** 현황·배치 공통 고객 검색 (건물 칩 근처 · sticky · Lucide Search) */
-  const guestSearchBar =
+  const guestSearchBarEl =
     tab === "now" || tab === "rooms" ? (
       <div className="guest-search-bar" role="search">
         <label className="search ls guest-search">
@@ -2370,6 +2394,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </div>
     ) : null;
+  const guestSearchBar = sbx.into("search", guestSearchBarEl);
 
   // 판매 캘린더와 객실 캘린더는 보는 기간(주·14일·월·기간)을 함께 써요
   const periodSeg = readOnly ? null : (
@@ -2381,7 +2406,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   );
-  const rangeNav = readOnly ? null : (
+  const rangeNavOld = readOnly ? null : (
     <div className="rnav">
       <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
         <ChevronLeft size={16} />
@@ -2411,6 +2436,51 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
       ) : null}
     </div>
+  );
+
+  /** 사이드바 ON: 이전·다음·오늘(+보는 범위 표시)은 사이드바, 기간 단위·기간 날짜·일수·오버부킹 안내는 본문에 그대로 */
+  const rangeNavDateEl = readOnly ? null : (
+    <div className="rnav sb-rnav">
+      <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
+        <ChevronLeft size={16} />
+      </button>
+      <b className="rnav-l">{stockRangeLabel(period, view.from, view.to, today)}</b>
+      <button className="ar" aria-label="다음" onClick={() => shift(1)}>
+        <ChevronRight size={16} />
+      </button>
+      <button className="btn sm" disabled={atToday} onClick={goToday}>
+        오늘
+      </button>
+    </div>
+  );
+  const rangeNavBodyEl =
+    readOnly || !(period === "range" || viewLoading || viewOvers.length) ? null : (
+      <div className="rnav">
+        {period === "range" ? (
+          <span className="rnav-r">
+            <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
+            <span className="muted">~</span>
+            <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
+          </span>
+        ) : null}
+        <span className="rnav-n muted">
+          {period === "range" ? `${viewDates.length}일` : null}
+          {viewLoading ? " 불러오는 중…" : null}
+        </span>
+        {viewOvers.length ? (
+          <span className="rnav-o">
+            {dayLabel(viewGlanceNight)} 오버부킹 {viewOvers.length}건
+          </span>
+        ) : null}
+      </div>
+    );
+  const rangeNav = sbOn ? (
+    <>
+      {sbx.into("date", rangeNavDateEl)}
+      {rangeNavBodyEl}
+    </>
+  ) : (
+    rangeNavOld
   );
 
   const confirmAllTentative = async () => {
@@ -3761,6 +3831,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
       </div>
     );
+    /** 현황 필터 (전체 / 임시만) — 사이드바 ON 이면 사이드바 '현황 필터' 칸으로 */
+    const nowFilterChips = (
+      <>
+        <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("all")}>
+          전체
+        </button>
+        <button type="button" className={`chip ${nowFilter === "tentative" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("tentative")}>
+          임시만{nowSide.tentative.length ? ` ${nowSide.tentative.length}` : ""}
+        </button>
+      </>
+    );
     return (
     <>
       <main className="page board-page now-page">
@@ -3775,12 +3856,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="dnav nowfilters">
-              <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("all")}>
-                전체
-              </button>
-              <button type="button" className={`chip ${nowFilter === "tentative" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("tentative")}>
-                임시만{nowSide.tentative.length ? ` ${nowSide.tentative.length}` : ""}
-              </button>
+              {sbOn ? null : nowFilterChips}
               {!readOnly && nowSide.tentative.length ? (
                 <button type="button" className="btn sm dark" disabled={tentBusy || !!mvB} onClick={() => void confirmAllTentative()}>
                   {tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}
@@ -3792,17 +3868,24 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
+          {sbOn ? sbx.into("status", <div className="sb-chips">{nowFilterChips}</div>) : null}
+          {sbOn ? sbx.into("minimap", nowGlance) : null}
+          {sbOn ? buildingTabs : null}
+          {sbOn ? guestSearchBar : null}
+          {sbOn ? platformFilterBar : null}
           <NowLayoutGrid>
             {/* Chrome sticky lives in the board column only — full-width sticky covered .nowside (#128). */}
             <div className="nowboard">
-              <div className="board-chrome-sticky">
-                <div className="board-filter-sticky">
-                  {buildingTabs}
-                  {guestSearchBar}
-                  {platformFilterBar}
+              {sbOn ? null : (
+                <div className="board-chrome-sticky">
+                  <div className="board-filter-sticky">
+                    {buildingTabs}
+                    {guestSearchBar}
+                    {platformFilterBar}
+                  </div>
+                  {nowGlance}
                 </div>
-                {nowGlance}
-              </div>
+              )}
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
                   <section key={bd.id} className="bblock">
@@ -4347,6 +4430,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       </main>
     );
 
+  const roomsFloorChips = (
+    <div className="fchips">
+      <button className={floorTabSafe === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
+        전체
+      </button>
+      {/* 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */}
+      {(multi && bScope === "all" ? [] : scopeFloors).map((f) => (
+        <button key={f.id} className={floorTabSafe === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
+          {f.name}
+        </button>
+      ))}
+    </div>
+  );
+  /** 배치 날짜 이동 (전날·다음날·오늘) — 사이드바 ON 이면 사이드바 '날짜' 칸으로 */
+  const roomsDateNav = (
+    <>
+      <button className="ar" aria-label="전날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, -1))}>
+        <ChevronLeft size={16} />
+      </button>
+      <span className="dn-day">{dayLabel(selDate)} 밤</span>
+      <button className="ar" aria-label="다음날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, 1))}>
+        <ChevronRight size={16} />
+      </button>
+      <button className="btn sm" disabled={selDate === today || !!mvB} onClick={() => setSelDate(today)}>
+        오늘
+      </button>
+    </>
+  );
   return (
     <>
     <main className={`page board-page${sideCollapsed ? " side-collapsed" : ""}`}>
@@ -4362,16 +4473,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <span className="cnt-m">
               숙박 {board.nightCount}/{roomCount}
             </span>
-            <button className="ar" aria-label="전날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, -1))}>
-              <ChevronLeft size={16} />
-            </button>
-            <span className="dn-day">{dayLabel(selDate)} 밤</span>
-            <button className="ar" aria-label="다음날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, 1))}>
-              <ChevronRight size={16} />
-            </button>
-            <button className="btn sm" disabled={selDate === today || !!mvB} onClick={() => setSelDate(today)}>
-              오늘
-            </button>
+            {sbOn ? sbx.into("date", <div className="dnav sb-dnav">{roomsDateNav}</div>) : roomsDateNav}
           </div>
         </div>
         {mvBar}
@@ -4431,11 +4533,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           }));
           return (
             <div className="board-chrome-sticky">
-              <div className="board-filter-sticky">
-                {buildingTabs}
-                {guestSearchBar}
-                {platformFilterBar}
-              </div>
+              {sbOn ? (
+                <>
+                  {buildingTabs}
+                  {guestSearchBar}
+                  {platformFilterBar}
+                </>
+              ) : (
+                <div className="board-filter-sticky">
+                  {buildingTabs}
+                  {guestSearchBar}
+                  {platformFilterBar}
+                </div>
+              )}
               <NowGlancePanel
                 key={`rooms-glance-${bScope}-${selDate}`}
                 total={gRooms.length}
@@ -4462,17 +4572,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           );
         })()}
-        <div className="fchips">
-          <button className={floorTabSafe === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
-            전체
-          </button>
-          {/* 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */}
-          {(multi && bScope === "all" ? [] : scopeFloors).map((f) => (
-            <button key={f.id} className={floorTabSafe === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
-              {f.name}
-            </button>
-          ))}
-        </div>
+        {sbOn ? sbx.into("status", roomsFloorChips) : roomsFloorChips}
         {groups.map((g) => (
           <section className={multi ? "bsec" : undefined} key={g.bd.id}>
             {multi ? (

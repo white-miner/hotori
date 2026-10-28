@@ -63,3 +63,23 @@ export function selectionAfterFilter(selected: readonly string[], visible: Reado
   const kept = selected.filter((id) => visible.has(id));
   return kept.length === selected.length ? selected : kept;
 }
+
+/**
+ * 현황 화면에서 지금 보이는 객실 id 모음 — 건물 · 층 · 「임시만」 필터가 감추지 않는 객실.
+ * 플랫폼·손님 검색·미니맵 필터는 칸을 흐리게만 하고 감추지 않으므로 여기에 넣지 않는다.
+ */
+export function visibleNowRoomIds(
+  floors: readonly { id: string; buildingId?: string | null; rooms: readonly { id: string }[] }[],
+  o: { buildingScope: string | null; floorTab: string; tentativeOnly: boolean; isTentative: (roomId: string) => boolean },
+): Set<string> {
+  const out = new Set<string>();
+  for (const f of floors) {
+    if (o.buildingScope && f.buildingId !== o.buildingScope) continue;
+    if (o.floorTab !== "all" && o.floorTab !== f.id) continue;
+    for (const r of f.rooms) {
+      if (o.tentativeOnly && !o.isTentative(r.id)) continue;
+      out.add(r.id);
+    }
+  }
+  return out;
+}

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { escSidebarAction, parsePinned, resolveSidebarSwitch, selectionAfterFilter } from "./sidebar";
+import { escSidebarAction, parsePinned, resolveSidebarSwitch, selectionAfterFilter, visibleNowRoomIds } from "./sidebar";
 
 test("스위치: 기본값은 꺼짐", () => {
   assert.deepEqual(resolveSidebarSwitch("", null), { on: false, store: null, cleanSearch: null });
@@ -54,4 +54,23 @@ test("선택 자동 해제: 변화가 없으면 같은 배열(불필요한 갱�
   assert.equal(selectionAfterFilter(sel, new Set(["r1", "r2", "r9"])), sel);
   const none: string[] = [];
   assert.equal(selectionAfterFilter(none, new Set()), none);
+});
+
+test("현황 보이는 객실: 건물·층·임시만 필터만 감춘다", () => {
+  const floors = [
+    { id: "f1", buildingId: "b1", rooms: [{ id: "101" }, { id: "102" }] },
+    { id: "f2", buildingId: "b2", rooms: [{ id: "201" }] },
+  ];
+  const base = { buildingScope: null, floorTab: "all", tentativeOnly: false, isTentative: () => false };
+  assert.deepEqual([...visibleNowRoomIds(floors, base)].sort(), ["101", "102", "201"]);
+  assert.deepEqual([...visibleNowRoomIds(floors, { ...base, buildingScope: "b2" })], ["201"]);
+  assert.deepEqual([...visibleNowRoomIds(floors, { ...base, floorTab: "f1" })].sort(), ["101", "102"]);
+  assert.deepEqual([...visibleNowRoomIds(floors, { ...base, tentativeOnly: true, isTentative: (id) => id === "102" })], ["102"]);
+});
+
+test("필터로 감춰진 선택은 빠지고, 그대로면 같은 배열", () => {
+  const sel = ["101", "201"];
+  assert.equal(selectionAfterFilter(sel, new Set(["101", "201"])), sel);
+  assert.deepEqual(selectionAfterFilter(sel, new Set(["201"])), ["201"]);
+  assert.deepEqual(selectionAfterFilter(sel, new Set()), []);
 });
