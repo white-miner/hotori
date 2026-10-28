@@ -56,6 +56,7 @@ import PaymentDeskModal from "./PaymentDeskModal";
 import { applyCreditNotifyLine, type StayCredit } from "../shared/stayCredit";
 import CheckoutConfirmModal from "./CheckoutConfirmModal";
 import NowSidePanel, { type SideMode } from "./NowSidePanel";
+import NowLayoutGrid from "./NowLayoutGrid";
 import OpsPanelSearch from "./OpsPanelSearch";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
@@ -3791,7 +3792,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
-          <div className="nowlayout">
+          <NowLayoutGrid>
             {/* Chrome sticky lives in the board column only — full-width sticky covered .nowside (#128). */}
             <div className="nowboard">
               <div className="board-chrome-sticky">
@@ -3995,7 +3996,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               nowOpts={nowOpts}
               notify={notify}
             />
-          </div>
+          </NowLayoutGrid>
           {/* 숙박 판매 CTA는 패널 판매 섹션만 · 바는 선택 글랜스+해제 (중복 금지) */}
           {!readOnly && !mvB && selectedRoomIds.length > 0 ? (
             <div className="nowbookbar" role="region" aria-label="선택한 객실">

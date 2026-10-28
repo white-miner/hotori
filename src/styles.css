@@ -3291,7 +3291,14 @@ button.nowstatus { cursor: pointer; }
 /* ---------- 「현황」 현장 현황 ---------- */
 /* board-page의 오른쪽 .side 칸(372px)은 「현황」에 없음 → 한 칸으로 써서 가로를 꽉 채움 */
 .now-page.board-page { grid-template-columns: minmax(0, 1fr); }
-.now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; align-items: start; }
+.now-page .nowlayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 280px); gap: 16px; column-gap: 10px; align-items: start; }
+/* 운영패널 윗선 = 첫 객실카드 줄 윗변 (NowLayoutGrid 가 --now-panel-top 을 잼).
+   보드와 패널 사이는 카드 칸 간격 12px = gap 10px + 카드 그리드 안쪽 여백 2px.
+   좁은 화면(≤960px)은 쌓이므로 적용 안 함. */
+@media (min-width: 961px) {
+  /* margin-bottom -40px = .main 아래 여백(40px)만큼 패널이 보드 끝을 넘어도 되게 해서, 페이지 맨 아래에서 패널이 위로 밀려 헤더에 겹치지 않게 함 */
+  .now-page .nowlayout > .nowside { margin-top: var(--now-panel-top, 0px); margin-bottom: -40px; }
+}
 /* Board column wrapper: sticky 미니맵 chrome stays here so it does not overlay .nowside */
 .now-page .nowboard { min-width: 0; }
 @media (max-width: 960px) { .now-page .nowlayout { grid-template-columns: 1fr; } }
@@ -4251,10 +4258,10 @@ button.nowstatus { cursor: pointer; }
   border-radius: 16px;
   padding: 12px 12px 14px;
   position: sticky;
-  top: 64px;
+  top: 72px; /* 헤더(64px) 아래 8px — 건물칩 줄(.board-chrome-sticky 윗여백 8px)과 같은 선 */
   z-index: 5;
   min-width: 0;
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - 80px);
   display: flex;
   flex-direction: column;
   overflow: hidden; /* body scrolls; mode tabs stay pinned */
