@@ -3422,15 +3422,15 @@ button.nowstatus { cursor: pointer; }
   font-size: 13px;
 }
 .now-assign-banner b { font-weight: 750; }
-.board-page:not(.now-page) .cell.assign-ok {
+.now-page .cell.assign-ok {
   outline: 2px solid var(--badge-info-border, #3b82f6);
   outline-offset: -2px;
 }
-.board-page:not(.now-page) .cell.assign-other {
+.now-page .cell.assign-other {
   outline: 2px dashed var(--badge-warn-border, #e8a317);
   outline-offset: -2px;
 }
-.board-page:not(.now-page) .cell.assign-off { opacity: 0.48; }
+.now-page .cell.assign-off { opacity: 0.48; }
 
 /* ---------- 「배치」클리어리티: 패널 접기 + 칸 확대 (현황 .now-page 미터치) ---------- */
 .board-page.side-collapsed {
@@ -3502,68 +3502,6 @@ button.nowstatus { cursor: pointer; }
 }
 .side-collapse-btn:hover { background: var(--hover); color: var(--ink2); }
 
-/* 배치 칸 = 현황과 동일 비율 (board-room-grid-lock + board-cell-ratio-lock) · auto-fit/% 금지 */
-.board-page:not(.now-page):not(.one) .rooms {
-  width: 100%;
-  box-sizing: border-box;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 12px;
-  align-items: stretch;
-  justify-items: stretch;
-  grid-auto-rows: var(--room-card-h); /* 고정 — minmax(…, auto) 금지: 내용이 행 높이를 바꾸면 안 돼요 */
-  overflow: visible;
-  padding: 2px;
-}
-.board-page:not(.now-page):not(.one) .floor {
-  grid-template-columns: 52px minmax(0, 1fr);
-  gap: 12px;
-  margin-bottom: 14px;
-  overflow: visible;
-}
-.board-page:not(.now-page):not(.one) .cell {
-  container-type: normal;
-  width: auto;
-  max-width: none;
-  min-height: 0;
-  height: var(--room-card-h); /* 고정 높이 · 칸 안의 줄은 아래 .cell > :not(…) 규칙으로 잘려요 */
-  align-self: stretch;
-  justify-self: stretch;
-  padding: var(--space-2) var(--space-3) var(--space-2);
-  gap: 0;
-  border-radius: 18px;
-  box-sizing: border-box;
-}
-.board-page:not(.now-page):not(.one) .cell .r1 {
-  padding: var(--space-1) 6px;
-  margin-bottom: 0;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.board-page:not(.now-page):not(.one) .cell .nm,
-.board-page:not(.now-page):not(.one) .cell .r3,
-.board-page:not(.now-page):not(.one) .cell .emt,
-.board-page:not(.now-page):not(.one) .cell .tl,
-.board-page:not(.now-page):not(.one) .cell .tl-row {
-  padding-left: 4px;
-  padding-right: 4px;
-}
-.board-page:not(.now-page):not(.one) .cell .nm {
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.12;
-  margin: var(--space-1) 0;
-}
-.board-page:not(.now-page):not(.one) .cell .tl {
-  --fmax: 14.5px;
-  --fmin: 10.5px;
-}
-.board-page:not(.now-page):not(.one) .cell .r3 .pr {
-  font-size: 16px;
-  font-weight: 800;
-}
-.board-page:not(.now-page):not(.one) .cell .emt { margin-top: var(--space-2); }
-.board-page:not(.now-page):not(.one) .cell .dus { padding: 0 4px; gap: var(--space-1); }
-
 @media (max-width: 1180px) {
   .board-page.side-collapsed { grid-template-columns: minmax(0, 1fr); }
   .side.collapsed {
@@ -3577,26 +3515,13 @@ button.nowstatus { cursor: pointer; }
     border-radius: 16px;
   }
   .side.collapsed .side-rail { flex-direction: row; padding-top: 0; }
-  .board-page:not(.now-page):not(.one) .rooms {
-    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  }
+  
 }
 @media (max-width: 760px) {
   .side.collapsed { margin: 14px 12px 0; }
-  .board-page:not(.now-page):not(.one) .rooms {
-    width: 100%;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 8px;
-  }
-  .board-page:not(.now-page):not(.one) .floor {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-    margin-bottom: 10px;
-  }
-  .board-page:not(.now-page):not(.one) .cell {
-    padding: 6px 7px 7px;
-    border-radius: 14px;
-  }
+  
+  
+  
 }
 .board-assign-check {
   position: absolute;
@@ -6122,7 +6047,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
    칸 높이는 --room-card-h 하나(위 :root · 모바일은 아래 미디어쿼리). 내용이 모자라면 비워 두고, 넘치면 칸 안에서 잘라요.
    머리(객실번호·유형)·이용기간 줄·하단 상태 슬롯은 줄지 않고(팝오버가 걸려 있음), 그 사이의 줄(결제·받을 돈·이름·회사·박당 요금…)만 줄어들며 잘려요.
    .cell > * { flex-shrink: 0 } 는 이 규칙이 덮어써요: .cell(0,1,0) < 아래(0,3,0 이상) · 모바일 미디어쿼리는 변수 값만 바꿔요. */
-.board-page:not(.now-page):not(.one) .cell > :not(.r1):not(.tl-row):not(.dumark):not(.comark):not(.pmark):not(.board-assign-check),
 .now-page .cell-body > :not(.r1):not(.tl-row):not(.nowdate-row):not(.nowstatus-slot) {
   flex-shrink: 1;
   min-height: 0;
@@ -6141,7 +6065,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 }
 .now-page .nowstatus-slot.none { margin-top: var(--space-1); padding-bottom: 0; align-items: flex-start; padding-left: 3px; }
 .now-page .nowstatus-slot.none .nowstatus.nk-empty { border: 0; background: transparent; min-width: 0; height: auto; padding: 0; font-size: 13px; }
-.board-page:not(.now-page):not(.one) .cell.em .emt.none { display: block; font-size: 13px; }
 
 /* ───────── 객실 카드 슬롯(고정 자리) — 현황 .now-page · 배치 .board-page 공통 (docs/room-card-spec.md §11) ─────────
    카드는 칸 구조가 먼저 있는 틀이에요. 줄마다 자기 자리(data-slot)와 높이가 따로 있고, 값은 그 자리에 끼워질 뿐이에요.
@@ -6163,30 +6086,22 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   --rc-h-grp: 17px;    /* 단체 결제 › */
   --rc-h-move: 13px;   /* 현황: 객실 이동 안내 */
   --rc-h-status: 28px; /* 현황: 하단 입실·상태 버튼 */
-  --rc-h-rp: 13px;     /* 배치: 이동·판매 타입 */
-  --rc-h-tags: 15px;   /* 배치: 경고·빠른/늦은 시간 */
-  --rc-h-dus: 13px;    /* 배치: 취소 칸의 대실 */
 }
-.now-page .cell-body.rc-grid, .board-page:not(.now-page):not(.one) .cell.rc-grid { display: grid !important; align-content: start; align-items: stretch; grid-template-columns: minmax(0, 1fr); }
+.now-page .cell-body.rc-grid { display: grid !important; align-content: start; align-items: stretch; grid-template-columns: minmax(0, 1fr); }
 .now-page .cell-body.rc-grid {
   grid-template-rows:
     var(--rc-h-head) var(--rc-h-type) var(--rc-h-period) var(--rc-h-link) var(--rc-h-pay) var(--rc-h-due) var(--rc-h-name)
     var(--rc-h-badges) var(--rc-h-move) var(--rc-h-co) var(--rc-h-rate) var(--rc-h-grp) var(--rc-h-status);
   padding-top: 2px !important; padding-bottom: 2px !important; gap: 0 !important;
 }
-.board-page:not(.now-page):not(.one) .cell.rc-grid {
-  grid-template-rows:
-    var(--rc-h-head) var(--rc-h-type) var(--rc-h-period) var(--rc-h-link) var(--rc-h-pay) var(--rc-h-due) var(--rc-h-name)
-    var(--rc-h-badges) var(--rc-h-co) var(--rc-h-rate) var(--rc-h-grp) var(--rc-h-rp) var(--rc-h-tags) var(--rc-h-dus);
-  padding-top: 2px !important; padding-bottom: 2px !important; gap: 0 !important;
-}
+
 .rc-grid > [data-slot] {
   min-height: 0 !important; height: auto !important; max-height: none;
   margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important;
   overflow: hidden; align-self: stretch; box-sizing: border-box; min-width: 0;
 }
 .now-page .rc-grid > [data-slot="period"] { overflow: visible; align-self: center; justify-self: start; }
-.board-page:not(.now-page) .rc-grid > [data-slot="period"] { overflow: hidden; }
+
 /* 자리 번호 (현황·배치 공통 위쪽 7칸) */
 .rc-grid > [data-slot="head"] { grid-row: 1; display: flex; align-items: center; line-height: 1; }
 .rc-grid > [data-slot="type"] { grid-row: 2; line-height: var(--rc-h-type); align-items: center; }
@@ -6213,16 +6128,10 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-page .rc-grid > [data-slot="status"] .nowstatus,
 .now-page .rc-grid > [data-slot="status"] .nowearly { height: calc(var(--rc-h-status) - 2px); min-width: 0; padding: 0 8px; }
 /* 배치 아래쪽 자리 */
-.board-page:not(.now-page) .rc-grid > [data-slot="company"] { grid-row: 9; }
-.board-page:not(.now-page) .rc-grid > [data-slot="rate"] { grid-row: 10; }
-.board-page:not(.now-page) .rc-grid > [data-slot="grp"] { grid-row: 11; }
-.board-page:not(.now-page) .rc-grid > [data-slot="rp"] { grid-row: 12; line-height: var(--rc-h-rp); }
-.board-page:not(.now-page) .rc-grid > [data-slot="tags"] { grid-row: 13; }
-.board-page:not(.now-page) .rc-grid > [data-slot="dus"] { grid-row: 14; margin: 0; flex-direction: row; }
+
 /* 머리·유형은 빈 칸도 같은 높이 (예약 없음 칸의 객실번호·유형이 예약 카드와 같은 자리) */
-.now-page .cell .r1[data-slot="head"], .board-page:not(.now-page):not(.one) .cell .r1[data-slot="head"] { height: var(--rc-h-head); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
-.now-page .cell .tl-row[data-slot="type"], .board-page:not(.now-page):not(.one) .cell .tl-row[data-slot="type"] { height: var(--rc-h-type); box-sizing: border-box; overflow: hidden; }
-.board-page:not(.now-page) .rc-grid > [data-slot="empty"] { grid-row: 3; line-height: var(--rc-h-period); }
+.now-page .cell .r1[data-slot="head"] { height: var(--rc-h-head); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+.now-page .cell .tl-row[data-slot="type"] { height: var(--rc-h-type); box-sizing: border-box; overflow: hidden; }
 
 /* ---------- 왼쪽 사이드바 (스위치 켬 · 데스크톱만 · docs/sidebar.md) ----------
    평소 56px 레일 → 임시 펼침 320px(본문 위에 겹침 · 카드 열 수 그대로) · 고정(본문이 좁아짐).
@@ -6301,3 +6210,12 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 /* C: 배치 오른쪽 패널 (미배정 목록 · 안은 그대로) — 우측 칸이 사라져 배치도 한 칸 */
 .app.sb-active .board-page:not(.now-page) { grid-template-columns: minmax(0, 1fr); }
 .app.sb-active .sb-c .side { position: static; top: auto; min-height: 0; max-height: none; overflow: visible; margin: 0; padding: 12px 0 0; border: 0; border-radius: 0; border-top: 1px solid var(--line2); background: transparent; }
+
+/* 현황 = 배치 합침: 날짜 이동은 페이지 상단 중앙 · 건물 숙박 n/m · 미배정 필터 · 이날 합계 */
+.nowdatebar { display: flex; justify-content: center; margin: 6px 0 2px; }
+.nowdatebar .dnav { justify-content: center; }
+.nowdatebar .dnav .dn-day { min-width: 112px; text-align: center; font-size: 14px; font-weight: 750; }
+.now-page .bname-n { font-size: 12px; font-weight: 650; color: var(--ink3); font-family: var(--num); white-space: nowrap; }
+.nowside .side-ua-filters { margin-bottom: 6px; }
+.nowside .side-ua-h { margin-top: 2px; }
+.nowside .sum { margin-top: 12px; }

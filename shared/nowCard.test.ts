@@ -145,10 +145,6 @@ test("카드 순서: 이용기간·결제는 이름 위(top), 회사·하루 요
   const facts = readFileSync(new URL("../src/RoomCardFacts.tsx", import.meta.url), "utf8");
   assert.match(facts, /slot\?: "top" \| "who" \| "all"/);
   assert.ok(!/추정/.test(facts.replace(/\/\*[\s\S]*?\*\//g, "")), "카드에 추정 뱃지 없음");
-  const iTop = dash.indexOf('factsEl("top")');
-  const iName = dash.indexOf('<span className="gn">{b.guestName}</span>', iTop);
-  const iWho = dash.indexOf('factsEl("who")', iName);
-  assert.ok(iTop > 0 && iName > iTop && iWho > iName, "배치 카드: top → 이름 → who");
   const iTop2 = dash.indexOf('slot="top"', dash.indexOf("const cardRate"));
   const iName2 = dash.indexOf('<span className="gn">{b.guestName}</span>', iTop2);
   const iWho2 = dash.indexOf('slot="who"', iName2);
