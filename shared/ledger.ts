@@ -1299,13 +1299,15 @@ export function stockRangeLabel(period: StockPeriod, from: string, to: string, t
   return `${a} ~ ${b}`;
 }
 
-// ---------- 현황판 탭 (재고 현황 | 객실 배치) ----------
-/** FO 상단 칩 표시 순서(주차 제외): now → rooms → smart → stock → calendar */
-export type BoardTab = "now" | "rooms" | "smart" | "stock" | "calendar" | "parking";
-/** '#/board/now' → now, '#/board/rooms' → rooms, … 그 밖에는 null (기기에 남긴 탭을 써요) */
+// ---------- 현황판 탭 (현황 · 스마트 · 재고 · 월간 · 주차) ----------
+/** FO 상단 칩 표시 순서(주차 제외): now → smart → stock → calendar */
+export type BoardTab = "now" | "smart" | "stock" | "calendar" | "parking";
+/** '#/board/now' → now, … 그 밖에는 null (기기에 남긴 탭을 써요).
+ * 옛 주소 '#/board/rooms'(객실 배치)는 현황으로 합쳐져 now로 읽어요. */
 export function boardTabFromHash(hash: string): BoardTab | null {
   const m = /^#\/board\/(now|stock|smart|rooms|calendar|parking)\/?$/.exec(hash);
-  return m ? (m[1] as BoardTab) : null;
+  if (!m) return null;
+  return m[1] === "rooms" ? "now" : (m[1] as BoardTab);
 }
 
 /** 저장 전 미리보기: 바뀌는 밤마다 '잔여 객실 4 → 3' */

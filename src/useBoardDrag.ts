@@ -4,7 +4,6 @@ import { dragIntent, DRAG_TOUCH_HOLD_MS, edgeScrollDelta } from "../shared/dragT
 export interface DragStart {
   id: string;
   night: string;
-  tab?: "now" | "rooms";
 }
 export interface BoardDragOptions {
   /** 이 칸에서 끌기를 시작해도 되는지 (안 되면 null) — 최신 화면 상태로 판단 */

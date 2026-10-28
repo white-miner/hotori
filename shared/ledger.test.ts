@@ -514,13 +514,13 @@ test("대실 시간: 사람이 입력한 그대로 알아들어요", () => {
   assert.equal(nowRounded(new Date(2026, 9, 18, 23, 58)), "00:00");
 });
 
-test("현황판 탭 주소: #/board/now · rooms · smart · stock · calendar", async () => {
+test("현황판 탭 주소: #/board/now · smart · stock · calendar (옛 rooms 는 now)", async () => {
   const { boardTabFromHash } = await import("./ledger");
   assert.equal(boardTabFromHash("#/board/now"), "now");
   assert.equal(boardTabFromHash("#/board/stock"), "stock");
   assert.equal(boardTabFromHash("#/board/smart"), "smart");
-  assert.equal(boardTabFromHash("#/board/rooms"), "rooms");
-  assert.equal(boardTabFromHash("#/board/rooms/"), "rooms");
+  assert.equal(boardTabFromHash("#/board/rooms"), "now");
+  assert.equal(boardTabFromHash("#/board/rooms/"), "now");
   assert.equal(boardTabFromHash("#/board/calendar"), "calendar");
   assert.equal(boardTabFromHash("#/board"), null);
   assert.equal(boardTabFromHash("#/ledger"), null);
