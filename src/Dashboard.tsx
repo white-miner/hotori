@@ -3826,8 +3826,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
             <NowSidePanel
               today={today}
-              hotelId={data.hotel!.id}
-              hotelName={data.hotel!.name}
               s={s}
               L={L}
               unassigned={nowSide.unassigned}
@@ -3994,7 +3992,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 setEarlyPay({ booking: bk, roomLabel: lab || "호실" });
               }}
               nowOpts={nowOpts}
-              notify={notify}
             />
           </NowLayoutGrid>
           {/* 숙박 판매 CTA는 패널 판매 섹션만 · 바는 선택 글랜스+해제 (중복 금지) */}

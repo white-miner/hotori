@@ -1,12 +1,6 @@
 import { useMemo, useState } from "react";
 import { hasFullNightMatrix } from "../shared/nightrates";
-import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
-import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
-import { DAMAGE_COPY } from "../shared/damageDoc";
-import StayConfirmLetter from "./StayConfirmLetter";
-import DamageLetter from "./DamageLetter";
-import { ensureHotelBizReady } from "./hotelBizGate";
-import { useDamageIssues } from "./data";
+import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
 import {
   canCheckOut,
   canEndDayuse,
@@ -86,9 +80,6 @@ const MODE_LABEL: Record<SideMode, string> = {
 
 interface Props {
   today: string;
-  hotelId: string;
-  /** hotels.name · 숙박확인서 상호 fallback */
-  hotelName: string;
   s: HotelSettings;
   L: L;
   unassigned: Booking[];
@@ -197,13 +188,10 @@ interface Props {
   settleMembers?: Booking[];
   settleGroupInfo?: GroupInfo | null;
   nowOpts?: Parameters<typeof nowFlags>[2];
-  notify?: (m: string) => void;
 }
 
 export default function NowSidePanel({
   today,
-  hotelId,
-  hotelName,
   s,
   L,
   unassigned,
@@ -264,15 +252,10 @@ export default function NowSidePanel({
   settleMembers = [],
   settleGroupInfo = null,
   nowOpts,
-  notify,
 }: Props) {
   const [opsQuery, setOpsQuery] = useState("");
   const [outZoneOpen, setOutZoneOpen] = useState(false);
   const [cleanAsk, setCleanAsk] = useState<Booking | null>(null);
-  const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
-  const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
-  const [damageBusy, setDamageBusy] = useState(false);
-  const damages = useDamageIssues(hotelId);
 
   const opsMeta = (b: Booking) => {
     const p = L.plats.get(b.platformId);
@@ -931,40 +914,6 @@ export default function NowSidePanel({
                         <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
                           {EDIT_COPY}
                         </button>
-                        {b.kind === "stay" ? (
-                          <button
-                            type="button"
-                            className="btn sm line"
-                            disabled={moving}
-                            onClick={() => {
-                              void (async () => {
-                                if (!(await ensureHotelBizReady(s.hotelBiz, hotelName))) return;
-                                setStayConfirm(b);
-                              })();
-                            }}
-                            aria-label={STAY_CONFIRM_COPY}
-                          >
-                            <FileText size={14} strokeWidth={2.2} aria-hidden />
-                            {STAY_CONFIRM_COPY}
-                          </button>
-                        ) : null}
-                        {b.kind === "stay" ? (
-                          <button
-                            type="button"
-                            className="btn sm line"
-                            disabled={moving}
-                            onClick={() => {
-                              void (async () => {
-                                if (!(await ensureHotelBizReady(s.hotelBiz, hotelName))) return;
-                                setDamageBooking(b);
-                              })();
-                            }}
-                            aria-label={DAMAGE_COPY.title}
-                          >
-                            <AlertTriangle size={14} strokeWidth={2.2} aria-hidden />
-                            {DAMAGE_COPY.cta}
-                          </button>
-                        ) : null}
                         {f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
                           <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
                             {coBusy === b.id ? "처리 중…" : "퇴실처리"}
@@ -1220,34 +1169,6 @@ export default function NowSidePanel({
             onSetNoClean(cleanAsk, next);
             setCleanAsk(null);
           }}
-        />
-      ) : null}
-      {stayConfirm && stayConfirm.kind === "stay" ? (
-        <StayConfirmLetter
-          booking={stayConfirm}
-          hotelName={hotelName}
-          s={s}
-          today={today}
-          onClose={() => setStayConfirm(null)}
-        />
-      ) : null}
-      {damageBooking && damageBooking.kind === "stay" ? (
-        <DamageLetter
-          hotelName={hotelName}
-          s={s}
-          today={today}
-          booking={damageBooking}
-          busy={damageBusy}
-          notify={(m) => notify?.(m)}
-          onIssue={async (draft) => {
-            setDamageBusy(true);
-            try {
-              return await damages.issue(draft);
-            } finally {
-              setDamageBusy(false);
-            }
-          }}
-          onClose={() => setDamageBooking(null)}
         />
       ) : null}
     </aside>

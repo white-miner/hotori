@@ -1,33 +1,28 @@
 import { useEffect, useMemo, useState, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { saveFailMessage } from "../shared/errors";
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Download, FileDown, FileText, Printer, Search } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Download, FileDown, Printer, Search } from "lucide-react";
 import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/group";
 import { emptyGroupInfo, settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
-import StayConfirmLetter from "./StayConfirmLetter";
 import InvoiceLetter from "./InvoiceLetter";
-import DamageLetter from "./DamageLetter";
 import { ensureHotelBizReady } from "./hotelBizGate";
 import {
   type HotelData,
   queryLedger,
   queryPayments,
   queryShopSales,
-  useDamageIssues,
   useExpenseVendors,
   useExpenses,
   useInvoiceIssues,
   useQuoteIssues,
 } from "./data";
-import { DAMAGE_COPY } from "../shared/damageDoc";
 import { findLinkedQuote } from "../shared/quoteVariance";
 import {
   type Booking,
   type StayPhase,
   CHECKIN_STRIP_LABEL,
-  STAY_CONFIRM_COPY,
   addDays,
   dayLabel,
   isActive,
@@ -186,15 +181,11 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
-  const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
   const [invoiceGroupId, setInvoiceGroupId] = useState<string | null>(null);
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null);
-  const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
   const invoices = useInvoiceIssues(hotelId);
   const quotes = useQuoteIssues(hotelId);
-  const damages = useDamageIssues(hotelId);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
-  const [damageBusy, setDamageBusy] = useState(false);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
   const [payList, setPayList] = useState<Payment[]>([]);
@@ -331,24 +322,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   {b.groupId && !gm ? <span className="grptag" title="단체 예약">단체 {b.groupName}</span> : null}
                   {b.noClean && b.status === "active" ? <span className="ncxtag" title="청소하지 않음">청소X</span> : null}
                   {b.memo ? <span className="memo">{b.memo}</span> : null}
-                  {b.kind === "stay" ? (
-                    <button
-                      type="button"
-                      className="btn sm line l-stay-confirm noprint"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void (async () => {
-                          if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
-                          setStayConfirm(b);
-                        })();
-                      }}
-                      aria-label={STAY_CONFIRM_COPY}
-                      title={`${STAY_CONFIRM_COPY} 인쇄·PDF`}
-                    >
-                      <FileText size={13} strokeWidth={2.2} aria-hidden />
-                      {STAY_CONFIRM_COPY}
-                    </button>
-                  ) : null}
                   {b.kind === "stay" && b.status !== "cancelled" ? (
                     <button
                       type="button"
@@ -365,24 +338,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       title="청구서 발급·인쇄"
                     >
                       청구서
-                    </button>
-                  ) : null}
-                  {b.kind === "stay" && b.status !== "cancelled" ? (
-                    <button
-                      type="button"
-                      className="btn sm line l-stay-confirm noprint"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void (async () => {
-                          if (!(await ensureHotelBizReady(data.hotel!.settings.hotelBiz, data.hotel!.name))) return;
-                          setDamageBooking(b);
-                        })();
-                      }}
-                      aria-label={DAMAGE_COPY.title}
-                      title={DAMAGE_COPY.title}
-                    >
-                      <AlertTriangle size={13} strokeWidth={2.2} aria-hidden />
-                      {DAMAGE_COPY.cta}
                     </button>
                   ) : null}
                 </span>
@@ -1542,15 +1497,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           }}
         />
       ) : null}
-      {stayConfirm && stayConfirm.kind === "stay" ? (
-        <StayConfirmLetter
-          booking={stayConfirm}
-          hotelName={data.hotel!.name}
-          s={s}
-          today={today}
-          onClose={() => setStayConfirm(null)}
-        />
-      ) : null}
       {invoiceGroupId && allGroups.get(invoiceGroupId) ? (
         <InvoiceLetter
           hotelName={data.hotel!.name}
@@ -1602,25 +1548,6 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             }
           }}
           onClose={() => setInvoiceBooking(null)}
-        />
-      ) : null}
-      {damageBooking && damageBooking.kind === "stay" ? (
-        <DamageLetter
-          hotelName={data.hotel!.name}
-          s={s}
-          today={today}
-          booking={damageBooking}
-          busy={damageBusy}
-          notify={notify}
-          onIssue={async (draft) => {
-            setDamageBusy(true);
-            try {
-              return await damages.issue(draft);
-            } finally {
-              setDamageBusy(false);
-            }
-          }}
-          onClose={() => setDamageBooking(null)}
         />
       ) : null}
     </main>

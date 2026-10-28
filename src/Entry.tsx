@@ -1,10 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, FileText, Minus, Plus, Undo2, X } from "lucide-react";
-import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
-import { DAMAGE_COPY } from "../shared/damageDoc";
-import StayConfirmLetter from "./StayConfirmLetter";
-import DamageLetter from "./DamageLetter";
-import { useDamageIssues } from "./data";
+import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -57,7 +52,6 @@ import type { EntryRequest, ToastOpt } from "./App";
 import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import { askConfirm } from "./ConfirmDialog";
-import { ensureHotelBizReady } from "./hotelBizGate";
 import GroupEntry from "./GroupEntry";
 import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
@@ -1191,10 +1185,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [stayConfirm, setStayConfirm] = useState(false);
-  const [damageOpen, setDamageOpen] = useState(false);
-  const [damageBusy, setDamageBusy] = useState(false);
-  const damages = useDamageIssues(data.hotel!.id);
   const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
@@ -1994,42 +1984,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0) +
                   (isActive(draft) ? 2 : 0)
                 : 0) +
-              (base.kind === "stay" ? 2 : 0) +
               1
             }`}
           >
-            {base.kind === "stay" ? (
-              <button
-                type="button"
-                className="beo"
-                onClick={() => {
-                  void (async () => {
-                    if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
-                    setStayConfirm(true);
-                  })();
-                }}
-                title="숙박확인서 인쇄·PDF"
-              >
-                <FileText size={17} />
-                <b>{STAY_CONFIRM_COPY}</b>
-              </button>
-            ) : null}
-            {base.kind === "stay" ? (
-              <button
-                type="button"
-                className="beo"
-                onClick={() => {
-                  void (async () => {
-                    if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
-                    setDamageOpen(true);
-                  })();
-                }}
-                title={DAMAGE_COPY.title}
-              >
-                <AlertTriangle size={17} />
-                <b>{DAMAGE_COPY.cta}</b>
-              </button>
-            ) : null}
             {isActive(base) && base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
               <button
                 type="button"
@@ -4171,34 +4128,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         onCancel={() => !coBusy && setCoConfirm(null)}
         onCheckoutOnly={() => void confirmEntryCheckoutOnly()}
         onPayThenCheckout={(plan) => void confirmEntryCheckoutPayThen(plan)}
-      />
-    ) : null}
-    {stayConfirm && base && base.kind === "stay" ? (
-      <StayConfirmLetter
-        booking={live ?? base}
-        hotelName={data.hotel!.name}
-        s={s}
-        today={today}
-        onClose={() => setStayConfirm(false)}
-      />
-    ) : null}
-    {damageOpen && base && base.kind === "stay" ? (
-      <DamageLetter
-        hotelName={data.hotel!.name}
-        s={s}
-        today={today}
-        booking={live ?? base}
-        busy={damageBusy}
-        notify={notify}
-        onIssue={async (draft) => {
-          setDamageBusy(true);
-          try {
-            return await damages.issue(draft);
-          } finally {
-            setDamageBusy(false);
-          }
-        }}
-        onClose={() => setDamageOpen(false)}
       />
     ) : null}
     </>
