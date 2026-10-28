@@ -15,6 +15,7 @@ import {
   nowAmountGlance,
   nowGroupLine,
   nowAmountTone,
+  nowDueAmount,
   nowByRoom,
   nowCheckoutMark,
   nowFlags,
@@ -2140,6 +2141,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
                   payTitle={lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
                   tone={tone}
+                  due={nowDueAmount(b, plat, b.groupId ? { members: groupStayPeers(bookings, b.groupId), info: grpInfo } : null, today, lead)}
                   company={nowCompanyOf(b, grpInfo)}
                   viewLabel={dayLabel(selDate)}
                 />
@@ -3567,6 +3569,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             payText={cardPay}
             payTitle={grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
             tone={f.longStay ? "due" : amountTone}
+            due={nowDueAmount(b, plat, groupCtx, today, grpLead)}
             company={cardCompany}
             viewLabel={dayLabel(today)}
             openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}

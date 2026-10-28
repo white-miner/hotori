@@ -3117,11 +3117,25 @@ label.ck input[type="checkbox"] {
   color: var(--ink);
   margin: var(--space-1) 0 0;
 }
-/* 금액 숫자만: 미수=빨강 · 선금·일부=파랑 · 완납=검정 */
-.nowamt.tone-due, .cell .pr.tone-due { color: var(--badge-danger); }
-.nowamt.tone-partial, .cell .pr.tone-partial { color: var(--badge-info); }
-.nowamt.tone-paid, .cell .pr.tone-paid { color: var(--ink); }
-.nowamt.tone-neutral { color: var(--ink3); }
+/* 객실 카드 금액 색은 항목으로 고정: 객실 가격=빨강 · 받은 돈=검정 · 받아야 할 돈(미수금)=파랑 */
+:root {
+  --amt-rate: #c8102e;
+  --amt-paid: #111111;
+  --amt-due: #1d4ed8;
+}
+:root[data-theme="dark"], .dark {
+  --amt-rate: #ff7a85;
+  --amt-paid: #f5f5f5;
+  --amt-due: #8ab4ff;
+}
+.amt-rate, .cell .amt-rate { color: var(--amt-rate); }
+.amt-paid, .cell .amt-paid, .nowamt.amt-paid { color: var(--amt-paid); }
+.amt-due, .cell .amt-due, .nowamt.amt-due, .nsel-bal-v.due b.amt-due { color: var(--amt-due); }
+.cell .rc-due { font-size: 11px; font-weight: 800; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.cell .rc-due-k { font-size: 9.5px; font-weight: 700; opacity: .85; }
+.cell .pr.tone-due { color: var(--badge-danger); }
+.cell .pr.tone-partial { color: var(--badge-info); }
+.cell .pr.tone-paid { color: var(--ink); }
 .nownights-acc {
   font-size: 14px;
   font-weight: 750;
@@ -4362,7 +4376,7 @@ button.nowstatus { cursor: pointer; }
 .nsel-body { display: flex; flex-direction: column; gap: 6px; }
 .nsel-row { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 6px; align-items: start; font-size: 12.5px; }
 .nsel-bal-v { font-variant-numeric: tabular-nums; }
-.nsel-bal-v.due b { color: var(--badge-danger); font-weight: 800; }
+.nsel-bal-v.due b { color: var(--amt-due); font-weight: 800; }
 .nsel-k { color: var(--ink3); font-weight: 700; padding-top: 1px; }
 .nsel-v { min-width: 0; font-weight: 650; word-break: break-word; }
 /* 운영 결제 이력 · 밀도만 · 칸 박스 무관 */

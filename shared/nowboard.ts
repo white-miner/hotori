@@ -416,6 +416,30 @@ export function nowAmountTone(
 }
 
 /**
+ * 객실 카드에 파랑으로 보여 줄 「받아야 할 돈」(미수금, 오늘 밤 기준). 0이면 카드에 안 보여요.
+ * - 단체 대표객실: 단체 합계의 오늘 밤까지 미수금 (객실에 나누지 않음) · 대표 아닌 멤버 칸은 0 (대표객실에만)
+ * - 단실: 청구 − 받은 돈. 장기·금액미정은 0 (그 칸은 자기 표기)
+ */
+export function nowDueAmount(
+  b: Booking,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+  group: NowPayGroupCtx | null | undefined,
+  today: string,
+  isLead: boolean,
+): number {
+  if (b.priceUnset || b.stayMode === "long_stay") return 0;
+  if (b.groupId && group && group.members.length >= 2) {
+    if (!isLead) return 0;
+    const g = groupLedger(group.members, (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
+      extras: (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+    });
+    return g.roomCount > 0 ? g.owed : 0;
+  }
+  const ps = nowPaySnap(b, plat, null);
+  return ps.tracked && ps.left > 0 ? Math.round(ps.left) : 0;
+}
+
+/**
  * 「현황」 칸 날짜: **점유 밤** 구간 `checkIn ~ (stayEnd−1)`.
  * 퇴실 아침(stayEnd)은 구간에 넣지 않음 (예: 2박 입19·퇴21 → `10/19~20`).
  * Entry는 입·퇴·박을 쓰고, 보드는 밤 구간만 쓴다.

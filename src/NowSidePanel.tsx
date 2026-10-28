@@ -656,8 +656,8 @@ export default function NowSidePanel({
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        청구 {won(balGlance.due)} − 결제 {won(balGlance.paid)} = 미수금{" "}
-                        <b>{won(balGlance.left)}</b>
+                        청구 {won(balGlance.due)} − 결제 <span className="amt-paid">{won(balGlance.paid)}</span> = 미수금{" "}
+                        <b className="amt-due">{won(balGlance.left)}</b>
                       </span>
                     </div>
                   ) : null}
@@ -962,8 +962,8 @@ export default function NowSidePanel({
                     <div className="nsel-row nsel-bal" aria-label="잔금 요약">
                       <span className="nsel-k">정산</span>
                       <span className={`nsel-v nsel-bal-v${balGlance.left > 0 ? " due" : ""}`}>
-                        청구 {won(balGlance.due)} − 결제 {won(balGlance.paid)} = 미수금{" "}
-                        <b>{won(balGlance.left)}</b>
+                        청구 {won(balGlance.due)} − 결제 <span className="amt-paid">{won(balGlance.paid)}</span> = 미수금{" "}
+                        <b className="amt-due">{won(balGlance.left)}</b>
                       </span>
                     </div>
                   ) : null}
