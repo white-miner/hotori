@@ -311,6 +311,26 @@ function Swatches({ value, onChange, noneLabel = "기본" }: { value: string | n
   );
 }
 
+/** 위쪽 바로가기: 설정 카드 전부 (객실 요금이 맨 앞) */
+const SETTINGS_SHORTCUTS: ReadonlyArray<readonly [string, string]> = [
+  ["rates", "객실 요금"],
+  ["surcharge", "인원 추가 요금·특별일"],
+  ["rooms", "객실 배치"],
+  ["types", "객실 타입"],
+  ["times", "입실·퇴실 시간"],
+  ["dayuse", "대실 기본"],
+  ["plats", "플랫폼"],
+  ["type-aliases", "타입 매칭"],
+  ["pcolor", "플랫폼 색"],
+  ["fees", "수수료·입금"],
+  ["exp", "지출 분류"],
+  ["shop", "매점 물품"],
+  ["parking", "주차 관리"],
+  ["share", "현황 공유"],
+  ["plan", "요금제"],
+  ["hotel-biz", "호텔 사업자 정보"],
+];
+
 export default function Settings({ data, email, notify }: Props) {
   const hotel = data.hotel!;
   const [s, setS] = useState<HotelSettings>(hotel.settings);
@@ -519,16 +539,7 @@ export default function Settings({ data, email, notify }: Props) {
           <span className={`save-st ${saving}`}>
             {saving === "saving" ? "저장 중…" : saving === "saved" ? "저장됨" : saving === "error" ? "저장 안 됨" : ""}
           </span>
-          {[
-            ["rooms", "객실·타입"],
-            ["plats", "플랫폼"],
-            ["fees", "수수료"],
-            ["pcolor", "플랫폼 색"],
-            ["shop", "매점"],
-            ["exp", "지출 분류"],
-            ["share", "현황 공유"],
-            ["plan", "요금제"],
-          ].map(([id, l]) => (
+          {SETTINGS_SHORTCUTS.map(([id, l]) => (
             <a
               key={id}
               className="chip"
