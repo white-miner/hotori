@@ -4,7 +4,9 @@ import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock
 import {
   canCheckOut,
   canEndDayuse,
-  filterUnassignedByCheckIn,
+  filterUnassignedForPlacement,
+  UA_CHECKIN_FILTERS,
+  type UaCheckInFilter,
   type NowKind,
   nowAmountGlance,
   nowFlags,
@@ -79,7 +81,15 @@ const MODE_LABEL: Record<SideMode, string> = {
 };
 
 interface Props {
+  /** 현황이 보는 날 (오늘이거나 날짜 이동으로 고른 날) */
   today: string;
+  /** 보는 날 = 실제 오늘일 때만 true. 아니면 오늘 기준 처리(퇴실처리·빠른 입실·오늘까지 연장·이동 완료)를 숨겨요 */
+  liveDay?: boolean;
+  /** 미배정 입실 범위 칩 (오늘/일주일/한달) */
+  uaFilter?: UaCheckInFilter;
+  onUaFilter?: (f: UaCheckInFilter) => void;
+  /** 이날 합계 (그날 밤 숙박 실수 · 입실 예약 금액) */
+  daySum?: { dayLabel: string; nightCount: number; roomCount: number; dayTotal: number | null };
   s: HotelSettings;
   L: L;
   unassigned: Booking[];
@@ -192,6 +202,10 @@ interface Props {
 
 export default function NowSidePanel({
   today,
+  liveDay = true,
+  uaFilter = "today",
+  onUaFilter,
+  daySum,
   s,
   L,
   unassigned,
@@ -266,13 +280,14 @@ export default function NowSidePanel({
     };
   };
 
-  /** 「현황」= 오늘만 (기한초과 포함). 일주일/한달 칩은 「배치」사이드. */
-  const todayUa = useMemo(() => sortUnassigned(filterUnassignedByCheckIn(unassigned, today, "today"), uaSort).filter((b) => b.status === "active"), [unassigned, today, uaSort]);
+  /** 미배정 = 보는 날 숙박일 기준 + 오늘/일주일/한달 칩 (unassigned 는 미배정 전건) */
+  const uaByRange = useMemo(() => filterUnassignedForPlacement(unassigned, today, uaFilter), [unassigned, today, uaFilter]);
+  const todayUa = useMemo(() => sortUnassigned(uaByRange, uaSort).filter(isActive), [uaByRange, uaSort]);
   const filteredUa = useMemo(() => {
-    const byDate = sortUnassigned(filterUnassignedByCheckIn(unassigned, today, "today"), uaSort);
+    const byDate = sortUnassigned(uaByRange, uaSort);
     return filterOpsBookings(byDate, opsQuery, opsMeta);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unassigned, today, opsQuery, L, uaSort]);
+  }, [uaByRange, opsQuery, L, uaSort]);
   const outList = useMemo(() => {
     const raw = [...lateOut, ...departing];
     return filterOpsBookings(raw, opsQuery, opsMeta);
@@ -280,7 +295,7 @@ export default function NowSidePanel({
   }, [lateOut, departing, opsQuery, L]);
   const outCount = outList.length;
   /** 탭 배지 = 오늘 미배정 (검색과 무관) */
-  const todayUaCount = unassigned.length;
+  const todayUaCount = uaByRange.length;
   // E: 퇴실예정이 없으면 퇴실처리 존을 접음 (수동 펼침 가능)
   const showOutZone = outCount > 0 || outZoneOpen;
 
@@ -412,7 +427,7 @@ export default function NowSidePanel({
               type="button"
               className={`side-ua-assign ${open ? "on" : ""}`}
               aria-pressed={open}
-              aria-label={open ? "방배정 취소" : "방배정 · 배치로"}
+              aria-label={open ? "방배정 취소" : "방배정"}
               onClick={() => setAssigning(open ? null : x.id)}
             >
               {open ? "취소" : "방배정"}
@@ -485,6 +500,7 @@ export default function NowSidePanel({
     ((!b && selectedRoomIds.length > 0) || (!!b && b.kind === "stay"));
   /** 숙박예약·미입실만 · 이미 입실/늦은퇴실이면 숨김 */
   const showEarlyIn =
+    liveDay &&
     !readOnly && !!onEarlyIn && !!b && b.kind === "stay" && !!f && f.kind === "arriving" && !b.arrived;
   /** 활성 숙박·대실 · 이미 늦은퇴실이어도 조정 시트 입구 유지 */
   const showLateOut = !readOnly && !!onLateOut && !!b && canAddTime(b);
@@ -498,10 +514,10 @@ export default function NowSidePanel({
     !isLongStay(b) &&
     !!f &&
     (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
-  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, 0) : null;
+  const throughPlan = liveDay && !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, 0) : null;
   const showExtendThrough = !!throughPlan;
   const showOpenEnded = !readOnly && !!onOpenEnded && !!b && b.kind === "stay" && b.status === "active" && b.arrived && !b.checkedOutAt && !isLongStay(b) && !isEarlyOut(b);
-  const moveDue = b && !readOnly ? moveDueToday(b, today, changes) : null;
+  const moveDue = liveDay && b && !readOnly ? moveDueToday(b, today, changes) : null;
   const moveNext = b && !readOnly ? nextMove(b, today) : null;
   const showConnectStay =
     !readOnly &&
@@ -914,7 +930,7 @@ export default function NowSidePanel({
                         <button type="button" className="btn sm line" disabled={moving} onClick={() => onOpen(b, today)}>
                           {EDIT_COPY}
                         </button>
-                        {f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
+                        {liveDay && f && (f.kind === "departing" || f.kind === "lateOut") && canCheckOut(b, today) ? (
                           <button type="button" className="btn sm line" disabled={moving || coBusy === b.id} onClick={() => void onCheckOut(b, true)}>
                             {coBusy === b.id ? "처리 중…" : "퇴실처리"}
                           </button>
@@ -1088,9 +1104,24 @@ export default function NowSidePanel({
 
       {mode === "simple" ? (
         <div className="nowside-body nowside-simple">
-          <p className="muted sm nsel-note" title="타입 재고만 · 임시 배치 아님">
-            미배정 예약 · 임시와 다름 · 입실일≤오늘
-          </p>
+          {onUaFilter ? (
+            <div className="nsel-filters side-ua-filters" role="group" aria-label="숙박일 필터">
+              {UA_CHECKIN_FILTERS.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  className={`chip sm ${uaFilter === x.id ? "on" : ""}`}
+                  onClick={() => onUaFilter(x.id)}
+                >
+                  {x.label}
+                  <small>{filterUnassignedForPlacement(unassigned, today, x.id).length}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <h3 className="side-ua-h">
+            미배정 예약 <small>{uaByRange.length}건</small>
+          </h3>
           {onUaSort ? <UaSortBar sort={uaSort} onChange={onUaSort} /> : null}
           {onAutoAssign && !readOnly && todayUa.length ? (
             <button type="button" className="btn line sm ua-auto" disabled={assigning != null} onClick={() => onAutoAssign(todayUa)}>
@@ -1146,6 +1177,23 @@ export default function NowSidePanel({
               </div>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {daySum ? (
+        <div className="sum">
+          <div>
+            <span>{daySum.dayLabel} 밤 숙박</span>
+            <b>
+              {daySum.nightCount}실 / {daySum.roomCount}실
+            </b>
+          </div>
+          {daySum.dayTotal === null ? null : (
+            <div>
+              <span>이날 입실 예약 금액</span>
+              <b>{won(daySum.dayTotal)}원</b>
+            </div>
+          )}
         </div>
       ) : null}
 

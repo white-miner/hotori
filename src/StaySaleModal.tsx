@@ -42,6 +42,7 @@ import { PlatBadge, lookups } from "./ui";
 export default function StaySaleModal({
   s,
   today,
+  date,
   roomIds,
   roomLabels,
   occupied,
@@ -52,6 +53,8 @@ export default function StaySaleModal({
 }: {
   s: HotelSettings;
   today: string;
+  /** 현황이 보는 날(입실일). 없으면 오늘. 결제 영업일(bizDate)은 항상 today */
+  date?: string;
   roomIds: string[];
   roomLabels: string[];
   /** 점유 숙박이면 연장·입·퇴 모드 */
@@ -62,6 +65,7 @@ export default function StaySaleModal({
   onConfirmOccupied: (input: StaySaleOccupiedInput) => void;
 }) {
   const L = lookups(s);
+  const checkInDay = date ?? today;
   const isOcc = !!occupied;
   const otaList = useMemo(() => staySaleOtaPlatforms(s), [s]);
 
@@ -140,7 +144,7 @@ export default function StaySaleModal({
       return { typeId: tid, label: `${roomLabels[i] ?? ""}호`, sub: typeNames[i] ?? "" };
     });
   }, [s, roomIds, roomLabels, typeNames]);
-  const rateRows = slotRows(s, slots, rateEdits, today, nights);
+  const rateRows = slotRows(s, slots, rateEdits, checkInDay, nights);
   const multiPriceUi = (
     <div className="fld">
       <label>객실별 요금</label>
@@ -157,14 +161,14 @@ export default function StaySaleModal({
         금액미정
       </label>
       {!priceUnset ? (
-        <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={(x) => (setRateEdits(x), setErr(null))} checkIn={today} nights={nights} disabled={busy} />
+        <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={(x) => (setRateEdits(x), setErr(null))} checkIn={checkInDay} nights={nights} disabled={busy} />
       ) : (
         <div className="muted sm">금액은 나중에 객실마다 정해요.</div>
       )}
     </div>
   );
   const headLine = roomLabels.map((n, i) => `${n}호 · ${typeNames[i] ?? ""}`).join(" · ");
-  const stayCompact = !isOcc ? staySaleNightsSummary(today, nights) : null;
+  const stayCompact = !isOcc ? staySaleNightsSummary(checkInDay, nights) : null;
 
   const extendPrev = occupied ? staySaleExtendPreview(occupied, null) : null;
   const showExtend = isOcc && occupied && canExtend(occupied);
@@ -233,7 +237,7 @@ export default function StaySaleModal({
     });
     const input: StaySaleCreateInput = {
       roomIds,
-      checkIn: today,
+      checkIn: checkInDay,
       nights,
       guestName,
       guestPhone,

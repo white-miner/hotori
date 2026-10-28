@@ -19,6 +19,7 @@ import { lookups } from "./ui";
 export default function DayuseSaleModal({
   s,
   today,
+  date,
   initialRoomId,
   initialTypeId,
   busy,
@@ -27,6 +28,8 @@ export default function DayuseSaleModal({
 }: {
   s: HotelSettings;
   today: string;
+  /** 현황이 보는 날. 없으면 오늘. 결제 영업일(bizDate)은 항상 today */
+  date?: string;
   bookings: Booking[];
   initialRoomId: string;
   initialTypeId: string;
@@ -63,7 +66,7 @@ export default function DayuseSaleModal({
     const input: DayuseSaleInput = {
       roomId,
       typeId,
-      checkIn: today,
+      checkIn: date ?? today,
       startTime: startTime.trim().slice(0, 5),
       endTime: endTime.trim().slice(0, 5),
       price: Number(price || 0),
