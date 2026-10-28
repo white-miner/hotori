@@ -207,7 +207,7 @@ test("카드 · 슬롯: 현황 소스의 자리 순서와, 자리마다 고정 �
     }
   };
   order(nowBody, ["period", "top", "name", "badges", "move", "who", "grp", "status"]);
-  // CSS: 자리마다 grid-row가 있고, 높이 변수 합 + 위아래 여백 2×2 + 테두리가 카드 높이(256px) 안
+  // CSS: 자리마다 grid-row가 있고, 높이 변수 합 + 위아래 여백 2×2 + 테두리가 카드 높이(--room-card-h) 안
   const vars = Object.fromEntries([...css.matchAll(/--rc-h-([a-z]+):\s*(\d+)px/g)].map((m) => [m[1]!, Number(m[2])]));
   const cardH = Number(/--room-card-h:\s*(\d+)px/.exec(css)![1]);
   const now13 = ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "co", "rate", "grp", "status"];
@@ -218,5 +218,5 @@ test("카드 · 슬롯: 현황 소스의 자리 순서와, 자리마다 고정 �
   for (const n of ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "company", "rate", "grp", "status"]) {
     assert.match(css, new RegExp(`\\.rc-grid > \\[data-slot="${n}"\\][^{]*\\{[^}]*grid-row:\\s*\\d+`), `${n} 자리 grid-row`);
   }
-  assert.match(css, /\.rc-grid > \[data-slot="pay"\][^{]*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/, "결제 줄도 한 줄 + 줄임표");
+  assert.match(css, /\.rc-grid > \[data-slot="pay"\][^{]*\{[^}]*-webkit-line-clamp:\s*2/, "결제 줄은 두 줄까지");
 });

@@ -8,7 +8,7 @@
   --bg: #fff; --panel: #f2f2f2; --panel2: #f7f7f8; --hover: #eaeaea; --line: #e6e6e6; --line2: #efefef;
   --ink: #1a1a1a; --ink2: #4a4a4a; --ink3: #6b6b6b; --ink4: #a3a3a3;
   /* 객실 카드 고정 높이 (현황·배치 공통 · docs/room-card-spec.md §고정 크기) — 가로는 칸 수에 맞춰 모두 같고, 세로는 이 값 하나 */
-  --room-card-h: 256px;
+  --room-card-h: 278px;
   --red: #e0242f; --stay: #ff1f1f; --dayuse: #0a5cff; --red-d: #c21a24; --red-s: #fdecec; --dark: #dcdcdc;
   /* semantic badges/status — chromatic accents only (not purple glow) */
   --badge-sell: #12a150;
@@ -3222,9 +3222,9 @@ button.nowstatus { cursor: pointer; }
 .nowearly:disabled { opacity: 0.6; cursor: default; }
 /* 점유 밤 읽기 팝오버 */
 .nownight-pop {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 4px);
+  position: fixed; /* body 포털 — 이웃 카드(선택 링·말풍선)의 쌓임 순서에 가리거나 비치지 않음. 자리는 NowNightPopover 가 잡음 */
+  z-index: 60;
+  top: 0;
   left: 0;
   width: min(280px, 78vw);
   padding: 10px 10px 12px;
@@ -3877,7 +3877,7 @@ button.nowstatus { cursor: pointer; }
      auto-fill keeps empty tracks so multi rooms sit side-by-side; lone room stays ~1 track. */
   width: 100%;
   box-sizing: border-box;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr)); /* 결제·받을 돈 줄이 들어갈 최소 폭 (모바일은 아래 미디어쿼리의 2열) */
   gap: 12px;
   align-items: stretch;
   justify-items: stretch;
@@ -6073,16 +6073,16 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
    덮어쓰기: 위쪽의 .cell / .now-page .cell / .board-page … .cell 규칙들이 줄마다 margin·padding·font 를 따로 줘서
    세로 자리만 이 블록의 !important 로 고정해요 (가로 padding·글자 크기·색은 그대로). */
 :root {
-  --rc-h-head: 36px;   /* 객실번호 (+대표객실 표식·말풍선) */
-  --rc-h-type: 15px;   /* 객실 유형 */
+  --rc-h-head: 38px;   /* 객실번호 (+대표객실 표식·말풍선) */
+  --rc-h-type: 17px;   /* 객실 유형 */
   --rc-h-period: 17px; /* 이용기간 (N/M박) */
   --rc-h-link: 12px;   /* 연동 `본관 602호` */
-  --rc-h-pay: 17px;    /* 결제 방식·금액 */
-  --rc-h-due: 17px;    /* 받을 돈 */
-  --rc-h-name: 23px;   /* 손님 이름 */
+  --rc-h-pay: 32px;    /* 결제 방식·금액 (두 줄까지) */
+  --rc-h-due: 18px;    /* 받을 돈 */
+  --rc-h-name: 27px;   /* 손님 이름 */
   --rc-h-badges: 17px; /* 상태 뱃지(청소X·임시·장기·단체) */
   --rc-h-co: 14px;     /* 회사 */
-  --rc-h-rate: 20px;   /* 박당 요금 */
+  --rc-h-rate: 21px;   /* 박당 요금 */
   --rc-h-grp: 17px;    /* 단체 결제 › */
   --rc-h-move: 13px;   /* 현황: 객실 이동 안내 */
   --rc-h-status: 28px; /* 현황: 하단 입실·상태 버튼 */
@@ -6107,7 +6107,7 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rc-grid > [data-slot="type"] { grid-row: 2; line-height: var(--rc-h-type); align-items: center; }
 .rc-grid > [data-slot="period"] { grid-row: 3; }
 .rc-grid > [data-slot="link"] { grid-row: 4; line-height: var(--rc-h-link); }
-.rc-grid > [data-slot="pay"] { grid-row: 5; line-height: var(--rc-h-pay); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-grid > [data-slot="pay"] { grid-row: 5; line-height: 16px; white-space: normal; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; -webkit-box-pack: end; word-break: keep-all; overflow-wrap: anywhere; }
 .rc-grid > [data-slot="due"] { grid-row: 6; line-height: var(--rc-h-due); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc-grid > [data-slot="name"] { grid-row: 7; display: flex; align-items: center; line-height: 1; }
 .rc-grid > [data-slot="badges"] { grid-row: 8; display: flex; align-items: center; }
@@ -6219,3 +6219,28 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nowside .side-ua-filters { margin-bottom: 6px; }
 .nowside .side-ua-h { margin-top: 2px; }
 .nowside .sum { margin-top: 12px; }
+
+/* ───────── 객실 카드 고침 (docs/room-card-spec.md §12) ───────── */
+/* 모바일(≤760px)은 위 미디어쿼리의 140px 2열 그대로 */
+/* 머리 줄: 호수·대표객실 표식이 말풍선을 밀어내지 않게 — 호수 묶음이 줄고, 말풍선은 제 크기 유지 */
+.now-page .cell .r1[data-slot="head"] .grp-no-hit { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 34px); }
+.now-page .cell .r1[data-slot="head"] .grp-no-btn { min-width: 0; max-width: 100%; }
+.now-page .cell .r1[data-slot="head"] .grp-no-btn .no { flex: 0 0 auto; }
+.now-page .cell .r1[data-slot="head"] .grp-lead-tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-page .cell .r1[data-slot="head"] .nowmemo { flex: 0 0 auto; min-width: 28px; max-width: 100%; margin-left: auto; }
+.now-page .cell .r1[data-slot="head"] .nowmemo.has { flex: 0 1 auto; min-width: 28px; }
+.now-page .cell .r1[data-slot="head"] .nowmemo-txt { min-width: 0; }
+/* 단체 카드: 왼쪽 줄무늬와 상태 링을 한 box-shadow 목록으로 (줄무늬 아래에 링이 따로 겹쳐 보이던 것) — 줄무늬 폭 안쪽은 테두리 색도 줄무늬 색 */
+.now-page .cell.bk.nowcell.grp.g1 { --grp-c: var(--grp-g1); }
+.now-page .cell.bk.nowcell.grp.g2 { --grp-c: var(--grp-g2); }
+.now-page .cell.bk.nowcell.grp.g3 { --grp-c: var(--grp-g3); }
+.now-page .cell.bk.nowcell.grp.g4 { --grp-c: var(--grp-g4); }
+.now-page .cell.bk.nowcell.grp.g5 { --grp-c: var(--grp-g5); }
+.now-page .cell.bk.nowcell.grp.g6 { --grp-c: var(--grp-g6); }
+.now-page .cell.bk.nowcell.grp[class*=" g"] {
+  border-left-color: var(--grp-c);
+  box-shadow: inset 3px 0 0 var(--grp-c), inset 0 0 0 1px var(--nk-ring);
+}
+.now-page .cell.bk.nowcell.grp[class*=" g"].ncx {
+  box-shadow: inset 3px 0 0 var(--grp-c), inset -3px 0 0 #c43c28, inset 0 0 0 1px var(--nk-ring);
+}
