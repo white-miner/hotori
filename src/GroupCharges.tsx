@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Infinity as InfinityIcon, CalendarDays, Pencil } from "lucide-react";
 import { addDays, md, won } from "../shared/ledger";
+import type { GroupMoveTarget } from "../shared/groupMove";
 import { type GroupLedger, type RoomLedger, rateLabel, stayRangeLabel } from "../shared/groupLedger";
 
 /**
@@ -14,6 +15,12 @@ export default function GroupCharges({
   readOnly,
   onSetEnd,
   onEditRoom,
+  leadId,
+  leadPinned,
+  onSetLead,
+  moveTargets,
+  roomNoOf,
+  onMoveRoom,
 }: {
   ledger: GroupLedger;
   today: string;
@@ -23,6 +30,16 @@ export default function GroupCharges({
   onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
   /** 객실 하나의 입퇴실 · 박별 요금 고치기 */
   onEditRoom?: (bookingId: string) => void;
+  /** 대장 객실 (뱃지가 붙는 칸) · 직접 지정했는지 */
+  leadId?: string | null;
+  leadPinned?: boolean;
+  /** 대장 바꾸기 (null = 자동) */
+  onSetLead?: (bookingId: string | null) => Promise<void> | void;
+  /** 옮겨 갈 수 있는 다른 단체 */
+  moveTargets?: GroupMoveTarget[];
+  roomNoOf?: (roomId: string) => string;
+  /** 객실을 다른 단체로(groupId) 또는 단체에서 빼기(null) */
+  onMoveRoom?: (bookingId: string, groupId: string | null) => Promise<void>;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [groupDate, setGroupDate] = useState(false);
@@ -38,6 +55,16 @@ export default function GroupCharges({
       await onSetEnd(ids, out);
       setOpenId(null);
       setGroupDate(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const run2 = async (fn: () => Promise<void> | void) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      setOpenId(null);
     } finally {
       setBusy(false);
     }
@@ -77,6 +104,10 @@ export default function GroupCharges({
         </div>
         {ledger.rooms.map((r) => (
           <RoomRow key={r.bookingId} r={r} name={roomLabel(r.bookingId)} today={today} open={openId === r.bookingId} can={can && (r.live || r.openEnded)} busy={busy}
+            isLead={leadId === r.bookingId} leadPinned={!!leadPinned}
+            onSetLead={onSetLead && !readOnly ? (v) => void run2(() => onSetLead(v ? r.bookingId : null)) : undefined}
+            moveTargets={onMoveRoom && !readOnly ? moveTargets ?? [] : undefined} roomNoOf={roomNoOf}
+            onMove={onMoveRoom && !readOnly ? (gid) => void run2(() => onMoveRoom(r.bookingId, gid)) : undefined}
             onToggle={() => setOpenId(openId === r.bookingId ? null : r.bookingId)}
             onSetEnd={(out) => void run([r.bookingId], out)}
             onEdit={onEditRoom && !readOnly ? () => onEditRoom(r.bookingId) : undefined} />
@@ -100,12 +131,19 @@ export default function GroupCharges({
   );
 }
 
-function RoomRow({ r, name, today, open, can, busy, onToggle, onSetEnd, onEdit }: { r: RoomLedger; name: string; today: string; open: boolean; can: boolean; busy: boolean; onToggle: () => void; onSetEnd: (out: string | null) => void; onEdit?: () => void }) {
+function RoomRow({
+  r, name, today, open, can, busy, onToggle, onSetEnd, onEdit, isLead, leadPinned, onSetLead, moveTargets, roomNoOf, onMove,
+}: {
+  r: RoomLedger; name: string; today: string; open: boolean; can: boolean; busy: boolean; onToggle: () => void; onSetEnd: (out: string | null) => void; onEdit?: () => void;
+  isLead: boolean; leadPinned: boolean; onSetLead?: (lead: boolean) => void;
+  moveTargets?: GroupMoveTarget[]; roomNoOf?: (roomId: string) => string; onMove?: (groupId: string | null) => void;
+}) {
   const [date, setDate] = useState(r.checkOut);
+  const [moving, setMoving] = useState(false);
   return (
     <div className={`gch-item${open ? " on" : ""}`} role="rowgroup">
       <div className="gch-row" role="row">
-        <span className="gch-no">{name}</span>
+        <span className="gch-no">{name}{isLead ? <i className="gch-lead" title={leadPinned ? "직접 지정한 대장" : "자동 대장"}>대장</i> : null}</span>
         <span className="gch-range">
           {r.openEnded ? (
             <button type="button" className="gch-open" disabled={!can} onClick={onToggle} aria-expanded={open} title="끝 날짜 없이 계속 묵어요">
@@ -149,8 +187,37 @@ function RoomRow({ r, name, today, open, can, busy, onToggle, onSetEnd, onEdit }
           </div>
           {onEdit ? (
             <button type="button" className="gch-link" onClick={onEdit}>
-              박별 요금 고치기
+              박별 요금 · 추가 항목 고치기
             </button>
+          ) : null}
+          {onSetLead ? (
+            isLead && leadPinned ? (
+              <button type="button" className="gch-link" disabled={busy} onClick={() => onSetLead(false)}>
+                대장 지정 풀기 (자동으로)
+              </button>
+            ) : !isLead ? (
+              <button type="button" className="gch-link" disabled={busy} onClick={() => onSetLead(true)}>
+                {name}을 대장으로 지정
+              </button>
+            ) : null
+          ) : null}
+          {onMove ? (
+            <>
+              <button type="button" className="gch-link" aria-expanded={moving} disabled={busy} onClick={() => setMoving((v) => !v)}>
+                다른 단체로 옮기기 · 단체에서 빼기
+              </button>
+              {moving ? (
+                <div className="gch-mv" role="group" aria-label={`${name} 단체 이동`}>
+                  {(moveTargets ?? []).map((t) => (
+                    <button key={t.groupId} type="button" className="chip sm" disabled={busy} onClick={() => onMove(t.groupId)}>
+                      {t.name}{t.roomIds.length ? ` · ${t.roomIds.map((id) => roomNoOf?.(id) ?? "?").join(" ")}` : ""}
+                    </button>
+                  ))}
+                  <button type="button" className="chip sm" disabled={busy} onClick={() => onMove(null)}>단체에서 빼기 (개인 예약)</button>
+                  <small className="muted">박별 요금과 이 객실에 적은 결제는 따라가요. 단체로 받은 결제는 원래 단체에 남아요.</small>
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : null}

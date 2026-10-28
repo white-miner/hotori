@@ -102,6 +102,11 @@ export function normalizeExtraDrafts(list: readonly ExtraDraft[] | undefined): E
     .slice(0, ROOM_EXTRA_MAX);
 }
 
+/** 저장된 객실 추가 항목 → 고치는 칸 (박당이면 박당 금액으로) */
+export function draftsFromExtras(list: readonly RoomExtra[] | null | undefined): ExtraDraft[] {
+  return cleanRoomExtras(list).map((x) => (x.perNight ? { name: x.name, amount: x.perNight, perNight: true } : { name: x.name, amount: x.amount, perNight: false }));
+}
+
 /** 적은 항목 → 객실에 붙는 줄 (박당은 박수를 곱해요) */
 export function resolveExtras(list: readonly ExtraDraft[] | undefined, nights: number): RoomExtra[] {
   const n = Math.max(1, Math.round(nights));

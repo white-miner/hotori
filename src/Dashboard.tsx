@@ -213,6 +213,7 @@ import SalesCalendar from "./SalesCalendar";
 import RateSheet from "./RateSheet";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
+import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
@@ -3844,6 +3845,44 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       },
                       onSetEnd: applyStayEnd,
                       onEditRoom: (id) => setRecordFor({ groupId: selectedGroupHead.groupId, bookingId: null, focusKey: `in-${id}` }),
+                      lead: (() => {
+                        const gid = selectedGroupHead.groupId;
+                        const peers = groupStayPeers(bookings, gid);
+                        return {
+                          id: groupLeadOf(gid, peers)?.id ?? null,
+                          pinned: !!data.groups.get(gid)?.leadBookingId && peers.some((p) => p.id === data.groups.get(gid)?.leadBookingId),
+                          onSet: async (bid: string | null) => {
+                            try {
+                              await data.setGroupLead(gid, bid);
+                              const bk = bid ? data.bookings.find((x) => x.id === bid) : null;
+                              void data.logChange({ kind: "room", groupId: gid, effectiveOn: today, summary: bk ? `대장 객실 지정 · ${bk.roomId ? L.roomLabel(bk.roomId) : "?"}호` : "대장 객실 자동으로" });
+                              notify(bk ? `${bk.roomId ? L.roomLabel(bk.roomId) : ""}호를 대장으로 지정했어요` : "대장을 자동으로 돌렸어요");
+                            } catch (e) {
+                              notify(e instanceof Error ? `대장을 바꾸지 못했어요: ${e.message}` : "대장을 바꾸지 못했어요");
+                            }
+                          },
+                        };
+                      })(),
+                      moves: {
+                        targets: groupMoveTargets(bookings, selectedGroupHead.groupId),
+                        roomNoOf: (rid) => L.roomLabel(rid) ?? "?",
+                        onMove: async (bid: string, toGid: string | null) => {
+                          const bk = data.bookings.find((x) => x.id === bid);
+                          if (!bk) return;
+                          const to = toGid ? groupMoveTargets(bookings, selectedGroupHead.groupId).find((t) => t.groupId === toGid) ?? null : null;
+                          if (toGid && !to) return;
+                          const roomNo = `${bk.roomId ? L.roomLabel(bk.roomId) : "?"}호`;
+                          try {
+                            await data.moveBookingGroup(bk, to ? { groupId: to.groupId, name: to.name } : null);
+                            const sum = groupMoveSummary(roomNo, bk.groupName ?? null, to?.name ?? null);
+                            void data.logChange({ kind: "room", groupId: selectedGroupHead.groupId, effectiveOn: today, summary: sum });
+                            if (to) void data.logChange({ kind: "room", groupId: to.groupId, effectiveOn: today, summary: sum });
+                            notify(to ? `${roomNo}를 ${to.name}로 옮겼어요` : `${roomNo}를 단체에서 뺐어요`);
+                          } catch (e) {
+                            notify(e instanceof Error ? `옮기지 못했어요: ${e.message}` : "옮기지 못했어요");
+                          }
+                        },
+                      },
                     }
                   : null
               }

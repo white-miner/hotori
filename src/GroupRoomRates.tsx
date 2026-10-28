@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Plus, RotateCcw, X } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 import { won, type HotelSettings } from "../shared/ledger";
-import { ROOM_EXTRA_MAX, ROOM_EXTRA_NAME_MAX } from "../shared/nightrates";
 import { withAllSame } from "../shared/nightTable";
 import {
   type ExtraDraft,
@@ -14,6 +13,7 @@ import {
   suggestNights,
 } from "../shared/groupRates";
 import NightRatesTable from "./NightRatesTable";
+import RoomExtrasEditor from "./RoomExtrasEditor";
 
 const num = (v: string) => Math.max(0, Math.min(100_000_000, Math.round(Number(v.replace(/\D/g, "").slice(0, 9)) || 0)));
 const QUICK_EXTRAS = ["인원 추가", "추가 이불", "계약 조건"];
@@ -174,55 +174,7 @@ function RateRow({
           <Plus size={13} aria-hidden /> 추가 항목{row.extras > 0 ? ` · +${won(row.extras)}원` : ""}
         </button>
         {xOpen ? (
-          <div className="grr-xbody" role="group" aria-label={`${slot.label} 추가 항목`}>
-            {extras.map((x, i) => (
-              <div className="grr-xline" key={i}>
-                <input
-                  className="inp sm"
-                  placeholder="예: 추가 이불"
-                  maxLength={ROOM_EXTRA_NAME_MAX}
-                  aria-label={`${slot.label} 추가 항목 이름 ${i + 1}`}
-                  value={x.name}
-                  onChange={(e) => setX(i, { name: e.target.value })}
-                />
-                <label className="inp price sm">
-                  <input
-                    className="num"
-                    inputMode="numeric"
-                    placeholder="0"
-                    aria-label={`${slot.label} 추가 항목 금액 ${i + 1}`}
-                    value={x.amount ? won(x.amount) : ""}
-                    onChange={(e) => setX(i, { amount: num(e.target.value) })}
-                  />
-                  원
-                </label>
-                <span className="seg sm" role="group" aria-label="적용 방식">
-                  <button type="button" className={x.perNight ? "on" : ""} onClick={() => setX(i, { perNight: true })}>
-                    박당
-                  </button>
-                  <button type="button" className={x.perNight ? "" : "on"} onClick={() => setX(i, { perNight: false })}>
-                    한 번
-                  </button>
-                </span>
-                <button type="button" className="grr-xdel" aria-label={`${slot.label} 추가 항목 ${i + 1} 지우기`} onClick={() => onExtras(extras.filter((_, k) => k !== i))}>
-                  <X size={14} aria-hidden />
-                </button>
-              </div>
-            ))}
-            {extras.length < ROOM_EXTRA_MAX ? (
-              <div className="grr-xadd">
-                {QUICK_EXTRAS.map((q) => (
-                  <button key={q} type="button" className="chip sm" onClick={() => onExtras([...extras, { name: q, amount: 0, perNight: q !== "계약 조건" }])}>
-                    + {q}
-                  </button>
-                ))}
-                <button type="button" className="chip sm" onClick={() => onExtras([...extras, { name: "", amount: 0, perNight: false }])}>
-                  + 직접 쓰기
-                </button>
-              </div>
-            ) : null}
-            <div className="muted sm">이 객실 소계에 더해지고, 객실별 요금과 청구에 따로 보여요.</div>
-          </div>
+          <RoomExtrasEditor label={slot.label} extras={extras} onChange={onExtras} />
         ) : null}
       </div>
     </li>

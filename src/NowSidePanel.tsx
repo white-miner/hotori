@@ -158,6 +158,8 @@ interface Props {
     onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
     /** 객실 하나의 입퇴실·박별 요금 고치기 */
     onEditRoom?: (bookingId: string) => void;
+    lead?: { id: string | null; pinned: boolean; onSet: (bookingId: string | null) => Promise<void> | void } | null;
+    moves?: { targets: import("../shared/groupMove").GroupMoveTarget[]; roomNoOf: (roomId: string) => string; onMove: (bookingId: string, groupId: string | null) => Promise<void> } | null;
   } | null;
   /** 결제 내역(증거) + 기록 정정 열기 — 단체면 머리글 안에, 개인이면 결제 이력 자리에 */
   record?: { title: string; lines: PayLine[]; ledger: GroupLedger | null; onOpen: () => void } | null;
@@ -568,7 +570,7 @@ export default function NowSidePanel({
                 </div>
               </div>
               {groupHead && onGroupPay ? (
-                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} roomLabel={groupHead.roomLabel} onPay={onGroupPay} onJoin={groupHead.onJoin} onSetEnd={groupHead.onSetEnd} onEditRoom={groupHead.onEditRoom} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} />
+                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} roomLabel={groupHead.roomLabel} onPay={onGroupPay} onJoin={groupHead.onJoin} onSetEnd={groupHead.onSetEnd} onEditRoom={groupHead.onEditRoom} lead={groupHead.lead} moves={groupHead.moves} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} />
               ) : null}
               {b && notes ? (
                 <button type="button" className={`nsel-notes${notes.pinned ? " has" : ""}`} onClick={notes.onOpen} aria-label="메모 · 기록 열기">

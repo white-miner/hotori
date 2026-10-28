@@ -60,6 +60,7 @@ import { CARS_MAX, cleanPlates } from "../shared/parking";
 import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
 import { hashGroupBadgeColor } from "../shared/group";
+import { groupMoveRow } from "../shared/groupMove";
 import {
   type NightCharge,
   chargesOutsideWindow,
@@ -1046,6 +1047,30 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
   /**
+   * 객실을 다른 단체로 옮기거나(target) 단체에서 빼요(null). 박별 요금·객실에 적힌 결제는 예약을 따라가고,
+   * 단체로 받은 결제(선수금)는 원래 단체에 남아요. 원래 단체의 대장이 이 객실이면 자동으로 돌려요.
+   */
+  const moveBookingGroup = useCallback(
+    async (cur: Booking, target: { groupId: string; name: string } | null): Promise<Booking> => {
+      const from = cur.groupId ?? null;
+      if (from && target && from === target.groupId) return cur;
+      if (target && !groups.has(target.groupId)) {
+        const r = await supabase.from("booking_groups").upsert({ id: target.groupId, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
+        if (r.error) throw r.error;
+      }
+      const { data, error } = await supabase.from("bookings").update(groupMoveRow(target)).eq("id", cur.id).select(COLS).single();
+      if (error) {
+        void refresh();
+        throw error;
+      }
+      const saved = fromRow(data as BookingRow);
+      setBookingsLocal((list) => list.map((x) => (x.id === cur.id ? saved : x)));
+      if (from && groups.get(from)?.leadBookingId === cur.id) await setGroupLead(from, null);
+      return saved;
+    },
+    [hotelId, groups, refresh, setGroupLead],
+  );
+  /**
    * 단체 기간 결제: 방마다 한 줄씩 한 번에 저장 (한 문장 insert = 모두 되거나 모두 안 됨 · created_at 같음).
    * leadBookingId가 주어지면 현재 대장을 같이 고정해요 (자동 대장이 결제 때문에 바뀌지 않게).
    */
@@ -1213,6 +1238,7 @@ export function useHotelData(hotelId: string) {
     addGroupPayment,
     deleteGroupPayment,
     setGroupLead,
+    moveBookingGroup,
     addPeriodPayments,
     addReceipt,
     deleteReceipt,

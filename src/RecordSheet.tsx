@@ -5,8 +5,8 @@ import { type Booking, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won 
 import { changesFor } from "../shared/changes";
 import { balanceLabel, diffLine, groupLedger } from "../shared/groupLedger";
 import { PAYMENT_METHOD_LABEL, PAY_MAX, type Payment, type PaymentEdit, type PaymentMethod } from "../shared/payment";
-import { hasFullNightMatrix, nightRatesFromTotal, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
-import { tableTotal, tableRows } from "../shared/nightTable";
+import { extrasTotal, hasFullNightMatrix, nightRatesFromTotal, priceFromNightMatrix, sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
+import { type ExtraDraft, draftsFromExtras, resolveExtras } from "../shared/groupRates";
 import {
   type TimelineRow,
   fixPaymentAddSummary,
@@ -24,6 +24,7 @@ import {
 import type { HotelData } from "./data";
 import { Chip, ChipGroup, PriceInp } from "./primitives";
 import NightRatesTable from "./NightRatesTable";
+import RoomExtrasEditor from "./RoomExtrasEditor";
 
 const METHODS: PaymentMethod[] = ["card", "cash", "transfer", "credit"];
 
@@ -362,12 +363,18 @@ function StayEditor({
   const [checkIn, setCheckIn] = useState(b.checkIn);
   const [out, setOut] = useState(addDays(b.checkIn, bn));
   const nights = Math.max(1, Math.min(STAY_NIGHTS_MAX, daysBetween(checkIn, out)));
-  const [rates, setRates] = useState<StayNightRates | null>(() => (hasFullNightMatrix(b.checkIn, bn, b.nightRates) ? b.nightRates! : nightRatesFromTotal(b.checkIn, bn, b.price)));
+  const [rates, setRates] = useState<StayNightRates | null>(() => (hasFullNightMatrix(b.checkIn, bn, b.nightRates) ? { ...b.nightRates!, extras: null } : nightRatesFromTotal(b.checkIn, bn, b.price - extrasTotal(b.nightRates))));
+  const [extras, setExtras] = useState<ExtraDraft[]>(() => draftsFromExtras(b.nightRates?.extras));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const fallback = Math.round(b.price / bn);
-  const synced = syncStayNightRates(checkIn, nights, rates, { typeRate: fallback });
-  const total = tableTotal(tableRows(checkIn, nights, synced, fallback));
+  const roomOnly0 = b.price - extrasTotal(b.nightRates);
+  const fallback = Math.round(Math.max(0, roomOnly0) / bn);
+  const synced0 = syncStayNightRates(checkIn, nights, rates, { typeRate: fallback });
+  const resolvedExtras = resolveExtras(extras, nights);
+  const synced: StayNightRates = { ...synced0, extras: resolvedExtras.length ? resolvedExtras : null };
+  const roomFee = sumNightAmounts(synced.nights);
+  const xTotal = extrasTotal(synced);
+  const total = priceFromNightMatrix(synced);
   const datesChanged = checkIn !== b.checkIn || nights !== bn;
   const priceChanged = total !== b.price;
   const submit = async () => {
@@ -378,7 +385,7 @@ function StayEditor({
         patch.checkIn = checkIn;
         patch.nights = nights;
       }
-      await onSave(patch, fixStaySummary(roomName, { checkIn: b.checkIn, nights: bn, price: b.price }, { checkIn, nights, price: total }), datesChanged ? "stay" : "rate");
+      await onSave(patch, fixStaySummary(roomName, { checkIn: b.checkIn, nights: bn, price: roomOnly0, extras: extrasTotal(b.nightRates) }, { checkIn, nights, price: roomFee, extras: xTotal }), datesChanged ? "stay" : "rate");
     } finally {
       setBusy(false);
     }
@@ -404,7 +411,12 @@ function StayEditor({
         </label>
       </div>
       <small className="muted">{b.openEnded ? "∞ 미정 · 날짜는 퇴실일을 정할 때 고쳐요" : `${nights}박`}</small>
-      <NightRatesTable checkIn={checkIn} nights={nights} rates={synced} fallback={fallback} defaultOpen onChange={(r) => { setRates(r); setDirty(true); }} />
+      <NightRatesTable checkIn={checkIn} nights={nights} rates={synced0} fallback={fallback} defaultOpen onChange={(r) => { setRates({ ...r, extras: null }); setDirty(true); }} />
+      <div className="rec-fld col">
+        <span>추가 항목 (인원 추가 · 추가 이불 · 계약 조건 …)</span>
+        <RoomExtrasEditor label={roomName} extras={extras} onChange={(x) => { setExtras(x); setDirty(true); }} />
+      </div>
+      <small className="muted">객실료 {won(roomFee)}원{xTotal ? ` + 추가 항목 ${won(xTotal)}원` : ""} = 소계 {won(total)}원</small>
       <div className="rec-acts">
         <button type="button" className="btn line" disabled={busy} onClick={onCancel}>취소</button>
         <button type="button" className="btn dark" disabled={busy || (!dirty && !datesChanged && !priceChanged)} onClick={() => void submit()}>{busy ? "저장 중…" : "저장"}</button>

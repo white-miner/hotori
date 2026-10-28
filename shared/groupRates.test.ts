@@ -6,6 +6,8 @@ import { groupLedger } from "./groupLedger";
 import { groupDrafts } from "./group";
 import type { PeriodBooking } from "./periodPay";
 import {
+  draftsFromExtras,
+  resolveExtras,
   type RateEdits,
   draftRates,
   groupTotal,
@@ -145,4 +147,15 @@ test("장부: 객실별 추가 항목이 줄로 나오고 소계에 포함돼요
   assert.equal(r.extraTotal, 30_000);
   assert.equal(r.extraLines[0]?.name, "인원 추가");
   assert.deepEqual([r.rateMin, r.rateMax], [80_000, 80_000]);
+});
+
+test("저장된 추가 항목을 고치는 칸으로 되돌렸다가 다시 저장해도 같아요", () => {
+  const saved = [{ name: "추가 이불", amount: 30_000, perNight: 10_000 }, { name: "계약 조건", amount: 50_000 }];
+  const drafts = draftsFromExtras(saved);
+  assert.deepEqual(drafts, [{ name: "추가 이불", amount: 10_000, perNight: true }, { name: "계약 조건", amount: 50_000, perNight: false }]);
+  assert.deepEqual(resolveExtras(drafts, 3), saved);
+  // 박 수가 바뀌면 박당 항목만 따라가요
+  assert.equal(resolveExtras(drafts, 5)[0]!.amount, 50_000);
+  assert.equal(resolveExtras(drafts, 5)[1]!.amount, 50_000);
+  assert.deepEqual(draftsFromExtras(null), []);
 });

@@ -230,11 +230,12 @@ export function fixPaymentDeleteSummary(p: Payment, roomName: (bookingId: string
 export function fixPaymentRestoreSummary(p: Payment, roomName: (bookingId: string) => string): string {
   return clip(`${FIX_PREFIX}결제 삭제 되돌림: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}`);
 }
-export function fixStaySummary(room: string, b: { checkIn: string; nights: number; price: number }, a: { checkIn: string; nights: number; price: number }): string {
+export function fixStaySummary(room: string, b: { checkIn: string; nights: number; price: number; extras?: number }, a: { checkIn: string; nights: number; price: number; extras?: number }): string {
   const parts: string[] = [];
   if (b.checkIn !== a.checkIn) parts.push(`입실 ${md(b.checkIn)} → ${md(a.checkIn)}`);
   if (b.nights !== a.nights) parts.push(`${b.nights}박 → ${a.nights}박`);
   if (b.price !== a.price) parts.push(`객실료 ${won(b.price)} → ${won(a.price)}원`);
+  if ((b.extras ?? 0) !== (a.extras ?? 0)) parts.push(`추가 항목 ${won(b.extras ?? 0)} → ${won(a.extras ?? 0)}원`);
   return clip(`${FIX_PREFIX}${room} ${parts.join(", ") || "요금 수정"}`);
 }
 
