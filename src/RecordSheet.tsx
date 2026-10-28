@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { saveFailMessage } from "../shared/errors";
 import { type Booking, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won } from "../shared/ledger";
+import { stayAddons } from "../shared/extend";
 import { changesFor } from "../shared/changes";
 import { balanceLabel, diffLine, groupLedger } from "../shared/groupLedger";
 import { PAYMENT_METHOD_LABEL, PAY_MAX, type Payment, type PaymentEdit, type PaymentMethod } from "../shared/payment";
 import { extrasTotal, hasFullNightMatrix, nightRatesFromTotal, priceFromNightMatrix, sumNightAmounts, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
+import { type NightShiftMode, shiftDays, shiftDifferences, shiftNightRates } from "../shared/nightShift";
 import { type ExtraDraft, draftsFromExtras, resolveExtras } from "../shared/groupRates";
 import {
   type TimelineRow,
@@ -363,18 +365,21 @@ function StayEditor({
   const [checkIn, setCheckIn] = useState(b.checkIn);
   const [out, setOut] = useState(addDays(b.checkIn, bn));
   const nights = Math.max(1, Math.min(STAY_NIGHTS_MAX, daysBetween(checkIn, out)));
-  const [rates, setRates] = useState<StayNightRates | null>(() => (hasFullNightMatrix(b.checkIn, bn, b.nightRates) ? { ...b.nightRates!, extras: null } : nightRatesFromTotal(b.checkIn, bn, b.price - extrasTotal(b.nightRates))));
+  const [rates, setRates] = useState<StayNightRates | null>(() => (hasFullNightMatrix(b.checkIn, bn, b.nightRates) ? { ...b.nightRates!, extras: null } : nightRatesFromTotal(b.checkIn, bn, b.price - extrasTotal(b.nightRates) - stayAddons(b))));
   const [extras, setExtras] = useState<ExtraDraft[]>(() => draftsFromExtras(b.nightRates?.extras));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const roomOnly0 = b.price - extrasTotal(b.nightRates);
+  // 입실일을 바꿔서 박별 요금이 갈리는 경우 — 어떻게 할지 물어봐요 (고르기 전엔 저장 못 해요)
+  const [pend, setPend] = useState<{ ci: string; n: number; rates: StayNightRates; choice: NightShiftMode | null } | null>(null);
+  const addons0 = stayAddons(b);
+  const roomOnly0 = b.price - extrasTotal(b.nightRates) - addons0;
   const fallback = Math.round(Math.max(0, roomOnly0) / bn);
   const synced0 = syncStayNightRates(checkIn, nights, rates, { typeRate: fallback });
   const resolvedExtras = resolveExtras(extras, nights);
   const synced: StayNightRates = { ...synced0, extras: resolvedExtras.length ? resolvedExtras : null };
   const roomFee = sumNightAmounts(synced.nights);
   const xTotal = extrasTotal(synced);
-  const total = priceFromNightMatrix(synced);
+  const total = priceFromNightMatrix(synced, addons0);
   const datesChanged = checkIn !== b.checkIn || nights !== bn;
   const priceChanged = total !== b.price;
   const submit = async () => {
@@ -400,9 +405,20 @@ function StayEditor({
           <input type="date" disabled={moved || b.openEnded} min="2020-01-01" max="2099-12-31" value={checkIn} aria-label="입실일" onChange={(e) => {
             if (!e.target.value) return;
             const n = nights;
-            setCheckIn(e.target.value);
-            setOut(addDays(e.target.value, n));
+            const next = e.target.value;
+            const snap = pend ?? { ci: checkIn, n, rates: synced0, choice: null };
+            setCheckIn(next);
+            setOut(addDays(next, n));
             setDirty(true);
+            if (next === snap.ci) {
+              setRates({ ...snap.rates, extras: null });
+              setPend(null);
+              return;
+            }
+            const fb = { typeRate: fallback };
+            const diffs = shiftDifferences(snap.rates, snap.ci, snap.n, next, n, fb);
+            setRates({ ...shiftNightRates(snap.rates, snap.ci, snap.n, next, n, "move", fb), extras: null });
+            setPend(diffs.length ? { ci: snap.ci, n: snap.n, rates: snap.rates, choice: null } : null);
           }} />
         </label>
         <label className="rec-fld">
@@ -411,7 +427,33 @@ function StayEditor({
         </label>
       </div>
       <small className="muted">{b.openEnded ? "∞ 미정 · 날짜는 퇴실일을 정할 때 고쳐요" : `${nights}박`}</small>
-      <NightRatesTable checkIn={checkIn} nights={nights} rates={synced0} fallback={fallback} defaultOpen onChange={(r) => { setRates({ ...r, extras: null }); setDirty(true); }} />
+      {pend ? (
+        <div className="rec-shift" role="group" aria-label="입실일이 바뀌었어요">
+          <b>입실일이 {shiftDays(pend.ci, checkIn)}일 {shiftDays(pend.ci, checkIn) > 0 ? "뒤로" : "앞으로"} 바뀌었어요</b>
+          <span className="muted sm">고쳐 둔 박별 요금을 어떻게 할까요? (고르지 않으면 저장할 수 없어요)</span>
+          <div className="rec-shift-opts">
+            {([
+              ["move", "요금을 박 따라 옮기기", "1박째 요금은 새 1박째로, 2박째는 새 2박째로"],
+              ["keep", "날짜에 그대로 두기", "같은 날짜는 그 요금 그대로, 새 날짜는 기본 요금"],
+            ] as [NightShiftMode, string, string][]).map(([mode, title, hint]) => (
+              <button
+                key={mode}
+                type="button"
+                className={`rec-shift-opt${pend.choice === mode ? " on" : ""}`}
+                aria-pressed={pend.choice === mode}
+                onClick={() => {
+                  setRates({ ...shiftNightRates(pend.rates, pend.ci, pend.n, checkIn, nights, mode, { typeRate: fallback }), extras: null });
+                  setPend({ ...pend, choice: mode });
+                }}
+              >
+                <b>{title}</b>
+                <small>{hint}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <NightRatesTable checkIn={checkIn} nights={nights} rates={synced0} fallback={fallback} defaultOpen onChange={(r) => { setRates({ ...r, extras: null }); setDirty(true); setPend(null); }} />
       <div className="rec-fld col">
         <span>추가 항목 (인원 추가 · 추가 이불 · 계약 조건 …)</span>
         <RoomExtrasEditor label={roomName} extras={extras} onChange={(x) => { setExtras(x); setDirty(true); }} />
@@ -419,7 +461,7 @@ function StayEditor({
       <small className="muted">객실료 {won(roomFee)}원{xTotal ? ` + 추가 항목 ${won(xTotal)}원` : ""} = 소계 {won(total)}원</small>
       <div className="rec-acts">
         <button type="button" className="btn line" disabled={busy} onClick={onCancel}>취소</button>
-        <button type="button" className="btn dark" disabled={busy || (!dirty && !datesChanged && !priceChanged)} onClick={() => void submit()}>{busy ? "저장 중…" : "저장"}</button>
+        <button type="button" className="btn dark" disabled={busy || (!!pend && !pend.choice) || (!dirty && !datesChanged && !priceChanged)} onClick={() => void submit()}>{busy ? "저장 중…" : "저장"}</button>
       </div>
     </div>
   );

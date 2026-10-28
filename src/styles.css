@@ -5965,3 +5965,10 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .gch-lead { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #eef3ff; color: #2a52be; font-style: normal; font-size: 11px; font-weight: 800; vertical-align: 1px; }
 .gch-mv { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line, #e3e3e8); border-radius: 12px; background: #fafafc; }
 .gch-mv .gch-grp { gap: 6px; }
+
+/* 입실일을 바꿀 때 박별 요금 고르기 */
+.rec-shift { display: grid; gap: 8px; padding: 12px; border: 1px solid #f0c987; border-radius: 12px; background: #fff8ea; font-size: 13.5px; }
+.rec-shift-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.rec-shift-opt { display: grid; gap: 2px; text-align: left; min-height: 44px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); background: #fff; font: inherit; color: var(--ink); cursor: pointer; }
+.rec-shift-opt small { color: var(--muted, #6b6b76); font-size: 12px; }
+.rec-shift-opt.on { border-color: #2a52be; background: #eef3ff; }

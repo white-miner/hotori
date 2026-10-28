@@ -65,6 +65,7 @@ import {
 } from "../shared/payment";
 import { STAY_CREDIT_COPY, listOpenCredits } from "../shared/stayCredit";
 import StayCreditsModal from "./StayCreditsModal";
+import { type NightShiftMode, shiftDays, shiftDifferences, shiftMemberRates } from "../shared/nightShift";
 import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights, skippedNote } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
@@ -480,29 +481,53 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         if (!nightsOk) return;
       }
     }
+    // 입실일이 바뀌면 방마다 고쳐 둔 박별 요금을 어떻게 할지 물어요 (요금을 지우지 않아요)
+    const ciChanged = gEdit.checkIn !== g.checkIn;
+    let shiftMode: NightShiftMode = "move";
+    if (ciChanged) {
+      const rates = data.groups.get(g.groupId)?.rates ?? null;
+      const needAsk = g.members.filter((x) => isActive(x)).some((m) => {
+        if (!m.nightRates?.nights) return false;
+        const n = Math.min(gEdit.nights, m.nights ?? 1);
+        return shiftDifferences(m.nightRates, m.checkIn, m.nights ?? 1, gEdit.checkIn, n, { typeRate: rates?.[m.typeId] }).length > 0;
+      });
+      if (needAsk) {
+        const d = shiftDays(g.checkIn, gEdit.checkIn);
+        const moveOk = await askConfirm({
+          title: "입실일 변경 · 박별 요금",
+          body: `입실일이 ${Math.abs(d)}일 ${d > 0 ? "뒤로" : "앞으로"} 바뀌어요. 방마다 고쳐 둔 박별 요금을 어떻게 할까요?\n· 박 따라 옮기기: 1박째 요금은 새 1박째로, 2박째는 새 2박째로 가요.\n· 날짜에 그대로 두기: 같은 날짜는 그 요금 그대로, 새 날짜는 기본 요금이에요. (창을 닫아도 이쪽이에요)`,
+          confirmLabel: "박 따라 옮기기",
+          cancelLabel: "날짜에 그대로 두기",
+        });
+        shiftMode = moveOk ? "move" : "keep";
+      }
+    }
     setGBusy(true);
     try {
       await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name, ...(dateChanged ? { checkIn: gEdit.checkIn, nights: gEdit.nights } : {}) });
       let repriceNote = "";
-      if (nightsDown) {
+      if (nightsDown || ciChanged) {
         const rates = data.groups.get(g.groupId)?.rates ?? null;
         let sum = 0;
+        let touched = 0;
         for (const m of g.members.filter((x) => isActive(x))) {
-          const next = repriceForNights({ ...m, checkIn: gEdit.checkIn }, gEdit.nights, rates?.[m.typeId]);
-          sum += next.price;
           const cur = data.bookings.find((x) => x.id === m.id) ?? m;
-          await data.saveBooking(
-            {
-              ...cur,
-              checkIn: gEdit.checkIn,
-              nights: gEdit.nights,
-              price: next.price,
-              nightRates: next.nightRates ?? cur.nightRates,
-            },
-            false,
-          );
+          const shifted = ciChanged ? shiftMemberRates(m, gEdit.checkIn, gEdit.nights, shiftMode, rates?.[m.typeId]) : null;
+          let price: number;
+          let nightRates = cur.nightRates;
+          if (shifted) {
+            price = shifted.price;
+            nightRates = shifted.nightRates;
+          } else if (nightsDown) {
+            const next = repriceForNights({ ...m, checkIn: gEdit.checkIn }, gEdit.nights, rates?.[m.typeId]);
+            price = next.price;
+            nightRates = next.nightRates ?? cur.nightRates;
+          } else continue;
+          sum += price;
+          touched++;
+          await data.saveBooking({ ...cur, checkIn: gEdit.checkIn, nights: gEdit.nights, price, nightRates }, false);
         }
-        repriceNote = ` · 판매가 맞춤 합 ${won(sum)}원`;
+        if (touched) repriceNote = ` · ${ciChanged ? (shiftMode === "move" ? "박별 요금 박 따라 옮김" : "박별 요금 날짜에 그대로") : "판매가 맞춤"} 합 ${won(sum)}원`;
       }
       notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}${repriceNote}`);
       setGEdit(null);

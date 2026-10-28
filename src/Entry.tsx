@@ -102,6 +102,7 @@ import {
   unusedNightRefund,
   validateExtendRate,
 } from "../shared/extend";
+import { type NightShiftMode, shiftDays, shiftDifferences, shiftNightRates } from "../shared/nightShift";
 import { EDIT_COPY, commitEditStayDates, nightsUpOpensExtendPanel } from "../shared/bookingEdit";
 import {
   STAY_CREDIT_COPY,
@@ -546,7 +547,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setEx({ rate: String(rate), collect: !isLongStay(live), method: "card" });
   };
   /** 박수↓이면 판매가 = 행렬 Σ 또는 1박 × 새박수 + 가산분. 박수↑도 본문 반영 · 「1박 연장」은 별도 CTA. */
-  const applyStayNights = (nextRaw: number, opts?: { checkIn?: string }) => {
+  const applyStayNights = (nextRaw: number, opts?: { checkIn?: string; shift?: NightShiftMode }): void => {
     const committed = commitEditStayDates({
       nextNights: nextRaw,
       nextCheckIn: opts?.checkIn ?? checkIn,
@@ -578,7 +579,22 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           weekday: wdStr ? Number(wdStr) : nightRates?.weekday ?? null,
           weekend: weStr ? Number(weStr) : nightRates?.weekend ?? null,
         };
-        const synced = syncStayNightRates(nextCheckIn, next, prevRates, { typeRate: typeRate ?? rate });
+        const fb = { typeRate: typeRate ?? rate };
+        let synced: StayNightRates;
+        if (nextCheckIn !== checkIn && nightRates?.nights) {
+          // 입실일이 바뀌면 고쳐 둔 박별 요금을 지우지 않고, 어떻게 할지 물어요
+          if (!opts?.shift && shiftDifferences(prevRates, checkIn, nights, nextCheckIn, Math.min(next, nights), fb).length) {
+            const d = shiftDays(checkIn, nextCheckIn);
+            void askConfirm({
+              title: "입실일 변경 · 박별 요금",
+              body: `입실일이 ${Math.abs(d)}일 ${d > 0 ? "뒤로" : "앞으로"} 바뀌어요. 고쳐 둔 박별 요금을 어떻게 할까요?\n· 박 따라 옮기기: 1박째 요금은 새 1박째로, 2박째는 새 2박째로 가요.\n· 날짜에 그대로 두기: 같은 날짜는 그 요금 그대로, 새 날짜는 기본 요금이에요. (창을 닫아도 이쪽이에요)`,
+              confirmLabel: "박 따라 옮기기",
+              cancelLabel: "날짜에 그대로 두기",
+            }).then((ok) => applyStayNights(nextRaw, { ...opts, shift: ok ? "move" : "keep" }));
+            return;
+          }
+          synced = shiftNightRates(prevRates, checkIn, nights, nextCheckIn, next, opts?.shift ?? "move", fb);
+        } else synced = syncStayNightRates(nextCheckIn, next, prevRates, fb);
         setNightRates(synced);
         if (hasFullNightMatrix(nextCheckIn, next, synced)) {
           setRateStr(String(synced.flat ?? rate));
