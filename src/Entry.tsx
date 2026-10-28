@@ -121,7 +121,6 @@ import {
   type StayNightRates,
   hasFullNightMatrix,
   priceFromNightMatrix,
-  refillFromDefaults,
   occupiedNightDates,
   syncStayNightRates,
 } from "../shared/nightrates";
@@ -190,7 +189,7 @@ import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
 import { resolveNightRate, stopSellDatesForStay } from "../shared/salesCalendar";
-import { enteredNightMap, nightShiftAmbiguous, nightTableStatus, shiftEnteredNights } from "../shared/nightTable";
+import { enteredNightMap, hasHandEditedNights, nightShiftAmbiguous, nightTableStatus, refillKeepingEdits, shiftEnteredNights } from "../shared/nightTable";
 import {
   BookPayMethodCircles,
   BookingModeSeg,
@@ -652,8 +651,8 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       { ...(nightRates ?? {}), flat: rate, weekday: wdStr ? Number(wdStr) : nightRates?.weekday, weekend: weStr ? Number(weStr) : nightRates?.weekend },
       { typeRate: rate },
     );
-    // flat만 바꾸면 셀을 새 단가로 다시 채움 (날짜 오버라이드 일괄 리셋)
-    const refilled = refillFromDefaults(checkIn, nights, next);
+    // 박당 요금을 바꾸면 자동으로 채워진 박만 새 금액으로 — 손으로 고친 박은 그대로 (전부 덮으려면 「모두 이 금액으로 덮어쓰기」)
+    const refilled = { ...next, nights: refillKeepingEdits(checkIn, nights, nightRates, { flat: rate, weekday: next.weekday, weekend: next.weekend }) };
     setNightRates(refilled);
     setPrice(String(priceFromNightMatrix(refilled, addons)));
   };
@@ -671,12 +670,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     setWdStr(wd);
     setWeStr(we);
     if (long || kind !== "stay" || nights < 1) return;
-    const next = refillFromDefaults(checkIn, nights, {
-      ...(nightRates ?? {}),
+    const defs = {
       flat: Number(rateStr || 0) || nightRates?.flat || null,
       weekday: wd ? Number(wd) : null,
       weekend: we ? Number(we) : null,
-    });
+    };
+    const next = { ...(nightRates ?? {}), ...defs, nights: refillKeepingEdits(checkIn, nights, nightRates, defs) };
+    setNightRates(next);
+    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+    setPrice(String(priceFromNightMatrix(next, addons)));
+  };
+  /** 「모두 이 금액으로 덮어쓰기」 — 손으로 고친 박까지 전부 박당 요금으로 (직접 누를 때만) */
+  const overwriteAllNights = () => {
+    const defs = { flat: Number(rateStr || 0) || nightRates?.flat || null, weekday: wdStr ? Number(wdStr) : null, weekend: weStr ? Number(weStr) : null };
+    if (!(defs.flat || defs.weekday || defs.weekend)) return;
+    const next = { ...(nightRates ?? {}), ...defs, nights: refillKeepingEdits(checkIn, nights, nightRates, defs, true) };
     setNightRates(next);
     const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
     setPrice(String(priceFromNightMatrix(next, addons)));
@@ -3603,6 +3611,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                         />
                       </PriceInp>
                       <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
+                      {hasHandEditedNights(checkIn, nights, nightRates) ? (
+                        <button type="button" className="nrt-same" onClick={overwriteAllNights} title="직접 고친 박까지 전부 위 박당 요금으로 바꿔요">
+                          모두 이 금액으로 덮어쓰기
+                        </button>
+                      ) : null}
                     </PriceRow>
                   </>
                 )

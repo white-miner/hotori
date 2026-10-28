@@ -113,8 +113,16 @@ function RateRow({
   const noRate = !(row.roomCharge > 0);
   const sugMap: Record<string, number> = Object.fromEntries(sug.map((x) => [x.date, x.amount]));
   const own = edits[slot.key]?.rates ?? null;
+  // 직접 적지 않은 박은 호텔 요금표의 제안이에요 — 소계에는 들어가지만 미확정이라고 표시해요
+  const entered = own?.nights ?? {};
+  const label = { date: "특별일", season: "시즌", weekend: "주말", weekday: "평일", flat: "기본", none: "" } as const;
   const notes: Record<string, string> = {};
-  if (!row.edited) for (const x of sug) notes[x.date] = x.source === "season" && x.seasonName ? `시즌 · ${x.seasonName}` : x.source === "none" ? "" : (({ date: "특별일", season: "시즌", weekend: "주말", weekday: "평일", flat: "기본", none: "" }) as const)[x.source];
+  let suggestedCount = 0;
+  for (const x of sug) {
+    if ((Number(entered[x.date]) || 0) > 0 || x.source === "none") continue;
+    suggestedCount += 1;
+    notes[x.date] = `제안(미확정) · ${x.source === "season" && x.seasonName ? `시즌 ${x.seasonName}` : label[x.source]}`;
+  }
   const setX = (i: number, p: Partial<ExtraDraft>) => onExtras(extras.map((x, k) => (k === i ? { ...x, ...p } : x)));
   return (
     <li className={`grr-row${noRate ? " empty" : ""}`}>
@@ -139,6 +147,11 @@ function RateRow({
                 {x}
               </i>
             ))}
+          </span>
+        ) : null}
+        {suggestedCount > 0 && !noRate ? (
+          <span className="grr-flag sug" title="직접 적지 않은 박은 호텔 요금표의 제안값이 소계에 들어가 있어요. 박 금액을 적으면 확정돼요">
+            제안(미확정) {suggestedCount}박 포함
           </span>
         ) : null}
         {row.edited ? (

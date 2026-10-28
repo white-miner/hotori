@@ -119,3 +119,18 @@ test("총액 균등분할 제거: 공용 박별 표·입력·그룹 객실 표�
   assert.doesNotMatch(read("SimpleBooking.tsx") + read("Entry.tsx") + read("tangleFix.ts"), /nightRatesFromTotal/);
   assert.doesNotMatch(readFileSync(new URL("./staySale.ts", import.meta.url), "utf8"), /nightRatesFromTotal/);
 });
+
+import { hasHandEditedNights, refillKeepingEdits } from "./nightTable";
+
+test("박당 요금 변경: 손으로 고친 박은 그대로 · 자동 채움 박만 바뀜 · 덮어쓰기는 전부", () => {
+  const old = { flat: 80_000, nights: { "2026-10-25": 80_000, "2026-10-26": 95_000, "2026-10-27": 80_000 } };
+  assert.equal(hasHandEditedNights("2026-10-25", 3, old), true);
+  assert.deepEqual(refillKeepingEdits("2026-10-25", 3, old, { flat: 70_000 }), { "2026-10-25": 70_000, "2026-10-26": 95_000, "2026-10-27": 70_000 });
+  assert.deepEqual(refillKeepingEdits("2026-10-25", 3, old, { flat: 70_000 }, true), { "2026-10-25": 70_000, "2026-10-26": 70_000, "2026-10-27": 70_000 });
+  assert.equal(hasHandEditedNights("2026-10-25", 3, { flat: 80_000, nights: { "2026-10-25": 80_000, "2026-10-26": 80_000, "2026-10-27": 80_000 } }), false);
+});
+
+test("단체 객실 표: 직접 적지 않은 박은 제안(미확정)으로 표시", () => {
+  const src = readFileSync(new URL("../src/GroupRoomRates.tsx", import.meta.url), "utf8");
+  assert.match(src, /제안\(미확정\)/);
+});

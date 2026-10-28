@@ -3,7 +3,7 @@
 //  · 「타입 요금으로 채우기」·「박당 금액으로 채우기」는 빈 박만 채워요 (채운 뒤에도 고칠 수 있어요)
 //  · 박별 합계가 판매금과 다르면 차액을 알려 주기만 하고, 체크했을 때만 판매금을 합계로 바꿔요
 import { weekday } from "./ledger";
-import { type NightAmountMap, type StayNightRates, extrasTotal, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
+import { type NightAmountMap, type StayNightRates, extrasTotal, fillNightAmounts, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
 import { isPeakNight } from "./surcharge";
 
 export interface NightRow {
@@ -149,4 +149,38 @@ export function nightTableStatus(p: { checkIn: string; nights: number; rates: St
   const allEntered = occupiedNightDates(p.checkIn, p.nights).length > 0 && count === occupiedNightDates(p.checkIn, p.nights).length;
   const sumTotal = sum + extras + Math.max(0, p.addons);
   return { entered, count, total: occupiedNightDates(p.checkIn, p.nights).length, sum, allEntered, sumTotal, diff: allEntered ? sumTotal - Math.max(0, Math.round(p.price)) : null };
+}
+
+/**
+ * 박당 요금(평일·주말)을 바꿀 때: 직원이 손으로 고친 박은 그대로 두고, 자동으로 채워졌던 박만 새 금액으로 바꿔요.
+ * 손으로 고친 박 = 이전 기본 금액과 다른 박. 전부 덮어쓰려면 overwrite=true (별도 「모두 이 금액으로 덮어쓰기」 버튼).
+ */
+export function refillKeepingEdits(
+  checkIn: string,
+  nights: number,
+  old: StayNightRates | null | undefined,
+  next: { flat?: number | null; weekday?: number | null; weekend?: number | null },
+  overwrite = false,
+): NightAmountMap {
+  const fresh = fillNightAmounts(checkIn, nights, next, null);
+  if (overwrite) return fresh;
+  const oldDef = fillNightAmounts(checkIn, nights, { flat: old?.flat, weekday: old?.weekday, weekend: old?.weekend }, null);
+  const out: NightAmountMap = {};
+  for (const d of occupiedNightDates(checkIn, nights)) {
+    const cur = old?.nights?.[d];
+    const have = cur != null && Number.isFinite(Number(cur));
+    const hand = have && Math.round(Number(cur)) !== oldDef[d] && Number(cur) > 0;
+    out[d] = hand ? Math.round(Number(cur)) : fresh[d]!;
+  }
+  return out;
+}
+
+/** 손으로 고친 박이 있나 (덮어쓰기 버튼 노출 판단) */
+export function hasHandEditedNights(checkIn: string, nights: number, rates: StayNightRates | null | undefined): boolean {
+  if (!rates?.nights) return false;
+  const def = fillNightAmounts(checkIn, nights, { flat: rates.flat, weekday: rates.weekday, weekend: rates.weekend }, null);
+  return occupiedNightDates(checkIn, nights).some((d) => {
+    const c = rates.nights?.[d];
+    return c != null && Number(c) > 0 && Math.round(Number(c)) !== def[d];
+  });
 }

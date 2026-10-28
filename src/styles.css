@@ -6073,3 +6073,5 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nre-per button { min-height: 44px; }
 .nrt-note { font-style: normal; font-size: 11.5px; color: #6b7280; margin-left: 6px; }
 .grr-one { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #4b5563; font-variant-numeric: tabular-nums; }
+.grr-flag.sug { background: #fff7e6; color: #8a5a00; border: 1px dashed #e0b25a; }
+.nrt-note { font-style: normal; }
