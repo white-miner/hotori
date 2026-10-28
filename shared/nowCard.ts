@@ -80,16 +80,18 @@ export function nowPayParts(own: readonly Pick<Payment, "method" | "amount">[] |
 }
 
 /**
- * 플랫폼(OTA)이 받은 결제: 현장 결제가 아닌 플랫폼의 취소 안 된 예약은 판매가(적어 둔 price)를 플랫폼이 받은 돈으로 봐요.
- * 평균·추정이 아니라 예약에 적힌 값 그대로. 단체·장기·금액미정은 제외 (그쪽은 자기 표기).
+ * 플랫폼(OTA)이 받은 결제: 현장 결제가 아닌 플랫폼의 취소 안 된 예약은 손님이 플랫폼에 낸 판매가(적어 둔 price)를 보여요.
+ * 이름은 플랫폼 이름 그대로 (`야놀자270,000`). 평균·추정이 아니라 예약에 적힌 값 그대로.
+ * 단체 객실도 각 방이 자기 금액을 보여요 (단체의 이체·카드 결제만 대표객실에). 장기·금액미정은 제외.
  */
 export function nowPlatformPayPart(
-  b: Pick<Booking, "status" | "price" | "priceUnset" | "groupId" | "stayMode" | "kind">,
+  b: Pick<Booking, "status" | "price" | "priceUnset" | "stayMode" | "kind">,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
 ): NowPayPart | null {
   if (!plat || isOnsite(plat)) return null;
-  if (b.status !== "active" || b.priceUnset || b.groupId || b.stayMode === "long_stay") return null;
-  return b.price > 0 ? { method: "플랫폼", amount: Math.round(b.price) } : null;
+  if (b.status !== "active" || b.priceUnset || b.stayMode === "long_stay") return null;
+  const name = plat.name?.trim();
+  return name && b.price > 0 ? { method: name, amount: Math.round(b.price) } : null;
 }
 
 /** `이체690,000` · 둘 이상이면 `이체690,000 · 카드100,000` · 셋 넘으면 `외 N건` */

@@ -2090,10 +2090,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <RoomCardFacts
                 slot={slot}
                 rate={isLongStay(b) ? nowLongStayRate(b.longStayRate, selDate) : nowNightRate(b, selDate)}
-                payText={member ? null : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
+                payText={member ? (platPart ? nowPayText([platPart]) : null) : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
                 period={b.groupId || b.openEnded ? `${nowRangeFull(b)}${lead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}` : undefined}
                 openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
-                payTitle={platPart ? "플랫폼이 받은 결제 금액 (예약에 적힌 판매가)" : lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
+                payTitle={platPart ? `${plat?.name ?? "플랫폼"}에 낸 결제 금액 (예약에 적힌 판매가)` : lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
                 tone={tone}
                 due={nowDueAmount(b, plat, b.groupId ? { members: groupStayPeers(bookings, b.groupId), info: grpInfo } : null, today, lead)}
                 company={nowCompanyOf(b, grpInfo)}
@@ -3469,7 +3469,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const cardPlatPart = nowPlatformPayPart(b, plat);
     const cardPayParts = [...(cardPlatPart ? [cardPlatPart] : []), ...nowPayParts(b.payments, grpLead ? groupCtx?.info?.payments : null)];
     const cardPayRaw = (f.longStay ? nowAmountGlance(b, plat, groupCtx) : null) ?? nowPayText(cardPayParts) ?? (amountTone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
-    const cardPay = b.groupId && !grpLead && groupCtx && groupCtx.members.length >= 2 ? null : cardPayRaw;
+    const cardPay = b.groupId && !grpLead && groupCtx && groupCtx.members.length >= 2 ? (cardPlatPart ? nowPayText([cardPlatPart]) : null) : cardPayRaw;
     const cardCompany = nowCompanyOf(b, groupCtx?.info);
     const gMark = groupBoardMark(b);
     const coMarkLabel = nowCheckoutMark(s, b);
@@ -3557,7 +3557,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             slot="top"
             rate={cardRate}
             payText={cardPay}
-            payTitle={cardPlatPart ? "플랫폼이 받은 결제 금액 (예약에 적힌 판매가)" : grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
+            payTitle={cardPlatPart ? `${plat?.name ?? "플랫폼"}에 낸 결제 금액 (예약에 적힌 판매가)` : grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
             tone={f.longStay ? "due" : amountTone}
             due={nowDueAmount(b, plat, groupCtx, today, grpLead)}
             company={cardCompany}
@@ -3954,6 +3954,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               onExtendThrough={(bk) => void extendThroughToday(bk)}
               onOpenEnded={(bk, on, hold) => void setOpenEnded(bk, on, hold)}
               allBookings={bookings}
+              onEditRates={(bk) => setRecordFor({ groupId: null, bookingId: bk.id, focusKey: `in-${bk.id}` })}
               onConnectStay={(bk) => {
                 const lab = bk.roomId
                   ? `${L.roomLabel(bk.roomId) ?? allRooms(s).find((r) => r.id === bk.roomId)?.no ?? ""}호`

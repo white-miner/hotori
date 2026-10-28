@@ -112,15 +112,16 @@ const ota = { ...base, status: "active" as const, groupId: null, stayMode: "stan
 const yanolja = { name: "야놀자", onsite: false };
 const walkin = { name: "현장", onsite: true };
 
-test("플랫폼(OTA) 결제금액: 예약에 적힌 판매가 그대로 `플랫폼270,000` — 현장 결제 예약은 안 붙어요", () => {
+test("플랫폼(OTA) 결제금액: 예약에 적힌 판매가를 플랫폼 이름으로 `야놀자270,000` — 현장 결제 예약은 안 붙어요", () => {
   const part = nowPlatformPayPart(ota as never, yanolja);
-  assert.deepEqual(part, { method: "플랫폼", amount: 270_000 });
-  assert.equal(nowPayText([part!]), "플랫폼270,000");
-  assert.equal(nowPayText([part!, ...nowPayParts([{ method: "card", amount: 20_000 }])]), "플랫폼270,000 · 카드20,000");
+  assert.deepEqual(part, { method: "야놀자", amount: 270_000 });
+  assert.equal(nowPayText([part!]), "야놀자270,000");
+  assert.equal(nowPayText([part!, ...nowPayParts([{ method: "card", amount: 20_000 }])]), "야놀자270,000 · 카드20,000");
   assert.equal(nowPlatformPayPart(ota as never, walkin), null);
   assert.equal(nowPlatformPayPart({ ...ota, status: "cancelled" } as never, yanolja), null);
   assert.equal(nowPlatformPayPart({ ...ota, priceUnset: true, price: 0 } as never, yanolja), null);
-  assert.equal(nowPlatformPayPart({ ...ota, groupId: "g" } as never, yanolja), null);
+  // 단체 객실도 방마다 자기 판매가를 플랫폼 이름으로 (단체 이체·카드만 대표객실)
+  assert.deepEqual(nowPlatformPayPart({ ...ota, groupId: "g", price: 90_000 } as never, yanolja), { method: "야놀자", amount: 90_000 });
 });
 
 test("OTA 연박: 박별 요금이 있으면 박마다 자기 요금 · 없으면 평균 추정을 만들지 않고 비워요", () => {
@@ -157,4 +158,10 @@ test("카드 순서: 이용기간·결제는 이름 위(top), 회사·하루 요
   const iName2 = dash.indexOf('<span className="gn">{b.guestName}</span>', iTop2);
   const iWho2 = dash.indexOf('slot="who"', iName2);
   assert.ok(iTop2 > 0 && iName2 > iTop2 && iWho2 > iName2, "현황 카드: top → 이름 → who");
+});
+
+test("단체 객실: 플랫폼 결제금액은 구성원 카드에도 자기 금액으로 — 단체 이체·카드는 대표객실만", () => {
+  const src = readFileSync(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(src, /member \? \(platPart \? nowPayText\(\[platPart\]\) : null\)/, "배치 카드 구성원도 플랫폼 금액");
+  assert.match(src, /\(cardPlatPart \? nowPayText\(\[cardPlatPart\]\) : null\)/, "현황 카드 구성원도 플랫폼 금액");
 });

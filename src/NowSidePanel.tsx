@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { hasFullNightMatrix } from "../shared/nightrates";
 import { AlertTriangle, ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, FileText, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
 import { STAY_CONFIRM_COPY } from "../shared/hotelBiz";
 import { DAMAGE_COPY } from "../shared/damageDoc";
@@ -175,6 +176,8 @@ interface Props {
   onOpenEnded?: (b: Booking, on: boolean, holdAhead: number) => void;
   /** 연박 연결 · 다른 이름 예약 B → 이 투숙 A (succeeds) */
   onConnectStay?: (b: Booking) => void;
+  /** 박별 요금 입력·고치기 — 기록 정정(박별 요금표)을 바로 열어요 */
+  onEditRates?: (b: Booking) => void;
   /** 호텔 전체 예약 (연결 글랜스 · prior/successor) */
   allBookings?: Booking[];
   /** 빠른 입실 (숙박예약 · 미입실) */
@@ -249,6 +252,7 @@ export default function NowSidePanel({
   onExtendThrough,
   onOpenEnded,
   onConnectStay,
+  onEditRates,
   allBookings = [],
   onEarlyIn,
   onRoomHold,
@@ -626,6 +630,28 @@ export default function NowSidePanel({
                       {b.guests ? ` · ${b.guests}명` : ""}
                     </span>
                   </div>
+                  {onEditRates && !groupHead && !readOnly && b.kind === "stay" && b.status === "active" && b.stayMode !== "long_stay" && (b.nights ?? 1) >= 2 ? (
+                    <div className="nsel-row nsel-rates" aria-label="박별 요금">
+                      <span className="nsel-k">박별 요금</span>
+                      <span className="nsel-v">
+                        {hasFullNightMatrix(b.checkIn, b.nights ?? 1, b.nightRates) ? (
+                          <>
+                            박마다 적혀 있어요
+                            <button type="button" className="nsel-editlink" onClick={() => onEditRates(b)}>
+                              고치기
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="muted">아직 안 적었어요</span>
+                            <button type="button" className="nsel-editlink nsel-rates-enter" onClick={() => onEditRates(b)} aria-label="박별 요금 입력">
+                              박별 요금 입력
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  ) : null}
                   {succList.length ? (
                     <div className="nsel-row" aria-label="연박 연결 후속">
                       <span className="nsel-k">연결</span>
