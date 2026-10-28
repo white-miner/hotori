@@ -54,3 +54,16 @@ test("요약 문장", () => {
   assert.equal(stayEndSummary(null, ps), "퇴실 미정으로 바꿈 (2실)");
   assert.equal(stayEndSummary("2026-11-09", ps), "퇴실일 11/09로 바꿈 (2실)");
 });
+
+test("퇴실 미정 저장 경로: 계획 패치 → 저장용 예약에 openEnded가 남고, 이어 붙이기(열린 숙박 자동·연장)로도 꺼지지 않아요", () => {
+  const old = mk("a", 70_000, 3);
+  const p = planStayEnd(old, null, TODAY);
+  const saved = { ...old, ...p.patch! };
+  assert.equal(saved.openEnded, true);
+  // useOpenFollow · 연장 · 기록 정정은 { ...b, nights, price, segments, nightRates } 로 저장 — 플래그는 그대로
+  const followed = { ...saved, nights: (saved.nights ?? 1) + 1, price: saved.price + 70_000 };
+  assert.equal(followed.openEnded, true);
+  assert.equal(followed.holdAhead, 1);
+  // 퇴실일을 정할 때만 꺼져요
+  assert.equal(planStayEnd(saved, "2026-10-31", TODAY).patch!.openEnded, false);
+});

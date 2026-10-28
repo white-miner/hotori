@@ -6028,3 +6028,4 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   vertical-align: 1px;
 }
 .cell .rc-var.open { background: #e6f4ea; color: #1b6b33; margin-left: 0; }
+.gch-open-tag { font-style: normal; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #2a52be; color: #fff; margin-left: auto; margin-right: 8px; }

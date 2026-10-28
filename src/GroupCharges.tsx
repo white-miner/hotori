@@ -75,6 +75,7 @@ export default function GroupCharges({
     <section className="gch" aria-label="객실별 요금">
       <div className="gch-h">
         <b>객실별 요금</b>
+        {live.some((r) => r.openEnded) ? <i className="gch-open-tag" title="끝 날짜 없이 계속 묵어요">∞ 퇴실 미정 {live.filter((r) => r.openEnded).length}/{live.length}실</i> : null}
         <span className="muted sm">청구 합계 {won(ledger.due)}원</span>
       </div>
       {can && live.length ? (
