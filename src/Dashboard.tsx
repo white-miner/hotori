@@ -3831,6 +3831,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </span>
       </div>
     );
+    /** 운영 패널(N1~N21) — 사이드바 ON 이면 사이드바 C 구역으로 포털(내용·동작 그대로), 아니면 지금 자리(우측) */
+    const opsWrap = (node: React.ReactNode) => (sbOn ? sbx.into("ops", node) : node);
     /** 현황 필터 (전체 / 임시만) — 사이드바 ON 이면 사이드바 '현황 필터' 칸으로 */
     const nowFilterChips = (
       <>
@@ -3907,6 +3909,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 ))}
               </div>
             </div>
+            {opsWrap(
             <NowSidePanel
               today={today}
               s={s}
@@ -4076,6 +4079,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               }}
               nowOpts={nowOpts}
             />
+            )}
           </NowLayoutGrid>
           {/* 숙박 판매 CTA는 패널 판매 섹션만 · 바는 선택 글랜스+해제 (중복 금지) */}
           {!readOnly && !mvB && selectedRoomIds.length > 0 ? (

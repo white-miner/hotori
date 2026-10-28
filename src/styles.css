@@ -6256,7 +6256,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 /* 상단 헤더가 없으므로 헤더 높이(64px)만큼 비워 두던 붙박이 자리를 맨 위로 */
 .app.sb-active .side, .app.sb-active .paint, .app.sb-active .board-chrome-sticky, .app.sb-active .board-filter-sticky { top: 0; }
 .app.sb-active .side { min-height: 100vh; max-height: 100vh; }
-.app.sb-active .nowside { top: 8px; max-height: calc(100vh - 16px); }
 /* A: 로고 · 간단 예약 · 화면 이동 */
 .sb-a { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 10px; }
 .sb-brand { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 2px 2px 0; }
@@ -6310,3 +6309,8 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .sb-chips, .sb .fchips { display: flex; flex-wrap: wrap; gap: 5px; padding: 0; overflow: visible; }
 .sb .board-glance { margin: 0; }
 .sb .pfbar, .sb .pf-bar { flex-wrap: wrap; }
+/* C: 현황 운영 패널 (NowSidePanel · 안은 그대로) — 우측 칸이 사라져 보드는 한 칸 */
+.app.sb-active .now-page .nowlayout { grid-template-columns: minmax(0, 1fr); }
+.sb-c { padding-bottom: 16px; }
+.sb-c .nowside { position: static; top: auto; max-height: none; overflow: visible; margin: 0; padding: 12px 0 0; border: 0; border-radius: 0; border-top: 1px solid var(--line2); }
+.sb-c .nowside-body { overflow: visible; }
