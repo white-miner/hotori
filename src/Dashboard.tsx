@@ -1977,7 +1977,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const k = /^\d+$/.test(r.no) ? "" : "k";
     const peerRooms = b && isActive(b) ? groupRoomsFor(b) : [];
     const head = (
-      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
+      <div className={`r1 ${strip ? "strip" : ""}`} data-slot="head" style={strip ? { background: strip } : undefined}>
         <GroupRoomNoHit
           rooms={peerRooms}
           open={groupPopRoomId === r.id}
@@ -2019,7 +2019,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           id={`rooms-room-${r.id}`}
           data-room-id={r.id}
           {...mvAttr}
-          className={`cell em ${held ? "held" : ""} ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
+          className={`cell em rc-grid ${held ? "held" : ""} ${du.length ? "duc" : ""} ${du.some((d) => d.arrived) ? "in" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
           onClick={
             mvClick ??
             (() => {
@@ -2051,8 +2051,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           ) : null}
           {head}
           {typeRow()}
-          <div className={`emt ${held ? "held" : !mvB && !sameType ? "none" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "예약 없음"}</div>
-          {duTags.length ? <div className="dus">{duTags}</div> : null}
+          <div data-slot="empty" className={`emt ${held ? "held" : !mvB && !sameType ? "none" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "예약 없음"}</div>
+          <div className="dus" data-slot="dus">
+            {duTags}
+          </div>
         </div>
       );
     }
@@ -2088,29 +2090,29 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const gMark = groupBoardMark(b);
     // 카드 사실 줄 (docs/room-card-spec.md): 순서 객실번호 → 이용기간(+박수) → 결제수단+금액 → 이름 → 회사 → 박당 요금. top은 이름 위, who는 이름 아래
     const cardM = !readOnly && !cancelled ? cardModelOf(b, L.plats.get(b.platformId), selDate, today) : null;
-    const factsEl = (slot: "top" | "who") =>
-      cardM ? (
-        <RoomCardFacts
-          slot={slot}
-          rate={cardM.rate}
-          payText={cardM.payText}
-          period={[cardM.period, cardM.progress].filter(Boolean).join(" · ")}
-          openEnded={cardM.openEnded}
-          payTitle={cardM.payTitle}
-          tone={cardM.tone}
-          due={cardM.due}
-          company={cardM.company}
-          linkLabel={cardM.isMember ? gMark.label : null}
-          viewLabel={dayLabel(selDate)}
-        />
-      ) : null;
+    // 자리는 카드 내용이 없어도(취소·읽기 전용) 항상 그려요 — 값만 빈 자리로 (docs/room-card-spec.md §11)
+    const factsEl = (slot: "top" | "who") => (
+      <RoomCardFacts
+        slot={slot}
+        rate={cardM?.rate ?? null}
+        payText={cardM?.payText ?? null}
+        period={cardM ? [cardM.period, cardM.progress].filter(Boolean).join(" · ") : ""}
+        openEnded={cardM?.openEnded}
+        payTitle={cardM?.payTitle}
+        tone={cardM?.tone ?? "neutral"}
+        due={cardM?.due ?? null}
+        company={cardM?.company ?? null}
+        linkLabel={cardM?.isMember ? gMark.label : null}
+        viewLabel={dayLabel(selDate)}
+      />
+    );
     return (
       <div
         key={r.id}
         id={`rooms-room-${r.id}`}
         data-room-id={r.id}
         {...mvAttr}
-        className={`cell bk ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
+        className={`cell bk rc-grid ${b.groupId ? `grp${gMark.stripe}` : ""} ${cancelled ? "cx" : du.length ? "st hasdu" : "st"} ${!cancelled && b.arrived ? "in" : ""} ${!cancelled && b.tentative ? "tent" : ""} ${!cancelled && b.noClean ? "ncx" : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${occAssignCls}`}
         onClick={
           mvClick ??
           (() => {
@@ -2145,38 +2147,44 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {head}
         {typeRow(cancelled ? null : b.guests)}
         {factsEl("top")}
-        {cardM?.isMember ? null : (
-          <div className="nm">
-            <PlatBadge p={L.plats.get(b.platformId)} />
-            <span className="gn">{b.guestName}</span>
-          </div>
-        )}
-        {!cancelled ? (
-          <CellBadges
-            flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b), openEnded: !cardM && b.openEnded && b.status === "active" }}
-            group={b.groupId && !cardM?.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
-          />
-        ) : null}
+        <div className="nm" data-slot="name">
+          {cardM?.isMember ? null : (
+            <>
+              <PlatBadge p={L.plats.get(b.platformId)} />
+              <span className="gn">{b.guestName}</span>
+            </>
+          )}
+        </div>
+        <div className="rc-slot" data-slot="badges">
+          {!cancelled ? (
+            <CellBadges
+              flags={{ noClean: b.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: b.tentative, longStay: isLongStay(b), openEnded: !cardM && b.openEnded && b.status === "active" }}
+              group={b.groupId && !cardM?.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
+            />
+          ) : null}
+        </div>
         {factsEl("who")}
-        {cardM?.isLead && !readOnly ? (
-          <button
-            type="button"
-            className="rc-grpbtn"
-            title="단체 결제 · 객실·박별 요금·결제 내역"
-            onClick={(e) => {
-              e.stopPropagation();
-              openGroupPay(b.groupId!);
-            }}
-          >
-            단체 결제 ›
-          </button>
-        ) : null}
-        <div className="r3 rp">
+        <div className="rc-slot" data-slot="grp">
+          {cardM?.isLead && !readOnly ? (
+            <button
+              type="button"
+              className="rc-grpbtn"
+              title="단체 결제 · 객실·박별 요금·결제 내역"
+              onClick={(e) => {
+                e.stopPropagation();
+                openGroupPay(b.groupId!);
+              }}
+            >
+              단체 결제 ›
+            </button>
+          ) : null}
+        </div>
+        <div className="r3 rp" data-slot="rp">
           <span />
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
         </div>
         {((tags, ws) => (
-          <div className="r3">
+          <div className="r3" data-slot="tags">
             {ws.length ? (
               <span className="ttag warn" title={ws.map((w) => `${w.text} (${dayLabel(w.date)})`).join(" · ")}>
                 {ws[0].text}
@@ -2203,7 +2211,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               ],
           cancelled ? [] : (turn.get(b.id) ?? []).filter((w) => w.date === selDate || w.date === addDays(selDate, 1)),
         )}
-        {cancelled && duTags.length ? <div className="dus">{duTags}</div> : null}
+        <div className="dus" data-slot="dus">
+          {cancelled ? duTags : null}
+        </div>
       </div>
     );
   };
@@ -3403,7 +3413,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ) : null;
     const peerRooms = b && isActive(b) ? groupRoomsFor(b) : [];
     const head = (
-      <div className={`r1 ${strip ? "strip" : ""}`} style={strip ? { background: strip } : undefined}>
+      <div className={`r1 ${strip ? "strip" : ""}`} data-slot="head" style={strip ? { background: strip } : undefined}>
         {/* FitText+말풍선 flex/cqw로 호수가 사라지던 회귀 → 평문 고정 표시 */}
         <GroupRoomNoHit
           rooms={peerRooms}
@@ -3439,10 +3449,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           title={held ? (hold!.note ? `${ROOM_HOLD_STATUS} · ${hold!.note}` : ROOM_HOLD_STATUS) : undefined}
         >
           {duMark}
-          <div className="cell-body nowstack sparse">
+          <div className="cell-body nowstack sparse rc-grid">
             {head}
             <TypeRow t={t} />
-            <div className={`nowstatus-slot ${!held && !mvB ? "none" : ""}`}>
+            <div className={`nowstatus-slot ${!held && !mvB ? "none" : ""}`} data-slot="status">
               <span className={`nowstatus ${held ? "nk-held" : "nk-empty"}`}>
                 {mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : held ? holdCellNote(hold) : "예약 없음"}
               </span>
@@ -3507,10 +3517,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       >
         {duMark}
         {coMark}
-        <div className="cell-body nowstack dense">
+        <div className="cell-body nowstack dense rc-grid">
           {head}
           <TypeRow t={t} guests={b.guests} />
-          <div className="nowdate-row">
+          <div className="nowdate-row" data-slot="period">
             <button
               type="button"
               className="nowdate-btn"
@@ -3554,26 +3564,32 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             linkLabel={cardM.isMember ? gMark.label : null}
             viewLabel={dayLabel(today)}
           />
-          {cardM.isMember ? null : (
-            <div className="nm">
-              <PlatBadge p={L.plats.get(b.platformId)} />
-              <span className="gn">{b.guestName}</span>
-            </div>
-          )}
-          <CellBadges
-            flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: false }}
-            group={f.group && b.groupId && !cardM.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
-          />
-          {((mvDue, mvNext) =>
-            mvDue ? (
-              <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
-                {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
-              </div>
-            ) : mvNext ? (
-              <div className="nowmove" title="객실 이동 예약">
-                {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
-              </div>
-            ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
+          <div className="nm" data-slot="name">
+            {cardM.isMember ? null : (
+              <>
+                <PlatBadge p={L.plats.get(b.platformId)} />
+                <span className="gn">{b.guestName}</span>
+              </>
+            )}
+          </div>
+          <div className="rc-slot" data-slot="badges">
+            <CellBadges
+              flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: false }}
+              group={f.group && b.groupId && !cardM.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
+            />
+          </div>
+          <div className="rc-slot" data-slot="move">
+            {((mvDue, mvNext) =>
+              mvDue ? (
+                <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
+                  {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
+                </div>
+              ) : mvNext ? (
+                <div className="nowmove" title="객실 이동 예약">
+                  {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
+                </div>
+              ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
+          </div>
           <RoomCardFacts
             slot="who"
             rate={cardM.rate}
@@ -3585,21 +3601,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             linkLabel={cardM.isMember ? gMark.label : null}
             viewLabel={dayLabel(today)}
           />
-          {grpLine ? (
-            <button
-              type="button"
-              className="rc-grpbtn"
-              title={`${grpLine} · 눌러서 단체 상세`}
-              aria-label={`단체 결제 · ${grpLine}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                openGroupPay(b.groupId!);
-              }}
-            >
-              단체 결제 ›
-            </button>
-          ) : null}
-          <div className="nowstatus-slot">
+          <div className="rc-slot" data-slot="grp">
+            {grpLine ? (
+              <button
+                type="button"
+                className="rc-grpbtn"
+                title={`${grpLine} · 눌러서 단체 상세`}
+                aria-label={`단체 결제 · ${grpLine}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openGroupPay(b.groupId!);
+                }}
+              >
+                단체 결제 ›
+              </button>
+            ) : null}
+          </div>
+          <div className="nowstatus-slot" data-slot="status">
             {!readOnly && f.kind === "arriving" && !b.arrived ? (
               <button
                 type="button"

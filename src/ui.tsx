@@ -79,7 +79,7 @@ export function TypeLine({ t }: { t?: RoomType | null }) {
 /** 타입 + 인원(우측 작게). 현황·배치 동일 */
 export function TypeRow({ t, guests }: { t?: RoomType | null; guests?: number | null }) {
   return (
-    <div className="tl-row">
+    <div className="tl-row" data-slot="type">
       <TypeLine t={t} />
       {guests != null && guests >= 1 ? (
         <span className="gcount" title={`인원 ${guests}명`}>

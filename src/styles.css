@@ -5999,7 +5999,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   white-space: nowrap;
 }
 .cell .nowdate-btn .rc-period { padding: 0; overflow: hidden; text-overflow: clip; }
-.cell .rc-pay-part { display: inline-block; white-space: nowrap; }
 .cell .rc-link {
   font-size: 11px;
   font-weight: 700;
@@ -6145,3 +6144,84 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-page .nowstatus-slot.none { margin-top: var(--space-1); padding-bottom: 0; align-items: flex-start; padding-left: 3px; }
 .now-page .nowstatus-slot.none .nowstatus.nk-empty { border: 0; background: transparent; min-width: 0; height: auto; padding: 0; font-size: 13px; }
 .board-page:not(.now-page):not(.one) .cell.em .emt.none { display: block; font-size: 13px; }
+
+/* ───────── 객실 카드 슬롯(고정 자리) — 현황 .now-page · 배치 .board-page 공통 (docs/room-card-spec.md §11) ─────────
+   카드는 칸 구조가 먼저 있는 틀이에요. 줄마다 자기 자리(data-slot)와 높이가 따로 있고, 값은 그 자리에 끼워질 뿐이에요.
+   값이 없으면 자리만 비어 있고(줄이 생기거나 없어지지 않음), 위아래 줄이 밀리지 않아요. 넘치는 글자는 자리 안에서 한 줄로 잘려요.
+   각 자리 높이는 변수 하나씩 — 카드 높이(--room-card-h)가 바뀌면 이 합계를 같이 맞춰요.
+   덮어쓰기: 위쪽의 .cell / .now-page .cell / .board-page … .cell 규칙들이 줄마다 margin·padding·font 를 따로 줘서
+   세로 자리만 이 블록의 !important 로 고정해요 (가로 padding·글자 크기·색은 그대로). */
+:root {
+  --rc-h-head: 36px;   /* 객실번호 (+대표객실 표식·말풍선) */
+  --rc-h-type: 15px;   /* 객실 유형 */
+  --rc-h-period: 17px; /* 이용기간 (N/M박) */
+  --rc-h-link: 12px;   /* 연동 `본관 602호` */
+  --rc-h-pay: 17px;    /* 결제 방식·금액 */
+  --rc-h-due: 17px;    /* 받을 돈 */
+  --rc-h-name: 23px;   /* 손님 이름 */
+  --rc-h-badges: 17px; /* 상태 뱃지(청소X·임시·장기·단체) */
+  --rc-h-co: 14px;     /* 회사 */
+  --rc-h-rate: 20px;   /* 박당 요금 */
+  --rc-h-grp: 17px;    /* 단체 결제 › */
+  --rc-h-move: 13px;   /* 현황: 객실 이동 안내 */
+  --rc-h-status: 28px; /* 현황: 하단 입실·상태 버튼 */
+  --rc-h-rp: 13px;     /* 배치: 이동·판매 타입 */
+  --rc-h-tags: 15px;   /* 배치: 경고·빠른/늦은 시간 */
+  --rc-h-dus: 13px;    /* 배치: 취소 칸의 대실 */
+}
+.now-page .cell-body.rc-grid, .board-page:not(.now-page):not(.one) .cell.rc-grid { display: grid !important; align-content: start; align-items: stretch; grid-template-columns: minmax(0, 1fr); }
+.now-page .cell-body.rc-grid {
+  grid-template-rows:
+    var(--rc-h-head) var(--rc-h-type) var(--rc-h-period) var(--rc-h-link) var(--rc-h-pay) var(--rc-h-due) var(--rc-h-name)
+    var(--rc-h-badges) var(--rc-h-move) var(--rc-h-co) var(--rc-h-rate) var(--rc-h-grp) var(--rc-h-status);
+  padding-top: 2px !important; padding-bottom: 2px !important; gap: 0 !important;
+}
+.board-page:not(.now-page):not(.one) .cell.rc-grid {
+  grid-template-rows:
+    var(--rc-h-head) var(--rc-h-type) var(--rc-h-period) var(--rc-h-link) var(--rc-h-pay) var(--rc-h-due) var(--rc-h-name)
+    var(--rc-h-badges) var(--rc-h-co) var(--rc-h-rate) var(--rc-h-grp) var(--rc-h-rp) var(--rc-h-tags) var(--rc-h-dus);
+  padding-top: 2px !important; padding-bottom: 2px !important; gap: 0 !important;
+}
+.rc-grid > [data-slot] {
+  min-height: 0 !important; height: auto !important; max-height: none;
+  margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important;
+  overflow: hidden; align-self: stretch; box-sizing: border-box; min-width: 0;
+}
+.now-page .rc-grid > [data-slot="period"] { overflow: visible; align-self: center; justify-self: start; }
+.board-page:not(.now-page) .rc-grid > [data-slot="period"] { overflow: hidden; }
+/* 자리 번호 (현황·배치 공통 위쪽 7칸) */
+.rc-grid > [data-slot="head"] { grid-row: 1; display: flex; align-items: center; line-height: 1; }
+.rc-grid > [data-slot="type"] { grid-row: 2; line-height: var(--rc-h-type); align-items: center; }
+.rc-grid > [data-slot="period"] { grid-row: 3; }
+.rc-grid > [data-slot="link"] { grid-row: 4; line-height: var(--rc-h-link); }
+.rc-grid > [data-slot="pay"] { grid-row: 5; line-height: var(--rc-h-pay); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-grid > [data-slot="due"] { grid-row: 6; line-height: var(--rc-h-due); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-grid > [data-slot="name"] { grid-row: 7; display: flex; align-items: center; line-height: 1; }
+.rc-grid > [data-slot="badges"] { grid-row: 8; display: flex; align-items: center; }
+.rc-grid > [data-slot="company"] { line-height: var(--rc-h-co); }
+.rc-grid > [data-slot="rate"] { line-height: var(--rc-h-rate); white-space: nowrap; overflow: hidden; }
+.rc-grid > [data-slot="grp"] { display: flex; align-items: center; }
+.rc-grid .rc-link, .rc-grid .rc-pay, .rc-grid .rc-due, .rc-grid .rc-co, .rc-grid .rc-rate { margin-top: 0 !important; }
+.rc-grid .rc-period { line-height: var(--rc-h-period); }
+.rc-grid .bdg-row { margin: 0; flex-wrap: nowrap; overflow: hidden; width: 100%; }
+.rc-grid .bdg, .rc-grid .bdg-row .grptag { height: var(--rc-h-badges); }
+.rc-grid .rc-grpbtn { align-self: center; margin: 0 4px; padding: 0 8px; line-height: calc(var(--rc-h-grp) - 2px); height: var(--rc-h-grp); }
+/* 현황 아래쪽 자리 */
+.now-page .rc-grid > [data-slot="move"] { grid-row: 9; line-height: var(--rc-h-move); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.now-page .rc-grid > [data-slot="company"] { grid-row: 10; }
+.now-page .rc-grid > [data-slot="rate"] { grid-row: 11; }
+.now-page .rc-grid > [data-slot="grp"] { grid-row: 12; }
+.now-page .rc-grid > [data-slot="status"] { grid-row: 13; margin: 0 !important; padding-bottom: 0 !important; flex-direction: row; gap: 4px; overflow: visible; }
+.now-page .rc-grid > [data-slot="status"] .nowstatus,
+.now-page .rc-grid > [data-slot="status"] .nowearly { height: calc(var(--rc-h-status) - 2px); min-width: 0; padding: 0 8px; }
+/* 배치 아래쪽 자리 */
+.board-page:not(.now-page) .rc-grid > [data-slot="company"] { grid-row: 9; }
+.board-page:not(.now-page) .rc-grid > [data-slot="rate"] { grid-row: 10; }
+.board-page:not(.now-page) .rc-grid > [data-slot="grp"] { grid-row: 11; }
+.board-page:not(.now-page) .rc-grid > [data-slot="rp"] { grid-row: 12; line-height: var(--rc-h-rp); }
+.board-page:not(.now-page) .rc-grid > [data-slot="tags"] { grid-row: 13; }
+.board-page:not(.now-page) .rc-grid > [data-slot="dus"] { grid-row: 14; margin: 0; flex-direction: row; }
+/* 머리·유형은 빈 칸도 같은 높이 (예약 없음 칸의 객실번호·유형이 예약 카드와 같은 자리) */
+.now-page .cell .r1[data-slot="head"], .board-page:not(.now-page):not(.one) .cell .r1[data-slot="head"] { height: var(--rc-h-head); box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
+.now-page .cell .tl-row[data-slot="type"], .board-page:not(.now-page):not(.one) .cell .tl-row[data-slot="type"] { height: var(--rc-h-type); box-sizing: border-box; overflow: hidden; }
+.board-page:not(.now-page) .rc-grid > [data-slot="empty"] { grid-row: 3; line-height: var(--rc-h-period); }

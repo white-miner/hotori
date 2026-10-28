@@ -14,7 +14,10 @@ const model = (c: CardCase, site: "now" | "board") =>
 const text = (html: string) => html.replace(/<[^>]+>/g, "|").replace(/\|+/g, "|").replace(/^\||\|$/g, "");
 
 /** 배치 칸처럼 그리는 방식 (period = 이용기간 + 박수) */
-const renderFacts = (m: ReturnType<typeof model>, slot: "top" | "who", withPeriod: boolean) =>
+const EMPTY_SLOT = /<div[^>]*data-slot="[^"]+"[^>]*><\/div>/g;
+/** 값이 끼워진 자리만 (빈 자리는 항상 그려지지만 내용이 없어요 — 빈 자리 구조는 아래 슬롯 테스트에서) */
+const renderFacts = (m: ReturnType<typeof model>, slot: "top" | "who", withPeriod: boolean) => renderRawFacts(m, slot, withPeriod).replace(EMPTY_SLOT, "");
+const renderRawFacts = (m: ReturnType<typeof model>, slot: "top" | "who", withPeriod: boolean) =>
   renderToStaticMarkup(
     <RoomCardFacts
       slot={slot}
@@ -158,4 +161,68 @@ test("카드 · 이름 바꾸기: 화면에는 `룸 타임라인`이 남지 않�
     assert.doesNotMatch(src, /룸 타임라인/, f);
   }
   assert.match(readFileSync(new URL("./Dashboard.tsx", import.meta.url), "utf8"), /<h1>월간 예약<\/h1>/);
+});
+
+// ───────── 슬롯(고정 자리) — docs/room-card-spec.md §11 ─────────
+const slotsOf = (html: string) => [...html.matchAll(/data-slot="([^"]+)"/g)].map((m) => m[1]!);
+const emptyCard = (slot: "top" | "who", withPeriod: boolean) =>
+  renderToStaticMarkup(
+    <RoomCardFacts slot={slot} rate={null} payText={null} tone="neutral" company={null} viewLabel="10/28" due={null} linkLabel={null} period={withPeriod ? "" : undefined} />,
+  );
+
+test("카드 · 슬롯: 어떤 내용이 들어가도 사실 줄 자리와 순서는 같아요 (전부 있음 · 회사 없음 · 결제 없음 · 받을 돈 없음 · 구성원 · 빈 값)", () => {
+  const byId = (id: string) => CARD_CASES.find((c) => c.id === id)!;
+  const sets = {
+    전부있음: model(byId("C09"), "board"),
+    회사없음: model(byId("C01"), "board"),
+    결제없음: model(byId("C17"), "board"),
+    받을돈없음: model(byId("C03"), "board"),
+    구성원: model(byId("C11"), "board"),
+  };
+  assert.ok(sets.전부있음.company, "전부 있음: 회사가 있는 경우");
+  assert.equal(sets.받을돈없음.due, 0);
+  assert.ok(sets.구성원.isMember);
+  for (const withPeriod of [true, false]) {
+    const expected = [...slotsOf(emptyCard("top", withPeriod)), ...slotsOf(emptyCard("who", withPeriod))];
+    assert.deepEqual(expected, [...(withPeriod ? ["period"] : []), "link", "pay", "due", "company", "rate"], "기준 순서: 기간(배치) → 연동 → 결제 → 받을 돈 | 회사 → 박당 요금");
+    for (const [k, m] of Object.entries(sets)) {
+      const got = [...slotsOf(renderRawFacts(m, "top", withPeriod)), ...slotsOf(renderRawFacts(m, "who", withPeriod))];
+      assert.deepEqual(got, expected, `${k}: 자리가 늘거나 줄거나 바뀌지 않아요`);
+    }
+  }
+  // 값이 없으면 자리는 비어 있을 뿐 (내용·글자 없음)
+  assert.equal(text(emptyCard("top", true).replace(/<div[^>]*>/g, "").replace(/<\/div>/g, "")), "");
+});
+
+test("카드 · 슬롯: 현황과 배치 소스에서 자리 순서가 같고(같은 부품), 자리마다 고정 높이·행이 있고 합이 카드 높이 안이에요", () => {
+  const src = readFileSync(new URL("./Dashboard.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const ui = readFileSync(new URL("./ui.tsx", import.meta.url), "utf8");
+  assert.match(ui, /className="tl-row" data-slot="type"/);
+  assert.equal((src.match(/data-slot="head"/g) ?? []).length, 2, "머리줄 자리: 현황 1 + 배치 1 (빈 칸과 예약 칸이 같은 머리줄을 써요)");
+  const nowBody = src.slice(src.indexOf("const f = nowFlags(b, today"));
+  const order = (code: string, names: string[]) => {
+    let from = 0;
+    for (const n of names) {
+      const i = code.slice(from).search(new RegExp(`data-slot="${n}"|slot="${n}"|factsEl\\("${n}"\\)`));
+      assert.ok(i >= 0, `자리 없음 또는 순서 어긋남: ${n}`);
+      from += i + 1;
+    }
+  };
+  order(nowBody, ["period", "top", "name", "badges", "move", "who", "grp", "status"]);
+  const board = src.slice(src.indexOf('id={`rooms-room-${r.id}`}'));
+  order(board.slice(0, board.indexOf("const scopeFloors")), ["top", "name", "badges", "who", "grp", "rp", "tags", "dus"]);
+  // CSS: 자리마다 grid-row가 있고, 높이 변수 합 + 위아래 여백 2×2 + 테두리가 카드 높이(256px) 안
+  const vars = Object.fromEntries([...css.matchAll(/--rc-h-([a-z]+):\s*(\d+)px/g)].map((m) => [m[1]!, Number(m[2])]));
+  const cardH = Number(/--room-card-h:\s*(\d+)px/.exec(css)![1]);
+  const now13 = ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "co", "rate", "grp", "status"];
+  const board14 = ["head", "type", "period", "link", "pay", "due", "name", "badges", "co", "rate", "grp", "rp", "tags", "dus"];
+  for (const rows of [now13, board14]) {
+    const sum = rows.reduce((n, k) => n + vars[k]!, 0);
+    assert.ok(sum + 4 + 3 <= cardH, `슬롯 높이 합 ${sum}px + 여백·테두리가 카드 ${cardH}px 안`);
+  }
+  for (const n of ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "company", "rate", "grp", "status", "rp", "tags", "dus", "empty"]) {
+    assert.match(css, new RegExp(`\\.rc-grid > \\[data-slot="${n}"\\][^{]*\\{[^}]*grid-row:\\s*\\d+`), `${n} 자리 grid-row`);
+  }
+  assert.match(css, /\.rc-grid > \[data-slot="pay"\][^{]*\{[^}]*white-space:\s*nowrap[^}]*text-overflow:\s*ellipsis/, "결제 줄도 한 줄 + 줄임표");
 });
