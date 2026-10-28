@@ -172,7 +172,9 @@ export function nowFlags(b: Booking | null | undefined, date: string, opts?: Now
   const stayTimes = opts?.stayTimes ?? DEFAULT_STAY_TIMES;
   const clock = opts?.clock ?? hotelWallClock();
   const arrived = effectiveArrived(booking, date, opts);
-  const onCheckoutMorning = stayEnd(booking) === date;
+  // 퇴실 미정(열린 숙박): 정해진 퇴실이 없어요 — 저장된 박수는 방 보호 구간일 뿐이라 「퇴실예정」을 켜지 않아요
+  const openStay = booking.openEnded === true && booking.kind === "stay" && !booking.earlyOut;
+  const onCheckoutMorning = !openStay && stayEnd(booking) === date;
   const base = { tentative, group, noClean, longStay, arrived };
 
   const rid = roomForNowBoard(booking, date);

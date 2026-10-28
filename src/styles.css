@@ -6027,3 +6027,4 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
   white-space: nowrap;
   vertical-align: 1px;
 }
+.cell .rc-var.open { background: #e6f4ea; color: #1b6b33; margin-left: 0; }

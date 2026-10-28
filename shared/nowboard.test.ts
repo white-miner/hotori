@@ -561,3 +561,13 @@ test("퇴실 미정 객실: 날짜 칩은 물결만 (10/25~) · 요약은 N박�
   const fixed = bk({ id: "f", roomId: "r1", checkIn: "2026-10-25", nights: 4 });
   assert.equal(nowNightRange(fixed).label, "10/25~28");
 });
+
+test("퇴실 미정(열린 숙박)은 마지막 박 날에도 퇴실예정이 아니에요", () => {
+  const b = { id: "o1", kind: "stay", status: "active", platformId: "x", price: 0, guestName: "오서", typeId: "t", roomId: "r1", segments: null, checkIn: "2026-10-25", nights: 3, startTime: null, endTime: null, arrived: true, openEnded: true, groupId: "g" } as unknown as Booking;
+  const clock = { wallDate: "2026-10-28", time: "11:00" };
+  const open = nowFlags(b, "2026-10-28", { clock });
+  assert.notEqual(open.kind, "departing");
+  assert.notEqual(open.kind, "lateOut");
+  const fixed = nowFlags({ ...b, openEnded: false }, "2026-10-28", { clock });
+  assert.equal(fixed.kind, "departing");
+});

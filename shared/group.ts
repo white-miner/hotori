@@ -61,7 +61,7 @@ export function groupLeadBooking<T extends LeadPick>(
   return best;
 }
 
-/** 보드 칩: 대표객실이면 `대표객실` · 형제면 `대표객실 {호}호` */
+/** 보드 칩: 대표객실이면 `대표객실` · 형제면 대표 방의 `건물 호수`만 (`본관 602호`) — 「대표객실」 글자는 대표 방에만 */
 export function groupLeadChipLabel(
   bookingId: string,
   lead: Pick<Booking, "id" | "roomId"> | null | undefined,
@@ -70,7 +70,7 @@ export function groupLeadChipLabel(
   if (!lead) return null;
   if (bookingId === lead.id) return "대표객실";
   const no = lead.roomId ? roomLabel(lead.roomId) : null;
-  return no ? `대표객실 ${no}호` : "대표객실";
+  return no ? `${no}호` : null;
 }
 
 /** 다실 보드 호수 말풍선: 배정된 형제 호수 (숫자 정렬 · 대표객실 표시) */

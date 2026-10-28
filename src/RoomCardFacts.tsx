@@ -13,6 +13,7 @@ export default function RoomCardFacts({
   company,
   viewLabel,
   period,
+  openEnded,
 }: {
   rate: NowNightRate;
   payText: string | null;
@@ -22,12 +23,19 @@ export default function RoomCardFacts({
   viewLabel: string;
   /** 배치 칸처럼 날짜 줄이 따로 없을 때 이용기간 한 줄 */
   period?: string;
+  /** 퇴실 미정(열린 숙박): 「퇴실 미정」 표시 */
+  openEnded?: boolean;
 }) {
   const rt = nowRateText(rate);
   const basisNote = rate.basis === "avg" ? " · 박별 요금이 없어 객실료 ÷ 박수로 추정" : rate.basis === "flat" ? " · 1박 요금" : "";
   return (
     <>
-      {period ? <div className="rc-co rc-period">{period}</div> : null}
+      {period || openEnded ? (
+        <div className="rc-co rc-period">
+          {period}
+          {openEnded ? <i className="rc-var open">퇴실 미정</i> : null}
+        </div>
+      ) : null}
       {company ? (
         <div className="rc-co" title={`회사 · ${company}`}>
           {company}

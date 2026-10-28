@@ -67,7 +67,7 @@ test("groupLeadBooking: 수납 최대 = 대표객실 · 칩 라벨", () => {
   const lead = groupLeadBooking([a, b]);
   assert.equal(lead?.id, "b");
   assert.equal(groupLeadChipLabel("b", lead, (id) => (id === "r303" ? "303" : null)), "대표객실");
-  assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "대표객실 303호");
+  assert.equal(groupLeadChipLabel("a", lead, (id) => (id === "r303" ? "303" : null)), "303호");
 });
 
 test("groupPeerRoomItems: 호수 정렬 · 대표객실 마크 · 말풍선 줄", () => {

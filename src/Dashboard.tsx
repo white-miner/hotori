@@ -2136,7 +2136,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 <RoomCardFacts
                   rate={isLongStay(b) ? nowLongStayRate(b.longStayRate, selDate) : nowNightRate(b, selDate)}
                   payText={member ? null : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
-                  period={b.groupId ? `${nowRangeFull(b)}${lead && b.nights ? ` · ${b.nights}박` : ""}` : undefined}
+                  period={b.groupId || b.openEnded ? `${nowRangeFull(b)}${lead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}` : undefined}
+                  openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
                   payTitle={lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
                   tone={tone}
                   company={nowCompanyOf(b, grpInfo)}
@@ -3519,7 +3520,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 setNightPopId(popOpen ? null : b.id);
               }}
             >
-              <span className="nowchip nowdate">{nowRangeFull(b)}{grpLead && b.nights ? ` · ${b.nights}박` : ""}</span>
+              <span className="nowchip nowdate">{nowRangeFull(b)}{grpLead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}</span>
               <span className="nowdate-caret" aria-hidden>
                 ▾
               </span>
@@ -3568,6 +3569,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             tone={f.longStay ? "due" : amountTone}
             company={cardCompany}
             viewLabel={dayLabel(today)}
+            openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
           />
           {grpLine ? (
             <button
