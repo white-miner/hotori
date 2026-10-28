@@ -33,7 +33,7 @@ test("박별 표가 없으면 1박 단가로 (기존 동작)", () => {
 test("이용 기간 미정: 모든 멤버에 openEnded/holdAhead가 실려요 (502호 추가 포함)", () => {
   const f = openStayFields("2026-10-25", "2026-10-27", 1);
   const list = groupDrafts({ ...base, nights: f.nights, roomIds: ["r502"], prices: [80_000], arrived: true, openHold: f.holdAhead });
-  assert.equal(f.nights, 4);
+  assert.equal(f.nights, 3); // 10/25~10/27 (오늘 밤까지만 · 방 보호는 박수에 안 넣음)
   assert.equal(list[0]!.openEnded, true);
   assert.equal(list[0]!.holdAhead, 1);
   assert.equal(list[0]!.roomId, "r502");

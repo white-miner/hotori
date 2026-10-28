@@ -511,7 +511,7 @@ export default function NowSidePanel({
     !isLongStay(b) &&
     !!f &&
     (f.kind === "inhouse" || f.kind === "departing" || f.kind === "lateOut");
-  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, b.openEnded ? b.holdAhead ?? 1 : 0) : null;
+  const throughPlan = !readOnly && !!onExtendThrough && !!b && b.kind === "stay" && !isLongStay(b) ? planThroughToday(b, today, null, 0) : null;
   const showExtendThrough = !!throughPlan;
   const showOpenEnded = !readOnly && !!onOpenEnded && !!b && b.kind === "stay" && b.status === "active" && b.arrived && !b.checkedOutAt && !isLongStay(b) && !isEarlyOut(b);
   const moveDue = b && !readOnly ? moveDueToday(b, today, changes) : null;

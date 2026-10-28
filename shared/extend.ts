@@ -243,7 +243,8 @@ export function extendOverlaps(bookings: Booking[], b: Booking, rate: number): B
 
 /** 오늘까지 연장 후 같은 방·새 밤에 겹치는 다른 활성 예약 (막지 않고 안내만) */
 export function throughOverlaps(bookings: Booking[], b: Booking, plan: ThroughPlan): Booking[] {
-  const draft: Booking = { ...b, nights: plan.draft.nights, price: plan.draft.price, segments: plan.draft.segments };
+  // 청구 박수만 비교 — 방 보호(holdAhead)는 청구를 막지 않아요
+  const draft: Booking = { ...b, nights: plan.draft.nights, price: plan.draft.price, segments: plan.draft.segments, openEnded: false };
   const mine = legsOf(draft).filter((l) => l.roomId);
   if (!mine.length) return [];
   return bookings.filter((x) => {
@@ -458,15 +459,12 @@ export interface OpenFollow {
  */
 export function planOpenFollow(b: Booking, bookings: Booking[], today: string): OpenFollow | null {
   if (!isOpenFollowable(b)) return null;
-  const hold = Math.max(0, Math.min(30, b.holdAhead ?? 1));
+  // 청구는 오늘 밤까지만 — 방 보호(holdAhead)는 방만 막고 박수·요금에 넣지 않아요
   const before = new Set(throughOverlaps(bookings, b, { draft: { nights: b.nights ?? 0, price: b.price, segments: b.segments ?? null } } as ThroughPlan).map((x) => x.id));
-  for (let a = hold; a >= 0; a--) {
-    const plan = planThroughToday(b, today, null, a);
-    if (!plan) return null;
-    const hits = throughOverlaps(bookings, b, plan).filter((x) => !before.has(x.id));
-    if (!hits.length) return { plan, ahead: a };
-  }
-  return null;
+  const plan = planThroughToday(b, today, null, 0);
+  if (!plan) return null;
+  const hits = throughOverlaps(bookings, b, plan).filter((x) => !before.has(x.id));
+  return hits.length ? null : { plan, ahead: 0 };
 }
 
 /** 열린 숙박인데 이을 밤(버퍼 포함 필요 최소 = 오늘 밤)에 다른 예약이 있어 따라가지 못하는 경우 → 겹치는 예약들 */

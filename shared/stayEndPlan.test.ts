@@ -12,15 +12,15 @@ const mk = (id: string, per: number, count: number, checkIn = "2026-10-25", p: P
   }) as unknown as Booking;
 const TODAY = "2026-10-28";
 
-test("11/9 퇴실 단체 → 퇴실 미정: 오늘 밤 + 방 보호 1일까지로 줄고 요금은 객실별 자기 요금으로", () => {
+test("11/9 퇴실 단체 → 퇴실 미정: 오늘 밤까지로 줄고(방 보호는 청구에 안 넣음) 요금은 객실별 자기 요금으로", () => {
   const a = planStayEnd(mk("a", 70_000, 15), null, TODAY); // 10/25~11/9
   const b = planStayEnd(mk("b", 80_000, 15), null, TODAY);
   assert.equal(a.patch!.openEnded, true);
-  assert.equal(a.patch!.nights, 5); // 10/25..10/29 (오늘 10/28 + 보호 1일)
-  assert.equal(a.patch!.price, 5 * 70_000);
-  assert.equal(b.patch!.price, 5 * 80_000);
-  assert.equal(a.deltaNights, -10);
-  assert.equal(b.deltaPrice, 10 * -80_000);
+  assert.equal(a.patch!.nights, 4); // 10/25..10/28 (오늘 밤까지)
+  assert.equal(a.patch!.price, 4 * 70_000);
+  assert.equal(b.patch!.price, 4 * 80_000);
+  assert.equal(a.deltaNights, -11);
+  assert.equal(b.deltaPrice, 11 * -80_000);
 });
 
 test("퇴실 미정은 이미 짧으면 박수·요금을 건드리지 않아요", () => {

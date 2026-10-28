@@ -262,9 +262,9 @@ export interface Booking {
   tentative?: boolean;
   /** 청소X: 이 투숙은 청소하지 않음 (예약 단위 · 현장 운영 플래그) */
   noClean?: boolean;
-  /** 열린 숙박: 끝 날짜 없이 계속 묵음 — 앱이 오늘 밤(+holdAhead일)까지 박수를 따라 늘려요 (결제 주기 아님) */
+  /** 열린 숙박: 끝 날짜 없이 계속 묵음 — 앱이 오늘 밤까지만 박수·청구를 따라 늘려요 (결제 주기 아님) */
   openEnded?: boolean;
-  /** 열린 숙박의 방 보호 버퍼(일, 0~30). 없으면 1 */
+  /** 열린 숙박의 방 보호(일, 0~30). 없으면 1. 방만 N일 앞까지 막아요 — 박수·요금·청구에는 넣지 않아요 */
   holdAhead?: number;
   /** 조기 퇴실: 손님이 떠난 영업일 (입실 다음 날 ~ 퇴실 전날). 그날 밤부터는 방이 비어요. 없으면 끝까지 묵어요 */
   earlyOut?: string | null;
@@ -646,9 +646,17 @@ export const isActive = (b: Pick<Booking, "status">) => b.status === "active";
 export function occupiesRoom(b: Pick<Booking, "status" | "checkedOutAt">): boolean {
   return isActive(b) && !b.checkedOutAt;
 }
-export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">, date: string): boolean {
+/**
+ * 열린 숙박(퇴실 미정)의 방 보호 밤 수 — 방을 N일 앞까지 막아 둘 뿐이에요.
+ * 박수·요금·청구·미수금에는 절대 들어가지 않아요 (청구는 오늘 밤까지만).
+ */
+export function holdNightsOf(b: Pick<Booking, "kind" | "openEnded" | "holdAhead" | "earlyOut" | "checkIn" | "nights">): number {
+  if (b.kind !== "stay" || b.openEnded !== true || isEarlyOut(b)) return 0;
+  return Math.max(0, Math.min(30, Math.round(b.holdAhead ?? 1)));
+}
+export function occupiesNight(b: Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut" | "openEnded" | "holdAhead">, date: string): boolean {
   if (b.kind !== "stay" || !b.nights) return false;
-  return b.checkIn <= date && date < addDays(b.checkIn, usedNights(b) ?? b.nights);
+  return b.checkIn <= date && date < addDays(b.checkIn, (usedNights(b) ?? b.nights) + holdNightsOf(b));
 }
 // ---------- 조기 퇴실 ----------
 type EarlyPick = Pick<Booking, "kind" | "checkIn" | "nights" | "earlyOut">;
@@ -807,14 +815,18 @@ export interface Leg {
 }
 const segsValid = (segs: RoomSegment[] | null | undefined, nights: number | null): segs is RoomSegment[] =>
   !!segs && segs.length >= 2 && !!nights && segs.every((x) => x.roomId && x.nights >= 1) && segs.reduce((n, x) => n + x.nights, 0) === nights;
-type LegPick = Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments" | "earlyOut">;
+type LegPick = Pick<Booking, "kind" | "checkIn" | "nights" | "roomId" | "segments" | "earlyOut"> & Partial<Pick<Booking, "openEnded" | "holdAhead">>;
 /**
  * 실제로 묵는 구간들: 조기 퇴실이면 떠난 날 밤부터는 잘라내요 (그 밤은 방·재고가 비어요).
  * 재고·방 비었는지·현황판은 모두 이걸로 봐요.
  */
 export function legsOf(b: LegPick): Leg[] {
   const all = fullLegsOf(b);
-  if (!isEarlyOut(b)) return all;
+  if (!isEarlyOut(b)) {
+    // 열린 숙박: 마지막 구간을 방 보호 밤만큼 더 막아요 (재고·겹침용 · 청구 박수는 그대로)
+    const hold = holdNightsOf({ ...b, openEnded: b.openEnded });
+    return hold && all.length ? all.map((l, i) => (i === all.length - 1 ? { ...l, nights: l.nights + hold } : l)) : all;
+  }
   const end = b.earlyOut!;
   return all
     .filter((l) => l.checkIn < end)

@@ -3145,7 +3145,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const extendThroughToday = async (bk: Booking) => {
     if (readOnly || extendNightBusy) return;
     const live = data.bookings.find((x) => x.id === bk.id) ?? bk;
-    const plan = planThroughToday(live, today, null, live.openEnded ? live.holdAhead ?? 1 : 0);
+    const plan = planThroughToday(live, today, null, 0);
     if (!plan) return;
     const lab = (live.roomId ? L.roomLabel(live.roomId) : "") ?? "";
     const hits = throughOverlaps(bookings, live, plan);

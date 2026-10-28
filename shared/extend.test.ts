@@ -300,16 +300,16 @@ test("오늘까지 연장: 같은 방 겹침은 안내용으로 찾아줌 · 조
 
 // ── §8 열린 숙박 따라가기 ──
 
-test("열린 숙박: 오늘 밤 + 버퍼까지 절대값으로 맞추고, 두 번 해도 같음 (멱등)", () => {
+test("열린 숙박: 오늘 밤까지만 절대값으로 맞추고(방 보호는 청구에 안 넣음), 두 번 해도 같음 (멱등)", () => {
   const b = bk({ id: "o", checkIn: "2026-10-20", nights: 3, price: 300000, arrived: true, openEnded: true, holdAhead: 1 } as never);
   const f = planOpenFollow(b, [b], "2026-10-28")!;
-  // 10/20 입실, 오늘 10/28 → 오늘 밤까지 9박 + 버퍼 1 = 10박
-  assert.equal(f.plan.draft.nights, 10);
-  assert.equal(f.ahead, 1);
+  // 10/20 입실, 오늘 10/28 → 오늘 밤까지 9박 (방 보호 1일은 박수·요금에 넣지 않아요)
+  assert.equal(f.plan.draft.nights, 9);
+  assert.equal(f.ahead, 0);
   const after = { ...b, nights: f.plan.draft.nights, price: f.plan.draft.price } as Booking;
   assert.equal(planOpenFollow(after, [after], "2026-10-28"), null);
   // 동시에 연 두 번째 기기가 같은 옛 값에서 계산해도 같은 결과
-  assert.equal(planOpenFollow(b, [b], "2026-10-28")!.plan.draft.nights, 10);
+  assert.equal(planOpenFollow(b, [b], "2026-10-28")!.plan.draft.nights, 9);
   // 다음 날은 +1박만
   assert.equal(planOpenFollow(after, [after], "2026-10-29")!.plan.add, 1);
 });
@@ -322,12 +322,13 @@ test("열린 숙박: 버퍼 0이면 오늘 밤까지만 · 끈 숙박·미입실
   assert.equal(isOpenFollowable({ ...b, checkedOutAt: "2026-10-26T02:00:00Z" } as Booking), false);
 });
 
-test("열린 숙박: 버퍼 밤에만 겹치면 버퍼를 줄이고, 오늘 밤도 겹치면 건드리지 않음 (T12)", () => {
+test("열린 숙박: 오늘 밤에 겹치면 건드리지 않음 (T12) · 방 보호 밤은 막기만 하고 청구에 안 넣음", () => {
   const b = bk({ id: "o", checkIn: "2026-10-25", nights: 1, price: 100000, arrived: true, openEnded: true, holdAhead: 3 } as never);
   const next = bk({ id: "n", guestName: "다음", checkIn: "2026-10-30", nights: 2, price: 200000 });
   const f = planOpenFollow(b, [b, next], "2026-10-28")!;
-  // 10/28 밤까지(4박) 확보, 10/29는 비어 있으니 1일 버퍼(5박)까지만, 10/30은 겹침
-  assert.equal(f.plan.draft.nights, 5);
+  // 10/28 밤까지 4박만 청구 — 방 보호(3일)는 10/31까지 방만 막아요
+  assert.equal(f.plan.draft.nights, 4);
+  assert.equal(f.plan.draft.price, 400000);
   const now = bk({ id: "m", guestName: "오늘", checkIn: "2026-10-28", nights: 1, price: 100000 });
   assert.equal(planOpenFollow(b, [b, now], "2026-10-28"), null);
   assert.equal(openFollowBlocked(b, [b, now], "2026-10-28").length, 1);
