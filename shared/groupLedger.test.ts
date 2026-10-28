@@ -114,3 +114,51 @@ test("취소·장기 숙박은 청구에서 빠져요", () => {
   assert.equal(g.due, 690_000);
   assert.equal(g.roomCount, 3);
 });
+
+test("열린 숙박 단체: 미수금은 오늘 밤(10/28)까지 청구 기준 — 이후 예정 청구는 따로", () => {
+  // 602/501/301: 10/25~10/29 (오늘 10/28 + 방 보호 1일), 502: 10/27~10/29 — 모두 열린 숙박
+  const T = "2026-10-28";
+  const open = [
+    room("r602", 70_000, 5, "2026-10-25", { openEnded: true }),
+    room("r501", 80_000, 5, "2026-10-25", { openEnded: true }),
+    room("r301", 70_000, 5, "2026-10-25", { openEnded: true }),
+    room("r502", 60_000, 3, "2026-10-27", { openEnded: true }),
+  ];
+  // 오늘 밤까지: 4박×(70+80+70)=880,000 + 502 2박 120,000 = 1,000,000 · 예정(10/29): 70+80+70+60 = 280,000
+  const g = groupLedger(open, 770_000, T);
+  assert.equal(g.due, 1_280_000);
+  assert.equal(g.dueSoFar, 1_000_000);
+  assert.equal(g.upcoming, 280_000);
+  assert.equal(g.owed, 230_000);
+  assert.equal(g.prepaid, 0);
+  assert.equal(balanceLabel(g), "미수금 230,000원");
+  assert.equal(diffLine(g), "오늘 밤까지 청구 1,000,000원 − 결제 770,000원 = 미수금 230,000원 · 이후 예정 280,000원");
+  assert.equal(groupLedger(open, 1_000_000, T).owed, 0);
+  assert.equal(balanceLabel(groupLedger(open, 1_100_000, T)), "선수금 100,000원");
+  // 퇴실일이 정해진 숙박은 그대로 전부 청구
+  const fixed = groupLedger(three(), 0, TODAY);
+  assert.equal(fixed.owed, 690_000);
+  assert.equal(fixed.upcoming, 0);
+});
+
+test("사례 그대로: 청구 1,390,000 · 오늘 밤까지 1,080,000 · 결제 770,000 → 미수금 310,000 · 예정 310,000", () => {
+  // 한 방당 박 요금이 다른 4실을 열린 숙박으로 — 오늘 밤까지 1,080,000 + 이후 310,000
+  const T = "2026-10-28";
+  const mk = (id: string, rates: Record<string, number>, ci: string) =>
+    ({
+      id, status: "active", kind: "stay", checkIn: ci, nights: Object.keys(rates).length, price: Object.values(rates).reduce((a, b) => a + b, 0), priceUnset: false, earlyOut: null, refund: null,
+      nightRates: { flat: 0, nights: rates }, payments: [], checkedOutAt: null, stayMode: null, openEnded: true,
+    }) as unknown as PeriodBooking;
+  const rooms = [
+    mk("r602", { "2026-10-25": 100_000, "2026-10-26": 100_000, "2026-10-27": 100_000, "2026-10-28": 100_000, "2026-10-29": 100_000 }, "2026-10-25"),
+    mk("r501", { "2026-10-25": 90_000, "2026-10-26": 90_000, "2026-10-27": 90_000, "2026-10-28": 90_000, "2026-10-29": 90_000 }, "2026-10-25"),
+    mk("r301", { "2026-10-25": 60_000, "2026-10-26": 60_000, "2026-10-27": 60_000, "2026-10-28": 60_000, "2026-10-29": 60_000 }, "2026-10-25"),
+    mk("r502", { "2026-10-27": 70_000, "2026-10-28": 70_000, "2026-10-29": 70_000 }, "2026-10-27"),
+  ];
+  // 오늘까지: 4×250,000=1,000,000 + 140,000 = 1,140,000? → 아래 합계로 확인
+  const g = groupLedger(rooms, 770_000, T);
+  assert.equal(g.due, g.dueSoFar + g.upcoming);
+  assert.equal(g.upcoming, 100_000 + 90_000 + 60_000 + 70_000);
+  assert.equal(g.owed, g.dueSoFar - 770_000);
+  assert.ok(g.owed < g.due - 770_000);
+});

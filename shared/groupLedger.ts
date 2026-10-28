@@ -35,6 +35,10 @@ export interface RoomLedger {
   staying: boolean;
   /** 오늘 밤 요금 (머무는 중일 때) */
   tonight: number;
+  /** 지금 청구 (퇴실일이 정해진 숙박은 전부 · 열린 숙박은 오늘 밤까지) — 미수금의 기준 */
+  accrued: number;
+  /** 오늘 밤 이후 예정 청구 (열린 숙박의 방 보호 밤) — 미수금에 넣지 않아요 */
+  upcoming: number;
   /** 이 객실에 적어 둔 결제 합 (참고용 · 청구와 비교는 단체 전체 합계로만 해요) */
   noted: number;
 }
@@ -55,11 +59,15 @@ export interface GroupLedger {
   paid: number;
   /** 단체로 받은 결제 합 (객실 표시 없이 받은 돈) */
   lump: number;
-  /** 결제 − 청구. 음수 = 미수금, 양수 = 초과 수납 */
+  /** 오늘 밤까지 청구 = 오늘 밤까지 쌓인 박 요금 + 추가 항목 (미수금의 기준) */
+  dueSoFar: number;
+  /** 이후 예정 청구 = 오늘 밤 이후의 박 요금 (열린 숙박의 방 보호 밤 포함) — 미수금이 아니에요 */
+  upcoming: number;
+  /** 결제 − 청구 합계. 음수 = 아직 다 안 받음, 양수 = 초과 수납 */
   balance: number;
-  /** 미수금 (받을 금액) */
+  /** 미수금 (받을 금액) = 오늘 밤까지 청구 − 결제 (이후 예정 청구는 빼요) */
   owed: number;
-  /** 초과 수납 (더 받은 금액) */
+  /** 초과 수납 (청구 합계보다 더 받은 금액) */
   prepaid: number;
   /** 오늘 밤 하룻밤 합계 */
   tonight: number;
@@ -107,6 +115,9 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
       live: !!last && last >= today,
       staying: !!tonightRow,
       tonight: tonightRow?.amount ?? 0,
+      // 열린 숙박만 오늘 밤까지 (방 보호로 미리 이어 놓은 밤은 예정) · 퇴실일이 정해진 숙박은 약속된 청구라 전부 지금 청구
+      accrued: sum(rows.filter((x) => b.openEnded !== true || x.date <= today).map((x) => x.amount)),
+      upcoming: sum(rows.filter((x) => b.openEnded === true && x.date > today).map((x) => x.amount)),
       noted: sum((b.payments ?? []).map((p) => p.amount)),
     };
   });
@@ -115,6 +126,9 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
   const due = roomCharges + extras;
   const paid = noted + lumpSum;
   const balance = paid - due;
+  // 미수금은 "오늘 밤까지" 쌓인 청구 기준 — 미리 이어 놓은 열린 숙박 밤·앞으로 올 밤은 따로 예정으로 보여요
+  const dueSoFar = sum(rooms.map((r) => r.accrued)) + extras;
+  const upcoming = sum(rooms.map((r) => r.upcoming));
   return {
     rooms,
     roomCount: payable.length,
@@ -124,8 +138,10 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
     due,
     paid,
     lump: lumpSum,
+    dueSoFar,
+    upcoming,
     balance,
-    owed: Math.max(0, -balance),
+    owed: Math.max(0, dueSoFar - paid),
     prepaid: Math.max(0, balance),
     tonight: sum(rooms.map((r) => r.tonight)),
     payCount: payable.reduce((n, b) => n + (b.payments?.length ?? 0), 0),
@@ -139,14 +155,20 @@ export function groupTone(g: GroupLedger): GroupTone {
 }
 
 /** 헤더 큰 숫자: `미수금 80,000원` · `초과 수납 50,000원` · `정산 완료` */
-export function balanceLabel(g: Pick<GroupLedger, "owed" | "prepaid">): string {
+export function balanceLabel(g: Pick<GroupLedger, "owed" | "prepaid"> & Partial<Pick<GroupLedger, "paid" | "dueSoFar" | "upcoming">>): string {
   if (g.owed > 0) return `미수금 ${won(g.owed)}원`;
   if (g.prepaid > 0) return `초과 수납 ${won(g.prepaid)}원`;
+  // 오늘 밤까지는 다 받았고 이후 예정 청구 쪽으로 더 받은 돈 = 선수금
+  if ((g.upcoming ?? 0) > 0 && (g.paid ?? 0) > (g.dueSoFar ?? 0)) return `선수금 ${won((g.paid ?? 0) - (g.dueSoFar ?? 0))}원`;
   return "정산 완료";
 }
 
-/** 차액 한 줄: `청구 960,000원 − 결제 880,000원 = 미수금 80,000원` */
-export function diffLine(g: Pick<GroupLedger, "due" | "paid" | "owed" | "prepaid">): string {
+/**
+ * 차액 한 줄: `청구 960,000원 − 결제 880,000원 = 미수금 80,000원`
+ * 이후 예정 청구가 있으면: `오늘 밤까지 청구 1,080,000원 − 결제 770,000원 = 미수금 310,000원 · 이후 예정 310,000원`
+ */
+export function diffLine(g: Pick<GroupLedger, "due" | "paid" | "owed" | "prepaid"> & Partial<Pick<GroupLedger, "dueSoFar" | "upcoming">>): string {
+  if ((g.upcoming ?? 0) > 0) return `오늘 밤까지 청구 ${won(g.dueSoFar ?? g.due)}원 − 결제 ${won(g.paid)}원 = ${balanceLabel(g)} · 이후 예정 ${won(g.upcoming ?? 0)}원`;
   return `청구 ${won(g.due)}원 − 결제 ${won(g.paid)}원 = ${balanceLabel(g)}`;
 }
 

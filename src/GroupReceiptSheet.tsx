@@ -180,7 +180,7 @@ export default function GroupReceiptSheet({
                   <input className="grc-memo" aria-label="메모(선택)" placeholder={hint ? `예: ${hint}` : "예: 현장 결제"} maxLength={RECEIPT_MEMO_MAX} value={memo} onChange={(e) => setMemo(e.target.value)} />
                 </label>
               </div>
-              {plan.ok ? <p className="muted sm grc-note">{receiptAfterLabel(plan.after)}</p> : null}
+              {plan.ok ? <p className="muted sm grc-note">{receiptAfterLabel(plan.after, ledger.upcoming)}</p> : null}
             </>
           )}
 

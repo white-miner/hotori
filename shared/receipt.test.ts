@@ -53,3 +53,21 @@ test("이미 정산 완료면 제안 금액 0 · 메모 힌트는 기간+박수"
   assert.equal(receiptNextAction(led).label, "결제 등록");
   assert.equal(receiptMemoHint(groupLedger(rooms(), 0, T)), "10/25~10/27 3박");
 });
+
+test("열린 숙박 단체: 결제 금액 기본값 = 오늘 밤까지 미수금 (예정 청구 제외) · 등록 뒤 정산 완료", () => {
+  const T = "2026-10-28";
+  const r = (id: string, per: number, n: number, ci: string) =>
+    ({ id, status: "active", kind: "stay", checkIn: ci, nights: n, price: per * n, priceUnset: false, earlyOut: null, refund: null, openEnded: true,
+      nightRates: { flat: per, nights: Object.fromEntries(Array.from({ length: n }, (_, i) => [new Date(Date.parse(ci) + i * 86_400_000).toISOString().slice(0, 10), per])) },
+      payments: [], checkedOutAt: null, stayMode: null }) as unknown as import("./periodPay").PeriodBooking;
+  const led = groupLedger([r("a", 100_000, 5, "2026-10-25"), r("b", 80_000, 5, "2026-10-25")], 0, T);
+  // 오늘 밤까지 4박 × 180,000 = 720,000 · 예정 180,000
+  assert.equal(led.dueSoFar, 720_000);
+  assert.equal(led.upcoming, 180_000);
+  assert.equal(receiptSuggest(led), 720_000);
+  const p = receiptPlan(led, { amount: 720_000, method: "card", bizDate: T });
+  assert.equal(p.after, 0);
+  assert.equal(receiptAfterLabel(p.after, led.upcoming), "등록하면 오늘 밤까지 정산 완료예요");
+  const more = receiptPlan(led, { amount: 800_000, method: "card", bizDate: T });
+  assert.equal(receiptAfterLabel(more.after, led.upcoming), "등록하면 선수금 80,000원이에요 (이후 예정 청구에 쓰여요)");
+});

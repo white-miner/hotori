@@ -40,9 +40,10 @@ export interface ReceiptPlan {
 }
 
 /** 입력 점검 + 저장할 줄. 금액만 막아요 (0 이하 · 1억 초과) */
-export function receiptPlan(ledger: Pick<GroupLedger, "owed" | "prepaid">, inp: ReceiptInput): ReceiptPlan {
+export function receiptPlan(ledger: Pick<GroupLedger, "owed" | "prepaid"> & Partial<Pick<GroupLedger, "dueSoFar" | "paid">>, inp: ReceiptInput): ReceiptPlan {
   const amount = Math.round(Number(inp.amount) || 0);
-  const after = ledger.owed - ledger.prepaid - amount;
+  // 남는 차액은 "오늘 밤까지 청구" 기준 (이후 예정 청구는 미수금이 아니에요)
+  const after = ledger.dueSoFar != null && ledger.paid != null ? ledger.dueSoFar - ledger.paid - amount : ledger.owed - ledger.prepaid - amount;
   if (amount <= 0) return { ok: false, error: "금액을 입력해 주세요.", amount: 0, line: null, after };
   if (amount > RECEIPT_AMOUNT_MAX) return { ok: false, error: "금액을 확인해 주세요 (1억 원까지).", amount, line: null, after };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(inp.bizDate)) return { ok: false, error: "결제일을 골라 주세요.", amount, line: null, after };
@@ -56,8 +57,9 @@ export function receiptButtonLabel(amount: number): string {
 }
 
 /** 등록 뒤 결과 문구: `결제 등록 후 미수금 80,000원` · `정산 완료` · `초과 수납 10,000원` */
-export function receiptAfterLabel(after: number): string {
-  return after > 0 ? `등록하면 미수금 ${won(after)}원이 남아요` : after < 0 ? `등록하면 초과 수납 ${won(-after)}원이에요` : "등록하면 정산 완료예요";
+export function receiptAfterLabel(after: number, upcoming = 0): string {
+  if (after < 0 && upcoming > 0 && -after <= upcoming) return `등록하면 선수금 ${won(-after)}원이에요 (이후 예정 청구에 쓰여요)`;
+  return after > 0 ? `등록하면 미수금 ${won(after)}원이 남아요` : after < 0 ? `등록하면 초과 수납 ${won(-after)}원이에요` : upcoming > 0 ? "등록하면 오늘 밤까지 정산 완료예요" : "등록하면 정산 완료예요";
 }
 
 /** 단체 머리글의 큰 버튼: `결제 등록 · 80,000원` — 열면 같은 금액이 채워져 있어요 */
