@@ -215,7 +215,7 @@ import RateSheet from "./RateSheet";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
-import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowRangeFull } from "../shared/nowCard";
+import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowPlatformPayPart, nowRangeFull } from "../shared/nowCard";
 import RoomCardFacts from "./RoomCardFacts";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
@@ -2075,6 +2075,33 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         : "assign-off"
       : "";
     const gMark = groupBoardMark(b);
+    // 카드 사실 줄 (순서: 객실번호 → 이용기간 → 결제수단+금액 → 이름 → 회사 → 하루 요금): top은 이름 위, who는 이름 아래
+    const factsEl = (slot: "top" | "who") =>
+      !readOnly && !cancelled
+        ? ((plat) => {
+            const grpInfo = b.groupId ? (data.groups.get(b.groupId) ?? null) : null;
+            const lead = isLeadRoom(b);
+            const platPart = nowPlatformPayPart(b, plat);
+            const parts = [...(platPart ? [platPart] : []), ...nowPayParts(b.payments, lead ? grpInfo?.payments : null)];
+            const tone = nowAmountTone(b, plat);
+            const member = !!b.groupId && !lead && bookings.filter((x) => x.groupId === b.groupId && isActive(x)).length >= 2;
+            const pay0 = nowPayText(parts) ?? (!b.groupId && tone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
+            return (
+              <RoomCardFacts
+                slot={slot}
+                rate={isLongStay(b) ? nowLongStayRate(b.longStayRate, selDate) : nowNightRate(b, selDate)}
+                payText={member ? null : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
+                period={b.groupId || b.openEnded ? `${nowRangeFull(b)}${lead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}` : undefined}
+                openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
+                payTitle={platPart ? "플랫폼이 받은 결제 금액 (예약에 적힌 판매가)" : lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
+                tone={tone}
+                due={nowDueAmount(b, plat, b.groupId ? { members: groupStayPeers(bookings, b.groupId), info: grpInfo } : null, today, lead)}
+                company={nowCompanyOf(b, grpInfo)}
+                viewLabel={dayLabel(selDate)}
+              />
+            );
+          })(L.plats.get(b.platformId))
+        : null;
     return (
       <div
         key={r.id}
@@ -2115,6 +2142,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         {pm}
         {head}
         {typeRow(cancelled ? null : b.guests)}
+        {factsEl("top")}
         <div className="nm">
           <PlatBadge p={L.plats.get(b.platformId)} />
           <span className="gn">{b.guestName}</span>
@@ -2125,29 +2153,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             group={b.groupId ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
           />
         ) : null}
-        {!readOnly && !cancelled
-          ? ((plat) => {
-              const grpInfo = b.groupId ? (data.groups.get(b.groupId) ?? null) : null;
-              const lead = isLeadRoom(b);
-              const parts = nowPayParts(b.payments, lead ? grpInfo?.payments : null);
-              const tone = nowAmountTone(b, plat);
-              const member = !!b.groupId && !lead && bookings.filter((x) => x.groupId === b.groupId && isActive(x)).length >= 2;
-              const pay0 = nowPayText(parts) ?? (!b.groupId && tone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
-              return (
-                <RoomCardFacts
-                  rate={isLongStay(b) ? nowLongStayRate(b.longStayRate, selDate) : nowNightRate(b, selDate)}
-                  payText={member ? null : isLongStay(b) ? (nowAmountGlance(b, plat, null) ?? pay0) : pay0}
-                  period={b.groupId || b.openEnded ? `${nowRangeFull(b)}${lead && b.nights && !b.openEnded ? ` · ${b.nights}박` : ""}` : undefined}
-                  openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
-                  payTitle={lead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
-                  tone={tone}
-                  due={nowDueAmount(b, plat, b.groupId ? { members: groupStayPeers(bookings, b.groupId), info: grpInfo } : null, today, lead)}
-                  company={nowCompanyOf(b, grpInfo)}
-                  viewLabel={dayLabel(selDate)}
-                />
-              );
-            })(L.plats.get(b.platformId))
-          : null}
+        {factsEl("who")}
         <div className="r3 rp">
           <span />
           {cancelled ? <span className="cxt">{STATUS[b.status]}</span> : mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
@@ -3460,7 +3466,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       : null;
     // 카드 사실: 이 객실의 하루 요금 · 결제수단+금액(방 자기 결제, 대표객실이면 단체 결제도) · 회사명
     const cardRate = f.longStay ? nowLongStayRate(b.longStayRate, today) : nowNightRate(b, today);
-    const cardPayParts = nowPayParts(b.payments, grpLead ? groupCtx?.info?.payments : null);
+    const cardPlatPart = nowPlatformPayPart(b, plat);
+    const cardPayParts = [...(cardPlatPart ? [cardPlatPart] : []), ...nowPayParts(b.payments, grpLead ? groupCtx?.info?.payments : null)];
     const cardPayRaw = (f.longStay ? nowAmountGlance(b, plat, groupCtx) : null) ?? nowPayText(cardPayParts) ?? (amountTone === "due" && !b.priceUnset && b.price > 0 ? "미결제" : b.priceUnset ? "금액미정" : null);
     const cardPay = b.groupId && !grpLead && groupCtx && groupCtx.members.length >= 2 ? null : cardPayRaw;
     const cardCompany = nowCompanyOf(b, groupCtx?.info);
@@ -3546,6 +3553,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               />
             ) : null}
           </div>
+          <RoomCardFacts
+            slot="top"
+            rate={cardRate}
+            payText={cardPay}
+            payTitle={cardPlatPart ? "플랫폼이 받은 결제 금액 (예약에 적힌 판매가)" : grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}
+            tone={f.longStay ? "due" : amountTone}
+            due={nowDueAmount(b, plat, groupCtx, today, grpLead)}
+            company={cardCompany}
+            viewLabel={dayLabel(today)}
+            openEnded={b.openEnded === true && b.kind === "stay" && !b.earlyOut}
+          />
           <div className="nm">
             <PlatBadge p={L.plats.get(b.platformId)} />
             <span className="gn">{b.guestName}</span>
@@ -3565,6 +3583,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             ) : null)(moveDueToday(b, today, data.changes), nextMove(b, today))}
           <RoomCardFacts
+            slot="who"
             rate={cardRate}
             payText={cardPay}
             payTitle={grpLead ? "결제 수단 · 금액 (방 결제 + 단체 결제)" : "결제 수단 · 금액 (이 객실 결제)"}

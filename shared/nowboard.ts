@@ -626,6 +626,9 @@ export function nowMetaLine(b: Pick<Booking, "memo" | "guests">): string | null 
   if (!memo) return null;
   const cleaned = memo
     .replace(/\[추가금[·.][^\]]*\][^\n]*/g, "")
+    // 플랫폼 예약번호(`야놀자 예약번호 YN-1001 · 스탠다드`)는 카드에 안 보여요 — 옆 패널·수정 화면에는 그대로
+    .replace(/^[^\n·]*예약번호\s+\S+[ \t]*(?:·[ \t]*)?/gm, "")
+    .replace(/^\s*\n/gm, "")
     .replace(/\n{2,}/g, "\n")
     .trim();
   return cleaned || null;

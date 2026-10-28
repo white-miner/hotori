@@ -1,12 +1,12 @@
 // 객실 카드(현황·배치)에 보여 줄 값: 이 객실의 하루 요금 · 결제수단+금액 · 회사명 · 이용기간.
 // 총액·잔금을 하루 요금 자리에 쓰지 않아요 (합계는 단체 머리글/결제 내역에서).
-import { type Booking, md, won } from "./ledger";
+import { type Booking, type Platform, md, won } from "./ledger";
 import { hasFullNightMatrix, occupiedNightDates } from "./nightrates";
 import { nowNightRange } from "./nowboard";
 import { extrasTotal } from "./nightrates";
 import { stayAddons } from "./extend";
 import { type LongStayRate, nightAmount } from "./longstay";
-import { PAYMENT_METHOD_LABEL, type Payment } from "./payment";
+import { PAYMENT_METHOD_LABEL, type Payment, isOnsite } from "./payment";
 
 /** 이용기간 `10/25~10/27` (점유 밤 첫날~마지막날 · 하루면 `10/25` · 미정이면 `10/25~`) */
 export function nowRangeFull(b: Pick<Booking, "checkIn" | "nights" | "kind" | "earlyOut"> & { openEnded?: boolean }): string {
@@ -20,8 +20,8 @@ export interface NowNightRate {
   amount: number | null;
   /** 이용 기간 안에서 박마다 요금이 달라요 → 「변동」 */
   varies: boolean;
-  /** night: 박별 요금표 · flat: 1박 요금 · avg: 요금표가 없어 (객실료 ÷ 박수) 추정 */
-  basis: "night" | "flat" | "avg" | "none";
+  /** night: 박별 요금표(이 예약이 적어 둔 값) · flat: 1박 요금 · none: 적어 둔 하루 요금이 없음 (평균·추정은 만들지 않아요) */
+  basis: "night" | "flat" | "none";
   min: number;
   max: number;
 }
@@ -50,10 +50,14 @@ export function nowNightRate(b: RateBooking, date: string): NowNightRate {
     const a = Math.round(nr.flat);
     return { amount: a, varies: false, basis: "flat", min: a, max: a };
   }
-  const room = b.price - extrasTotal(nr) - stayAddons(b);
-  if (room > 0) {
-    const a = Math.round(room / n);
-    return { amount: a, varies: false, basis: "avg", min: a, max: a };
+  // 일부 박만 적어 둔 표: 적혀 있는 박의 값만 (빈 박을 평균으로 메우지 않아요)
+  const rec = nr?.nights ? dates.map((d) => Math.max(0, Math.round(Number(nr.nights![d]) || 0))).filter((v) => v > 0) : [];
+  const own = Math.round(Number(nr?.nights?.[view]) || 0);
+  if (own > 0) return { amount: own, varies: rec.length > 1 && Math.min(...rec) !== Math.max(...rec), basis: "night", min: Math.min(...rec), max: Math.max(...rec) };
+  // 1박은 객실료 그대로가 그 밤의 요금 (나눌 게 없음). 연박에 박별 요금이 없으면 비워 둬요 — 총액÷박수 같은 추정 금지
+  if (n === 1) {
+    const room = b.price - extrasTotal(nr) - stayAddons(b);
+    if (room > 0) return { amount: Math.round(room), varies: false, basis: "flat", min: Math.round(room), max: Math.round(room) };
   }
   return none;
 }
@@ -73,6 +77,19 @@ export function nowPayParts(own: readonly Pick<Payment, "method" | "amount">[] |
     sums.set(k, (sums.get(k) ?? 0) + p.amount);
   }
   return [...sums.entries()].filter(([, a]) => a !== 0).map(([method, amount]) => ({ method, amount }));
+}
+
+/**
+ * 플랫폼(OTA)이 받은 결제: 현장 결제가 아닌 플랫폼의 취소 안 된 예약은 판매가(적어 둔 price)를 플랫폼이 받은 돈으로 봐요.
+ * 평균·추정이 아니라 예약에 적힌 값 그대로. 단체·장기·금액미정은 제외 (그쪽은 자기 표기).
+ */
+export function nowPlatformPayPart(
+  b: Pick<Booking, "status" | "price" | "priceUnset" | "groupId" | "stayMode" | "kind">,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+): NowPayPart | null {
+  if (!plat || isOnsite(plat)) return null;
+  if (b.status !== "active" || b.priceUnset || b.groupId || b.stayMode === "long_stay") return null;
+  return b.price > 0 ? { method: "플랫폼", amount: Math.round(b.price) } : null;
 }
 
 /** `이체690,000` · 둘 이상이면 `이체690,000 · 카드100,000` · 셋 넘으면 `외 N건` */
