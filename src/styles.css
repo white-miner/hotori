@@ -7,6 +7,8 @@
   /* color — achromatic chrome (panels, buttons, inputs stay black/gray/white) */
   --bg: #fff; --panel: #f2f2f2; --panel2: #f7f7f8; --hover: #eaeaea; --line: #e6e6e6; --line2: #efefef;
   --ink: #1a1a1a; --ink2: #4a4a4a; --ink3: #6b6b6b; --ink4: #a3a3a3;
+  /* 객실 카드 고정 높이 (현황·배치 공통 · docs/room-card-spec.md §고정 크기) — 가로는 칸 수에 맞춰 모두 같고, 세로는 이 값 하나 */
+  --room-card-h: 256px;
   --red: #e0242f; --stay: #ff1f1f; --dayuse: #0a5cff; --red-d: #c21a24; --red-s: #fdecec; --dark: #dcdcdc;
   /* semantic badges/status — chromatic accents only (not purple glow) */
   --badge-sell: #12a150;
@@ -3520,7 +3522,7 @@ button.nowstatus { cursor: pointer; }
   gap: 12px;
   align-items: stretch;
   justify-items: stretch;
-  grid-auto-rows: minmax(200px, auto);
+  grid-auto-rows: var(--room-card-h); /* 고정 — minmax(…, auto) 금지: 내용이 행 높이를 바꾸면 안 돼요 */
   overflow: visible;
   padding: 2px;
 }
@@ -3534,8 +3536,8 @@ button.nowstatus { cursor: pointer; }
   container-type: normal;
   width: auto;
   max-width: none;
-  min-height: 200px;
-  height: auto;
+  min-height: 0;
+  height: var(--room-card-h); /* 고정 높이 · 칸 안의 줄은 아래 .cell > :not(…) 규칙으로 잘려요 */
   align-self: stretch;
   justify-self: stretch;
   padding: var(--space-2) var(--space-3) var(--space-2);
@@ -3597,7 +3599,6 @@ button.nowstatus { cursor: pointer; }
     width: 100%;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
-    grid-auto-rows: minmax(150px, auto);
   }
   .board-page:not(.now-page):not(.one) .floor {
     grid-template-columns: minmax(0, 1fr);
@@ -3605,7 +3606,6 @@ button.nowstatus { cursor: pointer; }
     margin-bottom: 10px;
   }
   .board-page:not(.now-page):not(.one) .cell {
-    min-height: 150px;
     padding: 6px 7px 7px;
     border-radius: 14px;
   }
@@ -3969,7 +3969,7 @@ button.nowstatus { cursor: pointer; }
   align-items: stretch;
   justify-items: stretch;
   /* #83 fill-type minmax(0) crushed occupied cells → restore sensible floor */
-  grid-auto-rows: minmax(200px, auto);
+  grid-auto-rows: var(--room-card-h); /* 고정 높이 — 내용으로 늘지 않음 */
   overflow: visible;
   padding: 2px; /* 테두리가 부모 clip에 먹히지 않게 */
 }
@@ -3978,8 +3978,8 @@ button.nowstatus { cursor: pointer; }
   container-type: normal;
   width: auto;
   max-width: none;
-  min-height: 200px;
-  height: auto;
+  min-height: 0;
+  height: var(--room-card-h);
   align-self: stretch;
   justify-self: stretch;
   padding: 0;
@@ -3996,11 +3996,12 @@ button.nowstatus { cursor: pointer; }
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   min-width: 0;
-  min-height: 100%;
+  min-height: 0;
+  height: 100%;
   border-radius: inherit;
   box-sizing: border-box;
 }
-.now-page .cell-body.nowstack.sparse { min-height: 100%; }
+.now-page .cell-body.nowstack.sparse { min-height: 0; }
 .now-page .cell-body.nowstack.dense { gap: 0; }
 .now-page .cell .r1 { padding: var(--space-1) var(--space-2); margin-bottom: 0; }
 .now-page .cell .r1.strip { padding: var(--space-2) 7px; }
@@ -4023,10 +4024,9 @@ button.nowstatus { cursor: pointer; }
     width: 100%;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 8px;
-    grid-auto-rows: minmax(150px, auto);
   }
-  .now-page .cell { min-height: 150px; border-radius: 14px; }
-  .now-page .cell-body { padding: var(--space-2); gap: 0; min-height: 100%; }
+  .now-page .cell { border-radius: 14px; }
+  .now-page .cell-body { padding: var(--space-2); gap: 0; min-height: 0; }
   .now-page .fh { padding-top: 0; padding-left: 2px; }
   .now-page .cell .r1 .no { font-size: 26px; }
   .now-page .cell .r1 .no.k { font-size: 23px; }
@@ -6130,3 +6130,28 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nrt-note { font-style: normal; }
 
 /* 객실 카드 머리: 건물이 여러 개일 때 건물 이름 (작고 흐리게 — 호수가 주인공) */
+
+/* ───────── 객실 카드 고정 크기 (현황 .now-page · 배치 .board-page 공통) ─────────
+   칸 높이는 --room-card-h 하나(위 :root · 모바일은 아래 미디어쿼리). 내용이 모자라면 비워 두고, 넘치면 칸 안에서 잘라요.
+   머리(객실번호·유형)·이용기간 줄·하단 상태 슬롯은 줄지 않고(팝오버가 걸려 있음), 그 사이의 줄(결제·받을 돈·이름·회사·박당 요금…)만 줄어들며 잘려요.
+   .cell > * { flex-shrink: 0 } 는 이 규칙이 덮어써요: .cell(0,1,0) < 아래(0,3,0 이상) · 모바일 미디어쿼리는 변수 값만 바꿔요. */
+.board-page:not(.now-page):not(.one) .cell > :not(.r1):not(.tl-row):not(.dumark):not(.comark):not(.pmark):not(.board-assign-check),
+.now-page .cell-body > :not(.r1):not(.tl-row):not(.nowdate-row):not(.nowstatus-slot) {
+  flex-shrink: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.now-page .cell-body > .tl-row,
+.now-page .cell-body > .r1,
+.now-page .cell-body > .nowdate-row,
+.now-page .cell-body > .nowstatus-slot { flex-shrink: 0; }
+/* 빈 칸: 사진(StaySync)처럼 객실번호·유형 아래에 회색 이탤릭 「예약 없음」 — 칸 크기는 예약 카드와 같아요 */
+.cell.em .emt.none,
+.now-page .nowstatus-slot.none .nowstatus.nk-empty {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink4);
+}
+.now-page .nowstatus-slot.none { margin-top: var(--space-1); padding-bottom: 0; align-items: flex-start; padding-left: 3px; }
+.now-page .nowstatus-slot.none .nowstatus.nk-empty { border: 0; background: transparent; min-width: 0; height: auto; padding: 0; font-size: 13px; }
+.board-page:not(.now-page):not(.one) .cell.em .emt.none { display: block; font-size: 13px; }

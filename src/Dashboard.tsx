@@ -2052,7 +2052,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           ) : null}
           {head}
           {typeRow()}
-          <div className={`emt ${held ? "held" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "빈 방"}</div>
+          <div className={`emt ${held ? "held" : !mvB && !sameType ? "none" : ""}`}>{mvSame ? "같은 타입" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "예약 없음"}</div>
           {duTags.length ? <div className="dus">{duTags}</div> : null}
         </div>
       );
@@ -3443,9 +3443,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <div className="cell-body nowstack sparse">
             {head}
             <TypeRow t={t} />
-            <div className="nowstatus-slot">
+            <div className={`nowstatus-slot ${!held && !mvB ? "none" : ""}`}>
               <span className={`nowstatus ${held ? "nk-held" : "nk-empty"}`}>
-                {mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : held ? holdCellNote(hold) : "공실"}
+                {mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : held ? holdCellNote(hold) : "예약 없음"}
               </span>
             </div>
           </div>
