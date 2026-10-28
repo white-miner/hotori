@@ -50,6 +50,10 @@ import {
   parseYanoljaCardPaste,
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
+  enteredNightRates,
+  nightRatesDiff,
+  suggestedNightAmounts,
+  previewNightDates,
   profileById,
   removeTypeAlias,
   isExistingReservationRow,
@@ -1147,4 +1151,47 @@ test("yanolja nested 씨트립: intl phone → type · 트립닷컴 platform · 
   assert.equal(noTrip[0]!.platformId, "p-ya");
   assert.equal(noTrip[0]!.typeId, "std"); // fuzzy / any-platform
   assert.equal(noTrip[0]!.rowStatus, "ok");
+});
+
+// ── 연박 가져오기: 박별 요금 입력 (총액 균등분할 없음) ──
+const nightRow = (over: Record<string, unknown> = {}) =>
+  ({
+    key: "k", sourceIndex: 0, guestName: "김", guestPhone: "", typeRaw: "스탠다드", typeId: "std",
+    checkIn: "2026-10-26", nights: 3, amount: 270_000, priceUnset: false, reservationId: "YN-1",
+    statusRaw: "", skip: false, nightsInclusiveSuspect: false, dup: false, pasteCancel: false,
+    matchBookingId: null, cancelGuard: false, rowStatus: "ok", nestedChannelRaw: "", platformId: "p-ya",
+    platformLabel: "야놀자", nestedChannelUnmatched: false, ...over,
+  }) as never;
+const nightOpts = { platformId: "p-ya", platformLabel: "야놀자", id: "b1", nowIso: "2026-10-25T00:00:00.000Z" };
+
+test("가져오기 박별 요금: 입력하지 않으면 night_rates 없이 저장 — 총액을 나눠 채우지 않아요", () => {
+  const row = nightRow();
+  assert.deepEqual(previewNightDates(row), ["2026-10-26", "2026-10-27", "2026-10-28"]);
+  assert.equal(enteredNightRates(row), null);
+  assert.equal(pathADraftFromPreview(row, nightOpts).nightRates, null);
+});
+
+test("가져오기 박별 요금: 입력한 박만 저장 · 합계≠판매금이어도 막지 않고 차액만 알려요", () => {
+  const row = nightRow({ nightAmounts: { "2026-10-26": 80_000, "2026-10-27": 100_000, "2026-10-28": 120_000 } });
+  const d = pathADraftFromPreview(row, nightOpts);
+  assert.deepEqual(d.nightRates?.nights, { "2026-10-26": 80_000, "2026-10-27": 100_000, "2026-10-28": 120_000 });
+  assert.equal(d.price, 270_000, "판매금은 그대로");
+  const diff = nightRatesDiff(row);
+  assert.deepEqual([diff.sum, diff.total, diff.diff], [300_000, 270_000, 30_000]);
+  const partial = nightRow({ nightAmounts: { "2026-10-27": 100_000, "2026-10-28": null } });
+  assert.deepEqual(pathADraftFromPreview(partial, nightOpts).nightRates?.nights, { "2026-10-27": 100_000 });
+  assert.equal(nightRatesDiff(partial).diff, null, "덜 적었으면 차액을 말하지 않아요");
+});
+
+test("가져오기 박별 요금: 날짜·박수를 고치면 범위 밖 입력은 버려요 · 1박은 대상 아님", () => {
+  const row = nightRow({ nights: 2, nightAmounts: { "2026-10-26": 90_000, "2026-10-28": 99_000 } });
+  assert.deepEqual(enteredNightRates(row)?.nights, { "2026-10-26": 90_000 });
+  assert.deepEqual(previewNightDates(nightRow({ nights: 1 })), []);
+  assert.equal(pathADraftFromPreview(nightRow({ nights: 1, nightAmounts: { "2026-10-26": 5 } }), nightOpts).nightRates, null);
+});
+
+test("가져오기 박별 요금: 제안은 설정의 타입 요금(평일/주말)에서 — 직원이 고칠 수 있는 제안", () => {
+  const sug = suggestedNightAmounts({ typeRates: { std: { weekday: 90_000, weekend: 120_000 } } } as never, nightRow({ checkIn: "2026-10-23", nights: 3 }));
+  assert.deepEqual(sug, { "2026-10-23": 120_000, "2026-10-24": 120_000, "2026-10-25": 90_000 });
+  assert.deepEqual(suggestedNightAmounts({} as never, nightRow()), {}, "요금이 없으면 제안 없음(빈칸)");
 });

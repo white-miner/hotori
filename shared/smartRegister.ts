@@ -12,6 +12,8 @@ import {
   typeLabel,
   usableTypes,
 } from "./ledger";
+import { type StayNightRates, occupiedNightDates } from "./nightrates";
+import { resolveNightRate } from "./salesCalendar";
 
 /** Canonical paste fields (shared across platforms). */
 export type PasteField =
@@ -1629,6 +1631,55 @@ export interface PreviewRow {
   platformLabel: string;
   /** Nested label present but no Settings platform match — show optional chip. */
   nestedChannelUnmatched: boolean;
+  /** 연박 박별 요금: 직원이 입력한 날짜별 금액 (비어 있으면 입력 안 한 박) — 총액을 나눈 값이 아니에요 */
+  nightAmounts?: Record<string, number | null>;
+}
+
+/** 박별 요금을 입력받는 밤 (2박 이상 · 입실일과 박수가 정해진 행) */
+export function previewNightDates(row: Pick<PreviewRow, "checkIn" | "nights">): string[] {
+  if (!row.checkIn || !row.nights || row.nights < 2) return [];
+  return occupiedNightDates(row.checkIn, row.nights);
+}
+
+/** 직원이 입력한 박별 요금 → night_rates (입력한 박만 · 없으면 null) */
+export function enteredNightRates(row: Pick<PreviewRow, "checkIn" | "nights" | "nightAmounts">): StayNightRates | null {
+  const nights: Record<string, number> = {};
+  for (const d of previewNightDates(row)) {
+    const v = row.nightAmounts?.[d];
+    if (v != null && Number.isFinite(v) && v > 0) nights[d] = Math.round(v);
+  }
+  return Object.keys(nights).length ? { flat: null, nights } : null;
+}
+
+/** 설정의 타입 요금(판매 캘린더)에서 박마다 제안값 — 편집 가능한 제안일 뿐, 총액 균등분할 아님 */
+export function suggestedNightAmounts(
+  s: Parameters<typeof resolveNightRate>[0],
+  row: Pick<PreviewRow, "checkIn" | "nights" | "typeId">,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!row.typeId) return out;
+  for (const d of previewNightDates(row)) {
+    const r = resolveNightRate(s, row.typeId, d);
+    if (r.amount > 0) out[d] = r.amount;
+  }
+  return out;
+}
+
+/** 입력 합계 vs 판매금 — 차액은 안내용 (저장을 막지 않아요) */
+export function nightRatesDiff(row: Pick<PreviewRow, "checkIn" | "nights" | "nightAmounts" | "amount" | "priceUnset">): {
+  entered: number;
+  count: number;
+  nights: number;
+  sum: number;
+  total: number | null;
+  diff: number | null;
+} {
+  const dates = previewNightDates(row);
+  const er = enteredNightRates(row);
+  const sum = Object.values(er?.nights ?? {}).reduce((n, v) => n + v, 0);
+  const total = row.priceUnset || row.amount == null ? null : row.amount;
+  const complete = er != null && Object.keys(er.nights ?? {}).length === dates.length;
+  return { entered: Object.keys(er?.nights ?? {}).length, count: dates.length, nights: dates.length, sum, total, diff: complete && total != null ? sum - total : null };
 }
 
 /**
@@ -1850,7 +1901,8 @@ export function pathADraftFromPreview(
       row.nestedChannelRaw || undefined,
     ),
     guests: null,
-    nightRates: null,
+    // 박별 요금: 직원이 가져오기 화면에서 입력한 박만 저장 (총액을 박수로 나눠 채우지 않아요)
+    nightRates: status === "active" && !priceUnset ? enteredNightRates(row) : null,
     cancelledAt: null,
     createdAt: opts.nowIso,
     updatedAt: opts.nowIso,

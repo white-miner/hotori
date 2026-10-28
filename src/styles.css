@@ -6051,3 +6051,14 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .sales-bulk-rate { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 1.2fr); gap: 4px 8px; align-items: center; }
 .sales-bulk-rate-n { display: flex; align-items: center; gap: 6px; font-weight: 700; min-width: 0; }
 .sales-bulk-rate-src { grid-column: 1 / -1; }
+
+/* 가져오기: 연박 박별 요금 입력 */
+.smart-reg-nights-row > td { background: var(--soft, #f7f7f5); padding: 8px 12px; }
+.smart-reg-nights-h { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 6px; }
+.smart-reg-nights-acts { margin-left: auto; display: inline-flex; gap: 12px; }
+.smart-reg-nights-grid { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.smart-reg-night { display: inline-flex; flex-direction: column; gap: 2px; width: 104px; font-size: 12px; }
+.smart-reg-night-d { color: var(--muted, #6b6b66); }
+.smart-reg-nights-sum { margin-top: 6px; font-size: 12px; }
+.smart-reg-nights-diff { color: var(--amber, #b45309); }
+.nsel-rates-enter { font-size: 12px; }

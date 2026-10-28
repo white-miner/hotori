@@ -3,6 +3,7 @@
  * Paste TSV → profile detect → wide preview → askConfirm → saveBooking × N (Path A 미배정).
  */
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -47,6 +48,9 @@ import {
   isFixLabelRow,
   matchPlatformId,
   htmlTableToPlain,
+  nightRatesDiff,
+  previewNightDates,
+  suggestedNightAmounts,
   parsePasteTable,
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
@@ -244,6 +248,32 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     );
   };
 
+  /** 박별 요금 한 칸 (빈 값 = 입력 안 함) */
+  const setNightAmount = (key: string, date: string, raw: string) => {
+    const digits = raw.replace(/[^\d]/g, "");
+    setRows((list) =>
+      list.map((r) =>
+        r.key !== key ? r : { ...r, nightAmounts: { ...(r.nightAmounts ?? {}), [date]: digits ? Number(digits) : null } },
+      ),
+    );
+  };
+
+  /** 타입 요금(판매 캘린더)으로 빈 박 채우기 — 입력해 둔 박은 그대로, 총액 균등분할 아님 */
+  const suggestNights = (r: PreviewRow) => {
+    const sug = suggestedNightAmounts(s, r);
+    setRows((list) =>
+      list.map((x) => {
+        if (x.key !== r.key) return x;
+        const cur = { ...(x.nightAmounts ?? {}) };
+        for (const [d, a] of Object.entries(sug)) if (cur[d] == null) cur[d] = a;
+        return { ...x, nightAmounts: cur };
+      }),
+    );
+  };
+
+  const clearNights = (key: string) =>
+    setRows((list) => list.map((x) => (x.key === key ? { ...x, nightAmounts: {} } : x)));
+
   /** Preview → persist alias for this platformTypeName (nice-to-have). */
   const saveAliasFromRow = async (r: PreviewRow) => {
     const aliasPlat = r.platformId ?? platformId;
@@ -260,6 +290,79 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     } catch (e) {
       notify(e instanceof Error ? `저장 실패: ${e.message}` : "타입 매칭을 저장하지 못했어요");
     }
+  };
+
+  /** 2박 이상 신규 행 아래: 박별 요금 입력 (선택) — 비워 둬도 저장돼요 */
+  const nightRow = (r: PreviewRow) => {
+    const dates = previewNightDates(r);
+    if (!dates.length) return null;
+    const sug = suggestedNightAmounts(s, r);
+    const d = nightRatesDiff(r);
+    const dow = ["일", "월", "화", "수", "목", "금", "토"];
+    const label = (iso: string) => {
+      const dt = new Date(`${iso}T00:00:00Z`);
+      return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()}(${dow[dt.getUTCDay()]})`;
+    };
+    return (
+      <tr className="smart-reg-nights-row" key={`${r.key}-nights`}>
+        <td colSpan={9}>
+          <div className="smart-reg-nights">
+            <div className="smart-reg-nights-h">
+              <b>박별 요금</b>
+              <span className="muted sm">1박씩 다른 금액을 적어요 · 비워 둬도 저장돼요 (총액을 나눠 채우지 않아요)</span>
+              <span className="smart-reg-nights-acts">
+                <button
+                  type="button"
+                  className="linkish"
+                  disabled={busy || !Object.keys(sug).length}
+                  title={Object.keys(sug).length ? "설정의 타입 요금(판매 캘린더)으로 빈 박만 채워요 · 채운 뒤에도 고칠 수 있어요" : "이 타입에 설정된 요금이 없어요"}
+                  onClick={() => suggestNights(r)}
+                >
+                  타입 요금으로 채우기
+                </button>
+                <button type="button" className="linkish" disabled={busy || !d.entered} onClick={() => clearNights(r.key)}>
+                  비우기
+                </button>
+              </span>
+            </div>
+            <div className="smart-reg-nights-grid">
+              {dates.map((dt) => {
+                const v = r.nightAmounts?.[dt];
+                return (
+                  <label key={dt} className="smart-reg-night">
+                    <span className="smart-reg-night-d">{label(dt)}</span>
+                    <Inp
+                      className="price"
+                      inputMode="numeric"
+                      value={v != null && v > 0 ? String(v) : ""}
+                      placeholder={sug[dt] != null ? String(sug[dt]) : "금액"}
+                      disabled={busy}
+                      onChange={(e) => setNightAmount(r.key, dt, e.target.value)}
+                      aria-label={`${label(dt)} 1박 요금`}
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <div className="smart-reg-nights-sum" role="status">
+              {d.entered ? (
+                <>
+                  입력 {d.entered}/{d.count}박 합계 {won(d.sum)}
+                  {d.total != null ? <> · 판매금 {won(d.total)}</> : null}
+                  {d.diff != null && d.diff !== 0 ? (
+                    <span className="smart-reg-nights-diff"> · 차액 {d.diff > 0 ? "+" : "−"}{won(Math.abs(d.diff))} (안내만 · 저장은 그대로 돼요)</span>
+                  ) : d.diff === 0 ? (
+                    <span className="muted"> · 판매금과 같아요</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="muted">입력한 박이 없으면 박별 요금 없이 저장돼요 (나중에 예약 옆 패널 「박별 요금 입력」에서 적을 수 있어요)</span>
+              )}
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
   };
 
   const createTargets = rows.filter((r) => !r.skip && r.rowStatus === "ok");
@@ -796,8 +899,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                     </tr>
                   ) : (
                     rows.map((r) => (
+                      <Fragment key={r.key}>
                       <tr
-                        key={r.key}
                         className={
                           r.skip
                             ? "is-skip"
@@ -949,6 +1052,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                           />
                         </td>
                       </tr>
+                      {!r.skip && r.rowStatus === "ok" ? nightRow(r) : null}
+                      </Fragment>
                     ))
                   )}
                 </tbody>
