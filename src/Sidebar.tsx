@@ -168,13 +168,17 @@ export function Sidebar({ st, top, bottom }: { st: SidebarState; top?: ReactNode
       </div>
       {top ? <div className="sb-a">{top}</div> : null}
       <div className="sb-scroll">
-        <div className="sb-b">
-          {SLOTS.filter((n) => n !== "ops").map((n) => (
-            <div key={n} className={`sb-slot sb-slot-${n}`} ref={st.setSlot(n)} />
-          ))}
+        {/* 순서: 보기(화면 전환) → C 운영 패널 → 나머지 조회 조건. 운영 패널이 스크롤 없이 바로 보이게 한다. */}
+        <div className="sb-b sb-b-views">
+          <div className="sb-slot sb-slot-views" ref={st.setSlot("views")} />
         </div>
         <div className="sb-c">
           <div className="sb-slot sb-slot-ops" ref={st.setSlot("ops")} />
+        </div>
+        <div className="sb-b sb-b-rest">
+          {SLOTS.filter((n) => n !== "ops" && n !== "views").map((n) => (
+            <div key={n} className={`sb-slot sb-slot-${n}`} ref={st.setSlot(n)} />
+          ))}
         </div>
       </div>
       {bottom ? <div className="sb-d">{bottom}</div> : null}
