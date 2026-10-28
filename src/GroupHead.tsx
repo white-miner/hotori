@@ -1,36 +1,40 @@
 import { CircleDollarSign, Plus } from "lucide-react";
-import { md } from "../shared/ledger";
-import { type GroupLedger, balanceLabel, groupTone, paidThroughLabel, unpaidTodayLabel, coverLabel } from "../shared/groupLedger";
+import { type GroupLedger, balanceLabel, diffLine, groupTone } from "../shared/groupLedger";
 import { receiptNextAction } from "../shared/receipt";
 import type { PayLine } from "../shared/recordTimeline";
+import GroupCharges from "./GroupCharges";
 import PayEvidence from "./PayEvidence";
 
 /**
- * 단체 머리글 — 지금 상태 한눈에 + 다음 행동 큰 버튼 하나.
- * 미수금/선수금/잔액 · 결제 완료 ~날짜 · 오늘 밤까지 미결제 박 수 · [결제 등록 · N박 금액]
+ * 단체 머리글 — 청구(객실별 요금)와 결제(받은 돈)를 따로 보여 주고 차액만 크게.
+ * 미수금 / 초과 수납 / 정산 완료 · [결제 등록 · 미수금] 큰 버튼 하나 · 객실별 요금표(+퇴실 미정) · 결제 내역
  */
 export default function GroupHead({
   ledger,
   today,
   name,
   readOnly,
+  roomLabel,
   onPay,
   onJoin,
+  onSetEnd,
+  onEditRoom,
   record,
 }: {
   ledger: GroupLedger;
   today: string;
   name?: string | null;
   readOnly?: boolean;
+  roomLabel: (bookingId: string) => string;
   onPay: () => void;
   onJoin?: () => void;
+  onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
+  onEditRoom?: (bookingId: string) => void;
   /** 결제 내역 + 기록 정정 열기 */
   record?: { lines: PayLine[]; onOpen: () => void } | null;
 }) {
   const tone = groupTone(ledger);
-  const next = receiptNextAction(ledger, today);
-  const unpaid = unpaidTodayLabel(ledger);
-  const cover = coverLabel(ledger);
+  const next = receiptNextAction(ledger);
   return (
     <section className={`ghead ${tone}`} aria-label="단체 결제 현황">
       <div className="ghead-top">
@@ -39,8 +43,7 @@ export default function GroupHead({
       </div>
       <div className="ghead-bal">{balanceLabel(ledger)}</div>
       <div className="ghead-meta">
-        <span>{paidThroughLabel(ledger, md)}</span>
-        {unpaid ? <span className="ghead-warn">{unpaid}</span> : cover ? <span>{cover}</span> : null}
+        <span>{diffLine(ledger)}</span>
       </div>
       {!readOnly ? (
         <div className="ghead-acts">
@@ -54,6 +57,7 @@ export default function GroupHead({
           ) : null}
         </div>
       ) : null}
+      <GroupCharges ledger={ledger} today={today} roomLabel={roomLabel} readOnly={readOnly} onSetEnd={onSetEnd} onEditRoom={onEditRoom} />
       {record ? <PayEvidence title={name || "단체"} lines={record.lines} ledger={ledger} readOnly={readOnly} onOpen={record.onOpen} /> : null}
     </section>
   );

@@ -66,6 +66,7 @@ import RecordSheet from "./RecordSheet";
 import { payLines, type PayLine } from "../shared/recordTimeline";
 import GroupLeaveSheet from "./GroupLeaveSheet";
 import { groupLedger } from "../shared/groupLedger";
+import { planStayEnd, stayEndSummary } from "../shared/stayEndPlan";
 import {
   checkoutLeaveBalanceNotifyLine,
   checkoutPayNotifyLine,
@@ -119,6 +120,7 @@ import {
   planOpsExtend,
   planThroughToday,
   throughOverlaps,
+  type ThroughPlan,
   type OpsExtendInput,
 } from "../shared/extend";
 import {
@@ -208,7 +210,7 @@ import { openMemoGlances } from "../shared/roomMemo";
 import RoomCalendar from "./RoomCalendar";
 import SalesCalendar from "./SalesCalendar";
 import SmartRegister from "./SmartRegister";
-import { type BookPayMethod, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
+import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
 import { groupLeadBooking, groupLeadChipLabel, groupPeerRoomItems, hashGroupBadgeColor } from "../shared/group";
 import { emptyGroupInfo, groupSettleGlance, settle, type GroupBadgeColor, type GroupInfo } from "../shared/settle";
 import UaSortBar from "./UaSortBar";
@@ -508,7 +510,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
   const [moveSchedFor, setMoveSchedFor] = useState<Booking | null>(null);
   /** 기록 정정 시트 (단체면 groupId, 개인이면 bookingId) */
-  const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null } | null>(null);
+  const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null; focusKey?: string | null } | null>(null);
   const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
   /** 메모 · 기록 시트 (단체 또는 예약 하나) */
   const [logScope, setLogScope] = useState<{ groupId: string | null; bookingIds: string[]; title: string } | null>(null);
@@ -945,6 +947,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const peers = groupStayPeers(bookings, gid);
     const info = data.groups.get(gid) ?? null;
     return {
+      groupId: gid,
       ledger: groupLedger(peers, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }),
       name: peers[0]?.groupName,
       onJoin: () => setJoinGroupId(gid),
@@ -1843,6 +1846,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         groupId={recordFor.groupId}
         name={(recordFor.groupId ? first.groupName : null) ?? first.guestName}
         readOnly={readOnly}
+        focusKey={recordFor.focusKey ?? null}
         onClose={() => setRecordFor(null)}
         onSaved={(m) => notify(m)}
       />
@@ -1897,30 +1901,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         roomLabel={labelOf}
         readOnly={readOnly}
         onClose={() => setPeriodPay(null)}
-        onPay={async (plan, method, memo, headline) => {
-          const saved = await data.addReceipt(groupId, plan.lines, plan.lump, { method, bizDate: today, leadBookingId: lead?.id ?? null, memo });
+        onPay={async (plan) => {
+          if (!plan.line) return [];
+          const saved = await data.addReceipt(groupId, plan.line, { leadBookingId: lead?.id ?? null });
           void data.logChange({
             kind: "money",
             groupId,
             effectiveOn: today,
-            summary: `결제 등록 · ${headline}${memo ? ` · ${memo}` : ""}`,
+            summary: `결제 등록 · ${md(plan.line.bizDate)} ${PAYMENT_METHOD_LABEL[plan.line.method]} ${won(plan.line.amount)}원${plan.line.note ? ` · ${plan.line.note}` : ""}`,
           });
-          notify(`${peers[0]?.groupName || "단체"} · ${headline} 결제 등록`);
+          notify(`${peers[0]?.groupName || "단체"} · ${won(plan.line.amount)}원 결제 등록`);
           return saved;
         }}
         onUndo={async (saved) => {
           await data.deleteReceipt(groupId, saved);
           notify("방금 결제 등록을 취소했어요");
-        }}
-        onAllocate={async (paymentId, lines, total) => {
-          await data.allocateGroupPayment(groupId, paymentId, lines);
-          void data.logChange({
-            kind: "money",
-            groupId,
-            effectiveOn: today,
-            summary: `나중에 배분 확정 · ${total.toLocaleString("ko-KR")}원 → ${lines.length}객실`,
-          });
-          notify(`${peers[0]?.groupName || "단체"} · ${lines.length}객실에 배분했어요`);
         }}
         onSetLead={(id) => data.setGroupLead(groupId, id)}
         onPickColor={pickGroupColor(groupId)}
@@ -3062,6 +3057,63 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  /**
+   * 퇴실 미정 / 퇴실일 정하기 — 객실 하나 또는 단체 전체 (단체 머리글·객실별 요금표에서).
+   * out = null → 퇴실 미정 · 날짜 → 그날 퇴실. 줄어드는 요금·겹치는 예약은 확인을 받고, 되돌리기를 드려요.
+   */
+  const applyStayEnd = async (ids: string[], out: string | null) => {
+    if (readOnly) return;
+    const olds = ids.map((id) => data.bookings.find((x) => x.id === id)).filter((x): x is Booking => !!x);
+    const plans = olds.map((b) => planStayEnd(b, out, today));
+    const ok = plans.filter((p) => p.patch);
+    if (!ok.length) {
+      notify(plans.find((p) => p.reason)?.reason ?? "바꿀 객실이 없어요");
+      return;
+    }
+    const cut = ok.reduce((n, p) => n + Math.min(0, p.deltaPrice), 0);
+    const grew = ok.filter((p) => p.deltaNights > 0);
+    const clashes = grew.flatMap((p) => {
+      const old = olds.find((b) => b.id === p.bookingId)!;
+      const asPlan = { draft: { nights: p.patch!.nights, price: p.patch!.price, segments: p.patch!.segments ?? null } } as ThroughPlan;
+      const before = new Set(throughOverlaps(bookings, old, { draft: { nights: old.nights ?? 0, price: old.price, segments: old.segments ?? null } } as ThroughPlan).map((x) => x.id));
+      return throughOverlaps(bookings, old, asPlan).filter((x) => !before.has(x.id));
+    });
+    if (cut < 0 || clashes.length) {
+      const lines = [
+        cut < 0 ? `남은 박 요금 ${won(-cut)}원이 청구에서 빠져요.` : "",
+        clashes.length ? `늘어나는 밤에 ${[...new Set(clashes.map((c) => c.guestName))].join(", ")} 예약이 겹쳐요 (겹침은 확인 필요로 남아요).` : "",
+      ].filter(Boolean);
+      const go = await askConfirm({
+        title: out === null ? "퇴실 미정으로 바꿀까요?" : `퇴실일을 ${md(out)}로 바꿀까요?`,
+        body: `${ok.length}객실 · ${lines.join(" ")} 결제 내역은 그대로예요.`,
+        cancelLabel: "취소",
+        confirmLabel: "바꾸기",
+        danger: false,
+      });
+      if (!go) return;
+    }
+    try {
+      for (const p of ok) {
+        const old = olds.find((b) => b.id === p.bookingId)!;
+        await data.saveBooking({ ...old, ...p.patch! }, false);
+      }
+      const gid = olds[0]?.groupId ?? null;
+      void data.logChange({
+        kind: "stay",
+        groupId: gid,
+        bookingId: gid ? null : olds[0]?.id ?? null,
+        summary: stayEndSummary(out, ok),
+      });
+      const skipped = plans.length - ok.length;
+      notify(`${out === null ? "퇴실 미정으로 바꿨어요" : `퇴실일을 ${md(out)}로 바꿨어요`} · ${ok.length}객실${skipped ? ` (${skipped}객실은 그대로)` : ""}`, {
+        ms: 9000,
+        action: { label: "되돌리기", run: () => void Promise.all(ok.map((p) => data.saveBooking(olds.find((b) => b.id === p.bookingId)!, false))) },
+      });
+    } catch (e) {
+      notify(saveFailMessage(e, "퇴실 날짜를 저장하지 못했어요"));
+    }
+  };
+
   /** 오늘까지 연장 · 한 번 탭 · 퇴실 예정일이 오늘 이전이면 오늘 밤까지 박수를 늘려요 (결제는 따로) */
   const extendThroughToday = async (bk: Booking) => {
     if (readOnly || extendNightBusy) return;
@@ -3760,7 +3812,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   ? () => openGroupPay(selectedSettle.members[0]!.groupId!)
                   : null
               }
-              groupHead={selectedGroupHead}
+              groupHead={
+                selectedGroupHead
+                  ? {
+                      ...selectedGroupHead,
+                      roomLabel: (id) => {
+                        const bk = data.bookings.find((x) => x.id === id);
+                        return bk?.roomId ? `${L.roomLabel(bk.roomId) ?? "?"}호` : "미배정";
+                      },
+                      onSetEnd: applyStayEnd,
+                      onEditRoom: (id) => setRecordFor({ groupId: selectedGroupHead.groupId, bookingId: null, focusKey: `in-${id}` }),
+                    }
+                  : null
+              }
               record={selectedRecord}
               notes={selectedNotes}
               onLateOut={(bk) => {

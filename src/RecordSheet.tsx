@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { saveFailMessage } from "../shared/errors";
-import { type Booking, addDays, daysBetween, dayLabel, md, stayEnd, STAY_NIGHTS_MAX, won } from "../shared/ledger";
+import { type Booking, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won } from "../shared/ledger";
 import { changesFor } from "../shared/changes";
-import { balanceLabel, groupLedger, paidThroughLabel } from "../shared/groupLedger";
-import { PAYMENT_METHOD_LABEL, PAY_MAX, type PayKind, type Payment, type PaymentEdit, type PaymentMethod } from "../shared/payment";
+import { balanceLabel, diffLine, groupLedger } from "../shared/groupLedger";
+import { PAYMENT_METHOD_LABEL, PAY_MAX, type Payment, type PaymentEdit, type PaymentMethod } from "../shared/payment";
 import { hasFullNightMatrix, nightRatesFromTotal, syncStayNightRates, type StayNightRates } from "../shared/nightrates";
 import { tableTotal, tableRows } from "../shared/nightTable";
 import {
@@ -15,18 +15,17 @@ import {
   fixPaymentSummary,
   fixStaySummary,
   FIX_PREFIX,
-  payClassOf,
   payLines,
   paymentCopyText,
+  periodText,
   recordAdvisories,
   recordTimeline,
 } from "../shared/recordTimeline";
 import type { HotelData } from "./data";
-import { Chip, ChipGroup, PriceInp, Stepper } from "./primitives";
+import { Chip, ChipGroup, PriceInp } from "./primitives";
 import NightRatesTable from "./NightRatesTable";
 
 const METHODS: PaymentMethod[] = ["card", "cash", "transfer", "credit"];
-const GROUP = "__group__";
 
 /**
  * 기록 정정 — 꼬인 기록을 고치는 한 곳.
@@ -43,6 +42,7 @@ export default function RecordSheet({
   readOnly,
   onClose,
   onSaved,
+  focusKey,
 }: {
   data: HotelData;
   today: string;
@@ -53,6 +53,8 @@ export default function RecordSheet({
   readOnly?: boolean;
   onClose: () => void;
   onSaved?: (msg: string) => void;
+  /** 열자마자 펼칠 줄 (예: `in-예약id` = 그 객실의 입실·퇴실·박별 요금) */
+  focusKey?: string | null;
 }) {
   const roomNo = (id: string | null | undefined) => {
     for (const f of data.hotel?.settings.floors ?? []) for (const r of f.rooms) if (r.id === id) return `${r.no}호`;
@@ -81,7 +83,7 @@ export default function RecordSheet({
   });
   const advisories = recordAdvisories({ bookings: members, groupPayments: groupPays, ledger: ledger.roomCount ? ledger : null, roomName: roomNo });
 
-  const [open, setOpen] = useState<string | null>(null); // timeline key | "new"
+  const [open, setOpen] = useState<string | null>(focusKey ?? null); // timeline key | "new"
   const [msg, setMsg] = useState<string | null>(null);
   const [undo, setUndo] = useState<Payment | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -161,7 +163,7 @@ export default function RecordSheet({
           <div className="rec-sum">
             <b>{ledger.roomCount ? balanceLabel(ledger) : `결제 ${won(lines.reduce((n, l) => n + l.amount, 0))}원`}</b>
             <span className="muted sm">
-              결제 합계 {won(lines.reduce((n, l) => n + l.amount, 0))}원 · {ledger.roomCount ? paidThroughLabel(ledger, md) : `${lines.length}건`}
+              {ledger.roomCount ? diffLine(ledger) : `${lines.length}건`}
             </span>
           </div>
 
@@ -269,46 +271,35 @@ function PayEditor({
   const [amount, setAmount] = useState(payment ? String(payment.amount) : "");
   const [method, setMethod] = useState<PaymentMethod>(payment?.method ?? "card");
   const [bizDate, setBizDate] = useState(payment?.bizDate ?? today);
-  const [target, setTarget] = useState<string>(payment ? (payment.bookingId || GROUP) : groupId ? GROUP : first?.id ?? "");
+  // 새 결제 = 단체(혼자 예약이면 그 예약)로 받은 한 줄. 객실·박에 나누지 않아요.
+  // 예전에 객실·기간을 적어 둔 줄은 그대로 두고, 원하면 「단체 결제로 바꾸기」로 표시만 떼요.
+  const [asGroup, setAsGroup] = useState<boolean>(payment ? !payment.bookingId : !!groupId);
   const [note, setNote] = useState(payment?.note ?? "");
-  const [kind, setKind] = useState<PayKind>(payment?.kind ?? "balance");
-  const [periodOn, setPeriodOn] = useState(!!payment?.nightDate);
-  const tb = members.find((m) => m.id === target) ?? null;
-  const [from, setFrom] = useState(payment?.nightDate ?? tb?.checkIn ?? today);
-  const [nights, setNights] = useState(payment?.periodNights ?? tb?.nights ?? 1);
   const [busy, setBusy] = useState(false);
   const [localErr, setLocalErr] = useState<string | null>(null);
 
   const amt = Math.round(Number(amount.replace(/\D/g, "")) || 0);
-  const usesPeriod = periodOn && !!tb;
-  const preview = payClassOf({ kind, bizDate, nightDate: usesPeriod ? from : null, periodNights: usesPeriod ? nights : null });
-  const pick = (t: string) => {
-    setTarget(t);
-    const m = members.find((x) => x.id === t);
-    if (m && periodOn) {
-      setFrom(m.checkIn);
-      setNights(m.nights ?? 1);
-    }
-    if (!m) setPeriodOn(false);
-  };
+  const roomTag = payment?.bookingId ? members.find((m) => m.id === payment.bookingId) ?? null : null;
   const submit = async () => {
     if (!amt || amt > PAY_MAX) return setLocalErr("금액을 입력해 주세요.");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(bizDate)) return setLocalErr("결제일을 골라 주세요.");
-    if (!tb && !groupId) return setLocalErr("어느 객실의 결제인지 골라 주세요.");
-    if (usesPeriod && (nights < 1 || nights > STAY_NIGHTS_MAX)) return setLocalErr("대상 기간을 확인해 주세요.");
+    const toGroup = asGroup && !!groupId;
+    const bookingId = toGroup ? null : payment?.bookingId || first?.id || null;
+    if (!bookingId && !toGroup) return setLocalErr("저장할 곳을 찾지 못했어요.");
+    const keepPeriod = !toGroup && !!payment?.bookingId && payment.bookingId === bookingId;
     setBusy(true);
     setLocalErr(null);
     try {
       await onSave({
-        bookingId: tb ? tb.id : null,
-        groupId: tb ? null : groupId,
-        kind,
+        bookingId,
+        groupId: toGroup ? groupId : null,
+        kind: payment?.kind ?? "balance",
         method,
         amount: amt,
         bizDate,
         note: note.trim() || null,
-        nightDate: usesPeriod ? from : null,
-        periodNights: usesPeriod ? nights : null,
+        nightDate: keepPeriod ? payment?.nightDate ?? null : null,
+        periodNights: keepPeriod ? payment?.periodNights ?? null : null,
       });
     } finally {
       setBusy(false);
@@ -330,52 +321,20 @@ function PayEditor({
         <span>결제일</span>
         <input type="date" min="2020-01-01" max="2099-12-31" value={bizDate} onChange={(e) => e.target.value && setBizDate(e.target.value)} aria-label="결제일" />
       </label>
-      <div className="rec-fld col">
-        <span>어느 객실</span>
-        <div className="gjn-rooms" role="group" aria-label="결제 대상">
-          {groupId ? (
-            <button type="button" className={`chip sm${target === GROUP ? " on" : ""}`} aria-pressed={target === GROUP} onClick={() => pick(GROUP)}>단체 몫 (앞 박부터)</button>
-          ) : null}
-          {members.map((m) => (
-            <button key={m.id} type="button" className={`chip sm${target === m.id ? " on" : ""}`} aria-pressed={target === m.id} onClick={() => pick(m.id)}>
-              {roomName(m.id)}
-            </button>
-          ))}
-        </div>
-      </div>
-      {tb ? (
+      <label className="rec-fld col">
+        <span>메모 (선택)</span>
+        <input className="inp" maxLength={80} value={note} placeholder="예: 10/25~10/27 3박" onChange={(e) => setNote(e.target.value)} aria-label="메모" />
+      </label>
+      {roomTag && groupId ? (
         <div className="rec-fld col">
+          <small className="muted">
+            이 줄은 {roomName(roomTag.id)}{payment?.nightDate ? ` · ${periodText(payment)}` : ""}에 적어 둔 결제예요. 합계에는 그대로 들어가요.
+          </small>
           <label className="gjn-arr">
-            <input type="checkbox" checked={periodOn} onChange={(e) => {
-              setPeriodOn(e.target.checked);
-              if (e.target.checked && !payment?.nightDate) {
-                setFrom(tb.checkIn);
-                setNights(tb.nights ?? 1);
-              }
-            }} /> 대상 기간 지정 ({md(tb.checkIn)}~{md(stayEnd(tb))} 중)
+            <input type="checkbox" checked={asGroup} onChange={(e) => setAsGroup(e.target.checked)} /> 단체 결제로 바꾸기 (객실·기간 표시 없애기)
           </label>
-          {periodOn ? (
-            <div className="rec-per">
-              <input type="date" value={from} min={tb.checkIn} max={addDays(stayEnd(tb), -1)} onChange={(e) => e.target.value && setFrom(e.target.value)} aria-label="대상 첫 박" />
-              <Stepper value={nights} unit="박" min={1} max={STAY_NIGHTS_MAX} onChange={(n) => setNights(Math.max(1, Math.min(STAY_NIGHTS_MAX, n)))} />
-            </div>
-          ) : (
-            <small className="muted">기간을 안 정하면 앞 박부터 채워요</small>
-          )}
         </div>
       ) : null}
-      <label className="rec-fld col">
-        <span>메모</span>
-        <input className="inp" maxLength={80} value={note} placeholder="예: 502호 추가분" onChange={(e) => setNote(e.target.value)} aria-label="메모" />
-      </label>
-      <details className="rec-more">
-        <summary>더 보기 · 구분 {preview}</summary>
-        <ChipGroup role="group" aria-label="선금 잔금">
-          <Chip active={kind === "deposit"} onClick={() => setKind("deposit")}>선금</Chip>
-          <Chip active={kind === "balance"} onClick={() => setKind("balance")}>잔금</Chip>
-        </ChipGroup>
-        <small className="muted">구분: {preview} (결제일과 대상 기간을 견줘 자동으로 정해져요)</small>
-      </details>
       {localErr ? <div className="ferr">{localErr}</div> : null}
       <div className="rec-acts">
         {onDelete ? <button type="button" className="btn line danger" disabled={busy} onClick={onDelete}>삭제</button> : null}

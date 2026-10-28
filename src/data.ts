@@ -1089,87 +1089,36 @@ export function useHotelData(hotelId: string) {
     [hotelId, groups],
   );
   /**
-   * 결제 등록(단체): 객실별 줄 + (남는 돈이 있으면) 단체 선수금 한 줄을 한 문장 insert로 저장 (모두 되거나 모두 안 돼요).
-   * lines = receiptPlan().lines · lump = receiptPlan().lump
+   * 결제 등록(단체): 결제일·수단·금액·메모 한 줄을 단체 결제로 저장해요. 객실·박에 나누지 않아요.
+   * line = receiptPlan().line
    */
   const addReceipt = useCallback(
     async (
       groupId: string,
-      lines: { bookingId: string; amount: number; nightDate: string | null; periodNights: number | null; note: string }[],
-      lump: { amount: number; note: string } | null,
-      p: { method: BookPayMethod; bizDate: string; leadBookingId?: string | null; memo?: string | null },
+      line: { amount: number; method: BookPayMethod; bizDate: string; note: string | null },
+      p: { leadBookingId?: string | null } = {},
     ): Promise<Payment[]> => {
-      if (!lines.length && !lump) return [];
-      const withMemo = (note: string) => (p.memo?.trim() ? `${note} · ${p.memo.trim()}` : note).slice(0, 80);
-      if ((lump && !groups.has(groupId)) || (p.leadBookingId && !groups.get(groupId)?.leadBookingId)) {
+      if (!groups.has(groupId) || (p.leadBookingId && !groups.get(groupId)?.leadBookingId)) {
         const row: Record<string, unknown> = { id: groupId, hotel_id: hotelId };
         if (p.leadBookingId && !groups.get(groupId)?.leadBookingId) row.lead_booking_id = p.leadBookingId;
         const r = await supabase.from("booking_groups").upsert(row, { onConflict: "id" });
         if (r.error) throw r.error;
       }
-      const rows: Record<string, unknown>[] = lines.map((l) => ({
-        booking_id: l.bookingId,
-        kind: "balance",
-        method: p.method,
-        amount: Math.round(l.amount),
-        biz_date: p.bizDate,
-        note: withMemo(l.note),
-        night_date: l.nightDate,
-        period_nights: l.periodNights,
-      }));
-      if (lump) rows.push({ group_id: groupId, kind: "balance", method: p.method, amount: Math.round(lump.amount), biz_date: p.bizDate, note: withMemo(lump.note) });
-      const { data, error } = await supabase.from("booking_payments").insert(rows).select(PAY_COLS);
+      const { data, error } = await supabase
+        .from("booking_payments")
+        .insert({ group_id: groupId, kind: "balance", method: line.method, amount: Math.round(line.amount), biz_date: line.bizDate, note: line.note?.slice(0, 80) ?? null })
+        .select(PAY_COLS);
       if (error) throw error;
-      const saved = (data as PaymentRow[]).map((x) => payFromRow(x));
-      const roomSaved = saved.filter((x) => x.bookingId);
-      const groupSaved = saved.filter((x) => !x.bookingId).map((x) => ({ ...x, groupId }));
-      if (roomSaved.length)
-        setBookingsLocal((list) =>
-          list.map((x) => {
-            const mine = roomSaved.filter((y) => y.bookingId === x.id);
-            return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
-          }),
-        );
-      if (groupSaved.length || p.leadBookingId)
-        setGroups((m) => {
-          const g = m.get(groupId) ?? emptyGroupInfo(groupId);
-          return new Map(m).set(groupId, {
-            ...g,
-            payments: [...g.payments, ...groupSaved],
-            leadBookingId: g.leadBookingId ?? p.leadBookingId ?? null,
-          });
-        });
+      const saved = (data as PaymentRow[]).map((x) => ({ ...payFromRow(x), groupId }));
+      setGroups((m) => {
+        const g = m.get(groupId) ?? emptyGroupInfo(groupId);
+        return new Map(m).set(groupId, { ...g, payments: [...g.payments, ...saved], leadBookingId: g.leadBookingId ?? p.leadBookingId ?? null });
+      });
       return saved;
     },
     [hotelId, groups],
   );
-  /**
-   * 나중에 배분 확정: 단체 몫 한 줄을 객실별 줄로 나눠요 (RPC 하나 = insert + delete 한 번에 · 모두 되거나 모두 안 돼요).
-   * 남는 돈은 단체 몫 한 줄로 다시 남아요. 돌려주는 값 = 새로 생긴 줄(객실 줄 + 남은 단체 몫).
-   */
-  const allocateGroupPayment = useCallback(async (groupId: string, paymentId: string, lines: { bookingId: string; amount: number }[]): Promise<Payment[]> => {
-    const { data, error } = await supabase.rpc("allocate_group_payment", {
-      p_payment_id: paymentId,
-      p_lines: lines.map((l) => ({ booking_id: l.bookingId, amount: Math.round(l.amount) })),
-    });
-    if (error) throw error;
-    const saved = ((data ?? []) as PaymentRow[]).map((x) => payFromRow(x));
-    const roomSaved = saved.filter((x) => x.bookingId);
-    const groupSaved = saved.filter((x) => !x.bookingId).map((x) => ({ ...x, groupId }));
-    if (roomSaved.length)
-      setBookingsLocal((list) =>
-        list.map((x) => {
-          const mine = roomSaved.filter((y) => y.bookingId === x.id);
-          return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
-        }),
-      );
-    setGroups((m) => {
-      const g = m.get(groupId);
-      return g ? new Map(m).set(groupId, { ...g, payments: [...g.payments.filter((x) => x.id !== paymentId), ...groupSaved] }) : m;
-    });
-    return saved;
-  }, []);
-  /** 방금 한 결제 등록 취소 (객실 줄 + 단체 줄) */
+  /** 방금 한 결제 등록 취소 */
   const deleteReceipt = useCallback(async (groupId: string, saved: Payment[]) => {
     if (!saved.length) return;
     const { error } = await supabase.from("booking_payments").delete().in("id", saved.map((x) => x.id));
@@ -1266,7 +1215,6 @@ export function useHotelData(hotelId: string) {
     setGroupLead,
     addPeriodPayments,
     addReceipt,
-    allocateGroupPayment,
     deleteReceipt,
     deletePayments,
     stayCredits,

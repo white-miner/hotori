@@ -2,31 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { type Booking, md, won } from "../shared/ledger";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type Payment } from "../shared/payment";
-import { balanceLabel, groupLedger, groupTone, paidThroughLabel, unpaidTodayLabel } from "../shared/groupLedger";
-import {
-  RECEIPT_NIGHTS_MAX,
-  type ReceiptPeriod,
-  type ReceiptPlan,
-  receiptDefaultNights,
-  receiptDefaultRooms,
-  receiptDefaultStart,
-  receiptHeadline,
-  allocatePlan,
-  receiptPlan,
-} from "../shared/receipt";
+import { balanceLabel, diffLine, groupLedger, groupTone } from "../shared/groupLedger";
+import { RECEIPT_MEMO_MAX, type ReceiptPlan, receiptAfterLabel, receiptButtonLabel, receiptMemoHint, receiptPlan, receiptSuggest } from "../shared/receipt";
 import { isPeriodPayable } from "../shared/periodPay";
+import { payLineText, payLines } from "../shared/recordTimeline";
 import { GROUP_BADGE_COLORS, type GroupBadgeColor } from "../shared/settle";
-import { Chip, ChipGroup, PriceInp, Stepper } from "./primitives";
-
-type Mode = "nights" | "none" | "through" | "later";
-const PRESETS = [1, 3, 7] as const;
+import { Chip, ChipGroup, PriceInp } from "./primitives";
+import GroupCharges from "./GroupCharges";
 
 /**
- * 단체 「결제 등록」 — 금액·기간·객실·결제 방법을 직원이 자유롭게 정해요.
- * 열면 이미 `3박 × 4객실 = 960,000원 · 카드`처럼 지금 객실 전부로 채워져 있어서 한 번에 등록할 수 있어요.
- *  · 기간은 없어도 돼요 (선수금으로 등록 → 맨 앞 미결제 박부터 자동 반영)
- *  · 금액은 언제든 고칠 수 있고, 제안과 달라도 막지 않고 안내만 해요
- *  · 객실 추가·조기 퇴실 처리가 있어도 입실일부터 자기 요금으로만 계산돼요
+ * 단체 「결제 등록」 — 결제일 · 수단 · 금액 · 메모. 이게 전부예요.
+ * 금액은 열면 미수금(청구 − 결제)으로 채워져 있고 고칠 수 있어요. 결제는 객실·박에 나누지 않고 한 줄로 기록해요.
+ * 위에는 청구(객실별 요금)와 지금까지의 결제 내역을 따로 보여 줘서 차액이 바로 보여요.
  */
 export default function GroupReceiptSheet({
   today,
@@ -42,7 +29,6 @@ export default function GroupReceiptSheet({
   readOnly,
   onPay,
   onUndo,
-  onAllocate,
   onSetLead,
   onPickColor,
   onJoin,
@@ -53,9 +39,9 @@ export default function GroupReceiptSheet({
   /** 단체 활성 숙박 예약(퇴실한 객실 포함) · 최신 데이터 */
   members: Booking[];
   groupName?: string | null;
-  /** 객실에 나누지 않은 단체 몫 결제 합 */
+  /** 단체로 받은 결제 합 */
   groupLump: number;
-  /** 객실에 나누지 않은 단체 몫 결제 줄 (나중에 배분 대기) */
+  /** 단체로 받은 결제 줄 */
   lumps?: Payment[];
   extras?: number;
   leadId: string | null;
@@ -63,10 +49,8 @@ export default function GroupReceiptSheet({
   badgeColor?: GroupBadgeColor | null;
   roomLabel: (b: Booking) => string;
   readOnly?: boolean;
-  onPay: (plan: ReceiptPlan, method: BookPayMethod, memo: string, headline: string) => Promise<Payment[]>;
+  onPay: (plan: ReceiptPlan) => Promise<Payment[]>;
   onUndo: (saved: Payment[]) => Promise<void>;
-  /** 나중에 배분 확정: 단체 몫 한 줄 → 객실별 줄 (원자) */
-  onAllocate?: (paymentId: string, lines: { bookingId: string; amount: number }[], total: number) => Promise<void>;
   onSetLead: (bookingId: string | null) => Promise<void>;
   onPickColor?: (c: GroupBadgeColor) => Promise<void> | void;
   onJoin?: () => void;
@@ -75,80 +59,40 @@ export default function GroupReceiptSheet({
 }) {
   const ledger = useMemo(() => groupLedger(members, groupLump, today, { extras }), [members, groupLump, today, extras]);
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
-  const [mode, setMode] = useState<Mode>("nights");
-  const [nights, setNights] = useState(() => receiptDefaultNights(ledger));
-  const [custom, setCustom] = useState(false);
-  const [through, setThrough] = useState(today);
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(receiptDefaultRooms(ledger)));
-  const [startPick, setStartPick] = useState<string | null>(null);
   const [amountEdit, setAmountEdit] = useState<string | null>(null);
   const [method, setMethod] = useState<BookPayMethod>("card");
+  const [bizDate, setBizDate] = useState(today);
   const [memo, setMemo] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ saved: Payment[]; headline: string } | null>(null);
-  const [allocId, setAllocId] = useState<string | null>(null);
-  const [allocDone, setAllocDone] = useState<number | null>(null);
-  const allocLump = allocId ? lumps.find((x) => x.id === allocId) ?? null : null;
-  const allocCalc = useMemo(() => {
-    if (!allocLump) return null;
-    const base = groupLedger(members, Math.max(0, groupLump - allocLump.amount), today, { extras });
-    return allocatePlan(base, allocLump.amount);
-  }, [allocLump, members, groupLump, today, extras]);
+  const [done, setDone] = useState<{ saved: Payment[]; amount: number } | null>(null);
 
-  const roomIds = useMemo(() => ledger.rooms.filter((r) => picked.has(r.bookingId)).map((r) => r.bookingId), [ledger, picked]);
-  const autoStart = receiptDefaultStart(ledger, roomIds, today);
-  const period: ReceiptPeriod = mode === "none" ? { kind: "none" } : mode === "later" ? { kind: "later" } : mode === "nights" ? { kind: "nights", nights } : { kind: "through", date: through };
-  const plan = useMemo(
-    () => receiptPlan({ ledger, roomIds, period, start: startPick, amount: amountEdit != null ? Number(amountEdit || 0) : null }, today),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ledger, roomIds, mode, nights, through, startPick, amountEdit, today],
-  );
-  const headline = receiptHeadline(plan, period) + ` · ${BOOK_PAY_LABEL[method]}`;
+  const suggest = receiptSuggest(ledger);
+  const amountNum = amountEdit != null ? Number(amountEdit || 0) : suggest;
+  const plan = useMemo(() => receiptPlan(ledger, { amount: amountNum, method, bizDate, memo }), [ledger, amountNum, method, bizDate, memo]);
   const tone = groupTone(ledger);
-  const behind = !!ledger.firstUncovered && ledger.firstUncovered < today;
   const lead = leadId ? byId.get(leadId) : undefined;
-
-  const reset = () => {
-    setAmountEdit(null);
-    setErr(null);
-  };
-  const togglePick = (id: string) => {
-    setPicked((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-    reset();
-  };
+  const hint = receiptMemoHint(ledger);
+  const lines = useMemo(
+    () => payLines([...members.flatMap((m) => m.payments ?? []), ...lumps], { roomName: (id) => { const b = byId.get(id); return b ? roomLabel(b) : "객실"; } }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [members, lumps, byId],
+  );
+  const payableCount = members.filter(isPeriodPayable).length;
+  const canGo = !busy && !readOnly && plan.ok;
 
   const submit = async () => {
     if (busy || readOnly) return;
     if (!plan.ok) return setErr(plan.error ?? "금액을 입력해 주세요.");
-    if (plan.total > 100_000_000) return setErr("금액을 확인해 주세요 (1억 원까지).");
     setBusy(true);
     setErr(null);
     try {
-      const saved = await onPay(plan, method, memo.trim(), headline);
-      setDone({ saved, headline });
+      const saved = await onPay(plan);
+      setDone({ saved, amount: plan.amount });
       setAmountEdit(null);
+      setMemo("");
     } catch (e) {
       setErr(e instanceof Error ? `저장하지 못했어요: ${e.message}` : "저장하지 못했어요");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const confirmAlloc = async () => {
-    if (busy || readOnly || !allocLump || !allocCalc || !onAllocate || !allocCalc.lines.length) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      await onAllocate(allocLump.id, allocCalc.lines, allocLump.amount);
-      setAllocDone(allocLump.amount);
-      setAllocId(null);
-    } catch (e) {
-      setErr(e instanceof Error ? `배분하지 못했어요: ${e.message}` : "배분하지 못했어요");
     } finally {
       setBusy(false);
     }
@@ -171,33 +115,11 @@ export default function GroupReceiptSheet({
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
-        return;
-      }
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
-      if (done || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "1" || e.key === "3" || e.key === "7") {
-        setMode("nights");
-        setNights(Number(e.key));
-        setCustom(false);
-        setAmountEdit(null);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, done]);
-
-  const pickNights = (n: number) => {
-    setMode("nights");
-    setNights(Math.max(1, Math.min(RECEIPT_NIGHTS_MAX, n)));
-    reset();
-  };
-  const amountShown = amountEdit != null ? amountEdit : plan.suggested > 0 ? String(plan.suggested) : "";
-  const rangeText = mode === "later" ? "나중에 배분 · 단체 선수금으로 등록해요" : plan.start && plan.end ? `${md(plan.start)}${plan.nights > 1 ? `~${md(plan.end)}` : ""} · ${plan.nights}박` : "기간 없음 · 선수금으로 등록";
-  const firstAll = ledger.rooms.reduce<string | null>((m, r) => (r.firstNight && (!m || r.firstNight < m) ? r.firstNight : m), null);
-  const payableCount = members.filter(isPeriodPayable).length;
-  const owedOf = (r: (typeof ledger.rooms)[number]) => r.nights.filter((n) => n.date <= today).reduce((a, n) => a + n.amount - n.covered, 0);
-  const canGo = !busy && !readOnly && plan.ok && roomIds.length > 0;
+  }, [onClose]);
 
   return (
     <div className="dim assign-type-dim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -211,165 +133,36 @@ export default function GroupReceiptSheet({
           </button>
         </div>
         <div className="mb">
-          {allocDone != null ? (
+          <div className={`grc-sum ${tone}`} aria-label="단체 결제 현황" aria-live="polite">
+            <b className="grc-bal">{balanceLabel(ledger)}</b>
+            <span>{diffLine(ledger)}</span>
+          </div>
+          {done ? (
             <div className="gpp-done" role="status">
               <span className="gpp-done-ic"><Check size={22} /></span>
-              <b>{won(allocDone)}원 배분 완료</b>
-              <span className="muted sm">객실별 결제 내역으로 옮겼어요. 총 수납액과 미수금은 그대로예요.</span>
-            </div>
-          ) : allocLump && allocCalc ? (
-            <div className="grc-alloc" aria-label="배분 확인">
-              <div className="gpp-hero">
-                <span className="gpp-hl">{won(allocLump.amount)}원 · {BOOK_PAY_LABEL[allocLump.method as BookPayMethod] ?? "결제"}</span>
-                <span className="muted sm">{md(allocLump.bizDate)}에 단체 선수금을 앞 날부터 객실별로 채워요</span>
-              </div>
-              <ul className="gpp-rows grc-rows" aria-label="객실별 배분">
-                {allocCalc.lines.map((l) => {
-                  const b = byId.get(l.bookingId);
-                  return (
-                    <li key={l.bookingId} className="gpp-row grc-row">
-                      <span className="gpp-no"><b>{b ? roomLabel(b) : "객실"}</b></span>
-                      <span className="gpp-amt"><b>{won(l.amount)}</b></span>
-                    </li>
-                  );
-                })}
-              </ul>
-              {allocCalc.rest > 0 ? <p className="muted sm grc-note">{won(allocCalc.rest)}원은 채울 박이 없어 단체 선수금으로 남아요.</p> : null}
-              {!allocCalc.lines.length ? <p className="muted sm grc-note">지금 채울 미결제 박이 없어요. 박이 더 생기면 그때 배분해 주세요.</p> : null}
-            </div>
-          ) : done ? (
-            <div className="gpp-done" role="status">
-              <span className="gpp-done-ic"><Check size={22} /></span>
-              <b>{done.headline} 결제 등록 완료</b>
-              <span className="muted sm">객실별로 나눠 결제 내역에 기록했어요. 잘못 눌렀다면 바로 취소할 수 있어요.</span>
+              <b>{won(done.amount)}원 결제 등록 완료</b>
+              <span className="muted sm">결제 내역에 한 줄로 기록했어요 · 지금 {balanceLabel(ledger)}. 잘못 눌렀다면 바로 취소할 수 있어요.</span>
             </div>
           ) : (
             <>
-              <div className={`grc-sum ${tone}`} aria-label="단체 결제 현황">
-                <b className="grc-bal">{balanceLabel(ledger)}</b>
-                <span>{paidThroughLabel(ledger, md)}</span>
-                {unpaidTodayLabel(ledger) ? <span className="grc-warn">{unpaidTodayLabel(ledger)}</span> : null}
-              </div>
-
-              {lumps.length && onAllocate && !readOnly ? (
-                <ul className="grc-lumps" aria-label="나중에 배분할 돈">
-                  {lumps.map((x) => (
-                    <li key={x.id}>
-                      <span>
-                        <b>{won(x.amount)}원</b> <small className="muted">{md(x.bizDate)} · {BOOK_PAY_LABEL[x.method as BookPayMethod] ?? "결제"} · 단체로 받음</small>
-                      </span>
-                      <button type="button" className="btn line sm" disabled={busy} onClick={() => { setAllocId(x.id); setErr(null); }}>
-                        배분하기
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              <div className="gpp-hero" aria-live="polite">
-                <span className="gpp-hl">{plan.ok ? receiptHeadline(plan, period) : "금액을 입력해 주세요"}</span>
-                <span className="muted sm">{rangeText}</span>
-              </div>
-
-              <ChipGroup role="group" aria-label="결제 기간">
-                {PRESETS.map((n) => (
-                  <Chip key={n} active={mode === "nights" && !custom && nights === n} disabled={busy} onClick={() => { setCustom(false); pickNights(n); }}>
-                    {n}박
-                  </Chip>
-                ))}
-                <Chip active={mode === "nights" && custom} disabled={busy} onClick={() => { setCustom(true); pickNights(nights); }}>
-                  직접
-                </Chip>
-                <Chip active={mode === "through"} disabled={busy} onClick={() => { setMode("through"); reset(); }}>
-                  ~날짜까지
-                </Chip>
-                <Chip active={mode === "none"} disabled={busy} onClick={() => { setMode("none"); setCustom(false); reset(); }}>
-                  기간 없음
-                </Chip>
-                <Chip active={mode === "later"} disabled={busy} onClick={() => { setMode("later"); setCustom(false); reset(); }}>
-                  나중에 배분
-                </Chip>
-              </ChipGroup>
-              {mode === "nights" && custom ? <Stepper value={nights} unit="박" min={1} max={RECEIPT_NIGHTS_MAX} onChange={pickNights} /> : null}
-              {mode === "through" ? (
-                <label className="grc-date">
-                  <span className="muted sm">마지막 박</span>
-                  <input type="date" value={through} min={plan.start ?? autoStart} onChange={(e) => { setThrough(e.target.value || today); reset(); }} />
-                </label>
-              ) : null}
-              {mode !== "none" && mode !== "later" ? (
-                <ChipGroup role="group" aria-label="시작일">
-                  <Chip sm active={startPick == null} onClick={() => { setStartPick(null); reset(); }}>
-                    {behind ? `밀린 ${md(autoStart)}부터` : `${md(autoStart)}부터`}
-                  </Chip>
-                  {behind ? (
-                    <Chip sm active={startPick === today} onClick={() => { setStartPick(today); reset(); }}>
-                      오늘 {md(today)}부터
-                    </Chip>
-                  ) : null}
-                </ChipGroup>
-              ) : mode === "later" ? null : (
-                <p className="muted sm">기간을 정하지 않으면 선수금으로 등록돼요. 맨 앞 미결제 박부터 자동으로 반영하고, 남으면 단체 선수금으로 둬요.</p>
-              )}
-
-              <ul className="gpp-rows grc-rows" aria-label="객실별 결제">
-                {ledger.rooms.map((r) => {
-                  const b = byId.get(r.bookingId)!;
-                  const row = plan.rows.find((x) => x.bookingId === r.bookingId);
-                  const on = picked.has(r.bookingId);
-                  const joined = firstAll && r.firstNight && r.firstNight > firstAll;
-                  return (
-                    <li key={r.bookingId} className={`gpp-row grc-row${on ? "" : " idle"}`}>
-                      <label className="gpp-no grc-pick">
-                        <input type="checkbox" checked={on} disabled={busy} onChange={() => togglePick(r.bookingId)} aria-label={`${roomLabel(b)} 포함`} />
-                        <b>{roomLabel(b)}</b>
-                        {r.bookingId === leadId ? <i className="gpp-lead">대장</i> : null}
-                        {joined ? <i className="grc-tag">{md(r.firstNight!)} 입실</i> : null}
-                        {!r.live ? <i className="grc-tag end">이용 끝</i> : null}
-                      </label>
-                      <span className="gpp-amt">
-                        {on && row && row.amount > 0 ? (
-                          <>
-                            <b>{won(row.amount)}</b>
-                            <small>{row.nights}박{row.perNight && mode !== "none" ? ` × ${won(row.perNight)}` : ""}</small>
-                          </>
-                        ) : (
-                          <small>{on ? (mode === "later" ? "나중에 배분" : "이번 결제 없음") : "제외"}</small>
-                        )}
-                      </span>
-                      <span className="gpp-st muted sm">
-                        {r.paidThrough ? `결제 완료 ~${md(r.paidThrough)}` : "결제 내역 없음"}
-                        {owedOf(r) > 0 ? ` · 미수금 ${won(owedOf(r))}원` : ""}
-                        {onLeave && r.live && !readOnly ? (
-                          <button type="button" className="grc-link" onClick={() => onLeave(r.bookingId)}>조기 퇴실 처리</button>
-                        ) : null}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              <PriceInp sm>
+              <PriceInp>
                 <span className="pl">결제 금액</span>
                 <input
                   className="num"
                   inputMode="numeric"
-                  aria-label="결제 금액 직접 입력"
+                  aria-label="결제 금액"
                   placeholder="0"
-                  value={amountShown ? won(Number(amountShown)) : ""}
+                  autoFocus
+                  value={amountNum ? won(amountNum) : ""}
                   onChange={(e) => { setAmountEdit(e.target.value.replace(/\D/g, "").slice(0, 9)); setErr(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
                 />
               </PriceInp>
-              {amountEdit != null && plan.suggested > 0 && Number(amountEdit || 0) !== plan.suggested ? (
+              {amountEdit != null && suggest > 0 && amountNum !== suggest ? (
                 <button type="button" className="grc-link block" onClick={() => setAmountEdit(null)}>
-                  제안 금액 {won(plan.suggested)}원으로 되돌리기
+                  미수금 {won(suggest)}원으로 되돌리기
                 </button>
               ) : null}
-              {plan.notes.map((n) => (
-                <p key={n} className="muted sm grc-note">{n}</p>
-              ))}
-
               <ChipGroup role="group" aria-label="결제 방법">
                 {BOOK_PAY_METHODS.map((m) => (
                   <Chip key={m} active={method === m} disabled={busy} onClick={() => setMethod(m)}>
@@ -377,59 +170,86 @@ export default function GroupReceiptSheet({
                   </Chip>
                 ))}
               </ChipGroup>
-              <input className="grc-memo" aria-label="메모(선택)" placeholder="메모 (선택) — 예: 현장 결제" maxLength={30} value={memo} onChange={(e) => setMemo(e.target.value)} />
-
-              {!readOnly ? (
-                <details className="gpp-more">
-                  <summary>대장 객실 · 뱃지 색{lead ? ` — 대장 ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</summary>
-                  <div className="gpp-lead-pick">
-                    <p className="muted sm">대장은 칸의 「대장」 뱃지에 나와요. 지정하면 결제·퇴실이 있어도 바뀌지 않아요.</p>
-                    <ChipGroup role="group" aria-label="대장 객실">
-                      {members.filter((m) => isPeriodPayable(m) || m.id === leadId).map((m) => (
-                        <Chip key={m.id} sm active={m.id === leadId} disabled={busy} onClick={() => void onSetLead(m.id).catch((e) => setErr(e instanceof Error ? e.message : "대장을 바꾸지 못했어요"))}>
-                          {roomLabel(m)}
-                        </Chip>
-                      ))}
-                      {leadPinned ? (
-                        <Chip sm disabled={busy} onClick={() => void onSetLead(null).catch(() => setErr("자동으로 되돌리지 못했어요"))}>
-                          자동으로
-                        </Chip>
-                      ) : null}
-                    </ChipGroup>
-                    {onPickColor ? (
-                      <span className="gpp-sw" role="group" aria-label="뱃지 색">
-                        {GROUP_BADGE_COLORS.map((id) => (
-                          <button key={id} type="button" className={`grp-swatch ${id}${badgeColor === id ? " on" : ""}`} aria-label={`뱃지 색 ${id}`} onClick={() => void onPickColor(id)} />
-                        ))}
-                      </span>
-                    ) : null}
-                  </div>
-                </details>
-              ) : null}
+              <div className="grc-flds">
+                <label className="grc-fld">
+                  <span className="muted sm">결제일</span>
+                  <input type="date" aria-label="결제일" min="2020-01-01" max="2099-12-31" value={bizDate} onChange={(e) => e.target.value && setBizDate(e.target.value)} />
+                </label>
+                <label className="grc-fld grow">
+                  <span className="muted sm">메모 (선택)</span>
+                  <input className="grc-memo" aria-label="메모(선택)" placeholder={hint ? `예: ${hint}` : "예: 현장 결제"} maxLength={RECEIPT_MEMO_MAX} value={memo} onChange={(e) => setMemo(e.target.value)} />
+                </label>
+              </div>
+              {plan.ok ? <p className="muted sm grc-note">{receiptAfterLabel(plan.after)}</p> : null}
             </>
           )}
+
+          <GroupCharges ledger={ledger} today={today} roomLabel={(id) => { const b = byId.get(id); return b ? roomLabel(b) : "객실"; }} readOnly />
+
+          <section className="grc-pays" aria-label="결제 내역">
+            <div className="gch-h">
+              <b>결제 내역</b>
+              <span className="muted sm">{lines.length ? `${lines.length}건 · 합계 ${won(ledger.paid)}원` : "아직 없어요"}</span>
+            </div>
+            {lines.length ? (
+              <ul className="pev-list">
+                {lines.slice(-6).map((l) => (
+                  <li key={l.id} className="pev-li">
+                    <span className="pev-main">{payLineText(l)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+
+          {!readOnly ? (
+            <details className="gpp-more">
+              <summary>객실 관리 · 대장 · 뱃지 색{lead ? ` — 대장 ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</summary>
+              <div className="gpp-lead-pick">
+                {onLeave ? (
+                  <div className="grc-leave">
+                    {ledger.rooms.filter((r) => r.live).map((r) => {
+                      const b = byId.get(r.bookingId);
+                      return b ? (
+                        <button key={r.bookingId} type="button" className="grc-link" onClick={() => onLeave(r.bookingId)}>
+                          {roomLabel(b)} 조기 퇴실 처리
+                        </button>
+                      ) : null;
+                    })}
+                  </div>
+                ) : null}
+                <p className="muted sm">대장은 칸의 「대장」 뱃지에 나와요. 지정하면 결제·퇴실이 있어도 바뀌지 않아요.</p>
+                <ChipGroup role="group" aria-label="대장 객실">
+                  {members.filter((m) => isPeriodPayable(m) || m.id === leadId).map((m) => (
+                    <Chip key={m.id} sm active={m.id === leadId} disabled={busy} onClick={() => void onSetLead(m.id).catch((e) => setErr(e instanceof Error ? e.message : "대장을 바꾸지 못했어요"))}>
+                      {roomLabel(m)}
+                    </Chip>
+                  ))}
+                  {leadPinned ? (
+                    <Chip sm disabled={busy} onClick={() => void onSetLead(null).catch(() => setErr("자동으로 되돌리지 못했어요"))}>
+                      자동으로
+                    </Chip>
+                  ) : null}
+                </ChipGroup>
+                {onPickColor ? (
+                  <span className="gpp-sw" role="group" aria-label="뱃지 색">
+                    {GROUP_BADGE_COLORS.map((id) => (
+                      <button key={id} type="button" className={`grp-swatch ${id}${badgeColor === id ? " on" : ""}`} aria-label={`뱃지 색 ${id}`} onClick={() => void onPickColor(id)} />
+                    ))}
+                  </span>
+                ) : null}
+              </div>
+            </details>
+          ) : null}
           {err ? <div className="ferr">{err}</div> : null}
         </div>
         <div className="mf assign-type-acts gpp-acts">
-          {allocDone != null ? (
-            <button type="button" className="btn dark" autoFocus onClick={() => { setAllocDone(null); }}>
-              확인
-            </button>
-          ) : allocLump && allocCalc ? (
-            <>
-              <button type="button" className="btn line" disabled={busy} onClick={() => { setAllocId(null); setErr(null); }}>
-                뒤로
-              </button>
-              <button type="button" className="btn dark gpp-go" autoFocus disabled={busy || !allocCalc.lines.length} onClick={() => void confirmAlloc()}>
-                {busy ? "배분 중…" : `이대로 배분 · ${won(allocLump.amount - allocCalc.rest)}원`}
-              </button>
-            </>
-          ) : done ? (
+          {done ? (
             <>
               <button type="button" className="btn line" disabled={busy} onClick={() => void undo()}>
                 방금 결제 등록 취소
               </button>
-              <button type="button" className="btn line" onClick={() => { setDone(null); setStartPick(null); }}>
+              <button type="button" className="btn line" onClick={() => setDone(null)}>
                 이어서 결제 등록
               </button>
               <button type="button" className="btn dark" autoFocus onClick={onClose}>
@@ -443,8 +263,8 @@ export default function GroupReceiptSheet({
                   <Plus size={14} /> 객실 추가
                 </button>
               ) : null}
-              <button type="button" className="btn dark gpp-go" disabled={!canGo} onClick={() => void submit()} autoFocus>
-                {busy ? "저장 중…" : plan.ok ? `${BOOK_PAY_LABEL[method]}로 ${won(plan.total)}원 결제 등록` : "금액을 입력해 주세요"}
+              <button type="button" className="btn dark gpp-go" disabled={!canGo} onClick={() => void submit()}>
+                {busy ? "저장 중…" : receiptButtonLabel(plan.ok ? plan.amount : 0)}
               </button>
             </>
           )}

@@ -149,7 +149,16 @@ interface Props {
   /** 다실 단체 「기간 결제」 시트 열기 (null이면 버튼 없음) */
   onGroupPay?: (() => void) | null;
   /** 단체 머리글(결제 현황 + 큰 버튼) — 단체 객실을 골랐을 때 */
-  groupHead?: { ledger: GroupLedger; name?: string | null; onJoin?: () => void } | null;
+  groupHead?: {
+    ledger: GroupLedger;
+    name?: string | null;
+    onJoin?: () => void;
+    roomLabel: (bookingId: string) => string;
+    /** 객실(들)을 퇴실 미정으로 / 퇴실일로 */
+    onSetEnd?: (ids: string[], out: string | null) => Promise<void> | void;
+    /** 객실 하나의 입퇴실·박별 요금 고치기 */
+    onEditRoom?: (bookingId: string) => void;
+  } | null;
   /** 결제 내역(증거) + 기록 정정 열기 — 단체면 머리글 안에, 개인이면 결제 이력 자리에 */
   record?: { title: string; lines: PayLine[]; ledger: GroupLedger | null; onOpen: () => void } | null;
   /** 메모 · 기록 한 줄 (고정 메모 미리보기 + 열기) */
@@ -570,7 +579,7 @@ export default function NowSidePanel({
                 </div>
               </div>
               {groupHead && onGroupPay ? (
-                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} onPay={onGroupPay} onJoin={groupHead.onJoin} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} />
+                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} roomLabel={groupHead.roomLabel} onPay={onGroupPay} onJoin={groupHead.onJoin} onSetEnd={groupHead.onSetEnd} onEditRoom={groupHead.onEditRoom} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} />
               ) : null}
               {b && notes ? (
                 <button type="button" className={`nsel-notes${notes.pinned ? " has" : ""}`} onClick={notes.onOpen} aria-label="메모 · 기록 열기">
@@ -597,7 +606,7 @@ export default function NowSidePanel({
                     <span className="nsel-k">일정</span>
                     <span className="nsel-v">
                       {nowNightRange(b).label}
-                      {b.nights ? ` · ${b.nights}박` : ""}
+                      {b.openEnded ? " · 퇴실 미정" : b.nights ? ` · ${b.nights}박` : ""}
                       {b.guests ? ` · ${b.guests}명` : ""}
                     </span>
                   </div>
@@ -644,7 +653,7 @@ export default function NowSidePanel({
                     </div>
                   ) : null}
                   {record && !groupHead ? (
-                    <PayEvidence title={record.title} lines={record.lines} ledger={record.ledger} showBalance readOnly={readOnly} onOpen={record.onOpen} />
+                    <PayEvidence title={record.title} lines={record.lines} ledger={record.ledger} readOnly={readOnly} onOpen={record.onOpen} />
                   ) : null}
                   {record ? null : payHist.length > 0 ? (
                     <div className="nsel-payhist" aria-label="결제 이력">

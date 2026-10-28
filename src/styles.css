@@ -5710,9 +5710,6 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .nsel-open .btn.on { background: #eef6f0; border-color: #6a9a78; color: #1f5a33; }
 .nsel-hold { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
 .nsel-hold .chip.on { background: #1a1a1a; color: #fff; }
-.grc-lumps { list-style: none; margin: 0 0 10px; padding: 8px 10px; border: 1px dashed var(--line, #d6d3cb); border-radius: 10px; display: grid; gap: 6px; }
-.grc-lumps li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.grc-alloc { display: grid; gap: 8px; }
 
 /* 객실 추가 · 겹침 안내 (막지 않고 알려 줘요) */
 .rcn{margin-top:10px;padding:10px 12px;border-radius:12px;background:#fff7e6;border:1px solid #f1d9a6;font-size:13px;display:flex;flex-direction:column;gap:8px}
@@ -5822,3 +5819,50 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .mvs .mf{padding:10px 0 2px;display:flex;position:sticky;bottom:0;background:#fff}
 .mvs .mf .btn{width:100%}
 .mvs .mvs-go{height:48px;font-size:15px;font-weight:800}
+
+/* ===== 객실별 요금 · 결제 내역 (배분 없음) ===== */
+.gch { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 10px; border-radius: 16px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
+.gch-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 14px; }
+.gch-grp { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gch-tog { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); background: #fff; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--ink); cursor: pointer; }
+.gch-tog.on { background: #eef3ff; border-color: #9db6f2; color: #2a52be; }
+.gch-tog:disabled { opacity: 0.55; cursor: default; }
+.gch-date { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex-basis: 100%; }
+.gch-date input[type="date"] { height: 44px; border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 0 10px; font: inherit; background: #fff; }
+.gch-date .btn { min-height: 44px; }
+.gch-tbl { display: flex; flex-direction: column; font-size: 13.5px; }
+.gch-row { display: grid; grid-template-columns: minmax(70px, 0.7fr) minmax(0, 1.8fr) minmax(0, 1.5fr) minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 8px 2px; border-top: 1px solid #f0f0f2; font-variant-numeric: tabular-nums; }
+.gch-hd { border-top: 0; font-size: 11.5px; color: var(--ink3); font-weight: 700; padding-top: 0; }
+.gch .r { text-align: right; }
+.gch-no { font-weight: 800; }
+.gch-sub { font-weight: 800; }
+.gch-rate { font-size: 12.5px; color: var(--ink2, #555); }
+.gch-range { min-width: 0; }
+.gch-open, .gch-edit { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 36px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: 10px; background: none; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; text-align: left; }
+.gch-edit { text-decoration: underline dotted; text-underline-offset: 3px; }
+.gch-open { font-weight: 800; color: #2a52be; background: #eef3ff; margin-left: 0; padding: 0 10px; }
+.gch-open i { font-style: normal; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: #2a52be; color: #fff; }
+.gch-ed { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px 10px; margin: 0 0 4px; border-radius: 12px; background: var(--panel, #f6f6f8); }
+.gch-link { border: 0; background: none; padding: 0 4px; min-height: 44px; font: inherit; font-size: 13px; color: var(--ink3); text-decoration: underline; cursor: pointer; }
+.gch-ex { font-size: 13px; }
+.gch-tot { border-top: 2px solid var(--ink, #222); font-size: 14.5px; }
+.gch-tot .gch-sub { font-size: 15.5px; }
+.grc-flds { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.grc-fld { display: flex; flex-direction: column; gap: 4px; }
+.grc-fld.grow { flex: 1 1 180px; min-width: 0; }
+.grc-fld input[type="date"] { height: 44px; border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 0 10px; font: inherit; background: #fff; }
+.grc-fld .grc-memo { height: 44px; }
+.grc-pays { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 14px; background: #fff; border: 1px solid var(--line, #e7e7ea); }
+.grc-leave { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+.ghead-diff { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .gch-hd { display: none; }
+  .gch-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "no sub" "range range" "rate rate"; }
+  .gch-row > :nth-child(1) { grid-area: no; }
+  .gch-row > :nth-child(2) { grid-area: range; }
+  .gch-row > :nth-child(3) { grid-area: rate; text-align: left; }
+  .gch-row > :nth-child(4) { grid-area: sub; }
+  .gch-tot, .gch-ex { grid-template-areas: "no sub"; }
+  .gch-tot > :nth-child(2), .gch-tot > :nth-child(3), .gch-ex > :nth-child(3) { display: none; }
+  .gch-tog { flex: 1 1 100%; justify-content: center; }
+}
