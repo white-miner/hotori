@@ -9,7 +9,7 @@
 - 사이드바 구조가 없는 기존 화면 코드(`active` 가 false 일 때의 제자리 렌더, 모바일용 `<aside className="side">`)는 모바일이 7단계까지 쓰므로 남아 있다.
 
 ## 구조
-- `src/Sidebar.tsx` — SidebarProvider / `useSidebarSlots()` / Sidebar. 슬롯: views · date · building · search · platform · status · minimap · ops (배치 순서는 아래 "사이드바 안 순서").
+- `src/Sidebar.tsx` — SidebarProvider / `useSidebarSlots()` / Sidebar. 슬롯: views · date · ops (순서는 아래 "사이드바 안 순서").
 - `src/SidebarParts.tsx` — 상단(로고→보드, 간단 예약, 알림·계정), 메뉴 항목.
 - 화면(Dashboard 등)은 `sbx.into(슬롯, 노드)` 로 자기 컨트롤을 슬롯에 포털로 넣는다. `active` 가 false(모바일·공유 화면)이면 노드를 그대로 돌려줘 기존 위치에 렌더된다.
 - **상태는 Dashboard 에 그대로 둔다** (`selectedRoomIds`, `sideMode`, `mvB`, `assigning` 등). 사이드바는 렌더 위치만 바꾼다.
@@ -18,7 +18,8 @@
 - 사이드바가 켜져 있으면 `.nowlayout` 은 한 칸, 기존 우측 `.nowside` 는 렌더되지 않는다.
 
 ## 사이드바 안 순서 (펼침·고정)
-위에서 아래로: 로고·간단 예약·화면 이동(A) → 보기(현황/배치/…) → **운영 패널(C: 현황 NowSidePanel · 배치 roomsSideBody)** → 날짜 · 건물 · 손님 검색 · 플랫폼 · 현황 필터/층 · 미니맵 → 하단 도구(D). 운영 패널이 스크롤 없이 바로 보이게 하려고 C 를 조회 조건 위로 올렸다. 조회 조건은 아래에서 스크롤로 접근한다(삭제 없음). 레일(접힘)에서는 아이콘만 보이고 운영 패널은 펼쳐야 보인다.
+위에서 아래로: 로고·간단 예약·화면 이동(A) → 보기(현황/배치/…) · 날짜 이동 → **운영 패널(C: 현황 NowSidePanel · 배치 roomsSideBody)** → 하단 도구(D).
+건물 칩 · 손님 검색 · 플랫폼 칩 · 현황 필터(전체/임시만) · 배치 층 칩 · 미니맵(요약·객실 종류·방 칩)은 사이드바가 아니라 **본문 맨 위 줄**(카드 그리드 바로 위, 사이드바 도입 전과 같은 자리·같은 컴포넌트)에 둔다. 슬롯은 views · date · ops 만 있다. 레일(접힘)에서는 아이콘만 보이고 운영 패널은 펼쳐야 보인다.
 
 ## 펼침 / 고정 / Esc
 - 기본 레일 56px. 펼침 320px.

@@ -10,9 +10,8 @@ import { SIDEBAR_PIN_KEY, escSidebarAction, parsePinned } from "../shared/sideba
  */
 
 /** Dashboard 가 그려 넣는 칸 이름 */
-export type SbSlot = "views" | "date" | "building" | "search" | "platform" | "status" | "minimap" | "ops";
+export type SbSlot = "views" | "date" | "ops";
 /** 사이드바 안 고정 순서 (포털 순서에 기대지 않음) — 기획서 B: 보기 · 날짜 · 건물 · 검색 · 플랫폼 · 현황 필터/층 · 미니맵 */
-const SLOTS: SbSlot[] = ["views", "date", "building", "search", "platform", "status", "minimap", "ops"];
 
 interface SbCtx {
   /** 사이드바를 쓰는 중 (데스크톱) */
@@ -168,17 +167,13 @@ export function Sidebar({ st, top, bottom }: { st: SidebarState; top?: ReactNode
       </div>
       {top ? <div className="sb-a">{top}</div> : null}
       <div className="sb-scroll">
-        {/* 순서: 보기(화면 전환) → C 운영 패널 → 나머지 조회 조건. 운영 패널이 스크롤 없이 바로 보이게 한다. */}
+        {/* 순서: 보기(화면 전환) → 날짜 이동 → 운영 패널. 건물·손님 검색·플랫폼·필터·미니맵은 본문 맨 위 줄 */}
         <div className="sb-b sb-b-views">
           <div className="sb-slot sb-slot-views" ref={st.setSlot("views")} />
+          <div className="sb-slot sb-slot-date" ref={st.setSlot("date")} />
         </div>
         <div className="sb-c">
           <div className="sb-slot sb-slot-ops" ref={st.setSlot("ops")} />
-        </div>
-        <div className="sb-b sb-b-rest">
-          {SLOTS.filter((n) => n !== "ops" && n !== "views").map((n) => (
-            <div key={n} className={`sb-slot sb-slot-${n}`} ref={st.setSlot(n)} />
-          ))}
         </div>
       </div>
       {bottom ? <div className="sb-d">{bottom}</div> : null}

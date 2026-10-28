@@ -2330,7 +2330,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   ) : null;
-  const buildingTabs = sbx.into("building", buildingTabsEl);
+  const buildingTabs = buildingTabsEl;
   const platformFilterBarEl =
     tab === "now" || tab === "rooms" ? (
       <PlatformFilterBar
@@ -2341,7 +2341,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         paused={!!mvB || !!assigning}
       />
     ) : null;
-  const platformFilterBar = sbx.into("platform", platformFilterBarEl);
+  const platformFilterBar = platformFilterBarEl;
   /** 현황·배치 공통 고객 검색 (건물 칩 근처 · sticky · Lucide Search) */
   const guestSearchBarEl =
     tab === "now" || tab === "rooms" ? (
@@ -2394,7 +2394,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         ) : null}
       </div>
     ) : null;
-  const guestSearchBar = sbx.into("search", guestSearchBarEl);
+  const guestSearchBar = guestSearchBarEl;
 
   // 판매 캘린더와 객실 캘린더는 보는 기간(주·14일·월·기간)을 함께 써요
   const periodSeg = readOnly ? null : (
@@ -3833,7 +3833,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
     /** 운영 패널(N1~N21) — 사이드바 ON 이면 사이드바 C 구역으로 포털(내용·동작 그대로), 아니면 지금 자리(우측) */
     const opsWrap = (node: React.ReactNode) => (sbOn ? sbx.into("ops", node) : node);
-    /** 현황 필터 (전체 / 임시만) — 사이드바 ON 이면 사이드바 '현황 필터' 칸으로 */
+    /** 현황 필터 (전체 / 임시만) */
     const nowFilterChips = (
       <>
         <button type="button" className={`chip ${nowFilter === "all" ? "on" : ""}`} disabled={!!mvB} onClick={() => setNowFilter("all")}>
@@ -3858,7 +3858,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="dnav nowfilters">
-              {sbOn ? null : nowFilterChips}
+              {nowFilterChips}
               {!readOnly && nowSide.tentative.length ? (
                 <button type="button" className="btn sm dark" disabled={tentBusy || !!mvB} onClick={() => void confirmAllTentative()}>
                   {tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}
@@ -3870,24 +3870,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           </div>
           {mvBar}
-          {sbOn ? sbx.into("status", <div className="sb-chips">{nowFilterChips}</div>) : null}
-          {sbOn ? sbx.into("minimap", nowGlance) : null}
-          {sbOn ? buildingTabs : null}
-          {sbOn ? guestSearchBar : null}
-          {sbOn ? platformFilterBar : null}
           <NowLayoutGrid>
             {/* Chrome sticky lives in the board column only — full-width sticky covered .nowside (#128). */}
             <div className="nowboard">
-              {sbOn ? null : (
-                <div className="board-chrome-sticky">
-                  <div className="board-filter-sticky">
-                    {buildingTabs}
-                    {guestSearchBar}
-                    {platformFilterBar}
-                  </div>
-                  {nowGlance}
+              <div className="board-chrome-sticky">
+                <div className="board-filter-sticky">
+                  {buildingTabs}
+                  {guestSearchBar}
+                  {platformFilterBar}
                 </div>
-              )}
+                {nowGlance}
+              </div>
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
                   <section key={bd.id} className="bblock">
@@ -4649,19 +4642,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           }));
           return (
             <div className="board-chrome-sticky">
-              {sbOn ? (
-                <>
-                  {buildingTabs}
-                  {guestSearchBar}
-                  {platformFilterBar}
-                </>
-              ) : (
-                <div className="board-filter-sticky">
-                  {buildingTabs}
-                  {guestSearchBar}
-                  {platformFilterBar}
-                </div>
-              )}
+              <div className="board-filter-sticky">
+                {buildingTabs}
+                {guestSearchBar}
+                {platformFilterBar}
+              </div>
               <NowGlancePanel
                 key={`rooms-glance-${bScope}-${selDate}`}
                 total={gRooms.length}
@@ -4688,7 +4673,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
           );
         })()}
-        {sbOn ? sbx.into("status", roomsFloorChips) : roomsFloorChips}
+        {roomsFloorChips}
         {groups.map((g) => (
           <section className={multi ? "bsec" : undefined} key={g.bd.id}>
             {multi ? (

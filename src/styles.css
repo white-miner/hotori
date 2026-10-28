@@ -6290,26 +6290,17 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .sb.rail .sb-tools .top-notice-btn { width: 36px; padding: 0; }
 .sb.rail .sb-brand .brand { justify-content: center; }
 .sb.rail .sb-tools .menu-wrap .pop { left: 46px; right: auto; bottom: 0; }
-/* B: 조회 조건 — 보기 · 날짜 · 건물 · 손님 검색 · 플랫폼 · 현황 필터/층 · 미니맵 (Dashboard 가 칸마다 포털) */
+/* B: 보기 · 날짜 이동 (Dashboard 가 칸마다 포털) — 건물·손님 검색·플랫폼·필터/층·미니맵은 본문 맨 위 줄 */
 .sb-b { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; padding-bottom: 14px; }
 .sb-slot { min-width: 0; }
 .sb-b-views { padding-bottom: 12px; }
 .sb-b-views:not(:has(> .sb-slot:not(:empty))) { padding: 0; }
-.sb-b-rest { border-top: 1px solid var(--line2); margin-top: 12px; padding-top: 12px; }
-.sb-b-rest:not(:has(> .sb-slot:not(:empty))) { display: none; }
 .sb .boardtabs { display: flex; flex-wrap: wrap; width: 100%; margin: 0; gap: 2px; border-radius: 18px; box-sizing: border-box; }
 .sb .boardtabs button, .sb .boardtabs.n4 button, .sb .boardtabs.n5 button, .sb .boardtabs.n6 button { flex: 1 1 auto; justify-content: center; padding: 7px 10px; font-size: 13px; }
-.sb .btabs { flex-wrap: wrap; overflow: visible; margin: 0; }
-.sb .board-filter-sticky, .sb .guest-search-bar { min-width: 0; }
-.sb .guest-search-bar { flex: 1 1 100%; gap: 8px; }
-.sb .guest-search-bar .search.guest-search { width: 100%; flex: 1 1 100%; }
 .sb .rnav, .sb .dnav { margin: 0; width: 100%; box-sizing: border-box; flex-wrap: nowrap; }
 .sb .rnav .rnav-l { flex: 1 1 auto; min-width: 0; font-size: 14px; white-space: normal; }
 .sb .dnav .dn-day { flex: 1 1 auto; min-width: 0; text-align: center; font-size: 14px; font-weight: 750; }
 .sb .rnav .ar, .sb .dnav .ar { flex: none; }
-.sb-chips, .sb .fchips { display: flex; flex-wrap: wrap; gap: 5px; padding: 0; overflow: visible; }
-.sb .board-glance { margin: 0; }
-.sb .pfbar, .sb .pf-bar { flex-wrap: wrap; }
 /* C: 현황 운영 패널 (NowSidePanel · 안은 그대로) — 우측 칸이 사라져 보드는 한 칸 */
 .app.sb-active .now-page .nowlayout { grid-template-columns: minmax(0, 1fr); }
 .sb-c { padding-bottom: 0; }
