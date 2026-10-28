@@ -1,17 +1,12 @@
 // 단체 정산서: 타입별 소계 → 추가 인원 · 추가 항목 · 환불/취소 → 수납액 → 최종 결제액. 인쇄(이미지/PDF)용 모양도 같이.
 import { hasExtraTime, isTimeService, timeTags } from "../shared/extratime";
 import { useState } from "react";
-import { Check, Plus, Printer, Receipt, X } from "lucide-react";
+import { Check, Plus, Printer, X } from "lucide-react";
 import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledger";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, PAYMENT_METHOD_LABEL, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
-import { INVOICE_COPY } from "../shared/invoiceDoc";
-import { findLinkedQuote } from "../shared/quoteVariance";
 import type { HotelData } from "./data";
-import { useInvoiceIssues, useQuoteIssues } from "./data";
 import { askConfirm } from "./ConfirmDialog";
-import { ensureHotelBizReady } from "./hotelBizGate";
-import InvoiceLetter from "./InvoiceLetter";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 
 interface Props {
@@ -33,17 +28,6 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
   const first = members[0];
   const plat = first ? L.plats.get(first.platformId) : undefined;
   const st = settle(members, info, plat);
-  const invoices = useInvoiceIssues(data.hotel!.id);
-  const quotes = useQuoteIssues(data.hotel!.id);
-  const linkedQuote = (() => {
-    const q = findLinkedQuote(quotes.list, {
-      groupId,
-      bookingIds: members.map((m) => m.id),
-    });
-    return q ? { id: q.id, title: q.title || q.clientName, total: q.total } : null;
-  })();
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [invoiceBusy, setInvoiceBusy] = useState(false);
   // 빠른 입실 · 늦은 퇴실한 방: '601 빠른 14:00 · 602 늦은 15:00 서비스'
   const timeRooms = members
     .filter((b) => b.status !== "cancelled" && hasExtraTime(b))
@@ -377,18 +361,6 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
             >
               <Printer size={14} /> 저장(이미지/PDF)
             </button>
-            <button
-              type="button"
-              className="btn line sm"
-              onClick={() => {
-                void (async () => {
-                  if (!(await ensureHotelBizReady(s.hotelBiz, data.hotel!.name))) return;
-                  setInvoiceOpen(true);
-                })();
-              }}
-            >
-              <Receipt size={14} /> {INVOICE_COPY.title}
-            </button>
           </div>
           <button type="button" className="btn" onClick={onClose}>
             닫기
@@ -400,28 +372,6 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
           ) : null}
         </div>
       </div>
-      {invoiceOpen ? (
-        <InvoiceLetter
-          hotelName={data.hotel!.name}
-          s={s}
-          today={today}
-          members={members}
-          groupId={groupId}
-          groupInfo={info}
-          linkedQuote={linkedQuote}
-          busy={invoiceBusy}
-          notify={notify}
-          onIssue={async (args) => {
-            setInvoiceBusy(true);
-            try {
-              return await invoices.issue(args);
-            } finally {
-              setInvoiceBusy(false);
-            }
-          }}
-          onClose={() => setInvoiceOpen(false)}
-        />
-      ) : null}
     </div>
   );
 }

@@ -125,7 +125,6 @@ export const ISSUANCE_COPY = {
   expireSoon: "만료 임박",
   expired: "만료",
   settingsVaultHint: "화재보험·통장사본·사업자등록증·영업신고증은 「발급」보관함에서 관리해요.",
-  settingsFloorPrint: "배치도 인쇄",
   confirmDeleteTitle: "증서를 삭제할까요?",
   confirmDeleteBody: "보관함과 파일에서 삭제돼요. 되돌릴 수 없어요.",
   fileTooBig: "파일이 너무 커요 (최대 20MB).",
