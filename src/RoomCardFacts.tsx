@@ -53,7 +53,7 @@ export default function RoomCardFacts({
           연동 {linkLabel}
         </div>
       ) : null}
-      {top && !linkLabel && payText ? (
+      {top && payText ? (
         <div className="rc-pay amt-paid" data-tone={tone} title={payTitle ?? "결제 수단 · 금액"}>
           {(() => {
             const parts = spacedPay(payText).split(" · ");
