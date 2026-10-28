@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Plus, RotateCcw } from "lucide-react";
 import { won, type HotelSettings } from "../shared/ledger";
-import { withAllSame } from "../shared/nightTable";
 import {
   type ExtraDraft,
   type RateEdits,
@@ -75,7 +74,7 @@ export default function GroupRoomRates({
           ))}
         </ul>
       ) : (
-        <div className="muted sm grr-empty">방을 고르면 방마다 요금 줄이 생겨요. 호텔 요금표가 있으면 박마다 채워 드려요.</div>
+        <div className="muted sm grr-empty">방을 고르면 방마다 요금 줄이 생겨요. 호텔 요금표가 있으면 박마다 제안해 드려요.</div>
       )}
       <div className="grr-tot" aria-live="polite">
         <span className="gtotal-lab">총액</span>
@@ -112,6 +111,8 @@ function RateRow({
   const [xOpen, setXOpen] = useState(extras.length > 0);
   const sug = suggestNights(s, slot.typeId, checkIn, nights);
   const noRate = !(row.roomCharge > 0);
+  const sugMap: Record<string, number> = Object.fromEntries(sug.map((x) => [x.date, x.amount]));
+  const own = edits[slot.key]?.rates ?? null;
   const notes: Record<string, string> = {};
   if (!row.edited) for (const x of sug) notes[x.date] = x.source === "season" && x.seasonName ? `시즌 · ${x.seasonName}` : x.source === "none" ? "" : (({ date: "특별일", season: "시즌", weekend: "주말", weekday: "평일", flat: "기본", none: "" }) as const)[x.source];
   const setX = (i: number, p: Partial<ExtraDraft>) => onExtras(extras.map((x, k) => (k === i ? { ...x, ...p } : x)));
@@ -122,25 +123,15 @@ function RateRow({
           <b>{slot.label}</b>
           <small className="muted">{slot.sub}</small>
         </span>
-        <label className="inp price sm grr-inp">
-          <span className="pl">1박</span>
-          <input
-            className="num"
-            inputMode="numeric"
-            disabled={disabled}
-            aria-label={`${slot.label} 1박 요금`}
-            placeholder={row.uniform == null && Object.keys(row.rates.nights ?? {}).length ? "박마다 다름" : "0"}
-            value={row.uniform ? won(row.uniform) : ""}
-            onChange={(e) => onRates(withAllSame(checkIn, nights, num(e.target.value)))}
-          />
-          원
-        </label>
+        <span className="grr-one muted sm" aria-label={`${slot.label} 1박`}>
+          {row.uniform ? `1박 ${won(row.uniform)}원` : Object.keys(row.rates.nights ?? {}).length ? "박마다 다름" : "—"}
+        </span>
         <span className="grr-sub" aria-label={`${slot.label} 소계`}>
           <small className="muted">소계</small> <b className="num">{won(row.subtotal)}원</b>
         </span>
       </div>
       <div className="grr-meta muted sm">
-        <span>{noRate ? "요금이 없어요 · 1박 요금을 입력해 주세요" : rowRateLine(row, nights)}</span>
+        <span>{noRate ? "요금이 없어요 · 박별 요금을 입력해 주세요" : rowRateLine(row, nights)}</span>
         {row.sources.length ? (
           <span className="grr-src" aria-label={`${slot.label} 요금 출처`}>
             {row.sources.map((x) => (
@@ -162,12 +153,17 @@ function RateRow({
       <NightRatesTable
         checkIn={checkIn}
         nights={nights}
-        rates={row.rates}
+        rates={own}
+        suggestions={sugMap}
         label={slot.label}
         bare
         disabled={disabled}
         notes={notes}
-        onChange={(r) => onRates({ ...r, extras: null })}
+        onChange={(r) => {
+          // 적은 박만 저장 — 비운 박은 호텔 요금 제안이 칸을 채워요 (한 박 금액을 다른 박에 복사하지 않아요)
+          if (!Object.keys(r.nights ?? {}).length) onReset();
+          else onRates({ flat: null, weekday: null, weekend: null, nights: r.nights, extras: null });
+        }}
       />
       <div className="grr-x">
         <button type="button" className={`grr-xtg${extras.length ? " on" : ""}`} aria-expanded={xOpen} onClick={() => setXOpen((o) => !o)}>

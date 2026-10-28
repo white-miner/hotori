@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeSettings } from "./ledger";
 import { groupDrafts } from "./group";
-import { withTotal, withNight } from "./nightTable";
+import { fillBlankWithAmount, withNight } from "./nightTable";
 import { openStayFields } from "./openStay";
 import { sumNightAmounts } from "./nightrates";
 
@@ -15,8 +15,8 @@ const S = normalizeSettings({
 const base = { groupId: "g", groupName: "한빛", platformId: "p", checkIn: "2026-10-25", s: S } as const;
 
 test("방별 박별 요금표: 방 금액 = 박별 합, 방마다 달라도 돼요", () => {
-  const t1 = withTotal("2026-10-25", 3, 690_000 / 3 * 3); // 3박 합 690,000 → 230,000씩
-  const t2 = withNight("2026-10-25", 3, withTotal("2026-10-25", 3, 240_000), 0, "2026-10-26", 100_000);
+  const t1 = { flat: null, nights: fillBlankWithAmount("2026-10-25", 3, null, 230_000) }; // 박당 230,000을 채움
+  const t2 = withNight("2026-10-25", 3, { flat: null, nights: fillBlankWithAmount("2026-10-25", 3, null, 80_000) }, 0, "2026-10-26", 100_000);
   const list = groupDrafts({ ...base, nights: 3, roomIds: ["r501", "r502"], prices: [0, 0], memberNightRates: [t1, t2] });
   assert.equal(list[0]!.price, 690_000);
   assert.equal(list[0]!.nightRates?.nights?.["2026-10-25"], 230_000);

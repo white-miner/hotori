@@ -1,5 +1,4 @@
 import type { Booking } from "../shared/ledger";
-import { nightRatesFromTotal } from "../shared/nightrates";
 import type { Tangle } from "../shared/tangles";
 import type { HotelData } from "./data";
 import type { ToastOpt } from "./App";
@@ -32,7 +31,7 @@ export async function applyTangleFix(
     return true;
   }
   const before = b;
-  await data.saveBooking({ ...b, price: fix.total, nightRates: nightRatesFromTotal(b.checkIn, b.nights ?? 1, fix.total) }, false);
+  await data.saveBooking({ ...b, price: fix.total, nightRates: b.nightRates ?? null }, false);
   void data.logChange({ kind: "rate", bookingId: b.id, groupId: b.groupId ?? null, summary: `${room}총액 ${won(b.price)}원 → ${won(fix.total)}원 (확인 필요)` });
   notify(`${room}총액을 ${won(fix.total)}원으로 고쳤어요`, {
     ms: 7000,

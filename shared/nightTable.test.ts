@@ -1,18 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isUniform, roomTotal, tableAverage, tableRows, tableSummary, tableTotal, withAllSame, withNight, withTotal, withWeekdayWeekend } from "./nightTable";
+import { isUniform, roomTotal, tableAverage, tableRows, tableSummary, tableTotal, withNight, withWeekdayWeekend } from "./nightTable";
 import { readFileSync } from "node:fs";
+import type { StayNightRates } from "./nightrates";
 
-test("총액 → 박별: 남는 원은 마지막 박, 합은 총액과 같아요", () => {
-  const r = withTotal("2026-10-25", 3, 230_000);
-  const rows = tableRows("2026-10-25", 3, r);
-  assert.deepEqual(rows.map((x) => x.amount), [76_666, 76_666, 76_668]);
-  assert.equal(tableTotal(rows), 230_000);
-  assert.equal(roomTotal(r), 230_000);
+import { fillBlankWithAmount, nightTableStatus } from "./nightTable";
+
+test("박당 금액으로 채우기: 빈 박만 · 적어 둔 박과 0원 입력은 그대로", () => {
+  const out = fillBlankWithAmount("2026-10-25", 3, { "2026-10-26": 100_000 }, 80_000);
+  assert.deepEqual(out, { "2026-10-25": 80_000, "2026-10-26": 100_000, "2026-10-27": 80_000 });
+  assert.deepEqual(fillBlankWithAmount("2026-10-25", 3, { "2026-10-26": 100_000 }, 0), { "2026-10-26": 100_000 });
 });
 
-test("박별 → 총액: 한 박만 고치면 합이 바뀌어요 (양방향)", () => {
-  let r = withAllSame("2026-10-25", 3, 80_000);
+test("박별 → 합계: 한 박만 고치면 합이 바뀌어요", () => {
+  let r: StayNightRates = { flat: null, nights: fillBlankWithAmount("2026-10-25", 3, null, 80_000) };
   assert.equal(roomTotal(r), 240_000);
   r = withNight("2026-10-25", 3, r, 80_000, "2026-10-26", 100_000);
   assert.equal(roomTotal(r), 260_000);
@@ -21,6 +22,17 @@ test("박별 → 총액: 한 박만 고치면 합이 바뀌어요 (양방향)", 
   assert.equal(isUniform(rows), false);
   assert.match(tableSummary(rows), /평균 86,667원/);
   assert.equal(tableAverage(rows), 86_667);
+});
+
+test("표 상태: 판매금과의 차액은 알려 주기만 해요 · 일부만 적으면 비교하지 않아요", () => {
+  const rates = { flat: null, nights: { "2026-10-25": 80_000, "2026-10-26": 100_000 } };
+  const part = nightTableStatus({ checkIn: "2026-10-25", nights: 3, rates, price: 270_000, addons: 0 });
+  assert.deepEqual([part.count, part.allEntered, part.sum, part.diff], [2, false, 180_000, null]);
+  const full = nightTableStatus({ checkIn: "2026-10-25", nights: 2, rates, price: 170_000, addons: 0 });
+  assert.deepEqual([full.allEntered, full.sumTotal, full.diff], [true, 180_000, 10_000]);
+  const addon = nightTableStatus({ checkIn: "2026-10-25", nights: 2, rates, price: 180_000, addons: 20_000 });
+  assert.equal(addon.diff, 20_000);
+  assert.deepEqual(nightTableStatus({ checkIn: "2026-10-25", nights: 2, rates: null, price: 100, addons: 0 }).count, 0);
 });
 
 test("요금 없이 열면 기본 1박 요금으로 채워요 · 박수를 늘려도 앞 박은 그대로", () => {
@@ -35,7 +47,7 @@ test("366박까지 박별 줄이 만들어져요 (예전엔 90박에서 잘렸�
   const rows = tableRows("2026-01-01", 366, null, 50_000);
   assert.equal(rows.length, 366);
   assert.equal(tableTotal(rows), 366 * 50_000);
-  assert.equal(withTotal("2026-01-01", 366, 1_000_000).nights && Object.keys(withTotal("2026-01-01", 366, 1_000_000).nights!).length, 366);
+  assert.equal(Object.keys(fillBlankWithAmount("2026-01-01", 366, null, 1_000)).length, 366);
 });
 
 test("평일·주말(금·토) 한 번에", () => {
@@ -94,4 +106,16 @@ test("기록 정정 편집기는 총액 균등분할을 쓰지 않아요", () =>
   assert.doesNotMatch(body, /nightRatesFromTotal|withTotal|splitAmountLast|syncStayNightRates/);
   assert.match(body, /예약 금액도 박별 합계로 바꾸기/);
   assert.match(readFileSync(new URL("../src/NightRatesEntry.tsx", import.meta.url), "utf8"), /타입 요금으로 채우기/);
+});
+
+test("총액 균등분할 제거: 공용 박별 표·입력·그룹 객실 표에 총액 칸·나눠 채우기가 없어요", () => {
+  const read = (f: string) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
+  for (const f of ["NightRatesTable.tsx", "NightRatesEntry.tsx", "GroupRoomRates.tsx"]) {
+    assert.doesNotMatch(read(f), /nightRatesFromTotal|withTotal|withAllSame|splitAmountLast/, f);
+  }
+  const t = read("NightRatesTable.tsx");
+  assert.match(t, /판매금도 박별 합계로 바꾸기/);
+  assert.match(read("NightRatesEntry.tsx"), /박당 금액으로 채우기/);
+  assert.doesNotMatch(read("SimpleBooking.tsx") + read("Entry.tsx") + read("tangleFix.ts"), /nightRatesFromTotal/);
+  assert.doesNotMatch(readFileSync(new URL("./staySale.ts", import.meta.url), "utf8"), /nightRatesFromTotal/);
 });

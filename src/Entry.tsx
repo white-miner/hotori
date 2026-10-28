@@ -120,10 +120,9 @@ import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
   type StayNightRates,
   hasFullNightMatrix,
-  nightRatesFromTotal,
   priceFromNightMatrix,
   refillFromDefaults,
-  setNightAmount,
+  occupiedNightDates,
   syncStayNightRates,
 } from "../shared/nightrates";
 
@@ -190,7 +189,8 @@ import { type RateEdits, roomSlots, slotRows, unpricedMessage } from "../shared/
 import OnsitePayModeFields from "./OnsitePayModeFields";
 import { entryStayDateUx } from "../shared/nightpick";
 import AssignSwapConfirm from "./AssignSwapConfirm";
-import { stopSellDatesForStay } from "../shared/salesCalendar";
+import { resolveNightRate, stopSellDatesForStay } from "../shared/salesCalendar";
+import { enteredNightMap, nightShiftAmbiguous, nightTableStatus, shiftEnteredNights } from "../shared/nightTable";
 import {
   BookPayMethodCircles,
   BookingModeSeg,
@@ -361,10 +361,14 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   /** 방×밤 요금 행렬 (있으면 총액 = Σ 셀 + 가산) */
   const [nightRates, setNightRates] = useState<StayNightRates | null>(() => {
     if (!base || base.kind !== "stay" || base.stayMode === "long_stay" || !base.nights) return null;
-    if (base.nightRates) return syncStayNightRates(base.checkIn, base.nights, base.nightRates, { typeRate: initGroupRates?.[base.typeId] });
-    const flat = roomNightRate(base, initGroupRates?.[base.typeId]);
-    return flat > 0 ? syncStayNightRates(base.checkIn, base.nights, { flat }) : null;
+    // 적어 둔 박만 그대로 — 안 적은 박은 비워 둬요 (판매금을 박수로 나눠 채우지 않아요)
+    if (base.nightRates) return { ...base.nightRates, nights: enteredNightMap(base.checkIn, base.nights, base.nightRates.nights) };
+    return null;
   });
+  /** 박별 합계가 판매금과 다를 때 「판매금도 박별 합계로 바꾸기」 · 이미 박별 표가 판매금과 같던 예약만 처음부터 켜져 있어요 */
+  const [useSum, setUseSum] = useState<boolean>(() => !!base && base.kind === "stay" && !!base.nights && hasFullNightMatrix(base.checkIn, base.nights, base.nightRates) && priceFromNightMatrix(base.nightRates, 0) === base.price);
+  /** 체크를 켠 순간의 판매금 (끄면 이 값으로 돌아가요) */
+  const [sumBase, setSumBase] = useState<number | null>(() => (base && base.kind === "stay" ? base.price : null));
   const [wdStr, setWdStr] = useState(() => (base?.nightRates?.weekday != null ? String(base.nightRates.weekday) : ""));
   const [weStr, setWeStr] = useState(() => (base?.nightRates?.weekend != null ? String(base.nightRates.weekend) : ""));
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
@@ -562,12 +566,21 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
     if (!long && kind === "stay" && next >= 1 && (next !== nights || nextCheckIn !== checkIn)) {
       const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-      // 총액 모드(플랫폼 + 현장·전화): 총액 유지 · night_rates만 재분배(나머지 마지막 박)
-      if (salesMode === "total" && Number(price || 0) > 0) {
-        const room = Math.max(0, Number(price || 0) - addons);
-        const redistributed = nightRatesFromTotal(nextCheckIn, next, room);
-        setNightRates(redistributed);
-        setRateStr(String(redistributed.flat ?? (next >= 1 ? Math.floor(room / next) : 0)));
+      // 총액 모드(플랫폼 + 현장·전화): 판매금 그대로 · 적어 둔 박만 옮기고 새 박은 비워 둬요 (총액을 나눠 채우지 않아요)
+      if (salesMode === "total") {
+        const oldMap = nightRates?.nights ?? null;
+        if (nextCheckIn !== checkIn && nightShiftAmbiguous(oldMap, checkIn, nights, nextCheckIn, next) && !opts?.shift) {
+          const d = shiftDays(checkIn, nextCheckIn);
+          void askConfirm({
+            title: "입실일 변경 · 박별 요금",
+            body: `입실일이 ${Math.abs(d)}일 ${d > 0 ? "뒤로" : "앞으로"} 바뀌어요. 적어 둔 박별 요금을 어떻게 할까요?\n· 박 따라 옮기기: 1박째 요금은 새 1박째로, 2박째는 새 2박째로 가요.\n· 날짜에 그대로 두기: 같은 날짜는 그 요금 그대로예요. (창을 닫아도 이쪽이에요)\n새로 생긴 박은 비워 둬요.`,
+            confirmLabel: "박 따라 옮기기",
+            cancelLabel: "날짜에 그대로 두기",
+          }).then((ok) => applyStayNights(nextRaw, { ...opts, shift: ok ? "move" : "keep" }));
+          return;
+        }
+        const moved = shiftEnteredNights(oldMap, checkIn, nights, nextCheckIn, next, opts?.shift ?? (nextCheckIn !== checkIn ? "move" : "keep"));
+        setNightRates(nightRates || Object.keys(moved).length ? { ...(nightRates ?? { flat: null }), nights: moved } : null);
       } else {
         const typeRate = base?.groupId ? data.groups.get(base.groupId)?.rates?.[typeId] : undefined;
         const rate = Number(rateStr || 0) > 0 ? Math.round(Number(rateStr)) : roomNightRate(
@@ -648,20 +661,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const digits = raw.replace(/\D/g, "").slice(0, 9);
     setPrice(digits);
     if (long || kind !== "stay" || nights < 1) return;
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    const room = Math.max(0, Number(digits || 0) - addons);
-    // 총액 모드(플랫폼 + 현장·전화): Σ = 총액(나머지 마지막 박)
-    if (salesMode === "total") {
-      const next = nightRatesFromTotal(checkIn, nights, room);
-      setNightRates(next);
-      setRateStr(String(next.flat ?? Math.floor(room / nights)));
-      return;
+    // 판매금은 판매금대로 — 박수로 나누지 않아요. 박별 표와 다르면 차액을 알려 줘요
+    if (useSum) {
+      setUseSum(false);
+      setSumBase(null);
     }
-    const rate = Math.round(room / nights);
-    setRateStr(String(rate));
-    // 총액 오버라이드: flat·셀을 균등 단가로 맞춤 (이후 행렬이 진실)
-    const next = refillFromDefaults(checkIn, nights, { ...(nightRates ?? {}), flat: rate, weekday: wdStr ? Number(wdStr) : null, weekend: weStr ? Number(weStr) : null });
-    setNightRates(next);
   };
   const applyWdWe = (wd: string, we: string) => {
     setWdStr(wd);
@@ -677,15 +681,42 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
     setPrice(String(priceFromNightMatrix(next, addons)));
   };
+  /** 박별 표가 바뀔 때: 박당 입력 모드는 1박 요금을 빈 박에 적용한 합이 판매금 · 총액 모드는 체크했을 때만 판매금을 합계로 */
+  const commitNights = (next: StayNightRates) => {
+    setNightRates(next);
+    if (long || kind !== "stay") return;
+    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
+    if (salesMode === "perNight") {
+      const rate = Number(rateStr || 0) || next.flat || 0;
+      if (rate > 0) {
+        const full = syncStayNightRates(checkIn, nights, { ...next, flat: rate }, { typeRate: rate });
+        if (hasFullNightMatrix(checkIn, nights, full)) setPrice(String(priceFromNightMatrix(full, addons)));
+      }
+      return;
+    }
+    if (useSum) {
+      const st = nightTableStatus({ checkIn, nights, rates: next, price: Number(price || 0), addons });
+      if (st.allEntered) setPrice(String(st.sumTotal));
+    }
+  };
   const editNightAmount = (date: string, amount: number) => {
     if (long || kind !== "stay") return;
-    const baseRates =
-      nightRates ??
-      syncStayNightRates(checkIn, nights, { flat: Number(rateStr || 0) || null }, {});
-    const next = setNightAmount(baseRates, date, amount);
-    setNightRates(next);
+    const map = { ...(nightRates?.nights ?? {}) };
+    if (amount > 0) map[date] = Math.round(amount);
+    else delete map[date];
+    commitNights({ ...(nightRates ?? { flat: null }), nights: map });
+  };
+  const toggleUseSum = (on: boolean) => {
     const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    setPrice(String(priceFromNightMatrix(next, addons)));
+    setUseSum(on);
+    if (on) {
+      setSumBase(Number(price || 0));
+      const st = nightTableStatus({ checkIn, nights, rates: nightRates, price: Number(price || 0), addons });
+      if (st.allEntered) setPrice(String(st.sumTotal));
+    } else {
+      if (sumBase != null) setPrice(String(sumBase));
+      setSumBase(null);
+    }
   };
   const confirmAs = async () => {
     if (!live || !as || asBusy) return;
@@ -1254,7 +1285,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     memo: memo || null,
     groupId: base?.groupId ?? null,
     groupName: base?.groupName ?? null,
-    nightRates: kind === "stay" && !long ? (multi ? (multiRows[0]?.rates ?? null) : nightRates) : null,
+    nightRates: kind === "stay" && !long ? (multi ? (multiRows[0]?.rates ?? null) : nightRates && (Object.keys(nightRates.nights ?? {}).length || nightRates.flat || nightRates.extras?.length) ? nightRates : null) : null,
     ...(openOn && kind === "stay" && !long ? { openEnded: true, holdAhead: openHold } : {}),
     guests,
     extraFee: long ? null : extraFee || null,
@@ -3515,7 +3546,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                       </PriceInp>
                     </PriceRow>
                     <div className="muted sm">
-                      {isOnsite(curPlat) ? "총액 · 박은 자동 분배" : "플랫폼 총액 그대로"}
+                      {isOnsite(curPlat) ? "총액 · 박별 요금은 아래에서 직접 적어요 (총액을 나눠 채우지 않아요)" : "플랫폼 총액 그대로 · 박별 요금은 아래에서 직접 적어요"}
                       {Number(price || 0) > 0 ? (
                         <>
                           {" · "}
@@ -3592,21 +3623,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
                   checkIn={checkIn}
                   nights={nights}
                   rates={nightRates}
-                  fallback={Number(rateStr || 0) || 0}
-                  hideTotal
+                  suggestions={Object.fromEntries(occupiedNightDates(checkIn, nights).map((d) => [d, resolveNightRate(s, typeId, d).amount]))}
                   addons={stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff })}
-                  onChange={(r) => {
-                    setNightRates(r);
-                    if (r.flat) setRateStr(String(r.flat));
-                    setPrice(
-                      String(
-                        priceFromNightMatrix(
-                          r,
-                          stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff }),
-                        ),
-                      ),
-                    );
-                  }}
+                  price={useSum && sumBase != null ? sumBase : Number(price || 0)}
+                  useSum={useSum}
+                  onUseSum={toggleUseSum}
+                  onChange={commitNights}
                 />
               ) : null}
               {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (

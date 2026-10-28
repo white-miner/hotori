@@ -29,7 +29,9 @@ import {
 } from "../shared/group";
 import { type RateEdits, groupTotal, roomSlots, slotRows, typeSlots as unplacedSlots, unpricedMessage } from "../shared/groupRates";
 import GroupRoomRates from "./GroupRoomRates";
-import { nightRatesFromTotal, syncStayNightRates } from "../shared/nightrates";
+import { hasFullNightMatrix, occupiedNightDates, syncStayNightRates } from "../shared/nightrates";
+import { enteredNightMap, nightTableStatus } from "../shared/nightTable";
+import { resolveNightRate } from "../shared/salesCalendar";
 import { type ManualNightRates, autoNightRates, autoStayRates } from "../shared/autoRate";
 import { baseRateFor, stopSellDatesForStay } from "../shared/salesCalendar";
 import { saveFailMessage } from "../shared/errors";
@@ -118,6 +120,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   /** 이용 기간 미정: 켜면 박수는 오늘 밤 + 방 보호까지 자동 */
   /** 박별 요금표 (한 객실 기준 · 모든 객실에 같게). 고치면 1박 요금/총액이 따라 바뀌어요 */
   const [nightTable, setNightTable] = useState<StayNightRates | null>(null);
+  /** 총액 모드: 박별 합계가 총액과 다를 때 「판매금도 박별 합계로 바꾸기」 (처음엔 꺼져 있어요 — 총액 그대로) */
+  const [useSum, setUseSum] = useState(false);
+  const [sumBase, setSumBase] = useState<{ str: string; touched: boolean; total: number } | null>(null);
   const [openOn, setOpenOn] = useState(false);
   const [openHold, setOpenHold] = useState(OPEN_HOLD_DEFAULT);
   const [guestName, setName] = useState("");
@@ -234,8 +239,26 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const mRows = multiRooms ? slotRows(s, mSlots, rateEdits, checkIn, nights) : [];
   const mPrices = priceUnset ? mRows.map(() => 0) : mRows.map((r) => r.subtotal);
   const manualTotalNum = Math.max(0, Math.round(Number(totalStr || 0)));
-  const tableNow: StayNightRates | null = nightTable && !multiRooms && (!totalMode || effectiveTypeIds.length <= 1) ? syncStayNightRates(checkIn, nights, nightTable) : null;
-  const tableSum = tableNow ? sumNightAmounts(tableNow.nights) : 0;
+  /** 직원이 적은 박만 (안 적은 박은 비어 있어요 — 총액을 박수로 나눠 채우지 않아요) */
+  const tableEntered: StayNightRates | null =
+    nightTable && !multiRooms && (!totalMode || effectiveTypeIds.length <= 1)
+      ? { ...nightTable, nights: enteredNightMap(checkIn, nights, nightTable.nights) }
+      : null;
+  const tableHasAny = !!tableEntered && Object.keys(tableEntered.nights ?? {}).length > 0;
+  /**
+   * 총액 모드: 적은 박만 저장 (판매금은 총액 그대로).
+   * 박당 모드: 1박 요금은 적지 않은 박에 적용 — 모든 박이 정해졌을 때만 판매금이 돼요.
+   */
+  const perNightFlat = rateNum[effectiveTypeIds[0] || fallbackRateKey] ?? Number(Object.values(rates)[0] || 0);
+  const tableNow: StayNightRates | null = !tableEntered || !tableHasAny
+    ? null
+    : totalMode
+      ? tableEntered
+      : (() => {
+          const full = syncStayNightRates(checkIn, nights, { ...tableEntered, flat: perNightFlat > 0 ? perNightFlat : tableEntered.flat ?? null });
+          return hasFullNightMatrix(checkIn, nights, full) ? full : null;
+        })();
+  const tableSum = tableNow && !totalMode ? sumNightAmounts(tableNow.nights) : 0;
   /**
    * 현장·전화 총액 모드: 박마다 요금(특별일 > 시즌 > 평일/주말 > 기본)을 더해 자동으로 채워요.
    * 직접 입력한 총액이 있으면 그게 먼저예요. 요금이 없는 타입이 있으면 수동 입력 그대로.
@@ -245,7 +268,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       ? autoStayRates(s, pickedTypes.map((t) => ({ typeId: t.id, count: countOf(t.id) })), checkIn, nights, nightOv)
       : null;
   const autoActive = !!autoStay?.ready && !totalTouched;
-  const totalNum = tableNow && totalMode ? tableSum : autoActive ? autoStay!.total : manualTotalNum;
+  const totalNum = autoActive ? autoStay!.total : manualTotalNum;
   const rateKeysForLines =
     !totalMode && pickedTypes.length
       ? effectiveTypeIds.map((tid) => tid || fallbackRateKey)
@@ -536,7 +559,8 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       const ratesForBooking = (typeId: string, roomPrice: number) => {
         if (priceUnset || !(roomPrice > 0)) return null;
         if (tableNow) return tableNow;
-        if (totalMode) return autoActive && autoStay ? autoNightRates(autoStay, nights) : nightRatesFromTotal(checkIn, nights, roomPrice);
+        // 총액 모드: 박별 요금을 안 적었으면 비워 둬요 (총액을 박수로 나눠 저장하지 않아요)
+        if (totalMode) return autoActive && autoStay ? autoNightRates(autoStay, nights) : null;
         const flat = rateNum[typeId] ?? 0;
         return flat > 0 ? syncStayNightRates(checkIn, nights, { flat }) : null;
       };
@@ -665,22 +689,47 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   /** 박별 요금표: 총액 ⇄ 박별 (한 객실일 때만 — 2실 이상은 객실별 요금표) */
   const roomsN = Math.max(1, effectiveTypeIds.length);
-  const firstRate = rateNum[fallbackRateKey] ?? Number(Object.values(rates)[0] || 0);
+  const nightSug: Record<string, number> = Object.fromEntries(
+    occupiedNightDates(checkIn, nights).map((d) => [d, resolveNightRate(s, effectiveTypeIds[0] || primaryTypeId, d).amount]),
+  );
+  /** 박별 표가 바뀔 때: 「판매금도 박별 합계로」를 켠 총액 모드만 총액이 합계를 따라가요 */
+  const changeNights = (r: StayNightRates) => {
+    setNightTable(r);
+    if (totalMode && useSum) {
+      const st = nightTableStatus({ checkIn, nights, rates: r, price: sumBase?.total ?? totalNum, addons: 0 });
+      if (st.allEntered) {
+        setTotalStr(String(st.sumTotal));
+        setTotalTouched(true);
+      }
+    }
+  };
+  const toggleUseSum = (on: boolean) => {
+    setUseSum(on);
+    if (on) {
+      setSumBase({ str: totalStr, touched: totalTouched, total: totalNum });
+      const st = nightTableStatus({ checkIn, nights, rates: tableEntered, price: totalNum, addons: 0 });
+      if (st.allEntered) {
+        setTotalStr(String(st.sumTotal));
+        setTotalTouched(true);
+      }
+    } else if (sumBase) {
+      setTotalStr(sumBase.str);
+      setTotalTouched(sumBase.touched);
+      setSumBase(null);
+    }
+  };
   const nightsEditor =
     !priceUnset && !multiRooms && (!totalMode || roomsN <= 1) ? (
       <div style={{ marginTop: "var(--space-chip)" }}>
         <NightRatesTable
           checkIn={checkIn}
           nights={nights}
-          rates={tableNow ?? (totalMode && totalNum > 0 ? nightRatesFromTotal(checkIn, nights, totalNum) : null)}
-          fallback={firstRate}
-          onChange={(r) => {
-            setNightTable(r);
-            if (totalMode) {
-              setTotalStr(String(sumNightAmounts(r.nights)));
-              setTotalTouched(true);
-            }
-          }}
+          rates={tableEntered}
+          suggestions={nightSug}
+          price={totalMode ? (useSum && sumBase ? sumBase.total : totalNum) : undefined}
+          useSum={useSum}
+          onUseSum={totalMode ? toggleUseSum : undefined}
+          onChange={changeNights}
         />
       </div>
     ) : null;
@@ -993,15 +1042,19 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                         placeholder="총액"
                         value={autoActive ? won(totalNum) : totalStr !== "" ? won(Number(totalStr)) : ""}
                         onChange={(e) => {
-                          setNightTable(null);
+                          // 총액은 총액대로 — 적어 둔 박별 요금을 지우지도, 박수로 나누지도 않아요
                           setTotalStr(e.target.value.replace(/\D/g, "").slice(0, 9));
                           setTotalTouched(true);
+                          if (useSum) {
+                            setUseSum(false);
+                            setSumBase(null);
+                          }
                         }}
                       />
                     </PriceInp>
                   </PriceRow>
                   <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                    {onsite ? "총액 · 박·호실은 자동 분배" : "플랫폼 총액 그대로"}
+                    {onsite ? "총액 · 박별 요금은 아래에서 직접 적어요 (나눠 채우지 않아요)" : "플랫폼 총액 그대로 · 박별 요금은 아래에서 직접 적어요"}
                     {totalNum > 0 ? (
                       <>
                         {" · "}
@@ -1065,7 +1118,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                               value={rates[t.id] !== undefined && rates[t.id] !== "" ? won(Number(rates[t.id])) : ""}
                               placeholder="1박"
                               onChange={(e) => {
-                                setNightTable(null);
                                 setRates((m) => ({ ...m, [t.id]: e.target.value.replace(/\D/g, "").slice(0, 9) }));
                               }}
                             />
@@ -1090,7 +1142,6 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                             }
                             onChange={(e) => {
                               if (!fallbackRateKey) return;
-                              setNightTable(null);
                               setRates((m) => ({
                                 ...m,
                                 [fallbackRateKey]: e.target.value.replace(/\D/g, "").slice(0, 9),

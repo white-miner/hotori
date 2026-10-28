@@ -6066,3 +6066,10 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .rec-usesum { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #fff8ec; border: 1px solid #f0d9a8; font-size: 13px; font-weight: 700; cursor: pointer; }
 .rec-usesum input { margin-top: 3px; width: 18px; height: 18px; }
 .rec-usesum small { font-weight: 500; }
+
+/* 박별 요금 — 박당 금액으로 채우기 · 1박 읽기 전용 */
+.nre-per { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 6px 0; }
+.nre-per input { min-height: 44px; width: 9em; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line, #d9d9de); font-size: 15px; font-variant-numeric: tabular-nums; text-align: right; }
+.nre-per button { min-height: 44px; }
+.nrt-note { font-style: normal; font-size: 11.5px; color: #6b7280; margin-left: 6px; }
+.grr-one { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #4b5563; font-variant-numeric: tabular-nums; }

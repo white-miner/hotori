@@ -12,7 +12,7 @@ import {
   won,
 } from "./ledger";
 import { GROUP_ROOMS_MAX, groupDrafts } from "./group";
-import { type StayNightRates, nightRatesFromTotal, priceFromNightMatrix } from "./nightrates";
+import { type StayNightRates, priceFromNightMatrix } from "./nightrates";
 import {
   type BookPayMethod,
   type OnsitePayMode,
@@ -264,7 +264,8 @@ export function buildStaySaleDrafts(
       createdAt: now,
       updatedAt: now,
       payments: [],
-      nightRates: input.priceUnset || !(base > 0) ? null : nightRatesFromTotal(input.checkIn, nights, base),
+      // 총액을 박수로 나눠 채우지 않아요 — 직접 적은 박별 요금(roomRates)만 저장
+      nightRates: input.priceUnset ? null : (input.roomRates?.[0] ?? null),
       earlyIn: earlyH || null,
       lateOut: lateH || null,
       timeFee: timeExtra > 0 ? timeExtra : null,
@@ -298,7 +299,7 @@ export function buildStaySaleDrafts(
     earlyIn: earlyH || null,
     lateOut: lateH || null,
     timeFee: i === 0 && timeExtra > 0 ? timeExtra : null,
-    nightRates: input.priceUnset || !((prices[i] ?? 0) > 0) ? null : (b.nightRates ?? nightRatesFromTotal(input.checkIn, nights, prices[i] ?? 0)),
+    nightRates: input.priceUnset ? null : (b.nightRates ?? null),
   }));
   return drafts;
 }

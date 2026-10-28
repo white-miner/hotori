@@ -1,9 +1,9 @@
-// 박별 요금표 (총액 ⇄ 박별 금액 양방향): 모든 예약창이 같은 계산을 써요.
-//  · 총액을 적으면 박수대로 나눠요 (몫은 floor, 남는 원은 마지막 박) → 박별 줄이 채워져요
-//  · 박별 금액을 고치면 총액이 합으로 바뀌어요
-//  · 박수·입실일이 바뀌면 이미 적은 박은 그대로, 새 박만 기본 요금으로 채워요
+// 박별 요금표: 모든 예약창이 같은 계산을 써요. 박별 표가 진실이에요.
+//  · 총액을 박수로 나누지 않아요 — 안 적은 박은 비어 있고, 타입 요금은 회색 제안이에요
+//  · 「타입 요금으로 채우기」·「박당 금액으로 채우기」는 빈 박만 채워요 (채운 뒤에도 고칠 수 있어요)
+//  · 박별 합계가 판매금과 다르면 차액을 알려 주기만 하고, 체크했을 때만 판매금을 합계로 바꿔요
 import { weekday } from "./ledger";
-import { type NightAmountMap, type StayNightRates, nightRatesFromTotal, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
+import { type NightAmountMap, type StayNightRates, extrasTotal, occupiedNightDates, setNightAmount, sumNightAmounts, syncStayNightRates } from "./nightrates";
 import { isPeakNight } from "./surcharge";
 
 export interface NightRow {
@@ -25,28 +25,16 @@ export function tableRows(checkIn: string, nights: number, rates: StayNightRates
   }));
 }
 
-export const tableTotal = (rows: readonly NightRow[]): number => rows.reduce((n, r) => n + r.amount, 0);
-
-/** 평균 1박 (반올림) */
-export const tableAverage = (rows: readonly NightRow[]): number => (rows.length ? Math.round(tableTotal(rows) / rows.length) : 0);
-
-/** 한 박 금액 고치기 → 새 요금 (총액 = 합) */
+/** 한 박 금액 고치기 (예약 이동 예약 등 — 빈 박은 fallback 요금으로 채워요) */
 export function withNight(checkIn: string, nights: number, rates: StayNightRates | null | undefined, fallbackPerNight: number, date: string, amount: number, special: readonly string[] = []): StayNightRates {
   const base = syncStayNightRates(checkIn, nights, rates ?? null, { typeRate: fallbackPerNight }, special);
   return setNightAmount(base, date, amount);
 }
 
-/** 총액 적기 → 박수대로 나눔 (남는 원은 마지막 박) */
-export function withTotal(checkIn: string, nights: number, total: number): StayNightRates {
-  return nightRatesFromTotal(checkIn, nights, total);
-}
+export const tableTotal = (rows: readonly NightRow[]): number => rows.reduce((n, r) => n + r.amount, 0);
 
-/** 모든 박을 같은 금액으로 */
-export function withAllSame(checkIn: string, nights: number, perNight: number): StayNightRates {
-  const a = Math.max(0, Math.round(perNight));
-  const dates = occupiedNightDates(checkIn, nights);
-  return { flat: a > 0 ? a : null, weekday: null, weekend: null, nights: Object.fromEntries(dates.map((d) => [d, a])) };
-}
+/** 평균 1박 (반올림) */
+export const tableAverage = (rows: readonly NightRow[]): number => (rows.length ? Math.round(tableTotal(rows) / rows.length) : 0);
 
 /** 평일·주말(금·토)을 한 번에 */
 export function withWeekdayWeekend(checkIn: string, nights: number, wd: number, we: number, special: readonly string[] = []): StayNightRates {
@@ -141,4 +129,24 @@ export function nightEditPlan(p: { entered: NightAmountMap; nightCount: number; 
   const diff = allEntered ? sumTotal - keepPrice : null;
   const usesSum = allEntered && diff !== 0 && p.useSum;
   return { sum, count, allEntered, keepPrice, sumTotal, diff, price: usesSum ? sumTotal : keepPrice, usesSum };
+}
+
+/** 「박당 금액으로 채우기」: 한 박 금액을 빈 박에만 넣어요 (적어 둔 박은 그대로 · 채운 뒤에도 고칠 수 있어요) */
+export function fillBlankWithAmount(checkIn: string, nights: number, map: Record<string, number | null | undefined> | null | undefined, amount: number): NightAmountMap {
+  const out = enteredNightMap(checkIn, nights, map);
+  const a = Math.max(0, Math.round(amount));
+  if (!(a > 0)) return out;
+  for (const d of occupiedNightDates(checkIn, nights)) if (out[d] == null) out[d] = a;
+  return out;
+}
+
+/** 박별 표 상태 (판매금과 비교) — 적은 박 수·합계·차액. 차액은 모든 박을 적었을 때만 */
+export function nightTableStatus(p: { checkIn: string; nights: number; rates: StayNightRates | null | undefined; price: number; addons: number }): { entered: NightAmountMap; count: number; total: number; sum: number; allEntered: boolean; sumTotal: number; diff: number | null } {
+  const entered = enteredNightMap(p.checkIn, p.nights, p.rates?.nights);
+  const count = Object.keys(entered).length;
+  const sum = sumNightAmounts(entered);
+  const extras = extrasTotal(p.rates);
+  const allEntered = occupiedNightDates(p.checkIn, p.nights).length > 0 && count === occupiedNightDates(p.checkIn, p.nights).length;
+  const sumTotal = sum + extras + Math.max(0, p.addons);
+  return { entered, count, total: occupiedNightDates(p.checkIn, p.nights).length, sum, allEntered, sumTotal, diff: allEntered ? sumTotal - Math.max(0, Math.round(p.price)) : null };
 }
