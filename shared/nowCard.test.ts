@@ -140,15 +140,15 @@ test("카드에는 메모 줄이 없어요 (메모 원문은 저장된 그대로
   assert.equal(ota.memo, "야놀자 예약번호 YN-1001 · 스탠다드");
 });
 
-test("카드 순서: 이용기간·결제는 이름 위(top), 회사·하루 요금은 이름 아래(who)", () => {
-  const dash = readFileSync(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
-  const facts = readFileSync(new URL("../src/RoomCardFacts.tsx", import.meta.url), "utf8");
-  assert.match(facts, /slot\?: "top" \| "who" \| "all"/);
-  assert.ok(!/추정/.test(facts.replace(/\/\*[\s\S]*?\*\//g, "")), "카드에 추정 뱃지 없음");
-  const iTop2 = dash.indexOf('slot="top"', dash.indexOf("const cardRate"));
-  const iName2 = dash.indexOf('<span className="gn">{b.guestName}</span>', iTop2);
-  const iWho2 = dash.indexOf('slot="who"', iName2);
-  assert.ok(iTop2 > 0 && iName2 > iTop2 && iWho2 > iName2, "현황 카드: top → 이름 → who");
+test("상세 카드 순서: 예약자·예약 경로·입퇴실·이용·객실 요금·결제 상태", () => {
+  const card = readFileSync(new URL("../src/NowRoomCard.tsx", import.meta.url), "utf8");
+  const keys = ["guest", "platform", "in", "out", "period", "price", "payment"];
+  let previous = -1;
+  for (const key of keys) {
+    const at = card.indexOf(`row("${key}"`);
+    assert.ok(at > previous, `상세 항목 순서: ${key}`);
+    previous = at;
+  }
 });
 
 test("단체 객실: 플랫폼 결제금액은 구성원 카드에도 자기 금액으로 — 단체 이체·카드는 대표객실만", () => {

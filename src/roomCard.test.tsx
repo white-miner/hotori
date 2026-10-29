@@ -123,17 +123,11 @@ test("카드 · 건물 이름은 다른 객실을 가리킬 때만 (구성원 �
   assert.doesNotMatch(css, /rc-bld/);
 });
 
-test("카드 · 현황 한 화면(배치 합침) · 그림 순서는 이름 위에 기간·결제 → 이름 → 회사·박당 요금", () => {
+test("카드 · 통합 현황은 기존 모델 하나와 상세형 카드 하나를 사용한다", () => {
   const src = readFileSync(new URL("./Dashboard.tsx", import.meta.url), "utf8");
-  assert.equal((src.match(/cardModelOf\(/g) ?? []).length, 1, "현황 한 곳에서만 카드 모델을 만들어요 (배치 합침)");
-  assert.doesNotMatch(src, /nownights-acc/, "배치 아래쪽에 따로 박수 칩을 두지 않아요 (이용기간 줄에 합침)");
-  assert.doesNotMatch(src, /rooms-room-/, "배치 칸은 현황으로 합쳐졌어요");
-  // 현황
-  const now = src.slice(src.indexOf('id={`now-room-${r.id}`}', src.indexOf("const f = nowFlags(b, viewDate")));
-  assert.ok(now.indexOf('slot="top"') < now.indexOf('className="nm"'));
-  assert.ok(now.indexOf('className="nm"') < now.indexOf('slot="who"'));
-  // 대표객실 글자는 leadTag(isLeadRoom)만
-  assert.equal((src.match(/>\s*대표객실\s*</g) ?? []).length, 1);
+  assert.equal((src.match(/cardModelOf\(/g) ?? []).length, 1);
+  assert.match(src, /<NowRoomCard /);
+  assert.doesNotMatch(src, /rooms-room-/);
 });
 
 test("카드 · 글자 크기 위계 (docs/room-card-spec.md §3): 기간·결제·받을 돈 13px↑ · 박당 요금 15px↑ 굵게 · 회사·연동은 작게", () => {
@@ -191,32 +185,11 @@ test("카드 · 슬롯: 어떤 내용이 들어가도 사실 줄 자리와 순�
   assert.equal(text(emptyCard("top", true).replace(/<div[^>]*>/g, "").replace(/<\/div>/g, "")), "");
 });
 
-test("카드 · 슬롯: 현황 소스의 자리 순서와, 자리마다 고정 높이·행이 있고 합이 카드 높이 안이에요", () => {
+test("카드 · 상세형 현황에서도 업무 진입점과 취소 카드·배정을 유지한다", () => {
   const src = readFileSync(new URL("./Dashboard.tsx", import.meta.url), "utf8");
-  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const ui = readFileSync(new URL("./ui.tsx", import.meta.url), "utf8");
-  assert.match(ui, /className="tl-row" data-slot="type"/);
-  assert.equal((src.match(/data-slot="head"/g) ?? []).length, 1, "머리줄 자리: 빈 칸과 예약 칸이 같은 머리줄을 써요");
-  const nowBody = src.slice(src.indexOf("const f = nowFlags(b, viewDate"));
-  const order = (code: string, names: string[]) => {
-    let from = 0;
-    for (const n of names) {
-      const i = code.slice(from).search(new RegExp(`data-slot="${n}"|slot="${n}"|factsEl\\("${n}"\\)`));
-      assert.ok(i >= 0, `자리 없음 또는 순서 어긋남: ${n}`);
-      from += i + 1;
-    }
-  };
-  order(nowBody, ["period", "top", "name", "badges", "move", "who", "grp", "status"]);
-  // CSS: 자리마다 grid-row가 있고, 높이 변수 합 + 위아래 여백 2×2 + 테두리가 카드 높이(--room-card-h) 안
-  const vars = Object.fromEntries([...css.matchAll(/--rc-h-([a-z]+):\s*(\d+)px/g)].map((m) => [m[1]!, Number(m[2])]));
-  const cardH = Number(/--room-card-h:\s*(\d+)px/.exec(css)![1]);
-  const now13 = ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "co", "rate", "grp", "status"];
-  for (const rows of [now13]) {
-    const sum = rows.reduce((n, k) => n + vars[k]!, 0);
-    assert.ok(sum + 4 + 3 <= cardH, `슬롯 높이 합 ${sum}px + 여백·테두리가 카드 ${cardH}px 안`);
-  }
-  for (const n of ["head", "type", "period", "link", "pay", "due", "name", "badges", "move", "company", "rate", "grp", "status"]) {
-    assert.match(css, new RegExp(`\\.rc-grid > \\[data-slot="${n}"\\][^{]*\\{[^}]*grid-row:\\s*\\d+`), `${n} 자리 grid-row`);
-  }
-  assert.match(css, /\.rc-grid > \[data-slot="pay"\][^{]*\{[^}]*-webkit-line-clamp:\s*2/, "결제 줄은 두 줄까지");
+  assert.match(src, /cxByRoom.get/);
+  assert.match(src, /requestAssign\(assignBk!/);
+  assert.match(src, /onDetail=\{\(\) => shown \? onOpen\(shown, viewDate\)/);
+  assert.match(src, /onQuick=\{quick\}/);
+  assert.match(src, /sbx.reveal\(\)/);
 });
