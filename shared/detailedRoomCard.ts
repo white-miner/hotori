@@ -46,6 +46,7 @@ export function detailedStatus(b: Booking | null, date: string, opts: NowOpts, h
   if (!b || b.status !== "active") return held
     ? { label: "판매중지", tone: "neutral" }
     : { label: "판매가능", tone: "available" };
+  if (b.checkedOutAt) return { label: b.kind === "dayuse" ? "이용 종료" : "퇴실 완료", tone: "neutral", note: "실제 퇴실 처리 기록이 있는 예약" };
   if (b.kind === "dayuse") return { label: "대실", tone: "dayuse", note: b.arrived ? undefined : "대실 예약 · 입실 전" };
   const f = nowFlags(b, date, opts);
   if (f.kind === "departing" || f.kind === "lateOut") return { label: "퇴실예정", tone: "departing", note: f.kind === "lateOut" ? "늦은 퇴실" : undefined };

@@ -1316,6 +1316,7 @@ export function normTypeName(raw: string): string {
     .replace(/[\u00a0\u202f]/g, " ") // NBSP / NNBSP → space
     .replace(/[\u200b\u200c\u200d\ufeff]/g, "") // zero-width / BOM strip
     .replace(/ㅣ/g, "|") // Yanolja vertical bar ↔ ASCII pipe
+    .replace(/\s*\|\s*/g, "|") // 구분자 양옆 공백은 상품코드의 일부가 아니다
     .replace(/\s+/g, " ")
     .toLowerCase();
 }
@@ -1347,6 +1348,8 @@ export function typeRawBilingualTail(raw: string): string {
   // Latin/digit left · pipe · rest (Hangul or mixed). Avoid eating `Family Room|VIP`.
   const m = s.match(/^[\sA-Za-z0-9.'+\-_]+(?:\s+[\sA-Za-z0-9.'+\-_]+)*\s*[|ㅣ]\s*(.+)$/u);
   if (!m?.[1]) return "";
+  // Standard2|스탠다드: 오른쪽 번역명이 같아도 숫자 상품코드는 별도 타입이다.
+  if (/\d/.test(s.split(/[|ㅣ]/u)[0] ?? "")) return "";
   const tail = m[1].trim();
   // Prefer tails that include Hangul (Standard|스탠다드); skip pure-Latin VIP tags
   if (!/[\uac00-\ud7a3]/.test(tail)) return "";
@@ -1358,6 +1361,7 @@ function aliasMatchesTypeKey(key: string, aliasKey: string): boolean {
   if (!aliasKey || !key) return false;
   if (key === aliasKey) return true;
   if (!key.startsWith(aliasKey)) return false;
+  if (/^\s*\d/.test(key.slice(aliasKey.length))) return false;
   const next = key.charAt(aliasKey.length);
   // prefix before amenity `(`, or already-stripped key that still starts with alias + sep
   return next === "(" || next === "" || next === " " || next === "|";
@@ -1492,7 +1496,7 @@ export function matchTypeId(
     if (anyHit) return anyHit;
   }
 
-  const candidates = [normTypeName(raw), normTypeName(typeRawBilingualTail(raw))].filter(
+  const candidates = [normTypeName(raw), normTypeName(typeRawForAliasMatch(raw)), normTypeName(typeRawBilingualTail(raw))].filter(
     (k, i, arr) => !!k && arr.indexOf(k) === i,
   );
   // exact label
@@ -1501,18 +1505,31 @@ export function matchTypeId(
       if (normTypeName(typeLabel(t)) === n) return t.id;
     }
   }
-  // includes either way (prefer longer overlap; bilingual tail helps Standard|스탠다드)
+  // 숫자가 있는 이중 언어 상품은 코드 전체의 명시적 매칭만 허용한다.
+  if (/^[^|ㅣ]*\d[^|ㅣ]*[|ㅣ]/u.test(typeRawForAliasMatch(raw))) return null;
+  // 숫자·영문 상품코드의 일부를 다른 타입으로 확정하면 재고가 잘못 차감된다.
+  // 구별되는 코드가 없는 이름만 보수적으로 허용하고, 동점 후보는 수동 선택한다.
   let best: { id: string; score: number } | null = null;
+  let ambiguous = false;
   for (const n of candidates) {
     for (const t of types) {
       const lab = normTypeName(typeLabel(t));
       if (!lab) continue;
       let score = 0;
-      if (n.includes(lab) || lab.includes(n)) score = Math.min(n.length, lab.length);
-      if (score > 0 && (!best || score > best.score)) best = { id: t.id, score };
+      const at = n.indexOf(lab);
+      if (at >= 0) {
+        const before = n.charAt(at - 1);
+        const after = n.charAt(at + lab.length);
+        const latinBoundary = !/[a-z0-9]$/.test(lab) || !/[a-z0-9]/.test(after);
+        const startBoundary = !/^[a-z0-9]/.test(lab) || !/[a-z0-9]/.test(before);
+        const suffix = n.slice(at + lab.length);
+        if (latinBoundary && startBoundary && !/^\s*\d/.test(suffix)) score = lab.length;
+      }
+      if (score > 0 && (!best || score > best.score)) { best = { id: t.id, score }; ambiguous = false; }
+      else if (score > 0 && best?.score === score && best.id !== t.id) ambiguous = true;
     }
   }
-  return best?.id ?? null;
+  return ambiguous ? null : best?.id ?? null;
 }
 
 /**

@@ -263,10 +263,11 @@ export function nowLists(bookings: Booking[], date: string, opts?: NowOpts): Now
  * nightBoard(재고) 위에 퇴실일 아침 가시성을 얹고, 퇴실처리된 칸은 비움.
  * 같은 날 다음 예약(점유 밤)이 있으면 그쪽을 우선 → 퇴실처리 후 숙박예약으로 이어짐.
  */
-export function nowByRoom(bookings: Booking[], date: string): Map<string, Booking> {
+export function nowByRoom(bookings: Booking[], date: string, includeCompleted = false): Map<string, Booking> {
   const byRoom = new Map<string, Booking>();
   for (const b of bookings) {
-    if (!nowBoardVisible(b, date)) continue;
+    // 과거 배치는 다시 보여도 실제 퇴실 기록을 지우거나 처리 대상으로 되살리지 않는다.
+    if (!nowBoardVisible(includeCompleted && b.checkedOutAt ? { ...b, checkedOutAt: null } : b, date)) continue;
     const rid = roomForNowBoard(b, date);
     if (!rid) continue;
     const cur = byRoom.get(rid);
@@ -673,6 +674,16 @@ export function canCheckOut(b: Booking, today: string): boolean {
   if (!isActive(b) || b.kind !== "stay" || isCheckedOut(b)) return false;
   if (b.stayMode === "long_stay") return b.checkIn <= today;
   return stayEnd(b) <= today;
+}
+
+/** 조회 날짜와 처리 영업일은 구분한다. 과거 미처리 퇴실도 현재 확인창으로 연결한다. */
+export function nowStatusAction(b: Booking, viewDate: string, today: string, opts?: NowOpts, moving = false): "detail" | "checkout" | "arrive" | "quick" {
+  if (moving) return "quick";
+  if (isCheckedOut(b)) return "detail";
+  const flags = nowFlags(b, viewDate, opts);
+  if (isDepartingStatus(flags.kind) && canCheckOut(b, today)) return "checkout";
+  if (viewDate === today && flags.kind === "arriving" && !b.arrived) return "arrive";
+  return "quick";
 }
 
 /**

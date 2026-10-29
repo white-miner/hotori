@@ -12,6 +12,7 @@ import {
   ONSITE_PAY_MODES,
   type BookPayMethod,
   type OnsitePayMode,
+  type TenderAmounts, BOOK_PAY_METHODS, BOOK_PAY_LABEL,
 } from "../shared/payment";
 import { BookPayMethodCircles, Chip, ChipGroup, PriceInp, PriceRow } from "./primitives";
 
@@ -31,6 +32,9 @@ interface Props {
   /** 결제 섹션 안 · 칩 위 (숙박 판매: 판매가 병합 — 레거시; 새 화면은 method→금액 분리 권장) */
   beforeChips?: ReactNode;
   disabled?: boolean;
+  tenders?: TenderAmounts | null;
+  onTenders?: (v: TenderAmounts | null) => void;
+  saleTotal?: number;
 }
 
 export default function OnsitePayModeFields({
@@ -44,6 +48,7 @@ export default function OnsitePayModeFields({
   part = "both",
   beforeChips,
   disabled = false,
+  tenders, onTenders, saleTotal = 0,
 }: Props) {
   const chips = part === "chips" || part === "both";
   const method = part === "method" || part === "both";
@@ -81,18 +86,26 @@ export default function OnsitePayModeFields({
       {showMethod ? (
         <div className="fld">
           <label>결제수단</label>
-          <BookPayMethodCircles value={depMethod} onChange={onDepMethod} disabled={disabled} />
+          <div className="tender-methods">
+            {!tenders ? <BookPayMethodCircles value={depMethod} onChange={onDepMethod} disabled={disabled} /> : <span>카드 · 현금 · 이체 금액별 입력</span>}
+            {onTenders ? <button type="button" className="btn sm line" aria-pressed={!!tenders} disabled={disabled} onClick={() => onTenders(tenders ? null : { [depMethod]: String(payMode === "deposit" ? Number(depAmt || 0) : saleTotal || "") })}>{tenders ? "단일결제로 전환" : "복합결제"}</button> : null}
+          </div>
         </div>
       ) : null}
 
-      {take && payMode === "prepaid" && !priceUnset ? (
+      {take && tenders && onTenders && payMode !== "postpaid" && !priceUnset ? <div className="fld"><label>수납 금액</label><div className="tender-fields">
+        {BOOK_PAY_METHODS.map((m) => <div className="tender-row" key={m}><span>{BOOK_PAY_LABEL[m]}</span><PriceInp sm><input inputMode="numeric" className="num" aria-label={`${BOOK_PAY_LABEL[m]} 수납액`} disabled={disabled} placeholder="0" value={tenders[m] ? won(Number(tenders[m])) : ""} onChange={(e) => onTenders({ ...tenders, [m]: e.target.value.replace(/\D/g, "").slice(0, 9) })} /></PriceInp></div>)}
+        <div className="tender-total" role="status">수납 합계 <b>{won(BOOK_PAY_METHODS.reduce((n, m) => n + Number(tenders[m] || 0), 0))}원</b><br />{saleTotal - BOOK_PAY_METHODS.reduce((n, m) => n + Number(tenders[m] || 0), 0) < 0 ? "초과 금액" : "등록 후 잔금"} <b>{won(Math.abs(saleTotal - BOOK_PAY_METHODS.reduce((n, m) => n + Number(tenders[m] || 0), 0)))}원</b></div>
+        <span className="muted sm">실제로 받은 금액을 수단별로 기록합니다. 일부 수납은 선금을 선택해 주세요.</span>
+      </div></div> : null}
+      {take && !tenders && payMode === "prepaid" && !priceUnset ? (
         <div className="fld">
           <label>수납</label>
           <div className="muted sm">저장 시 판매금 전액을 수납(완납)으로 등록해요 · 위 결제수단 사용</div>
         </div>
       ) : null}
 
-      {take && payMode === "deposit" && !priceUnset ? (
+      {take && !tenders && payMode === "deposit" && !priceUnset ? (
         <div className="fld">
           <label>선금 금액</label>
           <div>

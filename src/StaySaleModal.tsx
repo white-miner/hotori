@@ -1,3 +1,4 @@
+import StayDatesPopup from "./StayDatesPopup";
 import { useEffect, useMemo, useState } from "react";
 import {
   type Booking,
@@ -23,7 +24,7 @@ import {
   type StaySaleOccupiedInput,
   type StaySaleSalesMode,
 } from "../shared/staySale";
-import { type BookPayMethod, type OnsitePayMode, isOnsite } from "../shared/payment";
+import { type BookPayMethod, type OnsitePayMode, type TenderAmounts, isOnsite } from "../shared/payment";
 import { ADD_TIME_HOUR_CHIPS, ADD_TIME_METHOD_LABEL, ADD_TIME_METHODS, type AddTimeMethod } from "../shared/addTime";
 import { EARLY_IN_HOUR_CHIPS, EARLY_IN_PAY_LABEL, EARLY_IN_PAY_METHODS, type EarlyInPayMethod } from "../shared/earlyInPay";
 import { canExtend } from "../shared/extend";
@@ -41,6 +42,7 @@ import { PlatBadge, lookups } from "./ui";
  */
 export default function StaySaleModal({
   s,
+  bookings,
   today,
   date,
   roomIds,
@@ -52,6 +54,7 @@ export default function StaySaleModal({
   onConfirmOccupied,
 }: {
   s: HotelSettings;
+  bookings: Booking[];
   today: string;
   /** 현황이 보는 날(입실일). 없으면 오늘. 결제 영업일(bizDate)은 항상 today */
   date?: string;
@@ -65,7 +68,9 @@ export default function StaySaleModal({
   onConfirmOccupied: (input: StaySaleOccupiedInput) => void;
 }) {
   const L = lookups(s);
-  const checkInDay = date ?? today;
+  const [checkInDay, setCheckInDay] = useState(date ?? today);
+  const [datesOpen, setDatesOpen] = useState(false);
+  const [tenders, setTenders] = useState<TenderAmounts | null>(null);
   const isOcc = !!occupied;
   const otaList = useMemo(() => staySaleOtaPlatforms(s), [s]);
 
@@ -101,6 +106,7 @@ export default function StaySaleModal({
   // `s`를 deps에 넣으면 10s poll이 settings 새 참조를 넣을 때마다 이름·전화가 지워짐.
   const draftSessionKey = staySaleDraftSessionKey(occupied?.id, roomIds);
   useEffect(() => {
+    setCheckInDay(date ?? today); setDatesOpen(false); setTenders(null);
     setChannel("onsite");
     setPlatformId(staySalePlatformIdForMode(s, "onsite"));
     setName(occupied?.guestName ?? "");
@@ -249,7 +255,7 @@ export default function StaySaleModal({
       platformId,
       payMode: onsite ? payMode : "postpaid",
       depAmt: onsite ? depAmt : "",
-      depMethod,
+      depMethod, tenders,
       bizDate: today,
       earlyInHours: channel === "onsite" && earlyH ? earlyH : undefined,
       earlyInAmount:
@@ -368,18 +374,19 @@ export default function StaySaleModal({
                   className="inp"
                   value={company}
                   maxLength={60}
-                  placeholder="선택 · 예: 오서건설"
+                  placeholder="회사명 (선택)"
                   onChange={(e) => setCompany(e.target.value)}
                   aria-label="회사명"
                 />
               </div>
               <div className="fld">
                 <label>인원</label>
-                <Stepper value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
+                <Stepper disabled={busy} value={guests} min={1} max={GUESTS_MAX} onChange={setGuests} />
               </div>
               <div className="fld">
                 <label>숙박</label>
                 <Stepper
+                  disabled={busy}
                   value={nights}
                   unit="박"
                   min={1}
@@ -388,12 +395,13 @@ export default function StaySaleModal({
                     setNights(n);
                     setErr(null);
                   }}
-                />
+                ><button type="button" className="btn line" disabled={busy} onClick={() => setDatesOpen(true)}>달력 · 날짜 선택</button></Stepper>
               </div>
 
               {channel === "onsite" ? (
                 <>
                   <OnsitePayModeFields
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
                     part="chips"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -404,6 +412,7 @@ export default function StaySaleModal({
                     disabled={busy}
                   />
                   <OnsitePayModeFields
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
                     part="method"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -436,6 +445,7 @@ export default function StaySaleModal({
                   </div>
                   )}
                   <OnsitePayModeFields
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
                     part="take"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -693,6 +703,7 @@ export default function StaySaleModal({
           )}
         </div>
       </div>
+      {datesOpen ? <StayDatesPopup checkIn={checkInDay} nights={nights} today={today} bookings={bookings} roomIds={roomIds} onClose={() => setDatesOpen(false)} onPick={(d,n) => { setCheckInDay(d); setNights(n); setErr(null); }} /> : null}
     </div>
   );
 }

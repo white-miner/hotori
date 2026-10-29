@@ -1,3 +1,6 @@
+import { writeVerifiedReceiptBatch } from "./receiptBatch";
+import { createPaymentLines } from "./payment";
+import { receiptBatch, verifyReceiptBatch } from "./receiptBatch";
 // 선금 · 잔금: 현장 결제만 잔금을 따지고, 플랫폼 예약은 플랫폼이 받은 걸로 봐요
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -209,4 +212,41 @@ test("생성 progressive: prepaid=완납 balance · 후불=none · 선금=deposi
     validateOnsiteCreateDeposit("deposit", { saleTotal: 80000, depAmt: "30000", depMethod: "card", bizDate: "2026-10-22" }),
     null,
   );
+});
+
+test("16만원 복합결제: 카드14만원 + 현금2만원, 수단별 원장 두 줄", () => {
+ const opts={saleTotal:160000,depAmt:"",depMethod:"card" as const,bizDate:"2026-10-30",tenders:{card:"140000",cash:"20000"}};
+ assert.equal(validateOnsiteCreateDeposit("prepaid",opts),null);
+ const lines=createPaymentLines("prepaid",opts);
+ assert.deepEqual(lines,[{kind:"balance",method:"card",amount:140000},{kind:"balance",method:"cash",amount:20000}]);
+ const batch=receiptBatch({groupId:"group"},lines,opts.bizDate);
+ assert.equal(new Set(batch.map(p=>p.id)).size,2);
+ assert.ok(batch.every(p=>p.groupId==="group" && !p.bookingId));
+ assert.equal(verifyReceiptBatch(batch,batch.map(p=>({...p,bookingId:""}))),true);
+ assert.equal(verifyReceiptBatch(batch,batch.slice(0,1)),false);
+ assert.equal(verifyReceiptBatch(batch,batch.map(p=>({...p,amount:p.amount+1}))),false);
+ assert.equal(verifyReceiptBatch(batch,batch.map(p=>({...p,groupId:"other"}))),false);
+});
+test("복합 수납 차액·선금·후불·비정상 금액 검증", () => {
+ const opts={saleTotal:160000,depAmt:"",depMethod:"card" as const,bizDate:"2026-10-30"};
+ assert.ok(validateOnsiteCreateDeposit("prepaid",{...opts,tenders:{card:"140000"}}));
+ assert.equal(validateOnsiteCreateDeposit("deposit",{...opts,tenders:{card:"100000",cash:"20000"}}),null);
+ assert.ok(validateOnsiteCreateDeposit("deposit",{...opts,tenders:{card:"160000",cash:"1"}}));
+ for(const bad of ["-1","1.5","NaN","Infinity"]) assert.ok(validateOnsiteCreateDeposit("prepaid",{...opts,tenders:{card:bad}}));
+ assert.ok(validateOnsiteCreateDeposit("prepaid",{...opts,tenders:{}}));
+ assert.deepEqual(createPaymentLines("postpaid",{...opts,tenders:{card:"140000"}}),[]);
+ assert.deepEqual(createPaymentLines("prepaid",{...opts,priceUnset:true,tenders:{card:"140000"}}),[]);
+});
+
+test("수납 응답 불명은 같은 UUID 조회로 확정, 재시도해도 두 줄만 유지", async () => {
+ const rows=receiptBatch({bookingId:"b"},[{kind:"balance",method:"card",amount:140000},{kind:"balance",method:"cash",amount:20000}],"2026-10-30");
+ const db=new Map<string,typeof rows[number]>();
+ const write=async()=>{ for(const p of rows) if(!db.has(p.id)) db.set(p.id,p); throw new Error("응답 끊김"); };
+ const read=async()=>[...db.values()];
+ assert.equal((await writeVerifiedReceiptBatch(rows,write,read)).length,2);
+ assert.equal((await writeVerifiedReceiptBatch(rows,write,read)).length,2);
+ assert.equal(db.size,2);
+ await assert.rejects(writeVerifiedReceiptBatch(rows,async()=>{throw new Error("일괄 저장 실패");},async()=>[]),/일괄 저장 실패/);
+ await assert.rejects(writeVerifiedReceiptBatch(rows,async()=>{},async()=>rows.slice(0,1)),/일부/);
+ await assert.rejects(writeVerifiedReceiptBatch(rows,async()=>{},async()=>{throw new Error("조회 실패");}),/조회 실패/);
 });

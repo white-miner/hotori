@@ -25,6 +25,7 @@ interface Props {
   nights: number;
   bookings: Booking[];
   roomId: string | null;
+  roomIds?: readonly string[];
   excludeId?: string;
   today: string;
   onPick: (checkIn: string, nights: number) => void;
@@ -53,6 +54,7 @@ export default function NightPickCalendar({
   nights,
   bookings,
   roomId,
+  roomIds,
   excludeId,
   today,
   onPick,
@@ -88,8 +90,9 @@ export default function NightPickCalendar({
   const blocked = useMemo(() => {
     const from = addMonths(month, -1);
     const to = addDays(addMonths(month, 2), -1);
-    return blockedNightsForRoom(bookings, roomId, { excludeId, from, to });
-  }, [bookings, roomId, excludeId, month]);
+    const ids = roomIds?.length ? roomIds : [roomId];
+    return new Set(ids.flatMap((id) => [...blockedNightsForRoom(bookings, id, { excludeId, from, to })]));
+  }, [bookings, roomId, roomIds, excludeId, month]);
 
   const commit = useCallback(
     (next: PaintedNightRange) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 import { supabase } from "./supabase";
+import { writeVerifiedReceiptBatch, type ReceiptBatchLine } from "../shared/receiptBatch";
 import { type Change, type ChangeKind, NOTE_MAX } from "../shared/changes";
 import {
   type Booking,
@@ -678,6 +679,25 @@ export function useHotelData(hotelId: string) {
     if (error) throw error;
     setBookingsLocal((list) => list.map((x) => (x.id === bookingId ? { ...x, payments: (x.payments ?? []).filter((y) => y.id !== id) } : x)));
   }, []);
+  /** 한 요청으로 복합 수납을 저장. 재시도는 같은 UUID를 사용하고 기존 행을 수정하지 않는다. */
+  const addPaymentBatch = useCallback(async (rows: ReceiptBatchLine[]) => {
+    if (!rows.length) return [];
+    if (new Set(rows.map((p) => p.id)).size !== rows.length || rows.some((p) => !!p.bookingId === !!p.groupId || !Number.isSafeInteger(p.amount) || p.amount <= 0)) throw new Error("수납 대상과 금액을 확인해 주세요.");
+    const saved = await writeVerifiedReceiptBatch(rows, async () => {
+      const result = await supabase.from("booking_payments").upsert(rows.map((p) => ({
+        id: p.id, booking_id: p.bookingId ?? null, group_id: p.groupId ?? null,
+        kind: p.kind, method: p.method, amount: p.amount, biz_date: p.bizDate, note: p.note ?? null,
+      })), { onConflict: "id", ignoreDuplicates: true });
+      if (result.error) throw result.error;
+    }, async () => {
+      // 네트워크 응답이 실패해도 서버에 저장됐을 수 있으므로 요청 ID 전체를 재조회한다.
+      const read = await supabase.from("booking_payments").select(PAY_COLS).in("id", rows.map((p) => p.id));
+      if (read.error) throw read.error;
+      return (read.data as PaymentRow[]).map((row) => payFromRow(row));
+    });
+    saved.forEach(placePayment);
+    return saved;
+  }, []);
   /** 결제 줄 정정: 한 줄을 통째로 고쳐요 (금액·수단·결제일·객실/단체·기간·메모). 객실↔단체로 옮겨도 한 번에 */
   const updatePayment = useCallback(
     async (payId: string, e: PaymentEdit): Promise<Payment> => {
@@ -1228,6 +1248,7 @@ export function useHotelData(hotelId: string) {
     setPlacement,
     setEarlyOut,
     addPayment,
+    addPaymentBatch,
     deletePayment,
     updatePayment,
     restorePayment,

@@ -1,3 +1,5 @@
+import { receiptBatch } from "../shared/receiptBatch";
+import { useCreateReceipts } from "./useCreateReceipts";
 /**
  * 간단 예약 — Entry 축약 폼
  * Path A: roomId=null · Path B: 미니 배치도에서 호실 토글 · 확정 기본
@@ -41,8 +43,7 @@ import {
   type OnsitePayMode,
   defaultBookingPlatformId,
   isOnsite,
-  onsiteCreatePayTail,
-  planOnsiteCreatePay,
+  createPaymentLines, type TenderAmounts,
   validateGuestPhone,
   validateOnsiteCreateDeposit,
   walkInDisplayName,
@@ -165,6 +166,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitLock = useRef(false);
+  const [tenders, setTenders] = useState<TenderAmounts | null>(null);
+  const receipts = useCreateReceipts(data.addPaymentBatch, onClose);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -450,6 +454,12 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
 
   /** 저장하기 · 바로입실(저장+arrived · 이름·전화 완화 · 호실 필수) */
   async function save(opts?: { walkInImmediate?: boolean }) {
+    if (submitLock.current || busy || receipts.pending) return;
+    submitLock.current = true;
+    try { await saveDraft(opts); } finally { submitLock.current = false; }
+  }
+  async function saveDraft(opts?: { walkInImmediate?: boolean }) {
+    if (busy || receipts.pending) return;
     const walkInImmediate = !!opts?.walkInImmediate;
     const name = guestName.trim() || (walkInImmediate ? walkInDisplayName(checkIn) : "");
     if (!name) return setErr("이름을 입력해 주세요.");
@@ -509,7 +519,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         priceUnset,
         saleTotal: totalSale,
         depAmt,
-        depMethod,
+        depMethod, tenders,
         bizDate: today,
       });
       if (depErr) return setErr(depErr);
@@ -589,31 +599,10 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           nightRates: ratesForBooking(saveTypeIds[0] ?? primaryTypeId, onePrice),
         });
         const saved = await data.saveBooking(one, true);
-        let payTail = "";
-        if (onsite && isOnsite(s.platforms.find((x) => x.id === saved.platformId))) {
-          const plan = planOnsiteCreatePay(payMode, {
-            priceUnset,
-            saleTotal: saved.price,
-            depAmt,
-            depMethod,
-          });
-          if (plan.kind !== "none") {
-            try {
-              await data.addPayment(saved.id, {
-                kind: plan.kind === "balance" ? "balance" : "deposit",
-                method: plan.method,
-                amount: plan.amount,
-                bizDate: today,
-              });
-              payTail = onsiteCreatePayTail(plan);
-            } catch (e) {
-              payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
-            }
-          }
-        }
+        const lines = onsite ? createPaymentLines(payMode, { priceUnset, saleTotal: saved.price, depAmt, depMethod, tenders }) : [];
         const path = saved.roomId ? ` · ${L.roomLabel(saved.roomId)}호` : " · 미배정(타입 재고)";
         const unset = saved.priceUnset ? " · 금액미정" : "";
-        onSaved(`${saved.guestName} 님 간단 예약했어요${path}${unset}${payTail}`);
+        await receipts.run(receiptBatch({ bookingId: saved.id }, lines, today), () => onSaved(`${saved.guestName} 님 간단 예약했어요${path}${unset}${lines.length ? " · 수납 등록 완료" : ""}`));
         return;
       }
 
@@ -645,41 +634,15 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         badgeColor: hashGroupBadgeColor(groupId),
       });
 
-      // 다실 완납/선금: 대장(첫 호·savedList[0])에 총액 1줄 — 방마다 1/n 루프 금지
       const lead = savedList[0];
-      let payTail = "";
-      if (onsite && lead) {
-        try {
-          if (payMode === "prepaid" && !priceUnset && totalSale > 0) {
-            await data.addPayment(lead.id, {
-              kind: "balance",
-              method: depMethod,
-              amount: totalSale,
-              bizDate: today,
-            });
-            payTail = onsiteCreatePayTail({ kind: "balance", amount: totalSale, method: depMethod });
-          } else if (payMode === "deposit") {
-            const plan = planOnsiteCreatePay(payMode, { priceUnset, saleTotal: totalSale, depAmt, depMethod });
-            if (plan.kind === "deposit") {
-              await data.addPayment(lead.id, {
-                kind: "deposit",
-                method: plan.method,
-                amount: plan.amount,
-                bizDate: today,
-              });
-              payTail = onsiteCreatePayTail(plan);
-            }
-          }
-        } catch (e) {
-          payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
-        }
-      }
+      const lines = onsite ? createPaymentLines(payMode, { priceUnset, saleTotal: totalSale, depAmt, depMethod, tenders }) : [];
+      const payTail = lines.length ? " · 수납 등록 완료" : "";
       const path = pathB
         ? ` · ${savedList.map((b) => (b.roomId ? `${L.roomLabel(b.roomId)}호` : "?")).join(", ")}`
         : ` · 미배정 ${n}실(타입 재고)`;
       const unset = priceUnset ? " · 금액미정" : "";
       const mix = pickedTypes.map((t) => `${typeLabel(t)} ${countOf(t.id)}`).join(" · ");
-      onSaved(`${name} 님 간단 예약 ${n}실했어요${mix ? ` (${mix})` : ""}${path}${unset}${payTail}`);
+      await receipts.run(receiptBatch({ groupId: lead.groupId! }, lines, today), () => onSaved(`${name} 님 간단 예약 ${n}실했어요${mix ? ` (${mix})` : ""}${path}${unset}${payTail}`));
     } catch (e) {
       setErr(saveFailMessage(e));
     } finally {
@@ -747,8 +710,9 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
       : "";
 
   return (
-    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && !busy && !receipts.pending && onClose()}>
       <form
+        inert={receipts.pending}
         className="modal book-shell simple-book"
         onSubmit={(e) => {
           e.preventDefault();
@@ -778,7 +742,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
                 : undefined
             }
           />
-          <button type="button" className="x" onClick={onClose} aria-label="닫기">
+          <button type="button" className="x" disabled={busy} onClick={onClose} aria-label="닫기">
             ×
           </button>
         </div>
@@ -853,7 +817,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
               className="inp"
               value={company}
               maxLength={60}
-              placeholder="선택 · 예: 오서건설 (객실 카드에 보여요)"
+              placeholder="회사명 (선택 · 객실 카드에 표시)"
               onChange={(e) => setCompany(e.target.value)}
               aria-label="회사명"
             />
@@ -963,6 +927,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         {/* 현장·전화: 완납/후불/선금 → 결제수단 → 판매금 · shared OnsitePayModeFields */}
         {onsite ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={sumPrice} disabled={busy}
             part="chips"
             payMode={payMode}
             onPayMode={setPayMode}
@@ -975,6 +940,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         ) : null}
         {onsite ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={sumPrice} disabled={busy}
             part="method"
             payMode={payMode}
             onPayMode={setPayMode}
@@ -1175,6 +1141,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
         {/* 선금·완납 수납만 · 후불은 숨김 · shared */}
         {onsite ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={sumPrice} disabled={busy}
             part="take"
             payMode={payMode}
             onPayMode={setPayMode}
@@ -1186,11 +1153,11 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           />
         ) : null}
 
-        {err ? <div className="err">{err}</div> : null}
+        {err ? <div className="ferr" role="alert">{err}</div> : null}
 
         <div className="mf">
           <span className="grow" />
-          <button type="button" className="btn line" onClick={onClose}>
+          <button type="button" className="btn line" disabled={busy} onClick={onClose}>
             취소
           </button>
           <button type="submit" className="btn stop" disabled={busy}>
@@ -1211,6 +1178,7 @@ export default function SimpleBooking({ data, today, req, onClose, onSaved, noti
           </button>
         </div>
       </form>
+      {receipts.recovery}
     </div>
   );
 }

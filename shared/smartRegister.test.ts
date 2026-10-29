@@ -1195,3 +1195,32 @@ test("가져오기 박별 요금: 제안은 설정의 타입 요금(평일/주�
   assert.deepEqual(sug, { "2026-10-23": 120_000, "2026-10-24": 120_000, "2026-10-25": 90_000 });
   assert.deepEqual(suggestedNightAmounts({} as never, nightRow()), {}, "요금이 없으면 제안 없음(빈칸)");
 });
+
+test("타입 숫자 코드를 보존: standard와 standard2는 별도 상품", () => {
+  const codes = { ...settings, types: [{id:"one",name:"standard"},{id:"two",name:"standard2"}] };
+  assert.equal(matchTypeId("standard", codes), "one");
+  assert.equal(matchTypeId("standard2", codes), "two");
+  assert.equal(matchTypeId("STANDARD2 (스타일러)", codes), "two");
+  assert.equal(matchTypeId("standard2", { ...codes, types:[codes.types[0]!] }), null);
+  assert.equal(matchTypeId("standard", { ...codes, types:[codes.types[1]!] }), null);
+  assert.equal(matchTypeId("standard 2", { ...codes, types:[codes.types[0]!] }), null);
+});
+test("실제 Standard2 원문은 일반 스탠다드 번역명으로 자동 확정하지 않는다", () => {
+  const raw = "Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)\n(객실 타입 ID: 427045)";
+  const aliased = { ...settings, typeAliases:[{id:"base",platformId:"p-ya",platformTypeName:"스탠다드",typeId:"std"}] };
+  assert.equal(typeRawBilingualTail(raw), "");
+  assert.equal(matchTypeId(raw, aliased, "p-ya"), null);
+  assert.equal(matchTypeIdNested(raw, aliased, "p-ag", "p-ya"), null);
+  assert.equal(matchTypeId(raw, { ...aliased, typeAliases:[...aliased.typeAliases,{id:"code2",platformId:"p-ya",platformTypeName:"Standard2",typeId:"dlx"}] }, "p-ya"), "dlx");
+});
+
+test("실제 호텔에 이미 저장된 Standard2 매칭은 구분자 공백과 무관하게 적용", () => {
+ const raw="Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)\n(객실 타입 ID: 427045)";
+ const configured={...settings,types:[...settings.types,{id:"pc",name:"스탠다드 2PC"}],typeAliases:[
+ {id:"base",platformId:"p-ya",platformTypeName:"Standardㅣ스탠다드",typeId:"std"},
+ {id:"pc",platformId:"p-ya",platformTypeName:"Standard2ㅣ스탠다드",typeId:"pc"}]};
+ assert.equal(normTypeName("Standard2 ㅣ 스탠다드"),normTypeName("Standard2ㅣ스탠다드"));
+ assert.equal(matchTypeIdNested(raw,configured,null,"p-ya"),"pc");
+ assert.equal(matchTypeIdNested("Standard ㅣ스탠다드 (스타일러ㅣ공기청정기)",configured,null,"p-ya"),"std");
+ assert.equal(matchTypeIdNested("Standard3 ㅣ스탠다드 (스타일러)",configured,null,"p-ya"),null);
+});

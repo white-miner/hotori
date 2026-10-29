@@ -126,6 +126,7 @@ export interface StaySaleCreateInput {
   payMode: OnsitePayMode;
   depAmt: string;
   depMethod: BookPayMethod;
+  tenders?: import("./payment").TenderAmounts | null;
   bizDate: string;
   /** 빠른 입실 시간 (0=없음) */
   earlyInHours?: number;
@@ -178,6 +179,7 @@ export function validateStaySaleCreate(s: HotelSettings, input: StaySaleCreateIn
       saleTotal: Math.round(input.price),
       depAmt: input.depAmt,
       depMethod: input.depMethod,
+      tenders: input.tenders,
       bizDate: input.bizDate,
     });
     if (depErr) return depErr;
