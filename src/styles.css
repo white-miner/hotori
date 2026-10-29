@@ -6491,4 +6491,21 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .detail-period-hint > div { display:grid; grid-template-columns:72px minmax(0,1fr); gap:8px; }
 .detail-period-hint > div + div { margin-top:8px; }
 .detail-period-hint p { margin:10px 0 0; padding-top:8px; border-top:1px solid #e8eaee; color:#59616d; font-size:14px; line-height:1.4; }
+.book-management-row { display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; }
+.book-management-row .book-management { flex:1; min-width:0; margin:0; }
+.book-management-row > .book-delete { flex:none; min-height:44px; color:#b62235; border-color:#dfbbc0; border-radius:10px; }
+.book-delete-confirm { margin-bottom:14px; }
+.book-type-mismatch, .smart-type-mismatch { padding:12px; border:1px solid #e4c48d; border-radius:10px; background:#fff9ee; color:#714b0b; font-size:15px; line-height:1.5; }
+.book-type-mismatch { margin-bottom:14px; }
+.book-type-mismatch p { margin:5px 0; overflow-wrap:anywhere; }
+.book-type-mismatch .btn { min-height:44px; margin-right:10px; }
+.smart-type-mismatch { margin-top:8px; }
+.smart-type-mismatch .btn { min-height:40px; margin-top:8px; }
+.booking-import-info { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:10px 12px; margin:0 0 12px; border:1px solid #cbd9ed; border-radius:10px; background:#f5f8fd; color:#34455d; font-size:15px; line-height:1.5; }
+.booking-import-info strong { flex-basis:100%; overflow-wrap:anywhere; font-weight:600; }
+.smart-import-label { display:inline-flex; align-items:center; white-space:nowrap; border:1px solid #bdcfe8; border-radius:5px; padding:1px 5px; background:#eaf1fc; color:#275591; font-size:12px; font-weight:700; line-height:18px; }
+.now-page .detail-guest-line { display:flex; align-items:center; gap:4px; }
+.now-page .detail-guest-name { min-width:0; flex:1; }
+.now-page .detail-import-label { flex:none; cursor:pointer; padding:0 3px; }
+.side-ua-source { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:#34455d; font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
 @container (min-width:240px) { .now-page .detail-period { height:50px; line-height:25px; font-size:22px; } }

@@ -1576,7 +1576,7 @@ export function reservationMemo(
     nested && nested !== platformLabel.trim() ? `${platformLabel}(${nested})` : platformLabel;
   const base = id ? `${plat} 예약번호 ${id}` : `${plat} 붙여넣기`;
   const extra = typeRaw?.trim() ? ` · ${typeRaw.trim()}` : "";
-  return base + extra;
+  return `[스마트등록] ${base}${extra}`;
 }
 
 /** Extract reservation id from memo written by smart register / same convention. */
@@ -1584,6 +1584,31 @@ export function reservationIdFromMemo(memo: string | null | undefined): string |
   if (!memo) return null;
   const m = memo.match(/예약번호\s+(\S+)/);
   return m?.[1] ?? null;
+}
+
+/** 신규 명시 라벨과 기존 스마트등록 메모 형식을 함께 읽는다. 원문이 없으면 추정하지 않는다. */
+export function smartImportInfo(b: Pick<Booking, "memo">): { rawType: string | null; reservationId: string | null } | null {
+  const first = b.memo?.split("\n")[0]?.trim();
+  if (!first) return null;
+  const match = first.match(/^(?:\[스마트등록\]\s*)?[^\n]+?\s+(?:예약번호\s+(\S+)|붙여넣기)(?:\s+·\s+(.+))?$/u);
+  if (!match) return null;
+  return { rawType: match[2]?.trim() || null, reservationId: match[1] || null };
+}
+
+/** 이전 가져오기에서 저장한 원문으로 차이를 안내한다. 저장된 예약은 자동 수정하지 않는다. */
+export function importedTypeSuggestion(b: Pick<Booking, "kind" | "platformId" | "typeId" | "memo">, s: HotelSettings): { typeId: string; raw: string } | null {
+  if (b.kind !== "stay") return null;
+  const raw = smartImportInfo(b)?.rawType;
+  if (!raw) return null;
+  const typeId = matchTypeIdNested(raw, s, null, b.platformId);
+  return typeId && typeId !== b.typeId ? { typeId, raw } : null;
+}
+
+/** 기존예약 미리보기는 새 인식값과 실제 저장값을 구분한다. 중복 생성·자동 덮어쓰기 금지. */
+export function previewTypeMismatch(row: PreviewRow, bookings: BookingReservationPick[]): BookingReservationPick | null {
+  if (!row.dup || row.pasteCancel || !row.platformId || !row.reservationId || !row.typeId) return null;
+  const matches = bookings.filter((b) => b.status === "active" && b.platformId === row.platformId && reservationIdFromMemo(b.memo) === row.reservationId.trim());
+  return matches.length === 1 && matches[0]!.typeId !== row.typeId ? matches[0]! : null;
 }
 
 export function isDuplicateReservation(

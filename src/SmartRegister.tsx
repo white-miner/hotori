@@ -57,6 +57,7 @@ import {
   previewRowStatusLabel,
   profileById,
   recomputeRowStatus,
+  previewTypeMismatch,
   upsertTypeAlias,
 } from "../shared/smartRegister";
 import type { HotelData } from "./data";
@@ -72,6 +73,7 @@ interface Props {
   banner: ReactNode;
   readOnly?: boolean;
   notify: (m: string) => void;
+  onOpenBooking?: (b: Booking) => void;
 }
 
 type MountSummary = {
@@ -97,7 +99,7 @@ function statusLabel(r: PreviewRow): string {
   return previewRowStatusLabel(r);
 }
 
-export default function SmartRegister({ data, s, today, tabs, banner, readOnly = false, notify }: Props) {
+export default function SmartRegister({ data, s, today, tabs, banner, readOnly = false, notify, onOpenBooking }: Props) {
   const L = useMemo(() => lookups(s), [s]);
   const types = usableTypes(s.types).filter((t) => typeLabel(t));
 
@@ -983,6 +985,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             ))}
                           </select>
                           {r.typeRaw ? <div className="sub">{r.typeRaw}</div> : null}
+                          {(() => {
+                            const mismatch = previewTypeMismatch(r, data.bookings);
+                            if (!mismatch) return null;
+                            return <div className="smart-type-mismatch" role="status">
+                              <strong>저장된 타입: {typeLabel(L.types.get(mismatch.typeId))}</strong>
+                              <div>새 인식: {typeLabel(L.types.get(r.typeId!))} · 기존 예약은 자동 변경하지 않아요.</div>
+                              {!readOnly && onOpenBooking ? <button type="button" className="btn line sm" disabled={busy} onClick={() => { const live = data.bookings.find((b) => b.id === mismatch.id); if (live) onOpenBooking(live); }}>기존 예약 수정</button> : null}
+                            </div>;
+                          })()}
                           {!readOnly && r.typeRaw.trim() && r.typeId && (r.platformId ?? platformId) && !r.skip ? (
                             <button
                               type="button"

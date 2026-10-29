@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { hasFullNightMatrix } from "../shared/nightrates";
 import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
+import BookingImportInfo from "./BookingImportInfo";
+import { smartImportInfo } from "../shared/smartRegister";
 import {
   canCheckOut,
   canEndDayuse,
@@ -403,6 +405,7 @@ export default function NowSidePanel({
   );
 
   const uaRow = (x: Booking) => {
+    const source = smartImportInfo(x);
     const open = assigning === x.id;
     const p = L.plats.get(x.platformId);
     const glanceAmt = nowAmountGlance(x, p);
@@ -423,6 +426,7 @@ export default function NowSidePanel({
               {` · ${md(x.checkIn)}`}
               {payG ? ` · ${payG}` : ""}
             </span>
+            {!readOnly && source ? <span className="side-ua-source"><span className="smart-import-label">스마트등록</span><span>원문: {source.rawType || "저장된 원문 없음"}</span></span> : null}
           </button>
           {isActive(x) && !readOnly ? (
             <button
@@ -587,6 +591,7 @@ export default function NowSidePanel({
               ) : null}
               {b ? (
                 <div className="nsel-body">
+                  {!readOnly ? <BookingImportInfo booking={b} /> : null}
                   <div className="nsel-row">
                     <span className="nsel-k">게스트</span>
                     <span className="nsel-v">

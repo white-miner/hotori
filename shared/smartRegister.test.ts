@@ -6,6 +6,7 @@ import { isActive, normalizeSettings, stockTable, type Booking } from "./ledger.
 import {
   HYPOTHESIS_FIXTURES,
   PLATFORM_PROFILES,
+  type PreviewRow,
   YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE,
   YANOLJA_DRAG_COPY_HTML_FIXTURE,
   YANOLJA_DRAG_COPY_MULTISPACE_FIXTURE,
@@ -39,6 +40,10 @@ import {
   matchPlatformId,
   matchTypeId,
   matchTypeIdNested,
+  importedTypeSuggestion,
+  previewTypeMismatch,
+  recomputeRowStatus,
+  smartImportInfo,
   normalizeRow,
   normTypeName,
   typeRawBilingualTail,
@@ -1161,7 +1166,7 @@ const nightRow = (over: Record<string, unknown> = {}) =>
     statusRaw: "", skip: false, nightsInclusiveSuspect: false, dup: false, pasteCancel: false,
     matchBookingId: null, cancelGuard: false, rowStatus: "ok", nestedChannelRaw: "", platformId: "p-ya",
     platformLabel: "야놀자", nestedChannelUnmatched: false, ...over,
-  }) as never;
+  }) as PreviewRow;
 const nightOpts = { platformId: "p-ya", platformLabel: "야놀자", id: "b1", nowIso: "2026-10-25T00:00:00.000Z" };
 
 test("가져오기 박별 요금: 입력하지 않으면 night_rates 없이 저장 — 총액을 나눠 채우지 않아요", () => {
@@ -1223,4 +1228,41 @@ test("실제 호텔에 이미 저장된 Standard2 매칭은 구분자 공백과 
  assert.equal(matchTypeIdNested(raw,configured,null,"p-ya"),"pc");
  assert.equal(matchTypeIdNested("Standard ㅣ스탠다드 (스타일러ㅣ공기청정기)",configured,null,"p-ya"),"std");
  assert.equal(matchTypeIdNested("Standard3 ㅣ스탠다드 (스타일러)",configured,null,"p-ya"),null);
+});
+
+test("Standard2 신규 저장 타입은 2PC를 보존하고 기존 잘못 저장된 예약과는 차이를 알린다", () => {
+  const configured={...settings,types:[...settings.types,{id:"pc",name:"스탠다드 2PC"}],typeAliases:[
+    {id:"base",platformId:"p-ya",platformTypeName:"Standardㅣ스탠다드",typeId:"std"},
+    {id:"pc",platformId:"p-ya",platformTypeName:"Standard2ㅣ스탠다드",typeId:"pc"}]};
+  const raw="Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)";
+  const row=nightRow({typeRaw:raw,typeId:matchTypeIdNested(raw,configured,null,"p-ya"),nights:1});
+  const fresh=pathADraftFromPreview(row,nightOpts);
+  assert.equal(fresh.typeId,"pc");
+  assert.equal(importedTypeSuggestion(fresh,configured),null);
+  const old={...fresh,typeId:"std",price:90000,arrived:true};
+  const before=JSON.stringify(old);
+  assert.deepEqual(importedTypeSuggestion(old,configured),{typeId:"pc",raw});
+  const existingRow=nightRow({...row,dup:true,skip:true,rowStatus:"dup"});
+  assert.equal(previewTypeMismatch(existingRow,[old])?.id,old.id);
+  assert.equal(recomputeRowStatus(existingRow),"dup","재인식만으로 신규 업로드하지 않는다");
+  assert.equal(JSON.stringify(old),before,"차이 확인은 원본 예약을 변경하지 않는다");
+  assert.equal(previewTypeMismatch(existingRow,[old,{...old,id:"ambiguous"}]),null);
+  assert.equal(previewTypeMismatch({...existingRow,pasteCancel:true},[old]),null);
+  assert.equal(previewTypeMismatch({...existingRow,platformId:"other"},[old]),null);
+  assert.equal(previewTypeMismatch(existingRow,[fresh]),null);
+  assert.equal(importedTypeSuggestion({...old,memo:"직접 입력 Standard2"},configured),null);
+  assert.equal(importedTypeSuggestion({...old,memo:old.memo!.replace("Standard2","Standard3")},configured),null);
+  assert.equal(importedTypeSuggestion({...old,kind:"dayuse"},configured),null);
+});
+
+test("스마트등록 출처는 신규 라벨과 기존 메모를 읽고 원문을 추정하지 않는다", () => {
+  const raw="Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)";
+  const memo=reservationMemo("야놀자","TEST-NEW",raw,"씨트립");
+  assert.match(memo,/^\[스마트등록\]/);
+  assert.deepEqual(smartImportInfo({memo}),{rawType:raw,reservationId:"TEST-NEW"});
+  assert.deepEqual(smartImportInfo({memo:memo.replace("[스마트등록] ","")}),{rawType:raw,reservationId:"TEST-NEW"});
+  assert.deepEqual(smartImportInfo({memo:reservationMemo("야놀자","",raw)}),{rawType:raw,reservationId:null});
+  assert.deepEqual(smartImportInfo({memo:reservationMemo("야놀자","TEST-OLD")}),{rawType:null,reservationId:"TEST-OLD"});
+  assert.equal(smartImportInfo({memo:"직접 등록한 예약"}),null);
+  assert.equal(smartImportInfo({memo:null}),null);
 });

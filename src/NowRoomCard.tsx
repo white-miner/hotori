@@ -1,5 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { smartImportInfo } from "../shared/smartRegister";
+import BookingImportInfo from "./BookingImportInfo";
 import { Crown, Link2, MessageCircle, X } from "lucide-react";
 import { type Booking, type HotelSettings, type Platform, won } from "../shared/ledger";
 import { type RoomCardModel } from "../shared/roomCard";
@@ -75,7 +77,7 @@ export default function NowRoomCard(p: NowRoomCardProps) {
         <b>{group.label}</b>{group.lead ? <span className="detail-group-role"><Crown size={14} aria-hidden />대표</span> : <span className="detail-group-name"><Link2 size={14} aria-hidden /><span>{group.name}</span></span>}<strong>{String(group.index).padStart(2, "0")}/{String(group.count).padStart(2, "0")}</strong>
       </button> : null}
       </div>
-      <div className="detail-guest-line"><strong className={`detail-guest-name${b ? "" : " is-empty"}`} title={guest}>{summaryGuest}</strong></div>
+      <div className="detail-guest-line"><strong className={`detail-guest-name${b ? "" : " is-empty"}`} title={guest}>{summaryGuest}</strong>{!readOnly && b && smartImportInfo(b) ? <button type="button" className="smart-import-label detail-import-label" title={`원문 객실 타입: ${smartImportInfo(b)?.rawType || "저장된 원문 없음"}`} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>스마트등록</button> : null}</div>
       {period ? <button type="button" className="detail-period" ref={periodAnchor} aria-label={fullPeriod} aria-expanded={periodHint} aria-describedby={periodHint ? hintId : undefined}
         onMouseEnter={showHint} onMouseLeave={hideHint} onFocus={showHint} onBlur={hideHint}
         onClick={(e) => { e.stopPropagation(); periodPinned.current = !periodPinned.current; if (periodPinned.current) showHint(); else closeHint(); }}>
@@ -164,6 +166,7 @@ export function RoomCardDetails(p: NowRoomCardProps & { onClose: () => void }) {
       <div className="room-details-body">
         <div className="room-details-heading"><strong>{roomType || "타입 미지정"}</strong><span className={`detail-status ${status.tone}`}>{status.label}</span></div>
         {group ? <div className={`room-details-group ${group.color}`}><b>{group.label} · {group.name}</b><span>{group.lead ? <><Crown size={16} /> 대표객실</> : <><Link2 size={16} /> 대표 {group.leadRoom} 연결</>} · {String(group.index).padStart(2, "0")}/{String(group.count).padStart(2, "0")}</span><button type="button" className="btn sm line" onClick={() => act(() => p.onGroup?.())}>연결 객실 보기</button></div> : null}
+        {!readOnly && b ? <BookingImportInfo booking={b} /> : null}
         <dl className="detail-facts">
           {row("guest", "예약자", <strong>{guest}</strong>)}
           {row("guests", "이용 인원", <>{occupancy.count}명<small>{occupancy.basis} · 기본 {occupancy.base}명 · 최대 {occupancy.max}명</small>{active && !readOnly && p.onGuests ? <button type="button" className="btn line sm" disabled={busy} onClick={() => act(() => p.onGuests?.())}>인원 수정</button> : null}</>)}

@@ -98,6 +98,8 @@ import {
 } from "../shared/extend";
 import { type NightShiftMode, shiftDays, shiftDifferences, shiftNightRates } from "../shared/nightShift";
 import { EDIT_COPY, commitEditStayDates, nightsUpOpensExtendPanel } from "../shared/bookingEdit";
+import { importedTypeSuggestion } from "../shared/smartRegister";
+import BookingImportInfo from "./BookingImportInfo";
 import {
   STAY_CREDIT_COPY,
   type EarlyOutDisposition,
@@ -278,6 +280,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [rateEdits, setRateEdits] = useState<RateEdits>({});
   const [platformId, setPlatformId] = useState(base?.platformId ?? p.platformId ?? s.platforms[0]?.id ?? "");
   const [typeId, setTypeId] = useState(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? "");
+  const importedType = base ? importedTypeSuggestion(base, s) : null;
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
   const [stayMode, setStayMode] = useState<StayMode>(base?.stayMode === "long_stay" ? "long_stay" : "standard");
   const [flatAmt, setFlatAmt] = useState(() => String(base?.longStayRate?.kind === "flat" ? base.longStayRate.flatAmount ?? "" : ""));
@@ -1902,7 +1905,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
             <kbd>Esc</kbd>닫기
           </button>
         </div>
-        {base ? (
+        {base ? <div className="book-management-row">
           <details className="book-management" ref={managementRef} onToggle={(e) => { if (!e.currentTarget.open) setConfirmDel(false); }}>
             <summary>예약 관리 <span>기록 정정·조기 퇴실·취소</span></summary>
             <div className="book-management-body">
@@ -1928,15 +1931,23 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                   <button type="button" className="btn line" disabled={busy} title="결제 금액은 매출에 남고 객실 재고는 비워요" onClick={() => void save(false, "noshow")}>노쇼 처리</button>
                 </> : <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "active")}>예약 되살리기</button>}
                 <p>취소·노쇼는 예약 상태를 변경하고 바로 저장해요.</p>
-                {confirmDel ? <div className="book-delete-confirm" role="alert">
-                  <p>예약을 삭제하면 원래 예약으로 복구할 수 없어요. 계속할까요?</p>
-                  <button type="button" className="btn line" onClick={() => setConfirmDel(false)}>삭제 취소</button>
-                  <button type="button" className="btn red" disabled={busy} onClick={() => void remove()}>예약 영구 삭제</button>
-                </div> : <button type="button" className="btn line book-delete" onClick={() => setConfirmDel(true)}>예약 삭제…</button>}
               </div>
             </div>
           </details>
-        ) : null}
+          <button type="button" className="btn line book-delete" disabled={busy} aria-expanded={confirmDel} onClick={() => setConfirmDel((v) => !v)}>예약 삭제…</button>
+        </div> : null}
+        {base && confirmDel ? <div className="book-delete-confirm" role="alert">
+          <p>예약을 삭제하면 원래 예약으로 복구할 수 없어요. 계속할까요?</p>
+          <button type="button" className="btn line" onClick={() => setConfirmDel(false)}>삭제 취소</button>
+          <button type="button" className="btn red" disabled={busy} onClick={() => void remove()}>예약 영구 삭제</button>
+        </div> : null}
+        {base ? <BookingImportInfo booking={base} /> : null}
+        {importedType && typeId !== importedType.typeId ? <div className="book-type-mismatch" role="status">
+          <strong>가져온 원문과 저장된 객실 타입이 달라요</strong>
+          <p>저장된 타입: {typeLabel(L.types.get(base!.typeId))} · 원문 인식: {typeLabel(L.types.get(importedType.typeId))}</p>
+          <button type="button" className="btn line" disabled={busy} onClick={() => setTypeId(importedType.typeId)}>{typeLabel(L.types.get(importedType.typeId))}로 변경</button>
+          <span className="muted sm">변경 후 저장하면 반영돼요.</span>
+        </div> : null}
         {!isNew && kind === "stay" && !long ? (
           <div className="edit-stay-sum" role="status">
             <div className="edit-stay-sum-main">
