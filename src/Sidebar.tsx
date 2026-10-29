@@ -17,16 +17,17 @@ interface SbCtx {
   /** 사이드바를 쓰는 중 (데스크톱) */
   active: boolean;
   slots: Partial<Record<SbSlot, HTMLElement>>;
+  reveal: () => void;
 }
-const SidebarCtx = createContext<SbCtx>({ active: false, slots: {} });
+const SidebarCtx = createContext<SbCtx>({ active: false, slots: {}, reveal: () => {} });
 export const SidebarProvider = SidebarCtx.Provider;
 
 /**
  * Dashboard 용: 이 칸에 그려 넣을 위치. 사이드바를 안 쓰면 null (제자리에 그림).
  * 사이드바를 쓰는데 칸이 아직 안 생겼으면 "wait" (잠깐 아무것도 안 그림 — 두 곳에 같은 단추가 보이지 않게).
  */
-export function useSidebarSlots(): { active: boolean; into: (slot: SbSlot, node: ReactNode) => ReactNode } {
-  const { active, slots } = useContext(SidebarCtx);
+export function useSidebarSlots(): { active: boolean; reveal: () => void; into: (slot: SbSlot, node: ReactNode) => ReactNode } {
+  const { active, slots, reveal } = useContext(SidebarCtx);
   const into = useCallback(
     (slot: SbSlot, node: ReactNode): ReactNode => {
       if (!active || node == null || node === false) return node;
@@ -35,7 +36,7 @@ export function useSidebarSlots(): { active: boolean; into: (slot: SbSlot, node:
     },
     [active, slots],
   );
-  return { active, into };
+  return { active, into, reveal };
 }
 
 const lsGet = (k: string): string | null => {
@@ -130,7 +131,8 @@ export function useSidebarState(menuOpen: boolean, closeMenu: () => void): Sideb
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active, closeMenu]);
-  const ctx = useMemo<SbCtx>(() => ({ active, slots: els }), [active, els]);
+  const reveal = useCallback(() => setExpanded(true), []);
+  const ctx = useMemo<SbCtx>(() => ({ active, slots: els, reveal }), [active, els, reveal]);
   return { active, expanded, pinned, open: expanded || pinned, toggle, togglePin, ctx, setSlot };
 }
 

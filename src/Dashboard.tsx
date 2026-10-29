@@ -20,6 +20,7 @@ import {
   nowByRoom,
   nowCheckoutMark,
   nowFlags,
+  roomForNowBoard,
   nowLists,
   nowNightRange,
   nowLatestPayMethodLabel,
@@ -199,6 +200,13 @@ import type { MinimapBuilding } from "./BoardStatusMinimap";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
+import NowRoomCard, { type CardGroup } from "./NowRoomCard";
+import FloorColorPicker from "./FloorColorPicker";
+import NowGroupBar from "./NowGroupBar";
+import { useCardGroups } from "./useCardGroups";
+import { detailedStatus, orderedGroupMembers } from "../shared/detailedRoomCard";
+import { FLOOR_PALETTE } from "../shared/floorColor";
+import { HEX } from "../shared/platform";
 import {
   boardMove,
   boardMoveTargets,
@@ -507,6 +515,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 좌측 사이드바(스위치 ON · 데스크톱) — 조회 조건·운영 패널을 사이드바 칸으로 포털. 꺼져 있으면 모두 제자리 */
   const sbx = useSidebarSlots();
   const sbOn = sbx.active;
+  const cardGroups = useCardGroups(data.hotel!.id, bookings);
+  const [highlightGroup, setHighlightGroup] = useState<string | null>(null);
+  const [onlyGroups, setOnlyGroups] = useState(false);
+  const [showGroupLinks, setShowGroupLinks] = useState(true);
+  const [floorPreview, setFloorPreview] = useState<Record<string, string>>({});
   const nowSide = useMemo(() => nowLists(nowBookings, viewDate, nowOpts), [nowBookings, viewDate, nowOpts]);
   const [coBusy, setCoBusy] = useState<string | null>(null);
   const [ncxBusy, setNcxBusy] = useState<string | null>(null);
@@ -3112,425 +3125,83 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  const nowCell = (r: (typeof s.floors)[number]["rooms"][number], fColor: string | null | undefined) => {
-    const b = nowBoardMap.get(r.id);
-    const t = r.typeId ? L.types.get(r.typeId) : null;
+  const floorCardColor = (id: string, raw: string | null | undefined) => floorPreview[id] ?? (raw && HEX.test(raw) ? raw : FLOOR_PALETTE[orderedFloors(s).findIndex((f) => f.id === id) % FLOOR_PALETTE.length]?.value ?? "#2F7BEA");
+  const cardGroupIds = new Set([...nowBoardMap.values()].map((b) => b.groupId).filter((id): id is string => !!id));
+  const cardGroupViews = [...cardGroupIds].map((id) => {
+    const members = orderedGroupMembers(cardGroups, id, bookings);
+    return { id, label: `G${cardGroups.groups[id]?.number ?? "?"}`, name: members[0]?.groupName || "단체", color: groupDisplayColor(id, data.groups.get(id)?.badgeColor), members, lead: groupLeadOf(id, groupStayPeers(bookings, id)) };
+  }).sort((a, b) => (cardGroups.groups[a.id]?.number ?? 0) - (cardGroups.groups[b.id]?.number ?? 0));
+  const cardGroupOf = (b: Booking | null): CardGroup | null => {
+    const g = b?.groupId ? cardGroupViews.find((x) => x.id === b.groupId) : null;
+    if (!g || !b) return null;
+    const rid = g.lead ? roomForNowBoard(g.lead, viewDate) ?? g.lead.roomId : null;
+    return { id: g.id, label: g.label, name: g.name, color: g.color, index: g.members.findIndex((x) => x.id === b.id) + 1, count: g.members.length, lead: g.lead?.id === b.id, leadRoom: rid ? `${L.roomLabel(rid)}호` : "미배정" };
+  };
+  const saveFloorCardColor = async (id: string, color: string) => {
+    if (readOnly) return;
+    const fresh = await data.fetchFreshAround(viewDate, 1);
+    if (!fresh) throw new Error("최신 층 설정을 읽지 못했어요");
+    await data.saveHotel({ settings: { ...fresh.settings, floors: fresh.settings.floors.map((f) => f.id === id ? { ...f, color } : f) } });
+    setFloorPreview((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    notify("층 색상을 저장했어요");
+  };
+  const nowCell = (r: (typeof s.floors)[number]["rooms"][number], color: string) => {
+    const stay = nowBoardMap.get(r.id) ?? null;
     const du = nowDayuseByRoom.get(r.id) ?? [];
-    const strip = pastelColor(r.color ?? fColor ?? null);
-    const k = /^\d+$/.test(r.no) ? "" : "k";
+    // 대실도 실제 예약 필드를 상세 표시한다. 숙박과 병행하는 예약은 별도 입구를 남긴다.
+    const activeDu = du.find((d) => d.arrived) ?? du[0] ?? null;
+    const b = activeDu?.arrived && stay && !nowFlags(stay, viewDate, nowOpts).arrived ? activeDu : stay ?? activeDu;
+    const cx = !b ? cxByRoom.get(r.id) ?? null : null;
+    const shown = b ?? cx;
+    const group = cardGroupOf(b);
+    if (onlyGroups && !group && !mvB && !assignBk) return null;
+    const f = b?.kind === "stay" ? nowFlags(b, viewDate, nowOpts) : null;
+    if (nowFilter === "tentative" && !b?.tentative) return null;
+    const hold = !b ? holdOnNight(s.roomHolds ?? [], r.id, viewDate) : null;
+    const model = b ? cardModelOf(b, L.plats.get(b.platformId), viewDate, today) : null;
+    const status = detailedStatus(b, viewDate, nowOpts, !!hold);
     const glance = glanceByRoom.get(r.id);
-    const duMark =
-      du.length > 0 ? (
-        <span
-          className="dumark"
-          title={du.map((d) => `대실 ${d.startTime}~${d.endTime} · ${d.guestName || ""}`).join(" · ")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (readOnly || mvB) return;
-            onOpen(du[0], viewDate);
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.stopPropagation();
-            if (readOnly || mvB) return;
-            onOpen(du[0], viewDate);
-          }}
-          role={readOnly || mvB ? undefined : "button"}
-          tabIndex={readOnly || mvB ? undefined : 0}
-        >
-          <i>대실 </i>
-          {du[0].startTime}
-          {du.length > 1 ? <em> +{du.length - 1}</em> : null}
-        </span>
-      ) : null;
-    const openN = glance?.count ?? 0;
-    const memoBubble =
-      openN > 0 || !readOnly ? (
-        <button
-          type="button"
-          className={`nowmemo ${openN ? "has" : "add"}`}
-          aria-label={
-            openN
-              ? `${r.no} 미해결 특이사항 ${openN}건: ${glance!.preview}`
-              : `${r.no} 특이사항 등록`
-          }
-          title={openN ? glance!.title : "특이사항"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setNightPopId(null);
-            setMemoRoomId(r.id);
-          }}
-        >
-          <MessageCircle size={openN ? 14 : 13} strokeWidth={openN ? 2.4 : 2} aria-hidden />
-          {openN ? (
-            <>
-              <span className="nowmemo-txt">{glance!.preview}</span>
-              {openN > 1 ? (
-                <span className="nowmemo-n">+{openN - 1 > 9 ? "9+" : openN - 1}</span>
-              ) : null}
-            </>
-          ) : null}
-        </button>
-      ) : null;
-    const peerRooms = b && isActive(b) ? groupRoomsFor(b) : [];
-    const head = (
-      <div className={`r1 ${strip ? "strip" : ""}`} data-slot="head" style={strip ? { background: strip } : undefined}>
-        {/* FitText+말풍선 flex/cqw로 호수가 사라지던 회귀 → 평문 고정 표시 */}
-        <GroupRoomNoHit
-          rooms={peerRooms}
-          open={groupPopRoomId === r.id}
-          onToggle={() => toggleGroupPop(r.id)}
-          groupName={b?.groupName}
-        >
-          <span className={`no ${k}`} title={r.no}>
-            {r.no}
-          </span>
-          {leadTag(b)}
-        </GroupRoomNoHit>
-        {memoBubble}
-      </div>
-    );
-    const { mvSame, mvCls, mvClick, mvAttr } = mvCellBits(r);
-    // 「방배정」: 이 칸에 배정할 수 있는지 (옮기기 중이면 옮기기 우선) · 빈 칸·점유 칸 공통
+    const { mvCls, mvClick, mvAttr } = mvCellBits(r);
     const assignMode = !mvB && !!assignBk;
-    const canAssign = assignMode && assignEligible.has(r.id);
-    const sameType = canAssign && r.typeId === assignBk!.typeId;
-    const assignCls = assignMode ? (canAssign ? (sameType ? "assign-ok" : "assign-other") : "assign-off") : "";
-    const assignCheck = canAssign ? (
-      <label className="board-assign-check" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={false}
-          disabled={assignBusy}
-          aria-label={`${r.no}호에 배정${sameType ? "" : " (타입 다름)"}`}
-          onChange={() => requestAssign(assignBk!, r.id)}
-        />
-      </label>
-    ) : null;
-    const cx = !b ? cxByRoom.get(r.id) : undefined;
-    if (cx) {
-      // 취소·노쇼 카드 — 옛 「배치」와 같아요: 줄 그은 이름 + 「취소/노쇼」 표시 · 누르면 그 예약 열기 · 드래그 안 돼요 · 자리(slot)는 활성 카드와 같은 칸
-      if (nowFilter === "tentative") return null;
-      const flash = flashRoomId === r.id;
-      const gs = gsCellClass(r.id);
-      const cxMark = groupBoardMark(cx);
-      return (
-        <div
-          key={r.id}
-          id={`now-room-${r.id}`}
-          data-room-id={r.id}
-          {...(mvB ? mvAttr : act)}
-          className={`cell bk cx ${du.length ? "hasdu" : ""} ${cx.groupId ? `grp${cxMark.stripe}` : ""} ${flash ? "nowflash" : ""} ${gs} ${pfCls(cx)} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
-          onClick={
-            mvClick ??
-            (() => {
-              if (assignMode) {
-                if (canAssign) requestAssign(assignBk!, r.id);
-                return;
-              }
-              onOpen(cx, viewDate);
-            })
-          }
-          onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
-        >
-          {canAssign ? assignCheck : null}
-          {duMark}
-          <div className="cell-body nowstack dense rc-grid">
-            {head}
-            <TypeRow t={t} />
-            <RoomCardFacts slot="top" rate={null} payText={null} tone="neutral" company={null} linkLabel={null} viewLabel={dayLabel(viewDate)} period="" />
-            <div className="nm" data-slot="name">
-              <PlatBadge p={L.plats.get(cx.platformId)} />
-              <span className="gn">{cx.guestName}</span>
-            </div>
-            <div className="rc-slot" data-slot="badges" />
-            <div className="rc-slot rc-mvx" data-slot="move">
-              <span className="cxt">{STATUS[cx.status]}</span>
-            </div>
-            <RoomCardFacts slot="who" rate={null} payText={null} tone="neutral" company={null} linkLabel={null} viewLabel={dayLabel(viewDate)} />
-            <div className="rc-slot" data-slot="grp" />
-            <div className="nowstatus-slot" data-slot="status" />
-          </div>
-        </div>
-      );
-    }
-    if (!b || !isActive(b)) {
-      if (nowFilter === "tentative") return null;
-      const emptySel = !mvB && selectedRoomIds.includes(r.id);
-      const flash = flashRoomId === r.id;
-      const gs = gsCellClass(r.id);
-      const hold = holdOnNight(s.roomHolds ?? [], r.id, viewDate);
-      const held = !!hold;
-      return (
-        <div
-          key={r.id}
-          id={`now-room-${r.id}`}
-          data-room-id={r.id}
-          {...(mvB ? mvAttr : act)}
-          className={`cell em nowempty ${held ? "held" : ""} ${du.length ? "duc" : ""} ${emptySel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
-          onClick={
-            mvClick ??
-            (() => {
-              if (assignMode) {
-                if (canAssign && !held) requestAssign(assignBk!, r.id);
-                else if (held) notify("마감된 호실이에요. 현황에서 취소 마감하세요.");
-                return;
-              }
-              selectRoom(r.id);
-            })
-          }
-          onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
-          title={held ? (hold!.note ? `${ROOM_HOLD_STATUS} · ${hold!.note}` : ROOM_HOLD_STATUS) : undefined}
-        >
-          {canAssign && !held ? assignCheck : null}
-          {duMark}
-          <div className="cell-body nowstack sparse rc-grid">
-            {head}
-            <TypeRow t={t} />
-            <div className={`nowstatus-slot ${!held && !mvB && !sameType ? "none" : ""}`} data-slot="status">
-              <span className={`nowstatus ${held ? "nk-held" : "nk-empty"}`}>
-                {mvSame ? "같은 타입" : mvB && targets.has(r.id) ? "이동 가능" : held ? holdCellNote(hold) : sameType ? "같은 타입" : "예약 없음"}
-              </span>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    const f = nowFlags(b, viewDate, nowOpts);
-    if (nowFilter === "tentative" && !f.tentative) return null;
-    const plat = L.plats.get(b.platformId);
-    const cardM = cardModelOf(b, plat, viewDate, today);
-    const groupCtx = cardM.groupCtx;
-    // 단체 결제 마크: 대표객실(대표객실) 칸 모서리에 작게 한 번 — 누르면 단체 상세(객실·박별 요금·결제 내역·차액)
-    const grpLead = cardM.isLead;
-    const grpLine = grpLead
-      ? nowGroupLine(
-          groupLedger(groupCtx!.members, (groupCtx!.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
-            extras: (groupCtx!.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
-          }),
-        )
-      : null;
-    const gMark = groupBoardMark(b);
-    const coMarkLabel = nowCheckoutMark(s, b);
-    const coMark = coMarkLabel ? (
-      <span className="comark" title={coMarkLabel}>
-        {coMarkLabel}
-      </span>
-    ) : null;
-    const popOpen = nightPopId === b.id;
-    const openEarlyIn = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (readOnly || earlyBusy || earlyPay || b.arrived) return;
-      setEarlyPay({ booking: b, roomLabel: L.roomLabel(r.id) ?? r.no });
-    };
-    const onStatusTap = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (readOnly || mvB) return;
-      if (!liveDay) {
-        selectRoom(r.id);
-        return;
-      }
-      if (isDepartingStatus(f.kind) && canCheckOut(b, today)) {
-        void doCheckOut(b, true);
-        return;
-      }
-      // 숙박예약 → 숙박 (수동 모드 필수 경로 · 빠른입실과 별개)
-      if (f.kind === "arriving" && !b.arrived) {
-        void markArrivedFromStatus(b);
-        return;
-      }
+    const canAssign = assignMode && assignEligible.has(r.id) && !hold;
+    const assignCls = assignMode ? canAssign ? "assign-ok" : "assign-off" : "";
+    const quick = () => { setNightPopId(null); setSelectedRoomIds([r.id]); setSideMode("room"); sbx.reveal(); };
+    const click = mvClick ?? (() => {
+      if (assignMode) { if (canAssign) requestAssign(assignBk!, r.id); return; }
+      if (cx) { onOpen(cx, viewDate); return; }
       selectRoom(r.id);
-    };
-    // 배치에서 온 칸 정보: 주차 표시 · 객실 이동 구간 · 판매 타입 · 빠른/늦은 시간 · 턴오버 경고 (빈 자리에 끼워 넣어요)
-    const nth = Math.round((Date.parse(viewDate) - Date.parse(b.checkIn)) / 864e5) + 1;
-    const legs = legsOf(b);
-    const li = legs.findIndex((l) => l.roomId === r.id && l.checkIn <= viewDate && viewDate < addDays(l.checkIn, l.nights));
-    const legNo = (id: string | null | undefined) => (id ? (L.rooms.get(id)?.no ?? "?") : "?");
-    const mvTag = legs.length > 1 && li >= 0 ? [li > 0 ? `${legNo(legs[li - 1].roomId)}→` : "", li < legs.length - 1 ? `→${legNo(legs[li + 1].roomId)}` : ""].filter(Boolean).join(" ") : null;
-    const sold = b.typeId !== r.typeId ? L.types.get(b.typeId) : null;
-    const timeTags = [
-      ...(nth === 1 && clampHours(b.earlyIn) ? [`빠른 ${inTimeOf(s, b)}`] : []),
-      ...(nth === b.nights && !isEarlyOut(b) && clampHours(b.lateOut) ? [`늦은 ${outTimeOf(s, b)}`] : []),
-    ];
-    const turnWarns = (turn.get(b.id) ?? []).filter((w) => w.date === viewDate || w.date === addDays(viewDate, 1));
-    const pm =
-      s.parking.enabled && parkingMark(b) ? (
-        <span className={`pmark ptab ${b.arrival === "walk" ? "walk" : ""}`} title={b.arrival === "car" ? `차량 ${b.cars ?? 1}대` : "도보"} aria-label={b.arrival === "car" ? `차량 ${b.cars ?? 1}대` : "도보"}>
-          <i className="pm-t">{parkingMark(b)}</i>
-          <span className="pm-i">
-            {b.arrival === "car" ? <Car size={10} strokeWidth={2.6} /> : <Footprints size={10} strokeWidth={2.6} />}
-            {b.arrival === "car" && (b.cars ?? 1) > 1 ? b.cars : null}
-          </span>
-        </span>
-      ) : null;
-    const occupiedSel = !mvB && selectedRoomIds.includes(r.id);
-    const flash = flashRoomId === r.id;
-    const gs = gsCellClass(r.id);
-    return (
-      <div
-        key={r.id}
-        id={`now-room-${r.id}`}
-        data-room-id={r.id}
-        {...(mvB ? mvAttr : act)}
-        className={`cell bk nowcell nk-${f.kind} ${du.length ? "hasdu" : ""} ${occupiedSel ? "nowsel" : ""} ${flash ? "nowflash" : ""} ${gs} ${f.tentative ? "tent" : ""} ${f.group ? `grp${gMark.stripe}` : ""} ${f.noClean ? "ncx" : ""} ${f.arrived ? "in" : ""} ${pfCls(b)} ${readOnly ? "ro" : ""} ${mvCls} ${assignCls}`}
-        onClick={
-          mvClick ??
-          (() => {
-            if (assignMode) {
-              if (canAssign) requestAssign(assignBk!, r.id);
-              return;
-            }
-            selectRoom(r.id);
-          })
-        }
-        onKeyDown={mvClick ? (e) => e.key === "Enter" && mvClick() : undefined}
-      >
-        {canAssign ? assignCheck : null}
-        {duMark}
-        {coMark}
-        {pm}
-        <div className="cell-body nowstack dense rc-grid">
-          {head}
-          <TypeRow t={t} guests={b.guests} />
-          <div className="nowdate-row" data-slot="period">
-            <button
-              type="button"
-              className="nowdate-btn"
-              aria-label={`이용 기간 ${cardM.period}`}
-              aria-expanded={popOpen}
-              onClick={(e) => {
-                e.stopPropagation();
-                setGroupPopRoomId(null);
-                setNightPopId(popOpen ? null : b.id);
-              }}
-            >
-              <span className="rc-period" title={cardM.openEnded ? "퇴실 미정 — 끝나는 날이 아직 없어요" : "이용기간 · 몇째 밤/전체 박수"}>
-                {[cardM.period, cardM.progress].filter(Boolean).join(" · ")}
-              </span>
-              <span className="nowdate-caret" aria-hidden>
-                ▾
-              </span>
-            </button>
-            {popOpen ? (
-              <NowNightPopover
-                booking={b}
-                bookings={bookings}
-                today={today}
-                roomLabel={L.roomLabel(r.id) ?? r.no}
-                onClose={() => setNightPopId(null)}
-                onOpen={() => {
-                  setNightPopId(null);
-                  onOpen(b, viewDate);
-                }}
-              />
-            ) : null}
-          </div>
-          <RoomCardFacts
-            slot="top"
-            rate={cardM.rate}
-            payText={cardM.payText}
-            payTitle={cardM.payTitle}
-            tone={cardM.tone}
-            due={cardM.due}
-            company={cardM.company}
-            linkLabel={cardM.isMember ? gMark.label : null}
-            viewLabel={dayLabel(viewDate)}
-          />
-          <div className="nm" data-slot="name">
-            {cardM.isMember ? null : (
-              <>
-                <PlatBadge p={L.plats.get(b.platformId)} />
-                <span className="gn">{b.guestName}</span>
-              </>
-            )}
-          </div>
-          <div className="rc-slot" data-slot="badges">
-            <CellBadges
-              flags={{ noClean: f.noClean, walkIn: isWalkInPlaceholderName(b.guestName), tentative: f.tentative, longStay: f.longStay, openEnded: false }}
-              group={f.group && b.groupId && !cardM.inGroup ? { groupName: b.groupName, hideName: b.groupName === b.guestName, color: gMark.color!, label: gMark.label, readOnly, onPick: pickGroupColor(b.groupId), onOpen: gMark.multi ? () => openGroupPay(b.groupId!) : undefined } : null}
-            />
-          </div>
-          <div className="rc-slot rc-mvx" data-slot="move">
-            {((mvDue, mvNext) =>
-              mvDue ? (
-                <div className="nowmove due" title="이동일이에요 — 손님이 옮겼으면 「이동 완료」">
-                  {L.roomLabel(mvDue.fromRoomId)}호에서 이동 · 이동 완료 필요
-                </div>
-              ) : mvNext ? (
-                <div className="nowmove" title="객실 이동 예약">
-                  {moveLabel(mvNext, (id) => L.roomLabel(id) ?? "")}
-                </div>
-              ) : null)(liveDay ? moveDueToday(b, today, data.changes) : null, nextMove(b, viewDate))}
-            {mvTag ? <span className="up mvt" title={`객실 이동 ${L.stayRoomLabel(b)}`}>{mvTag}</span> : sold ? <span className="up">{typeLabel(sold)}로 판매</span> : null}
-            {turnWarns.length ? (
-              <span className="ttag warn" title={turnWarns.map((w) => `${w.text} (${dayLabel(w.date)})`).join(" · ")}>
-                {turnWarns[0].text}
-              </span>
-            ) : null}
-            {timeTags.map((x) => (
-              <span key={x} className="ttag">
-                {x}
-              </span>
-            ))}
-          </div>
-          <RoomCardFacts
-            slot="who"
-            rate={cardM.rate}
-            payText={cardM.payText}
-            payTitle={cardM.payTitle}
-            tone={cardM.tone}
-            due={cardM.due}
-            company={cardM.company}
-            linkLabel={cardM.isMember ? gMark.label : null}
-            viewLabel={dayLabel(viewDate)}
-          />
-          <div className="rc-slot" data-slot="grp">
-            {grpLine ? (
-              <button
-                type="button"
-                className="rc-grpbtn"
-                title={`${grpLine} · 눌러서 단체 상세`}
-                aria-label={`단체 결제 · ${grpLine}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openGroupPay(b.groupId!);
-                }}
-              >
-                단체 결제 ›
-              </button>
-            ) : null}
-          </div>
-          <div className="nowstatus-slot" data-slot="status">
-            {liveDay && !readOnly && f.kind === "arriving" && !b.arrived ? (
-              <button
-                type="button"
-                className="nowearly"
-                disabled={!!earlyBusy || !!earlyPay}
-                onClick={openEarlyIn}
-              >
-                {earlyBusy === b.id ? "처리 중…" : "빠른 입실"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={`nowstatus nk-${f.kind}${liveDay && (isDepartingStatus(f.kind) || (f.kind === "arriving" && !b.arrived)) ? " tap" : ""}`}
-              onClick={onStatusTap}
-              title={
-                !liveDay
-                  ? f.label
-                  : isDepartingStatus(f.kind)
-                  ? "탭하면 퇴실처리"
-                  : f.kind === "arriving" && !b.arrived
-                    ? "탭하면 숙박으로 전환"
-                    : f.label
-              }
-            >
-              {f.label}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    });
+    const statusTap = b && f && !readOnly ? () => {
+      if (!liveDay || mvB) { quick(); return; }
+      if (isDepartingStatus(f.kind) && canCheckOut(b, today)) { void doCheckOut(b, true); return; }
+      if (f.kind === "arriving" && !b.arrived) { void markArrivedFromStatus(b); return; }
+      quick();
+    } : undefined;
+    const popOpen = !!b && nightPopId === b.id;
+    const scheduled = b ? nextMove(b, viewDate) : null;
+    const dueMove = b && liveDay ? moveDueToday(b, today, data.changes) : null;
+    const warnings = b ? (turn.get(b.id) ?? []).filter((w) => w.date === viewDate || w.date === addDays(viewDate, 1)) : [];
+    return <div key={r.id} id={`now-room-${r.id}`} data-room-id={r.id} {...(mvB ? mvAttr : act)}
+      className={`cell detail-card ${b ? "bk" : "em"} ${cx ? "cx" : ""} ${hold ? "held" : ""} ${selectedRoomIds.includes(r.id) && !mvB ? "nowsel" : ""} ${flashRoomId === r.id ? "nowflash" : ""} ${gsCellClass(r.id)} ${shown ? pfCls(shown) : ""} ${mvCls} ${assignCls} ${readOnly ? "ro" : ""} ${highlightGroup && group?.id === highlightGroup ? "group-highlight" : ""}`}
+      onClick={click} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); click(); } }}>
+      {canAssign ? <label className="board-assign-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={false} disabled={assignBusy} aria-label={`${r.no}호에 배정`} onChange={() => requestAssign(assignBk!, r.id)} /></label> : null}
+      <NowRoomCard roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} color={color} booking={shown} platform={shown ? L.plats.get(shown.platformId) : undefined} settings={s} model={model} status={status} group={group} showGroup={showGroupLinks}
+        readOnly={readOnly} busy={!!mvB || assignMode}
+        onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}
+        onGroup={() => setHighlightGroup(group?.id === highlightGroup ? null : group?.id ?? null)}
+        onMemo={() => { setNightPopId(null); setMemoRoomId(r.id); }} memoCount={glance?.count ?? 0} memoText={glance?.title}
+        onPeriod={b?.kind === "stay" ? () => setNightPopId(popOpen ? null : b.id) : undefined}
+        periodPopup={popOpen && b ? <NowNightPopover booking={b} bookings={bookings} today={today} roomLabel={L.roomLabel(r.id) ?? r.no} onClose={() => setNightPopId(null)} onOpen={() => { setNightPopId(null); onOpen(b, viewDate); }} /> : null}
+        notes={<>
+          {hold ? <span>{holdCellNote(hold)}</span> : null}
+          {du.filter((d) => d.id !== b?.id).map((d) => <button type="button" key={d.id} className="detail-extra-booking" onClick={(e) => { e.stopPropagation(); onOpen(d, viewDate); }}>대실 {d.startTime}~{d.endTime} · {d.guestName}</button>)}
+          {stay && stay.id !== b?.id ? <button type="button" className="detail-extra-booking" onClick={(e) => { e.stopPropagation(); onOpen(stay, viewDate); }}>숙박 예약 · {stay.guestName}</button> : null}
+          {dueMove ? <span>{L.roomLabel(dueMove.fromRoomId)}호에서 이동 · 이동 완료 필요</span> : scheduled ? <span>{moveLabel(scheduled, (id) => L.roomLabel(id) ?? "")}</span> : null}
+          {b && b.typeId !== r.typeId ? <span>{typeLabel(L.types.get(b.typeId))}로 판매</span> : null}
+          {warnings.map((w, i) => <span key={i}>{w.text}</span>)}
+          {b && s.parking.enabled && parkingMark(b) ? <span>{parkingMark(b)}</span> : null}
+        </>} />
+    </div>;
   };
 
   /** 층 칩 (좁은 화면) — 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */
@@ -3628,49 +3299,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       />
     );
     /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
-    const nowLegend = (
-      <div className="lg nowlg" aria-label="상태 범례">
-        <span>
-          <i className="nkdot nk-empty" />공실
-        </span>
-        <span>
-          <i className="nkdot nk-held" />마감
-        </span>
-        <span>
-          <i className="nkdot nk-arriving" />숙박예약
-        </span>
-        <span>
-          <i className="nkdot nk-inhouse" />숙박
-        </span>
-        <span>
-          <i className="nkdot nk-departing" />퇴실예정
-        </span>
-        <span>
-          <i className="nkdot nk-lateOut" />늦은 퇴실
-        </span>
-        <span>
-          <i className="nkdot nk-tent" />임시
-        </span>
-        <span>
-          <i className="nkdot nk-ua" />미배정
-        </span>
-        <span>
-          <i className="nkdot nk-ncx" />청소X
-        </span>
-        <span title="이름·연락처 없이 바로 입실">
-          <em className="bdg bdg-walkIn"><Zap size={11} strokeWidth={2.8} aria-hidden />바로입실</em>
-        </span>
-        <span title="같은 단체 예약 · 색 같은 칸이 한 단체">
-          <em className="bdg bdg-grp">단체</em>
-        </span>
-        <span title="퇴실 미정 장기 숙박">
-          <em className="bdg bdg-longStay">장기</em>
-        </span>
-        <span>
-          <MessageCircle size={12} strokeWidth={2.2} aria-hidden />특이사항
-        </span>
-      </div>
-    );
+    const nowLegend = <div className="detail-legend" aria-label="상태 범례">
+      <span className="detail-status stay">투숙 중</span><span className="detail-status dayuse">대실</span><span className="detail-status available">판매가능</span><span className="detail-status departing">퇴실예정</span>
+      <span className="detail-status neutral">입실예정·판매중지 별도 표시</span>
+    </div>;
     /** 운영 패널(N1~N21) — 사이드바 ON 이면 사이드바 C 구역으로 포털(내용·동작 그대로), 아니면 지금 자리(우측) */
     const opsWrap = (node: React.ReactNode) => (sbOn ? sbx.into("ops", node) : node);
     /** 현황 필터 (전체 / 임시만) */
@@ -3698,7 +3330,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <div>
               <h1>현황</h1>
               <div className="bdh-s">
-                영업일 {dayLabel(today)} · 화이트보드처럼 오늘 방 상태를 봐요 · 말풍선은 특이사항 · 칸을 누르면 우측 상세
+                영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 사이드바 열기
               </div>
             </div>
             <div className="dnav nowfilters">
@@ -3735,9 +3367,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 {nowGlance}
               </div>
               {floorChips}
+              <NowGroupBar data={data} groups={cardGroupViews} selected={highlightGroup} onlyGroups={onlyGroups} showLinks={showGroupLinks} readOnly={readOnly}
+                roomLabel={(b) => { const rid = roomForNowBoard(b, viewDate) ?? b.roomId; return rid ? `${L.roomLabel(rid)}호` : "미배정"; }}
+                onSelect={setHighlightGroup} onOnlyGroups={setOnlyGroups} onShowLinks={setShowGroupLinks} onManage={openGroupPay}
+                candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} />
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
-                  <section key={bd.id} className="bblock">
+                  <section key={bd.id} className="bblock" style={{ ["--floor-columns" as string]: Math.max(1, ...fl.map((f) => f.rooms.length)) }}>
                     <div className="bname-row">
                       <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
                       {multi ? (
@@ -3753,8 +3389,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                           <span className="fn" style={floorPaint(f.color) ? { ["--fc" as string]: floorPaint(f.color)! } : undefined}>
                             {f.name}
                           </span>
+                          <span className="detail-floor-count">{f.rooms.length}실</span>
+                          {!readOnly ? <FloorColorPicker name={f.name} color={floorCardColor(f.id, f.color)} onPreview={(color) => setFloorPreview((v) => ({ ...v, [f.id]: color }))} onSave={(color) => saveFloorCardColor(f.id, color)} /> : null}
                         </div>
-                        <div className="rooms">{f.rooms.map((r) => nowCell(r, f.color))}</div>
+                        <div className="rooms">{f.rooms.map((r) => nowCell(r, floorCardColor(f.id, f.color)))}</div>
                       </div>
                     ))}
                   </section>
