@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowRight, ArrowRightLeft, CalendarDays, CalendarPlus, Check, Clock, DoorOpen, Minus, Plus, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, X } from "lucide-react";
 import {
   type Booking,
   type Kind,
@@ -49,11 +49,10 @@ import {
 import { dayuseStayOverlapWarn } from "../shared/dayuseOverlap";
 import type { HotelData } from "./data";
 import type { EntryRequest, ToastOpt } from "./App";
-import { PlatBadge, TypeBadge, isTypingTarget, lookups } from "./ui";
+import { TypeBadge, lookups } from "./ui";
 import DayuseStayOverlapConfirm from "./DayuseStayOverlapConfirm";
 import { askConfirm } from "./ConfirmDialog";
 import GroupEntry from "./GroupEntry";
-import GroupAdd from "./GroupAdd";
 import { GUESTS_MAX, SURCHARGE_MAX, surchargeOf, typeGuests } from "../shared/surcharge";
 import {
   BOOK_PAY_LABEL,
@@ -210,8 +209,6 @@ interface Props {
   /** 새 예약 상세 → 간단 셸 (progressive disclosure) */
   onOpenSimple?: (preset: Partial<Booking>) => void;
 }
-const TYPE_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"];
-const TYPE_LABEL = "QWERTYUIO";
 const DURATIONS = [1, 2, 3, 4, 5, 6];
 const durLabel = (min: number) => (min % 60 ? `${Math.floor(min / 60)}시간 ${min % 60}분` : `${min / 60}시간`);
 
@@ -252,7 +249,7 @@ function AdvWrap({ on, label, children }: { on: boolean; label: string; children
   );
 }
 
-export default function Entry({ data, today, req, onClose, onSaved, onBoardMove, notify, undoEarlyOut, onOpenSimple }: Props) {
+export default function Entry({ data, today, req, onClose, onSaved, notify, undoEarlyOut, onOpenSimple }: Props) {
   const s = data.hotel!.settings;
   const L = useMemo(() => lookups(s), [s]);
   const base = req.booking;
@@ -264,10 +261,12 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
   const [kind, setKind] = useState<Kind>(initKind);
   // 단체 예약: 신규 등록할 때만 '단체'로 바꿔서 여러 방을 한 번에
   const [group, setGroup] = useState(false);
-  const [addGroup, setAddGroup] = useState(false);
-  /** 혼자 묵는 예약에서 「객실 추가」를 누르면 한 단체로 묶고 그 id를 여기 둬요 */
-  const [soloGid, setSoloGid] = useState<string | null>(null);
-  const [soloBusy, setSoloBusy] = useState(false);
+  const managementRef = useRef<HTMLDetailsElement>(null);
+  const manage = (action: () => void) => {
+    if (managementRef.current) managementRef.current.open = false;
+    setConfirmDel(false);
+    action();
+  };
   /** 기록 정정 시트 */
   const [recOpen, setRecOpen] = useState(false);
   // 이용 기간 미정(∞) · 추가 객실(신규 숙박 여러 방) — 새 예약에서만 고르고, 고치는 예약은 저장된 값을 그대로 이어요
@@ -958,7 +957,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     if (ok) onClose();
   };
   const [inErr, setInErr] = useState<string | null>(null);
-  const [ncxBusy, setNcxBusy] = useState(false);
   const [coBusy, setCoBusy] = useState(false);
   const [coConfirm, setCoConfirm] = useState<{ booking: Booking; members: Booking[] } | null>(null);
 
@@ -1164,21 +1162,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       setSwapBusy(false);
     }
   };
-  const toggleNoClean = async () => {
-    if (!base || ncxBusy) return;
-    const next = !noClean;
-    setNcxBusy(true);
-    setInErr(null);
-    setNoClean(next);
-    try {
-      await data.patchBooking(base.id, { noClean: next });
-    } catch {
-      setNoClean(!next);
-      setInErr("청소X를 저장하지 못했어요. 다시 눌러 주세요.");
-    } finally {
-      setNcxBusy(false);
-    }
-  };
+
   const [status] = useState<Status>(base?.status ?? "active");
   /** 미니 배치도 건물 칩 (간단 예약 · Entry 숙박/대실 공용 MiniFloorPlan) */
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
@@ -1832,7 +1816,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
     }
   }
 
-  // 단축키: 입력 칸 밖에서는 그대로, 입력 칸 안에서는 Alt와 함께
+  // Esc만 닫기에 사용한다. 문자·숫자·방향키로 예약값을 바꾸지 않는다.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (group) {
@@ -1841,36 +1825,15 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
       }
       if (e.key === "Escape") {
         e.preventDefault();
+        if (managementRef.current?.open) {
+          managementRef.current.open = false;
+          return;
+        }
         // 날짜 칸에서 Esc는 날짜 고르기만 닫고, 적던 예약은 그대로 둬요
         if (e.target instanceof HTMLInputElement && (e.target.type === "date" || e.target.type === "time" || e.target.classList.contains("tm-in"))) return e.target.blur();
         return onClose();
       }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        return void save(true);
-      }
-      const typing = isTypingTarget(e.target);
-      if (typing && !e.altKey) return;
-      if (e.ctrlKey || e.metaKey) return;
-      const dn = /^Digit([1-9])$/.exec(e.code);
-      if (dn) {
-        const pl = s.platforms[Number(dn[1]) - 1];
-        if (pl) {
-          e.preventDefault();
-          setPlatformId(pl.id);
-        }
-        return;
-      }
-      const ti = TYPE_KEYS.indexOf(e.code);
-      if (ti >= 0 && pickTypes[ti]) {
-        e.preventDefault();
-        setTypeId(pickTypes[ti].id);
-        return;
-      }
-      if (kind === "stay" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-        e.preventDefault();
-        setStayNights(nights + (e.key === "ArrowRight" ? 1 : -1));
-      }
+
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1894,24 +1857,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         onSaved={(m) => onSaved(m)}
       />
     );
-  if (addGroup && (base?.groupId || soloGid)) {
-    const gidAdd = base?.groupId ?? soloGid;
-    const members = data.bookings.filter((b) => b.groupId === gidAdd);
-    return (
-      <GroupAdd
-        data={data}
-        today={today}
-        members={members}
-        onClose={() => setAddGroup(false)}
-        onSaved={(m) => onSaved(m)}
-      />
-    );
-  }
   return (
     <>
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
-        className="modal book-shell book-two-pane"
+        className={`modal book-shell book-two-pane${isNew ? "" : " book-editor"}`}
         onSubmit={(e) => {
           e.preventDefault();
           void save(false);
@@ -1920,16 +1870,6 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         <div className="grab" />
         <div className="mh">
           <h2>{isNew ? "상세 예약" : EDIT_COPY}</h2>
-          {!isNew && onBoardMove ? (
-            <Chip
-              sm
-              className="edit-room-move"
-              onClick={onBoardMove}
-              title={`창을 닫고 옮길 빈 방을 눌러요${base?.kind === "stay" && base.nights && base.nights > 1 && req.night && req.night > base.checkIn ? ` · ${dayLabel(req.night)}부터 옮겨요` : ""}`}
-            >
-              <ArrowRightLeft size={14} /> 객실 이동
-            </Chip>
-          ) : null}
           {isNew && kind === "stay" ? (
             <BookingModeSeg
               mode="detail"
@@ -1971,145 +1911,39 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </button>
         </div>
         {base ? (
-          <div
-            className={`mtop n${
-              (isActive(base)
-                ? (base.kind === "stay" ? 1 : 0) +
-                  (eoNow || eoToday ? 1 : 0) +
-                  (canEx ? 1 : 0) +
-                  (live && isLongStay(live) && canExtend(live) ? 1 : 0) +
-                  (base.groupId ? 1 : 0) +
-                  (canAs ? 1 : 0) +
-                  (base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...(live ?? base), checkedOutAt: null }, today)) ? 1 : 0) +
-                  (base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? 1 : 0) +
-                  (isActive(draft) ? 2 : 0)
-                : 0) +
-              1
-            }`}
-          >
-            {isActive(base) && base.kind === "stay" && (isCheckedOut({ checkedOutAt }) || canCheckOut({ ...base, checkedOutAt: null }, today)) ? (
-              <button
-                type="button"
-                className={`beo cout ${checkedOutAt ? "on" : ""}`}
-                aria-pressed={!!checkedOutAt}
-                disabled={coBusy}
-                onClick={() => void toggleCheckOut()}
-                title="정상 퇴실 · 누르면 바로 저장 · 조기 퇴실과 다름"
-              >
-                <DoorOpen size={17} />
-                <b>{checkedOutAt ? `퇴실처리됨 · ${CHECKOUT_UNDO_CTA}` : "퇴실처리"}</b>
-              </button>
-            ) : null}
-            {isActive(base) && base.kind === "dayuse" && (isCheckedOut({ checkedOutAt }) || canEndDayuse({ ...base, checkedOutAt: null })) ? (
-              <button
-                type="button"
-                className={`beo cout ${checkedOutAt ? "on" : ""}`}
-                aria-pressed={!!checkedOutAt}
-                disabled={coBusy}
-                onClick={() => void toggleCheckOut()}
-                title="대실 이용 종료 · 누르면 확인 후 저장 · 숙박 퇴실과 별축"
-              >
-                <DoorOpen size={17} />
-                <b>{checkedOutAt ? `이용 종료됨 · ${CHECKOUT_UNDO_CTA}` : "이용 종료"}</b>
-              </button>
-            ) : null}
-            {isActive(base) && base.kind === "stay" ? (
-              <button type="button" className={`beo ncx ${noClean ? "on" : ""}`} aria-pressed={noClean} disabled={ncxBusy} onClick={() => void toggleNoClean()} title="청소하지 않음 · 누르면 바로 저장">
-                <b>{noClean ? "청소X · 해제" : "청소X"}</b>
-              </button>
-            ) : null}
-            {base.kind === "stay" ? (
-              <button type="button" className="beo" onClick={() => setRecOpen(true)} title="결제·요금·객실 기록을 고치고 되돌려요">
-                <b>기록 정정</b>
-              </button>
-            ) : null}
-            {isActive(base) && base.groupId ? (
-              <button type="button" className="beo" onClick={() => setAddGroup(true)} title="같은 단체에 방·타입만 멤버를 이어 붙여요">
-                <b>단체에 객실 추가</b>
-              </button>
-            ) : null}
-            {isActive(base) && base.kind === "stay" && !base.groupId ? (
-              <button
-                type="button"
-                className="beo"
-                disabled={soloBusy}
-                title="어떤 객실이든 이 예약에 더해요 · 한 단체로 묶여요"
-                onClick={() => {
-                  void (async () => {
-                    setSoloBusy(true);
-                    try {
-                      const gid = await data.groupify(base);
-                      setSoloGid(gid);
-                      setAddGroup(true);
-                    } catch (e) {
-                      setErr(saveFailMessage(e));
-                    } finally {
-                      setSoloBusy(false);
-                    }
-                  })();
-                }}
-              >
-                <b>{soloBusy ? "묶는 중…" : "객실 추가"}</b>
-              </button>
-            ) : null}
-            {isActive(base) && canAs ? (
-              <button type="button" className={`beo ${as ? "on" : ""}`} aria-expanded={!!as} onClick={() => (as ? setAs(null) : openAs())}>
-                <b>{SURCHARGE_COPY}</b>
-              </button>
-            ) : null}
-            {isActive(base) && canEx ? (
-              <button
-                type="button"
-                className={`beo ${ex ? "on" : ""}`}
-                aria-expanded={!!ex}
-                onClick={() => {
-                  if (ex) {
-                    setEx(null);
-                    setExOverlap(null);
-                  } else openEx();
-                }}
-              >
-                <CalendarPlus size={17} />
-                <b>{isLongStay(live ?? base) ? "재고 창 +1박" : EXTEND_COPY}</b>
-              </button>
-            ) : null}
-            {isActive(base) && live && isLongStay(live) && canExtend(live) ? (
-              <button type="button" className="beo" disabled={winBusy} onClick={() => void confirmWinExtend()} title="재고 확정 창을 7박 늘리고 원장에 내역을 추가해요">
-                <CalendarPlus size={17} />
-                <b>{winBusy ? "연장 중…" : `재고 창 +${WINDOW_EXTEND_DEFAULT}`}</b>
-              </button>
-            ) : null}
-            {isActive(base) && eoNow ? (
-              <button type="button" className="beo undo" disabled={eoBusy} onClick={() => void undoEo()}>
-                <Undo2 size={17} />
-                <b>조기 퇴실 되돌리기</b>
-              </button>
-            ) : isActive(base) && eoToday ? (
-              <button type="button" className={`beo ${eo ? "on" : ""}`} aria-expanded={!!eo} onClick={() => (eo ? setEo(null) : openEo())}>
-                <DoorOpen size={17} />
-                <b>조기 퇴실</b>
-              </button>
-            ) : null}
-            {isActive(draft) ? (
-              <>
-                <button type="button" className="beo" onClick={() => void save(false, "cancelled")}>
-                  <b>취소 처리</b>
-                </button>
-                <button type="button" className="beo" title="결제한 금액은 매출에 남고, 방·재고는 비워요" onClick={() => void save(false, "noshow")}>
-                  <b>노쇼</b>
-                </button>
-              </>
-            ) : null}
-            {confirmDel ? (
-              <button type="button" className="beo danger" onClick={() => void remove()}>
-                <b>정말 삭제할까요?</b>
-              </button>
-            ) : (
-              <button type="button" className="beo danger" onClick={() => setConfirmDel(true)}>
-                <b>예약 삭제</b>
-              </button>
-            )}
-          </div>
+          <details className="book-management" ref={managementRef} onToggle={(e) => { if (!e.currentTarget.open) setConfirmDel(false); }}>
+            <summary>예약 관리 <span>기록 정정·조기 퇴실·취소</span></summary>
+            <div className="book-management-body">
+              <div className="book-management-group">
+                <h3>기록과 이용 기간</h3>
+                {base.kind === "stay" ? <button type="button" className="btn line" onClick={() => manage(() => setRecOpen(true))}>기록 정정</button> : null}
+                {isActive(base) && eoNow ? (
+                  <button type="button" className="btn line" disabled={eoBusy} onClick={() => manage(() => void undoEo())}>조기 퇴실 되돌리기</button>
+                ) : isActive(base) && (eoToday || eoPast) ? (
+                  <button type="button" className="btn line" onClick={() => manage(() => eo ? setEo(null) : openEo())}>조기 퇴실 처리</button>
+                ) : null}
+                {isActive(base) && checkedOutAt ? <button type="button" className="btn line" disabled={coBusy} onClick={() => manage(() => void toggleCheckOut())}>{CHECKOUT_UNDO_CTA}</button> : null}
+                {isActive(base) && live && isLongStay(live) && canExtend(live) ? (
+                  <button type="button" className="btn line" disabled={winBusy} onClick={() => manage(() => void confirmWinExtend())}>{winBusy ? "연장 중…" : `재고 창 +${WINDOW_EXTEND_DEFAULT}`}</button>
+                ) : null}
+                {!isNew && kind === "stay" && nights >= 2 && roomId ? <button type="button" className="btn line" onClick={() => manage(() => setMv({ from: Math.min(nights, Math.max(2, daysBetween(checkIn, today) + 1)), room: null, other: false }))}>객실 이동 기록 수정</button> : null}
+                <p>현재 객실의 퇴실·청소·연장·단체 연결은 현황판의 빠른 업무에서 처리해요.</p>
+              </div>
+              <div className="book-management-group">
+                <h3>예약 상태</h3>
+                {isActive(draft) ? <>
+                  <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "cancelled")}>취소 처리</button>
+                  <button type="button" className="btn line" disabled={busy} title="결제 금액은 매출에 남고 객실 재고는 비워요" onClick={() => void save(false, "noshow")}>노쇼 처리</button>
+                </> : <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "active")}>예약 되살리기</button>}
+                <p>취소·노쇼는 예약 상태를 변경하고 바로 저장해요.</p>
+                {confirmDel ? <div className="book-delete-confirm" role="alert">
+                  <p>예약을 삭제하면 원래 예약으로 복구할 수 없어요. 계속할까요?</p>
+                  <button type="button" className="btn line" onClick={() => setConfirmDel(false)}>삭제 취소</button>
+                  <button type="button" className="btn red" disabled={busy} onClick={() => void remove()}>예약 영구 삭제</button>
+                </div> : <button type="button" className="btn line book-delete" onClick={() => setConfirmDel(true)}>예약 삭제…</button>}
+              </div>
+            </div>
+          </details>
         ) : null}
         {!isNew && kind === "stay" && !long ? (
           <div className="edit-stay-sum" role="status">
@@ -2124,7 +1958,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             </div>
             <p className="muted sm edit-stay-sum-hint">
               날짜·박수는 아래에서 고친 뒤 저장해요
-              {canEx ? ` · 하룻밤만 더 = 「${EXTEND_COPY}」` : ""}
+              {canEx ? ` · 1박 연장은 빠른 업무에서` : ""}
             </p>
           </div>
         ) : null}
@@ -2598,27 +2432,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
             </label>
             <div className="payb">
               {kind === "stay" ? <div className="muted sm">호텔 전체 잔여 재고 (미배정도 차감)</div> : null}
-              <div className="chips scroll">
-                {pickTypes.map((t, k) => {
-                  const r = minRemain(t.id);
-                  const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
-                  return (
-                    <button type="button" key={t.id} className={`tchip ${t.id === typeId ? "on" : ""}`} onClick={() => setTypeId(t.id)} title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}>
-                      <span className="t1">
-                        <TypeBadge t={t} />
-                      </span>
-                      {kind === "stay" ? (
-                        <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                          잔여 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                          {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
-                        </span>
-                      ) : k < 9 ? (
-                        <span className="t2 kk">{TYPE_LABEL[k]}</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
+              <select className="book-choice" aria-label="객실 타입" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+                {pickTypes.map((t) => <option key={t.id} value={t.id}>{typeLabel(t) || "이름 미지정"}{kind === "stay" ? ` · 잔여 ${minRemain(t.id)}` : ""}</option>)}
+              </select>
+
               {kind === "stay" && minRemain(typeId) <= 0 ? (
                 <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
                   {minRemain(typeId) < 0
@@ -3007,7 +2824,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               <b>{L.roomLabel(roomId) ?? "?"}호</b>
               <span className="muted sm">
                 {typeLabel(L.types.get(typeId)) || "타입"}
-                {" · "}객실 이동은 제목 옆 또는 운영패널
+                {" · "}현재 객실 이동은 빠른 업무 · 지난 이동 기록은 예약 관리
               </span>
             </div>
           </div>
@@ -3019,33 +2836,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
               {(isNew && kind === "stay") || kind === "dayuse" ? (
                 <div className="mfp-types">
                   <div className="muted sm">{kind === "stay" ? "타입 · 잔여 수" : "타입"}</div>
-                  <div className="chips scroll">
-                    {pickTypes.map((t, k) => {
-                      const r = minRemain(t.id);
-                      const lv = stockLevel(r, totals.get(t.id) ?? 0, s.lowThreshold);
-                      return (
-                        <button
-                          type="button"
-                          key={t.id}
-                          className={`tchip ${t.id === typeId ? "on" : ""}`}
-                          onClick={() => setTypeId(t.id)}
-                          title={kind === "stay" ? `${t.name} · 선택 기간 최소 잔여 ${r}` : t.name}
-                        >
-                          <span className="t1">
-                            <TypeBadge t={t} />
-                          </span>
-                          {kind === "stay" ? (
-                            <span className={`t2 ${lv === "full" || lv === "over" ? "full" : ""}`}>
-                              잔여 <b className={r <= 0 ? "tred" : ""}>{r < 0 ? `−${-r}` : r}</b>
-                              {k < 9 ? <span className="kk"> · {TYPE_LABEL[k]}</span> : null}
-                            </span>
-                          ) : k < 9 ? (
-                            <span className="t2 kk">{TYPE_LABEL[k]}</span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <select className="book-choice" aria-label="객실 타입" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+                    {pickTypes.map((t) => <option key={t.id} value={t.id}>{typeLabel(t) || "이름 미지정"}{kind === "stay" ? ` · 잔여 ${minRemain(t.id)}` : ""}</option>)}
+                  </select>
+
                   {kind === "stay" && minRemain(typeId) <= 0 ? (
                     <div className={`muted sm ${minRemain(typeId) < 0 ? "tred" : ""}`}>
                       {minRemain(typeId) < 0
@@ -3112,25 +2906,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           <label>
             플랫폼<em>*</em>
           </label>
-          <ChipGroup scroll>
-            {s.platforms.map((pl, k) => (
-              <Chip
-                key={pl.id}
-                active={pl.id === platformId}
-                onClick={() => {
-                  setPlatformId(pl.id);
-                  // Mobile: collapse 날짜·객실 after pick so guest/cost pane is primary
-                  if (typeof window !== "undefined" && window.matchMedia("(max-width: 760px)").matches) {
-                    setLeftPaneOpen(false);
-                  }
-                }}
-              >
-                <PlatBadge p={pl} />
-                {pl.name}
-                {k < 9 ? <i>{k + 1}</i> : null}
-              </Chip>
-            ))}
-          </ChipGroup>
+          <select className="book-choice" aria-label="예약 경로" value={platformId} onChange={(e) => setPlatformId(e.target.value)}>
+            {s.platforms.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+          </select>
         </div>
 
         <div className="fld">
@@ -3155,6 +2933,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         </div>
 
+        <AdvWrap on={!isNew && !sur.over} label={`회사·인원 · ${company.trim() || "회사 미입력"} · ${guests}명${extraFee > 0 ? ` · 추가 ${won(extraFee)}원` : ""}`}>
         <div className="fld">
           <label htmlFor="entry-company">회사명</label>
           <div className="payb">
@@ -3226,8 +3005,10 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </div>
         </div>
 
+        </AdvWrap>
+
         {kind === "stay" ? (
-          <AdvWrap on={isNew} label="시간 · 얼리체크인 · 레이트">
+          <AdvWrap on={isNew || (!earlyIn && !lateOut)} label="시간 · 얼리체크인 · 레이트">
           <div className="fld tfld">
             <label>시간</label>
             <div className="payb">
@@ -3769,7 +3550,7 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         )}
 
         {feeOn ? (
-          <AdvWrap on={isNew} label="쿠폰 · 플랫폼 입금">
+          <AdvWrap on={isNew || (coupons.length === 0 && !payOk)} label="쿠폰 · 플랫폼 입금">
           <div className="fld cfld">
             <label>쿠폰 · 입금</label>
             <div className="payb">
@@ -3853,9 +3634,9 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
           </AdvWrap>
         ) : null}
 
-        {!isNew && kind === "stay" && nights >= 2 && roomId ? (
+        {!isNew && kind === "stay" && nights >= 2 && roomId && (moved || mv) ? (
           <div className="fld">
-            <label>객실 이동</label>
+            <label>객실 이동 기록</label>
             <div className="mvbox">
               {moved ? (
                 <div className="mvlegs">
@@ -4014,47 +3795,11 @@ export default function Entry({ data, today, req, onClose, onSaved, onBoardMove,
         {err ? <div className="ferr">{err}</div> : null}
 
         <div className="mf">
-          {isNew ? (
-            <div className="keys">
-              <span>
-                <kbd>1~{Math.min(9, s.platforms.length)}</kbd>플랫폼
-              </span>
-              <span>
-                <kbd>Q~</kbd>타입
-              </span>
-              <span>
-                <kbd>←→</kbd>박수
-              </span>
-              <span className="kk-note">입력 칸 안에서는 Alt와 함께</span>
-              <span>
-                <kbd>Ctrl</kbd>+<kbd>Enter</kbd>하나 더
-              </span>
-            </div>
-          ) : !isActive(draft) || eoPast ? (
-            <div className="keys acts">
-              {isActive(draft) ? (
-                <button type="button" className="btn line sm" title="지난 숙박을 바로잡아요: 떠난 날을 고르면 그 뒤 밤은 비워요" onClick={() => (eo ? setEo(null) : openEo())}>
-                  조기 퇴실 처리
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn line sm"
-                  disabled={busy}
-                  title="취소·노쇼를 정상 예약으로 되돌리고 바로 저장해요"
-                  onClick={() => void save(false, "active")}
-                >
-                  {busy ? "저장 중…" : "예약 되살리기"}
-                </button>
-              )}
-            </div>
-          ) : null}
           <button type="button" className="btn line" onClick={onClose}>
             {isNew ? "취소" : "닫기"}
           </button>
           <button type="submit" className={isNew && kind === "stay" ? "btn stop" : "btn red"} disabled={busy}>
             {busy ? "저장 중…" : isNew && kind === "stay" ? (nRooms > 1 ? `${nRooms}실 저장하기` : "저장하기") : "저장"}{" "}
-            <span className="num kbdh">Enter</span>
           </button>
           {isNew && kind === "stay" ? (
             <button
