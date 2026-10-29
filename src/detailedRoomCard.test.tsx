@@ -152,6 +152,12 @@ test("고액 요약은 금액을 보존하고 결제 상태를 수납수단 행�
   assert.doesNotMatch(money, /detail-payment/);
 });
 
+test("공유 요약은 예약 경로만 유지하고 실제 수납수단·금액·메모는 숨긴다", () => {
+  const html = render(make({ price: 123456, memo: "비공개메모", payments: [{ id: "private-pay", bookingId: base.id, kind: "deposit", method: "transfer", amount: 123456, bizDate: TODAY, createdAt: "" }] }), null, true);
+  assert.match(html, /title="예약 경로">현장<\/span>/);
+  assert.doesNotMatch(html, /123,456|실제 수납|이체|비공개메모/);
+});
+
 
 test("실제 수납수단: 카드·현금·이체와 단체 공통 수납의 범위를 구분한다", () => {
   const p = (id: string, method: "card" | "cash" | "transfer", amount: number) => ({ id, method, amount, bookingId: base.id, kind: "deposit" as const, bizDate: TODAY, createdAt: "" });
