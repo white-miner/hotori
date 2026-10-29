@@ -13,11 +13,16 @@ export function roomNumberColor(color: string): string {
 
 /** 요약에는 날짜, 상세에는 시간·연도까지 표시한다. */
 export function compactCardPeriod(b: Booking, s: Pick<HotelSettings, "stayTimes">): string {
+  const { range, duration } = compactCardPeriodParts(b, s);
+  return duration ? `${range} · ${duration}` : range;
+}
+
+export function compactCardPeriodParts(b: Booking, s: Pick<HotelSettings, "stayTimes">) {
   const t = detailedTimes(b, s);
-  if (b.kind === "dayuse") return `${t.inTime ?? "미정"}–${t.outTime ?? "미정"}`;
-  if (!t.outDate) return `${md(t.inDate)} → 미정`;
+  if (b.kind === "dayuse") return { range: `${t.inTime ?? "미정"}–${t.outTime ?? "미정"}`, duration: null };
+  if (!t.outDate) return { range: `${md(t.inDate)} → 미정`, duration: null };
   const end = t.inDate.slice(0, 7) === t.outDate.slice(0, 7) ? String(Number(t.outDate.slice(8))) : md(t.outDate);
-  return `${md(t.inDate)} → ${end} · ${b.nights ?? 0}박`;
+  return { range: `${md(t.inDate)} → ${end}`, duration: `${b.nights ?? 0}박` };
 }
 
 export type CardStatus = { label: string; tone: "stay" | "dayuse" | "available" | "departing" | "neutral"; note?: string };

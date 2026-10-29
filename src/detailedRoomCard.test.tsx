@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { emptySettings, type Booking } from "../shared/ledger";
-import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups, roomNumberColor, compactCardPeriod } from "../shared/detailedRoomCard";
+import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups, roomNumberColor, compactCardPeriod, compactCardPeriodParts } from "../shared/detailedRoomCard";
 import { CARD_CASES, TODAY } from "../shared/roomCardCases";
 import { roomCardModel } from "../shared/roomCard";
 import { contrast } from "../shared/platform";
@@ -15,6 +15,12 @@ const base = CARD_CASES[0]!.b;
 const s = emptySettings();
 const make = (patch: Partial<Booking> = {}): Booking => ({ ...base, ...patch });
 const opts = (time: string) => ({ stayTimes: { ...s.stayTimes, checkInMode: "manual" as const }, clock: { wallDate: TODAY, time } });
+
+test("확대 날짜: 날짜 범위와 박수만 분리하고 미정·대실의 실제 기간은 유지한다", () => {
+  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", nights: 3 }), s), { range: "10/30 → 11/2", duration: "3박" });
+  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", openEnded: true }), s), { range: "10/30 → 미정", duration: null });
+  assert.deepEqual(compactCardPeriodParts(make({ kind: "dayuse", startTime: "23:00", endTime: "02:00" }), s), { range: "23:00–02:00", duration: null });
+});
 
 test("상세 상태: 퇴실 날짜만으로 퇴실예정을 켜지 않고 기존 6시간 윈도우를 따른다", () => {
   const b = make({ checkIn: "2026-10-27", nights: 1, arrived: true, checkedOutAt: null });
@@ -70,6 +76,18 @@ test("실제 카드 렌더: 단체 연결 객실도 자기 예약자와 가격�
   const html = render(b, group, false, true);
   for (const value of ["실제 구성원", "123,456", "실제 단체", "02/03", "대표 본관 701호"]) assert.ok(html.includes(value), value);
   assert.ok(render(b, { ...group, lead: true }, false, true).includes("실제 단체 · 대표"));
+});
+
+test("확대 요약은 대표 표식을 연결행에 유지하고 상세 객실번호와 같은 배경·흰 글씨를 쓴다", () => {
+  const b = make({ guestName: "개별 예약자" });
+  const group: CardGroup = { id: "uuid", label: "G1", name: "실제 단체", color: "g1", count: 3, index: 1, lead: true, leadRoom: "701" };
+  const html = render(b, group);
+  assert.match(html, /class="detail-guest-name"[^>]*>실제 단체<\/strong>/);
+  assert.match(html, /detail-group-role/);
+  assert.match(html, /detail-period-range/);
+  const badge = /class="detail-number" style="([^"]+)"/.exec(html)?.[1];
+  assert.ok(badge);
+  assert.equal(/class="detail-number" style="([^"]+)"/.exec(render(b, group, false, true))?.[1], badge);
 });
 test("색 대비와 공유: 밝고 어두운 층 색 모두 대비를 확보하고 공유 화면에 금액을 노출하지 않는다", () => {
   for (const c of ["#ffffff", "#000000", "#ffcc00", "#3366ff"]) assert.ok(contrast(roomNumberColor(c), "#FFFFFF") >= 4.5);

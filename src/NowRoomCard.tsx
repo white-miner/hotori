@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Crown, Link2, MessageCircle, X } from "lucide-react";
 import { type Booking, type HotelSettings, type Platform, won } from "../shared/ledger";
 import { type RoomCardModel } from "../shared/roomCard";
-import { compactCardPeriod, detailedTimes, roomNumberColor, type CardStatus } from "../shared/detailedRoomCard";
+import { compactCardPeriodParts, detailedTimes, roomNumberColor, type CardStatus } from "../shared/detailedRoomCard";
 import { spacedPay } from "./RoomCardFacts";
 import { payState } from "../shared/payment";
 
@@ -40,6 +40,8 @@ export default function NowRoomCard(p: NowRoomCardProps) {
   const fullPeriod = times ? `입실 ${times.inDate} ${times.inTime ?? "미입력"} · 퇴실 ${times.outDate ?? "미정"} ${times.outTime ?? ""}` : "예약 없음";
   const shortPay = payment.replace("결제 완료", "완료").replace("일부 결제", "일부").replace("플랫폼 결제", "플랫폼").replace("금액 미정", "미정");
   const wideAmount = !!b && !b.priceUnset && won(b.price).length > 9;
+  const period = b ? compactCardPeriodParts(b, p.settings) : null;
+  const summaryGuest = active && group?.lead ? group.name : guest;
   return <>
     <div className="detail-head">
       <div className="detail-identity">
@@ -47,11 +49,11 @@ export default function NowRoomCard(p: NowRoomCardProps) {
         {onStatus ? <button type="button" className={`detail-status ${status.tone}`} onClick={(e) => { e.stopPropagation(); onStatus(); }}>{status.label}</button>
           : <span className={`detail-status ${status.tone}`}>{status.label}</span>}
       </div>
-      <div className="detail-meta"><span className="detail-type" title={`${roomType}${b ? ` · ${platform?.name || "경로 미지정"}` : ""}`}>{roomType || "타입 미지정"}</span>{b ? wideAmount && !readOnly ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} aria-label={`${group ? "단체 " : ""}${payment}`}>{shortPay}</span> : <span className="detail-platform" title={`예약 경로 · ${platform?.name || "경로 미지정"}`}>{platform?.name || "경로 미지정"}</span> : null}</div>
+      <div className="detail-meta"><span className="detail-type" title={`${roomType}${b ? ` · ${platform?.name || "경로 미지정"}` : ""}`}>{roomType || "타입 미지정"}</span>{b ? wideAmount && !readOnly ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} aria-label={`${group ? "단체 " : ""}${payment}`}>{shortPay}</span> : <span className="detail-platform" title={`예약 경로 · ${platform?.name || "경로 미지정"}`}>{platform?.name || "경로 미지정"}</span> : null}{memoCount > 0 ? <button type="button" className="detail-memo" title={p.memoText} aria-label={`${roomNo} 특이사항 ${memoCount}건`} onClick={(e) => { e.stopPropagation(); onMemo(); }}><MessageCircle size={16} /><span>{memoCount}</span></button> : null}</div>
     </div>
     <div className="detail-summary">
-      <div className="detail-guest-line"><strong className="detail-guest-name" title={guest}>{guest}</strong>{memoCount > 0 ? <button type="button" className="detail-memo" title={p.memoText} aria-label={`${roomNo} 특이사항 ${memoCount}건`} onClick={(e) => { e.stopPropagation(); onMemo(); }}><MessageCircle size={16} /><span>{memoCount}</span></button> : null}</div>
-      {b ? <button type="button" className="detail-period" title={fullPeriod} aria-label={fullPeriod} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>{compactCardPeriod(b, p.settings)}</button> : <span className="detail-empty">{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</span>}
+      <div className="detail-guest-line"><strong className={`detail-guest-name${b ? "" : " is-empty"}`} title={guest}>{summaryGuest}</strong></div>
+      {period ? <button type="button" className="detail-period" title={fullPeriod} aria-label={fullPeriod} onClick={(e) => { e.stopPropagation(); setDetails(true); }}><span className="detail-period-range">{period.range}</span>{period.duration ? <small>{period.duration}</small> : null}</button> : <span className="detail-empty">{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</span>}
       {active && b ? <div className="detail-money" title={readOnly ? "공유 비공개" : `예약 총액 · ${payment}${group ? " (단체 결제 기준)" : ""}`}>
         <b aria-label={readOnly ? "금액 비공개" : `예약 총액 ${b.priceUnset ? "미정" : won(b.price) + "원"}`}>{readOnly ? "비공개" : b.priceUnset ? "금액 미정" : `₩${won(b.price)}`}</b>
         {!readOnly && !wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} aria-label={`${group ? "단체 " : ""}${payment}`}>{shortPay}</span> : null}
@@ -97,7 +99,7 @@ export function RoomCardDetails(p: NowRoomCardProps & { onClose: () => void }) {
   const act = (fn: () => void) => { onClose(); fn(); };
   return <div className="dim room-details-dim" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="modal room-details" role="dialog" aria-modal="true" aria-label={`${roomNo} 객실 상세`} ref={dialog}>
-      <div className="mh"><h2>{roomNo} 객실 상세</h2><button type="button" className="x" ref={close} onClick={onClose} aria-label="닫기"><X size={18} /></button></div>
+      <div className="mh"><h2><strong className="detail-number" style={{ background: roomNumberColor(p.color), color: "#FFFFFF" }}>{roomNo}</strong> 객실 상세</h2><button type="button" className="x" ref={close} onClick={onClose} aria-label="닫기"><X size={18} /></button></div>
       <div className="room-details-body">
         <div className="room-details-heading"><strong>{roomType || "타입 미지정"}</strong><span className={`detail-status ${status.tone}`}>{status.label}</span></div>
         {group ? <div className={`room-details-group ${group.color}`}><b>{group.label} · {group.name}</b><span>{group.lead ? <><Crown size={16} /> 대표객실</> : <><Link2 size={16} /> 대표 {group.leadRoom} 연결</>} · {String(group.index).padStart(2, "0")}/{String(group.count).padStart(2, "0")}</span><button type="button" className="btn sm line" onClick={() => act(() => p.onGroup?.())}>연결 객실 보기</button></div> : null}

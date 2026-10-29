@@ -3196,18 +3196,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
 
   /** 층 칩 (좁은 화면) — 건물이 여럿이면 위 건물 탭을 먼저 고르고, 그 건물의 층만 보여 줘요 */
-  const floorChips = (
-    <div className="fchips">
+  const selectableFloors = multi && bScope === "all" ? [] : scopeFloors;
+  const floorChips = selectableFloors.length > 1 ? (
+    <div className="fchips" role="group" aria-label="층별 보기">
       <button className={floorTabSafe === "all" ? "on" : ""} onClick={() => setFloorTab("all")}>
-        전체
+        전체 층
       </button>
-      {(multi && bScope === "all" ? [] : scopeFloors).map((f) => (
+      {selectableFloors.map((f) => (
         <button key={f.id} className={floorTabSafe === f.id ? "on" : ""} onClick={() => setFloorTab(f.id)}>
           {f.name}
         </button>
       ))}
     </div>
-  );
+  ) : null;
   /** 현황 날짜 이동 (전날·다음날·오늘) — 페이지 상단 중앙 */
   const nowDateNav = (
     <>

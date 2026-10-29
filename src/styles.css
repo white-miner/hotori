@@ -6352,6 +6352,60 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .management-compose { display: grid; gap: 12px; padding: 14px; border: 1px solid #cbd2dc; border-radius: 8px; margin: 12px 0; }
 .management-compose > div { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
 .management-compose > div > span { margin-right: auto; color: #59616d; }
+/* 카드의 빈 공간을 이름과 날짜에 배분한다. 168×210에서도 버튼과 단체행을 보존. */
+.now-page .rooms .detail-card { container-type: inline-size; }
+.now-page .detail-head { padding: 2px 6px 1px; border-bottom: 1px solid #dfe3e9; }
+.now-page .detail-identity { min-height: 30px; }
+.now-page .detail-number { font-size: 26px; line-height: 1.15; }
+.now-page .detail-meta { min-height: 18px; line-height: 1.125; }
+.now-page .detail-summary { padding: 1px 6px 0; gap: 0; justify-content: flex-start; }
+.now-page .detail-guest-line { min-height: 0; height: 40px; }
+.now-page .detail-guest-name { font-size: 36px; line-height: 1.1; letter-spacing: -1px; width: 100%; }
+.now-page .detail-period { display: flex; align-items: baseline; gap: 5px; font-size: 22px; height: 26px; line-height: 1.15; letter-spacing: -.6px; overflow: hidden; }
+.now-page .detail-period-range { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.now-page .detail-period small { flex: none; font-size: 16px; letter-spacing: 0; }
+.now-page .detail-money { min-height: 21px; line-height: 1.1; }
+.now-page .detail-money > b { line-height: 1.1; }
+.now-page .detail-group { min-height: 20px; height: 20px; margin-top: 0; padding: 0 3px; }
+.now-page .detail-actions { padding: 2px; gap: 4px; margin-top: 1px; }
+.now-page .detail-guest-name.is-empty { font-size: 28px; letter-spacing: -.5px; }
+.now-page .detail-memo { margin-left: 0; }
+.room-details .mh h2 { display: flex; align-items: center; gap: 8px; }
+.room-details .detail-number { border-radius: 6px; padding: 2px 8px; font-size: 28px; line-height: 1.2; }
+@container (min-width: 240px) {
+  .now-page .detail-summary { padding-top: 8px; gap: 6px; }
+  .now-page .detail-period { font-size: 26px; height: 31px; }
+  .now-page .detail-group { margin-top: 4px; height: 24px; }
+}
+@media (min-width: 761px) {
+  .nowdatebar .dnav .dn-day { font-size: 28px; min-width: 220px; line-height: 1.3; }
+  .nowdatebar .dnav .ar { width: 42px; height: 42px; }
+}
+/* 예약 내용 편집이 먼저 보이고, 예외 처리는 하나의 접힌 입구에서 연다. */
+.book-management { margin: 0 0 14px; border: 1px solid #d9dde3; border-radius: 10px; background: #fafbfc; }
+.book-management > summary { padding: 10px 12px; cursor: pointer; font-size: 15px; font-weight: 700; }
+.book-management > summary span { color: #59616d; font-size: 13px; font-weight: 400; margin-left: 8px; }
+.book-management-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 12px 12px; }
+.book-management-group { display: flex; flex-wrap: wrap; align-content: start; gap: 8px; min-width: 0; }
+.book-management-group h3 { flex-basis: 100%; margin: 0; font-size: 14px; }
+.book-management-group .btn { min-height: 40px; font-size: 14px; border-radius: 8px; }
+.book-management-group p { flex-basis: 100%; margin: 0; font-size: 13px; line-height: 1.5; color: #59616d; }
+.book-management-group .book-delete { color: #b62235; }
+.book-delete-confirm { border: 1px solid #e6a7af; background: #fff5f5; padding: 10px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+.book-delete-confirm p { color: #922131; }
+.book-shell .book-choice { width: 100%; max-width: 100%; min-height: 44px; padding: 9px 32px 9px 12px; border: 1px solid #cbd2dc; border-radius: 9px; background: #fff; color: #242830; font-size: 16px; }
+.book-shell .book-pane-left { position: static; max-height: none; overflow: visible; padding-right: 0; }
+.book-editor .book-pane-toggle { display: none; }
+.book-editor .book-pane-left.is-collapsed .book-pane-left-body { display: flex; }
+.book-editor .edit-stay-sum { margin-top: 0; }
+.book-editor .mf { position: sticky; bottom: -1px; background: #fff; border-top: 1px solid #e5e8ed; padding-top: 12px; z-index: 2; }
+@media (min-width: 761px) and (max-width: 1100px) {
+  .book-editor .book-panes .fld { grid-template-columns: minmax(0,1fr); gap: 6px; }
+}
+@media (max-width: 600px) {
+  .book-management-body { grid-template-columns: 1fr; }
+  .book-management > summary span { display: none; }
+}
 .management-list { display: grid; gap: 12px; }
 .management-entry { border: 1px solid #d9dde3; border-radius: 8px; padding: 14px; }
 .management-entry header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: 16px; }
