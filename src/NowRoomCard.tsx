@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Crown, Link2, MessageCircle, X } from "lucide-react";
 import { type Booking, type HotelSettings, type Platform, won } from "../shared/ledger";
 import { type RoomCardModel } from "../shared/roomCard";
-import { cardPaymentMethods, compactCardPeriodParts, detailedTimes, roomNumberColor, type CardStatus } from "../shared/detailedRoomCard";
+import { cardPaymentMethods, cardWeekdayDate, compactCardPeriodParts, detailedTimes, roomNumberColor, type CardStatus } from "../shared/detailedRoomCard";
 import { spacedPay } from "./RoomCardFacts";
 import { isOnsite, payState } from "../shared/payment";
 import { typeGuests } from "../shared/surcharge";
@@ -38,10 +38,22 @@ export default function NowRoomCard(p: NowRoomCardProps) {
   const { roomNo, roomType, color, booking: b, platform, model, status, group, showGroup, onQuick, onStatus, onGroup, onMemo, memoCount, readOnly, busy } = p;
   const { active, times, guest, payment } = cardFacts(p);
   const [details, setDetails] = useState(false);
-  const fullPeriod = times ? `입실 ${times.inDate} ${times.inTime ?? "미입력"} · 퇴실 ${times.outDate ?? "미정"} ${times.outTime ?? ""}` : "예약 없음";
+  const [periodHint, setPeriodHint] = useState(false);
+  const periodAnchor = useRef<HTMLButtonElement>(null);
+  const periodPinned = useRef(false);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintId = useId();
+  const showHint = () => { if (hintTimer.current) clearTimeout(hintTimer.current); setPeriodHint(true); };
+  const hideHint = () => { if (!periodPinned.current) hintTimer.current = setTimeout(() => setPeriodHint(false), 150); };
+  const closeHint = () => { if (hintTimer.current) clearTimeout(hintTimer.current); periodPinned.current = false; setPeriodHint(false); };
+  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current); }, []);
+  const inDetail = times ? `${cardWeekdayDate(times.inDate, true)} ${times.inTime ?? "시간 미입력"}` : "미정";
+  const outDetail = times?.outDate ? `${cardWeekdayDate(times.outDate, true)} ${times.outTime ?? "시간 미입력"}` : "미정";
+  const fullPeriod = times ? `체크인: ${inDetail} · 체크아웃: ${outDetail}` : "예약 없음";
   const shortPay = payment.replace("결제 완료", "완료").replace("일부 결제", "일부").replace("플랫폼 결제", "플랫폼").replace("금액 미정", "미정");
   const wideAmount = !!b && !b.priceUnset && won(b.price).length > 9;
   const period = b ? compactCardPeriodParts(b, p.settings) : null;
+  const periodRows = b?.kind === "dayuse" && times ? [cardWeekdayDate(times.inDate), period?.range] : period?.range.split(" → ");
   const summaryGuest = active && group?.lead ? group.name : guest;
   const occupancy = cardOccupancy(p);
   const methods = b ? cardPaymentMethods(b, model) : null;
@@ -64,7 +76,12 @@ export default function NowRoomCard(p: NowRoomCardProps) {
       </button> : null}
       </div>
       <div className="detail-guest-line"><strong className={`detail-guest-name${b ? "" : " is-empty"}`} title={guest}>{summaryGuest}</strong></div>
-      {period ? <button type="button" className="detail-period" title={fullPeriod} aria-label={fullPeriod} onClick={(e) => { e.stopPropagation(); setDetails(true); }}><span className="detail-period-range">{period.range}</span>{period.duration ? <small>{period.duration}</small> : null}</button> : <span className="detail-empty">{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</span>}
+      {period ? <button type="button" className="detail-period" ref={periodAnchor} aria-label={fullPeriod} aria-expanded={periodHint} aria-describedby={periodHint ? hintId : undefined}
+        onMouseEnter={showHint} onMouseLeave={hideHint} onFocus={showHint} onBlur={hideHint}
+        onClick={(e) => { e.stopPropagation(); periodPinned.current = !periodPinned.current; if (periodPinned.current) showHint(); else closeHint(); }}>
+        <span className="detail-period-range"><span>{periodRows?.[0]}</span>{periodRows?.[1] ? <span>{b?.kind === "dayuse" ? "" : "→ "}{periodRows[1]}</span> : null}</span>
+        {period.duration ? <small>{period.duration}</small> : null}
+      </button> : <span className="detail-empty">{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</span>}
       {active && b ? <div className="detail-money" title={readOnly ? "공유 비공개" : `예약 총액 · ${payment}${group ? " (단체 결제 기준)" : ""}`}>
         <b aria-label={readOnly ? "금액 비공개" : `예약 총액 ${b.priceUnset ? "미정" : won(b.price) + "원"}`}>{readOnly ? "비공개" : b.priceUnset ? "금액 미정" : `₩${won(b.price)}`}</b>
         {!readOnly && !wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${platform?.name || "경로 미지정"} · ${group ? "단체 " : ""}${payment}`} aria-label={`${ota ? `${platform.name} · ` : ""}${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}
@@ -76,8 +93,34 @@ export default function NowRoomCard(p: NowRoomCardProps) {
       <button type="button" disabled={readOnly || busy} onClick={(e) => { e.stopPropagation(); onQuick(); }}>빠른 업무</button>
     </div>
     {p.periodPopup}
+    {periodHint && times ? createPortal(<PeriodHint id={hintId} anchor={periodAnchor} checkIn={inDetail} checkOut={outDetail} basis={times.basis} onEnter={showHint} onLeave={hideHint} onClose={closeHint} />, document.body) : null}
     {details ? createPortal(<RoomCardDetails {...p} onClose={() => setDetails(false)} />, document.body) : null}
   </>;
+}
+
+function PeriodHint(p: { id: string; anchor: RefObject<HTMLButtonElement | null>; checkIn: string; checkOut: string; basis: string; onEnter: () => void; onLeave: () => void; onClose: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  const close = useRef(p.onClose); close.current = p.onClose;
+  useLayoutEffect(() => {
+    const place = () => {
+      const tip = root.current, anchor = p.anchor.current;
+      if (!tip || !anchor) return;
+      const r = anchor.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      tip.style.left = `${Math.max(8, Math.min(r.left, document.documentElement.clientWidth - w - 8))}px`;
+      tip.style.top = `${r.bottom + h + 12 <= innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)}px`;
+    };
+    place(); window.addEventListener("resize", place); window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [p.anchor, p.checkIn, p.checkOut]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close.current(); } };
+    const outside = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node) && !p.anchor.current?.contains(e.target as Node)) close.current(); };
+    document.addEventListener("keydown", key, true); document.addEventListener("mousedown", outside);
+    return () => { document.removeEventListener("keydown", key, true); document.removeEventListener("mousedown", outside); };
+  }, [p.anchor]);
+  return <div id={p.id} ref={root} className="detail-period-hint" role="tooltip" onMouseEnter={p.onEnter} onMouseLeave={p.onLeave} onClick={(e) => e.stopPropagation()}>
+    <div><b>체크인</b><span>{p.checkIn}</span></div><div><b>체크아웃</b><span>{p.checkOut}</span></div><p>{p.basis}</p>
+  </div>;
 }
 
 function cardOccupancy(p: NowRoomCardProps) {

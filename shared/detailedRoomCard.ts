@@ -1,4 +1,4 @@
-import { addDays, md, stayEnd, type Booking, type HotelSettings } from "./ledger";
+import { addDays, md, stayEnd, weekday, type Booking, type HotelSettings } from "./ledger";
 import { clampHours } from "./extratime";
 import { shiftTime } from "./tiers";
 import { nowFlags, type NowOpts } from "./nowboard";
@@ -34,10 +34,12 @@ export function compactCardPeriod(b: Booking, s: Pick<HotelSettings, "stayTimes"
 export function compactCardPeriodParts(b: Booking, s: Pick<HotelSettings, "stayTimes">) {
   const t = detailedTimes(b, s);
   if (b.kind === "dayuse") return { range: `${t.inTime ?? "미정"}–${t.outTime ?? "미정"}`, duration: null };
-  if (!t.outDate) return { range: `${md(t.inDate)} → 미정`, duration: null };
+  if (!t.outDate) return { range: `${cardWeekdayDate(t.inDate)} → 미정`, duration: null };
   const end = t.inDate.slice(0, 7) === t.outDate.slice(0, 7) ? String(Number(t.outDate.slice(8))) : md(t.outDate);
-  return { range: `${md(t.inDate)} → ${end}`, duration: `${b.nights ?? 0}박` };
+  return { range: `${cardWeekdayDate(t.inDate)} → ${end}(${weekday(t.outDate)})`, duration: `${b.nights ?? 0}박` };
 }
+
+export const cardWeekdayDate = (date: string, full = false) => `${full ? date : md(date)}(${weekday(date)})`;
 
 export type CardStatus = { label: string; tone: "stay" | "dayuse" | "available" | "departing" | "neutral"; note?: string };
 
