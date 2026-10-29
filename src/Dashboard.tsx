@@ -1,3 +1,7 @@
+import { receiptBatch } from "../shared/receiptBatch";
+import { createPaymentLines, type CreatePaymentLine } from "../shared/payment";
+import { useCreateReceipts } from "./useCreateReceipts";
+import { nowStatusAction } from "../shared/nowboard";
 import { changesFor, extendSummary, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
 import ChangeLogSheet from "./ChangeLogSheet";
 import { parkingMark } from "../shared/parking";
@@ -500,15 +504,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return () => window.clearInterval(id);
   }, []);
   const nowOpts = useMemo(() => ({ stayTimes: s.stayTimes, clock: hotelWallClock() }), [s.stayTimes, data.syncedAt, nowTick]);
-  /** 현황이 보는 날 (날짜 이동 = selDate · 기본 오늘). 오늘이 아니면 오늘 기준 처리(퇴실처리·빠른 입실 등)는 막혀요 */
+  /** 현황이 보는 날. 과거 예약도 실제 기록을 유지하고, 미처리 퇴실은 확인창으로 연결한다. */
   const viewDate = selDate;
   const liveDay = viewDate === today;
-  /** 지난 날은 지금 퇴실처리된 예약도 그날 그 방에 있었으니 퇴실 표시를 떼고 그려요 (보기 전용 · 저장 안 함) */
-  const nowBookings = useMemo(
-    () => (viewDate < today ? bookings.map((b) => (b.checkedOutAt ? { ...b, checkedOutAt: null } : b)) : bookings),
-    [bookings, viewDate, today],
-  );
-  const nowBoardMap = useMemo(() => nowByRoom(nowBookings, viewDate), [nowBookings, viewDate]);
+  const nowBookings = bookings;
+  const nowBoardMap = useMemo(() => nowByRoom(bookings, viewDate, viewDate < today), [bookings, viewDate, today]);
   /** 취소·노쇼 카드 (옛 「배치」 칸): 그 밤 그 방에 살아 있는 예약이 없을 때 취소된 예약을 줄 그어 보여요 — 같은 자리에 새 예약이 들어오면 사라져요 */
   const cxByRoom = useMemo(() => cancelledCardsByRoom(s, nowBookings, viewDate, today, nowBoardMap), [s, nowBookings, viewDate, today, nowBoardMap]);
   /** 좌측 사이드바(스위치 ON · 데스크톱) — 조회 조건·운영 패널을 사이드바 칸으로 포털. 꺼져 있으면 모두 제자리 */
@@ -569,6 +569,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     occupied: Booking | null;
   } | null>(null);
   const [staySaleBusy, setStaySaleBusy] = useState(false);
+  const staySubmitLock = useRef(false);
+  const stayReceipts = useCreateReceipts(data.addPaymentBatch, () => setStaySale(null));
   const [extendOverlap, setExtendOverlap] = useState<{
     booking: Booking;
     rate: number;
@@ -2264,6 +2266,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
 
   /** 퇴실처리: 칸·패널은 확인 필수 · 잔금 있으면 결제 UI 동시 · Hotori 모달 */
   const doCheckOut = async (b: Booking, needConfirm = false) => {
+    b = data.bookings.find((x) => x.id === b.id) ?? b;
     if (readOnly || coBusy || !canCheckOut(b, today)) return;
     if (needConfirm) {
       setCoConfirm({ booking: b, members: payDeskMembersFor(b) });
@@ -2514,7 +2517,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
 
   const commitStaySaleCreate = async (input: StaySaleCreateInput) => {
-    if (readOnly || staySaleBusy || !staySale) return;
+    if (staySubmitLock.current || stayReceipts.pending) return;
+    staySubmitLock.current = true;
+    try { await saveStaySaleCreate(input); } finally { staySubmitLock.current = false; }
+  };
+  const saveStaySaleCreate = async (input: StaySaleCreateInput) => {
+    if (readOnly || staySaleBusy || !staySale || stayReceipts.pending) return;
     const drafts = buildStaySaleDrafts(s, input);
     if ("err" in drafts) {
       notify(drafts.err);
@@ -2545,72 +2553,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         });
       }
       const plat = s.platforms.find((p) => p.id === input.platformId);
-      let payTail = "";
-      // 다실 완납: 대표객실(savedList[0])에 총액 1줄 — 방마다 1/n 루프 금지
+      const lines: CreatePaymentLine[] = isOnsite(plat) ? createPaymentLines(input.payMode, {
+        priceUnset: input.priceUnset, saleTotal: input.price, depAmt: input.depAmt, depMethod: input.depMethod, tenders: input.tenders,
+      }) : [];
+      // 판매가에는 시간 추가금을 다시 포함하지 않는다. 별도 수납 한 줄씩만 기록한다.
+      if ((input.earlyInHours ?? 0) > 0 && input.earlyInMethod && input.earlyInMethod !== "service" && (input.earlyInAmount ?? 0) > 0)
+        lines.push({ kind: "balance", method: input.earlyInMethod, amount: Math.round(input.earlyInAmount!), note: "추가금 · 빠른 입실" });
+      if ((input.lateOutHours ?? 0) > 0 && input.lateOutMethod && input.lateOutMethod !== "service" && input.lateOutMethod !== "deferred" && (input.lateOutAmount ?? 0) > 0)
+        lines.push({ kind: "balance", method: input.lateOutMethod, amount: Math.round(input.lateOutAmount!), note: "추가금 · 늦은 퇴실" });
       const lead = savedList[0];
-      if (isOnsite(plat) && lead) {
-        const total = savedList.reduce((n, b) => n + b.price, 0);
-        const plan = staySaleCreatePayPlan(input, total);
-        if (plan.kind !== "none") {
-          try {
-            await data.addPayment(lead.id, {
-              kind: plan.kind === "balance" ? "balance" : "deposit",
-              method: plan.method,
-              amount: plan.amount,
-              bizDate: today,
-            });
-            payTail = onsiteCreatePayTail(plan);
-          } catch (e) {
-            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
-          }
-        }
-      }
-      // 빠른입실/늦은퇴실 수납 (서비스·후불 제외)
-      const earlyCollect =
-        (input.earlyInHours ?? 0) > 0 &&
-        input.earlyInMethod &&
-        input.earlyInMethod !== "service" &&
-        (input.earlyInAmount ?? 0) > 0;
-      const lateCollect =
-        (input.lateOutHours ?? 0) > 0 &&
-        input.lateOutMethod &&
-        input.lateOutMethod !== "service" &&
-        input.lateOutMethod !== "deferred" &&
-        (input.lateOutAmount ?? 0) > 0;
-      if (savedList[0] && (earlyCollect || lateCollect)) {
-        try {
-          if (earlyCollect) {
-            await data.addPayment(savedList[0].id, {
-              kind: "balance",
-              method: input.earlyInMethod as BookPayMethod,
-              amount: Math.round(input.earlyInAmount!),
-              bizDate: today,
-              note: "추가금 · 빠른 입실",
-            });
-          }
-          if (lateCollect) {
-            await data.addPayment(savedList[0].id, {
-              kind: "balance",
-              method: input.lateOutMethod as BookPayMethod,
-              amount: Math.round(input.lateOutAmount!),
-              bizDate: today,
-              note: "추가금 · 늦은 퇴실",
-            });
-          }
-        } catch {
-          payTail += " · 시간 추가금 수납 실패";
-        }
-      }
-      notify(
-        staySaleNotifyLine(
-          savedList[0]?.guestName ?? input.guestName,
-          staySale.roomLabels,
-          savedList.reduce((n, b) => n + b.price, 0),
-          payTail,
-        ),
-      );
-      setStaySale(null);
-      setSelectedRoomIds([]);
+      await stayReceipts.run(receiptBatch(lead.groupId ? { groupId: lead.groupId } : { bookingId: lead.id }, lines, today), () => {
+        notify(staySaleNotifyLine(lead.guestName ?? input.guestName, staySale.roomLabels, savedList.reduce((n,b) => n + b.price,0), lines.length ? " · 수납 등록 완료" : ""));
+        setStaySale(null); setSelectedRoomIds([]);
+      });
     } catch (e) {
       notify(saveFailMessage(e, "숙박 판매를 저장하지 못했어요"));
     } finally {
@@ -3162,9 +3117,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       selectRoom(r.id);
     });
     const statusTap = b && f && !readOnly ? () => {
-      if (!liveDay || mvB) { quick(); return; }
-      if (isDepartingStatus(f.kind) && canCheckOut(b, today)) { void doCheckOut(b, true); return; }
-      if (f.kind === "arriving" && !b.arrived) { void markArrivedFromStatus(b); return; }
+      const action = nowStatusAction(b, viewDate, today, nowOpts, !!mvB);
+      if (action === "detail") { onOpen(b, viewDate); return; }
+      if (action === "checkout") { void doCheckOut(b, true); return; }
+      if (action === "arrive") { void markArrivedFromStatus(b); return; }
       quick();
     } : undefined;
     const popOpen = !!b && nightPopId === b.id;
@@ -3687,17 +3643,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {staySale ? (
         <StaySaleModal
           s={s}
+          bookings={bookings}
           today={today}
           date={viewDate}
           roomIds={staySale.roomIds}
           roomLabels={staySale.roomLabels}
           occupied={staySale.occupied}
-          busy={staySaleBusy}
+          busy={staySaleBusy || stayReceipts.pending}
           onCancel={() => !staySaleBusy && setStaySale(null)}
           onConfirmCreate={(input) => void commitStaySaleCreate(input)}
           onConfirmOccupied={(input) => void commitStaySaleOccupied(input)}
         />
       ) : null}
+      {stayReceipts.recovery}
       {extendOverlap ? (
         <ExtendOverlapConfirm
           extraNight={addDays(extendOverlap.booking.checkIn, extendOverlap.booking.nights ?? 0)}

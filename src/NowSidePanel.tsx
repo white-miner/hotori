@@ -572,7 +572,7 @@ export default function NowSidePanel({
                       ? `공실 ${selectedRoomIds.length}실`
                       : roomHold && !b
                         ? `${typeLabel(t) || "타입 미정"} · ${ROOM_HOLD_STATUS}`
-                        : `${typeLabel(t) || "타입 미정"}${f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
+                         : `${typeLabel(t) || "타입 미정"}${b?.checkedOutAt ? " · 퇴실 완료" : f ? ` · ${kindLabel(f.kind)}` : " · 공실"}${f?.tentative ? " · 임시" : ""}${f?.longStay ? " · 장기" : ""}`}
                 </div>
               </div>
               {groupHead && onGroupPay ? (

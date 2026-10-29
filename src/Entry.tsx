@@ -1,3 +1,5 @@
+import { receiptBatch } from "../shared/receiptBatch";
+import { useCreateReceipts } from "./useCreateReceipts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, X } from "lucide-react";
 import {
@@ -61,12 +63,11 @@ import {
   type OnsitePayMode,
   type PayKind,
   isOnsite,
-  onsiteCreatePayTail,
   guestPhoneOptsForBooking,
   isGuestPhoneRequired,
   paySplit,
   payState,
-  planOnsiteCreatePay,
+  createPaymentLines, type TenderAmounts,
   splitLine,
   validateGuestPhone,
   validateOnsiteCreateDeposit,
@@ -428,6 +429,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [payBusy, setPayBusy] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
   /** 신규 표준 숙박 · 현장: 간단과 같은 완납/후불/선금 progressive (Option D absorb #3) */
+  const [tenders, setTenders] = useState<TenderAmounts | null>(null);
   const [createPayMode, setCreatePayMode] = useState<OnsitePayMode>("prepaid");
   const [createDepAmt, setCreateDepAmt] = useState("");
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
@@ -1169,6 +1171,8 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [buildingFilter, setBuildingFilter] = useState<BuildingFilter>("all");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitLock = useRef(false);
+  const receipts = useCreateReceipts(data.addPaymentBatch, onClose);
   const [confirmDel, setConfirmDel] = useState(false);
   const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -1645,11 +1649,17 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const roomBusy = kind === "stay" ? busyLegs.length > 0 : !!roomId && !free.has(roomId);
   const preview = kind === "stay" && status === "active" ? previewChange(s, data.bookings, draft) : [];
 
-  async function save(
+  async function save(again = false, override?: Status, opts?: { allowDayuseOverlap?: boolean; walkInImmediate?: boolean }) {
+    if (submitLock.current || busy || receipts.pending) return;
+    submitLock.current = true;
+    try { await saveDraft(again, override, opts); } finally { submitLock.current = false; }
+  }
+  async function saveDraft(
     again = false,
     override?: Status,
     opts?: { allowDayuseOverlap?: boolean; walkInImmediate?: boolean },
   ) {
+    if (busy || receipts.pending) return;
     const walkInImmediate = !!opts?.walkInImmediate;
     let draft = override ? { ...draftBase, status: override } : { ...draftBase };
     if (walkInImmediate) {
@@ -1693,7 +1703,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       const depErr = validateOnsiteCreateDeposit(createPayMode, {
         saleTotal: saleAll,
         depAmt: createDepAmt,
-        depMethod: createDepMethod,
+        depMethod: createDepMethod, tenders,
         bizDate: today,
       });
       if (depErr) return setErr(depErr);
@@ -1753,33 +1763,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     setErr(null);
     try {
       const saved = isNew ? await saveNewDraft(draft) : await data.saveBooking(draft, isNew);
-      let payTail = "";
-      if (
-        isNew &&
-        !override &&
-        createOnsitePay &&
-        isActive(saved) &&
-        isOnsite(s.platforms.find((x) => x.id === saved.platformId))
-      ) {
-        const plan = planOnsiteCreatePay(createPayMode, {
-          saleTotal: saleAll,
-          depAmt: createDepAmt,
-          depMethod: createDepMethod,
-        });
-        if (plan.kind !== "none") {
-          try {
-            await data.addPayment(saved.id, {
-              kind: plan.kind === "balance" ? "balance" : "deposit",
-              method: plan.method,
-              amount: plan.amount,
-              bizDate: today,
-            });
-            payTail = onsiteCreatePayTail(plan);
-          } catch (e) {
-            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도"}`;
-          }
-        }
-      }
+      const lines = isNew && !override && createOnsitePay && isActive(saved) && isOnsite(s.platforms.find((x) => x.id === saved.platformId))
+        ? createPaymentLines(createPayMode, { saleTotal: saleAll, depAmt: createDepAmt, depMethod: createDepMethod, tenders }) : [];
+      const payTail = lines.length ? " · 수납 등록 완료" : "";
       const t = L.types.get(saved.typeId);
       const hold =
         kind === "stay" && isActive(saved) && !saved.roomId
@@ -1793,7 +1779,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           : hold;
       const tail = `${stockTail}${payTail}`;
       const revived = override === "active" && !!base && !isActive(base);
-      onSaved(
+      await receipts.run(receiptBatch(saved.groupId ? { groupId: saved.groupId } : { bookingId: saved.id }, lines, today), () => onSaved(
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 잔여 객실이 늘었어요`
           : override === "noshow"
@@ -1802,7 +1788,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
               ? `${saved.guestName} 님 예약을 되살렸어요${tail}`
               : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
         again ? { kind, platformId, typeId: t?.id, checkIn, nights: kind === "stay" ? nights : undefined } : undefined,
-      );
+      ));
     } catch (e) {
       setErr(saveFailMessage(e));
     } finally {
@@ -1866,6 +1852,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     <>
     <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form
+        inert={receipts.pending}
         className={`modal book-shell book-two-pane${isNew ? "" : " book-editor"}`}
         onSubmit={(e) => {
           e.preventDefault();
@@ -2947,7 +2934,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
               className="inp"
               value={company}
               maxLength={60}
-              placeholder="선택 · 예: 오서건설 (객실 카드에 보여요)"
+              placeholder="회사명 (선택 · 객실 카드에 표시)"
               onChange={(e) => setCompany(e.target.value)}
               aria-label="회사명"
             />
@@ -3182,6 +3169,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         {/* 신규 현장: 완납/후불/선금 → 결제수단(원형) → 판매금 (간단과 동일) */}
         {createOnsitePay ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={saleAll}
             part="chips"
             payMode={createPayMode}
             onPayMode={setCreatePayMode}
@@ -3193,6 +3181,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         ) : null}
         {createOnsitePay ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={saleAll}
             part="method"
             payMode={createPayMode}
             onPayMode={setCreatePayMode}
@@ -3406,6 +3395,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         {/* 신규 현장: 완납/선금 수납만 · 후불은 숨김 · 수정·장기·대실·플랫폼은 Option A */}
         {createOnsitePay ? (
           <OnsitePayModeFields
+            tenders={tenders} onTenders={setTenders} saleTotal={saleAll}
             part="take"
             payMode={createPayMode}
             onPayMode={setCreatePayMode}
@@ -3821,7 +3811,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           </div>{/* .book-pane-right */}
         </div>{/* .book-panes */}
 
-      </form>
+      </form>{receipts.recovery}
     </div>
     {swapChoice ? (
       <AssignSwapConfirm

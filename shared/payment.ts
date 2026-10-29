@@ -235,11 +235,36 @@ export type OnsiteCreatePayPlan =
   | { kind: "balance"; amount: number; method: BookPayMethod }
   | { kind: "deposit"; amount: number; method: BookPayMethod };
 
+/** null = 단일 수단. 각 칸은 실제로 받은 금액이며 자동 안분하지 않는다. */
+export type TenderAmounts = Partial<Record<BookPayMethod, string>>;
+export type CreatePayOptions = { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod; tenders?: TenderAmounts | null };
+export type CreatePaymentLine = { kind: "balance" | "deposit"; method: BookPayMethod; amount: number; note?: string | null };
+export function createPaymentLines(mode: OnsitePayMode, opts: CreatePayOptions): CreatePaymentLine[] {
+  if (opts.priceUnset || mode === "postpaid") return [];
+  if (opts.tenders) return BOOK_PAY_METHODS.filter((m) => Number(opts.tenders![m] || 0) > 0)
+    .map((method) => ({ kind: mode === "deposit" ? "deposit" : "balance", method, amount: Number(opts.tenders![method]) }));
+  const one = planOnsiteCreatePay(mode, opts);
+  return one.kind === "none" ? [] : [one];
+}
+
 /** 선금 모드일 때만 수납 액수 검증 · 완납/후불은 판매금 필드로 */
 export function validateOnsiteCreateDeposit(
   payMode: OnsitePayMode,
-  opts: { priceUnset?: boolean; saleTotal: number; depAmt: string; depMethod: BookPayMethod; bizDate: string },
+  opts: CreatePayOptions & { bizDate: string },
 ): string | null {
+  if (!opts.priceUnset && payMode !== "postpaid" && opts.tenders) {
+    for (const method of BOOK_PAY_METHODS) {
+      const raw = opts.tenders[method];
+      if (raw == null || raw === "") continue;
+      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) return "수납액은 0 이상의 정수로 입력해 주세요.";
+      if (Number(raw) > 0) { const err = validatePayment(Number(raw), method, opts.bizDate); if (err) return err; }
+    }
+    const sum = createPaymentLines(payMode, opts).reduce((n, p) => n + p.amount, 0);
+    if (sum <= 0) return "결제수단별 수납액을 입력해 주세요.";
+    if (sum > opts.saleTotal) return "수납 합계가 판매금보다 커요. 금액을 확인해 주세요.";
+    if (payMode === "prepaid" && sum !== opts.saleTotal) return "완납은 수납 합계와 판매금이 같아야 해요. 일부만 받으면 선금을 선택해 주세요.";
+    return null;
+  }
   if (opts.priceUnset || payMode !== "deposit") return null;
   const amt = Number(opts.depAmt || 0);
   const pv = validatePayment(amt, opts.depMethod, opts.bizDate);

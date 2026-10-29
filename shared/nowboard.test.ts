@@ -1,3 +1,4 @@
+import { nowStatusAction } from "./nowboard";
 // 현장 현황 보드: 영업일 기준 상태 파생 · 옆 패널 분류 · 퇴실 윈도우 · 밤 구간 날짜 · 자동 입실
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -563,4 +564,22 @@ test("퇴실 미정(열린 숙박)은 마지막 박 날에도 퇴실예정이 �
   assert.notEqual(open.kind, "lateOut");
   const fixed = nowFlags({ ...b, openEnded: false }, "2026-10-28", { clock });
   assert.equal(fixed.kind, "departing");
+});
+
+test("과거 객실 배치는 보존하되 실제 퇴실 기록을 되살리지 않는다", () => {
+  const done = bk({arrived:true, checkedOutAt:"2026-10-21T03:00:00Z"});
+  assert.equal(nowByRoom([done], "2026-10-20").size, 0);
+  assert.equal(nowByRoom([done], "2026-10-20", true).get(done.roomId!)?.checkedOutAt, done.checkedOutAt);
+  assert.equal(canCheckOut(nowByRoom([done], "2026-10-21", true).get(done.roomId!)!, "2026-10-30"), false);
+  const next = bk({checkIn:"2026-10-21", arrived:false});
+  assert.equal(nowByRoom([done,next], "2026-10-21", true).get(done.roomId!)?.id, next.id);
+});
+
+test("과거 상태 버튼: 미처리 퇴실은 확인창, 퇴실 완료는 상세, 미래는 업무", () => {
+ const due=bk({arrived:true});
+ const opts={clock:clock("12:00","2026-10-30"),stayTimes:stay};
+ assert.equal(nowStatusAction(due,"2026-10-21","2026-10-30",opts),"checkout");
+ assert.equal(nowStatusAction({...due,checkedOutAt:"2026-10-21T03:00:00Z"},"2026-10-21","2026-10-30",opts),"detail");
+ assert.equal(nowStatusAction(due,"2026-10-21","2026-10-20",{clock:clock("12:00","2026-10-20"),stayTimes:stay}),"quick");
+ assert.equal(nowStatusAction(due,"2026-10-21","2026-10-30",opts,true),"quick");
 });
