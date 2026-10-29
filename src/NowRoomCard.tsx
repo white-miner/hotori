@@ -69,7 +69,7 @@ export default function NowRoomCard(p: NowRoomCardProps) {
         <b aria-label={readOnly ? "금액 비공개" : `예약 총액 ${b.priceUnset ? "미정" : won(b.price) + "원"}`}>{readOnly ? "비공개" : b.priceUnset ? "금액 미정" : `₩${won(b.price)}`}</b>
         {!readOnly && !wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${platform?.name || "경로 미지정"} · ${group ? "단체 " : ""}${payment}`} aria-label={`${ota ? `${platform.name} · ` : ""}${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}
       </div> : b ? <span className="detail-cancelled">{b.status === "cancelled" ? "취소 예약" : "노쇼 예약"} · 상세 확인</span> : null}
-      {active && b && !readOnly ? <div className="detail-tenders"><span title={`${ota ? `${platform.name} · ` : ""}${methods?.title ?? ""}`}>{tenderLabel}</span>{wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}</div> : null}
+      {active && b ? <div className="detail-tenders"><span title={readOnly ? "예약 경로" : `${ota ? `${platform.name} · ` : ""}${methods?.title ?? ""}`}>{readOnly ? platform?.name || "경로 미지정" : tenderLabel}</span>{!readOnly && wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}</div> : null}
     </div>
     <div className="detail-actions">
       <button type="button" className={p.hasAlerts ? "has-alert" : undefined} title={p.hasAlerts ? "메모·예약 안내 확인" : undefined} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>상세보기{p.hasAlerts ? <i aria-label="확인할 안내 있음" /> : null}</button>
