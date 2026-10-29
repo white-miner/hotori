@@ -849,6 +849,7 @@ export default function Settings({ data, email, notify }: Props) {
               <div className="ed-row">
                 <label>호실 번호 색상</label>
                 <Swatches value={floor.color} onChange={(c) => setFloor(floor.id, (f) => ({ ...f, color: c }))} />
+                <p className="muted">현황의 층 표시와 같은 층 객실번호에 반영됩니다. 객실번호는 흰색이며, 밝은 색은 번호 배경만 진하게 표시됩니다.</p>
               </div>
             </div>
           ) : null}

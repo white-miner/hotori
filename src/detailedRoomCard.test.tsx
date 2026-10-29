@@ -2,11 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { emptySettings, type Booking } from "../shared/ledger";
-import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups } from "../shared/detailedRoomCard";
+import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups, roomNumberColor, compactCardPeriod } from "../shared/detailedRoomCard";
 import { CARD_CASES, TODAY } from "../shared/roomCardCases";
 import { roomCardModel } from "../shared/roomCard";
-import { contrast, textOn } from "../shared/platform";
-import NowRoomCard, { type CardGroup } from "./NowRoomCard";
+import { contrast } from "../shared/platform";
+import NowRoomCard, { RoomCardDetails, type CardGroup } from "./NowRoomCard";
+
+import ManagementRecords from "./ManagementRecords";
+import type { RoomMemo } from "../shared/roomMemo";
 
 const base = CARD_CASES[0]!.b;
 const s = emptySettings();
@@ -50,35 +53,81 @@ test("단체 식별·순번: 방번호 이동·대표 변경·조회 순서가 �
   assert.equal(second.roomId, "room-101");
 });
 
-function render(b: Booking | null, group: CardGroup | null = null, readOnly = false) {
-  return renderToStaticMarkup(<NowRoomCard roomNo="실제 객실번호" roomType="실제 객실유형" color="#ffffff" booking={b} platform={CARD_CASES[0]!.plat as any} settings={s}
+function render(b: Booking | null, group: CardGroup | null = null, readOnly = false, details = false) {
+  const Card = details ? RoomCardDetails : NowRoomCard;
+  return renderToStaticMarkup(<Card onClose={() => {}} roomNo="실제 객실번호" roomType="실제 객실유형" color="#ffffff" booking={b} platform={CARD_CASES[0]!.plat as any} settings={s}
     model={b ? roomCardModel({ b, plat: CARD_CASES[0]!.plat, bookings: [b], info: null, view: TODAY, today: TODAY }) : null}
     status={detailedStatus(b, TODAY, opts("10:00"))} group={group} showGroup onDetail={() => {}} onQuick={() => {}} onMemo={() => {}} memoCount={0} readOnly={readOnly} />);
 }
 test("실제 카드 렌더: 빈 객실은 임의 손님·금액을 만들지 않고 모든 상세 항목과 두 업무 입구를 유지한다", () => {
-  const html = render(null);
-  for (const label of ["예약자", "예약 경로", "입실", "퇴실", "이용", "객실 요금", "결제 상태", "상세보기", "빠른 업무", "예약 없음"]) assert.ok(html.includes(label));
+  const html = render(null, null, false, true);
+  for (const label of ["예약자", "예약 경로", "입실", "퇴실", "이용", "객실 요금", "결제 상태", "빠른 업무", "예약 없음"]) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /₩|김|뮤지컬|촬영팀/);
 });
 test("실제 카드 렌더: 단체 연결 객실도 자기 예약자와 가격을 숨기지 않는다", () => {
   const b = make({ guestName: "실제 구성원", price: 123456, priceUnset: false });
   const group: CardGroup = { id: "uuid", label: "G1", name: "실제 단체", color: "g1", count: 3, index: 2, lead: false, leadRoom: "본관 701호" };
-  const html = render(b, group);
+  const html = render(b, group, false, true);
   for (const value of ["실제 구성원", "123,456", "실제 단체", "02/03", "대표 본관 701호"]) assert.ok(html.includes(value), value);
-  assert.ok(render(b, { ...group, lead: true }).includes("실제 단체 · 대표"));
+  assert.ok(render(b, { ...group, lead: true }, false, true).includes("실제 단체 · 대표"));
 });
 test("색 대비와 공유: 밝고 어두운 층 색 모두 대비를 확보하고 공유 화면에 금액을 노출하지 않는다", () => {
-  for (const c of ["#ffffff", "#000000", "#ffcc00", "#3366ff"]) assert.ok(contrast(c, textOn(c)) >= 4.5);
-  const html = render(make({ price: 123456 }), null, true);
-  assert.doesNotMatch(html, /123,456|₩/);
+  for (const c of ["#ffffff", "#000000", "#ffcc00", "#3366ff"]) assert.ok(contrast(roomNumberColor(c), "#FFFFFF") >= 4.5);
+  const html = render(make({ price: 123456, memo: "공유하면 안 되는 예약 메모" }), null, true, true);
+  assert.doesNotMatch(html, /123,456|₩|공유하면 안 되는 예약 메모/);
   assert.match(html, /공유 비공개/);
 });
 
 test("단체 일부 결제는 오늘까지 미수가 있어도 미결제로 오표시하지 않는다", () => {
   const c = CARD_CASES.find((x) => x.id === "C10")!;
   const m = roomCardModel({ b: c.b, plat: c.plat, bookings: c.bookings, info: c.info, view: TODAY, today: TODAY, preferredLeadId: c.info?.leadBookingId });
-  const html = renderToStaticMarkup(<NowRoomCard roomNo="대표실" roomType="스탠다드" color="#ffffff" booking={c.b} platform={c.plat as any} settings={s} model={m} status={detailedStatus(c.b, TODAY, opts("10:00"))}
+  const html = renderToStaticMarkup(<RoomCardDetails onClose={() => {}} roomNo="대표실" roomType="스탠다드" color="#ffffff" booking={c.b} platform={c.plat as any} settings={s} model={m} status={detailedStatus(c.b, TODAY, opts("10:00"))}
     group={{ id: c.b.groupId!, label: "G1", name: "단체", color: "g1", index: 1, count: 2, lead: true, leadRoom: "대표실" }} showGroup onDetail={() => {}} onQuick={() => {}} onMemo={() => {}} memoCount={0} />);
   assert.match(html, /단체 일부 결제/);
   assert.doesNotMatch(html, /단체 미결제/);
+});
+
+
+test("요약은 빈 단체 자리와 반복 라벨을 없애고 흰색 번호·실제 예약 총액·업무 입구를 유지한다", () => {
+  const html = render(make({ guestName: "실제 손님", price: 123456 }));
+  assert.match(html, /실제 손님/);
+  assert.match(html, /color:#FFFFFF/);
+  assert.match(html, /123,456/);
+  assert.match(html, /상세보기/);
+  assert.match(html, /빠른 업무/);
+  assert.doesNotMatch(html, /detail-group-space|<dt>|detail-facts/);
+  const empty = render(null);
+  assert.match(empty, /예약 없음/);
+  assert.doesNotMatch(empty, /detail-money|detail-group|₩/);
+});
+
+test("요약 날짜는 달·연도 경계, 열린 숙박, 대실 자정 시간을 실제 데이터로 구분한다", () => {
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", nights: 4 }), s), "10/26 → 30 · 4박");
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-12-31", nights: 2 }), s), "12/31 → 1/2 · 2박");
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", openEnded: true, earlyOut: null }), s), "10/26 → 미정");
+  assert.equal(compactCardPeriod(make({ kind: "dayuse", startTime: "23:00", endTime: "02:00" }), s), "23:00–02:00");
+});
+
+
+test("관리기록은 해결된 과거 기록을 보존하고 객실 특이사항·자동 경고와 구분한다", () => {
+  const memo: RoomMemo = { id: "open", roomId: null, kind: "delivery", body: "저장된 호텔 기록", status: "open", createdAt: "2026-10-29T01:00:00Z", updatedAt: "2026-10-29T01:00:00Z", resolvedAt: null };
+  const records: RoomMemo[] = [memo, { ...memo, id: "old", body: "해결된 과거 기록", status: "resolved", resolvedAt: memo.createdAt }, { ...memo, id: "issue", kind: "issue", roomId: "room-1", body: "별도 객실 특이사항" }];
+  const before = JSON.stringify(records);
+  const html = renderToStaticMarkup(<ManagementRecords records={records} settings={s} checkCount={122} checks={<span>자동 경고 내용</span>} onClose={() => {}} onSave={async () => memo} onSetStatus={async () => memo} notify={() => {}} />);
+  assert.match(html, /저장된 호텔 기록/); assert.match(html, /해결된 과거 기록/);
+  assert.match(html, /새 기록/); assert.match(html, /확인사항 122/);
+  assert.doesNotMatch(html, /별도 객실 특이사항|자동 경고 내용/);
+  assert.equal(JSON.stringify(records), before);
+  const unavailable = renderToStaticMarkup(<ManagementRecords records={null} loadError="network" settings={s} checkCount={0} checks={null} onClose={() => {}} onSave={async () => memo} onSetStatus={async () => memo} notify={() => {}} />);
+  assert.match(unavailable, /불러오지 못했어요/);
+  assert.doesNotMatch(unavailable, /작성된 관리기록이 없어요/);
+});
+
+
+test("고액 요약은 금액을 줄이거나 반올림하지 않고 결제 상태를 메타 행으로 옮긴다", () => {
+  const html = render(make({ price: 1234567890, priceUnset: false }));
+  assert.match(html, /1,234,567,890/);
+  assert.match(html, /detail-meta[^]*detail-payment/);
+  const money = html.split('class="detail-money"')[1]?.split('</div>')[0] ?? "";
+  assert.doesNotMatch(money, /detail-payment/);
 });

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { hasFullNightMatrix } from "../shared/nightrates";
 import { ArrowRightLeft, Ban, CalendarPlus, CircleDollarSign, Clock, Link2, Lock, LogIn, StickyNote, Undo2, Wand2 } from "lucide-react";
 import {
@@ -81,6 +81,7 @@ const MODE_LABEL: Record<SideMode, string> = {
 };
 
 interface Props {
+  headerTools?: ReactNode;
   /** 현황이 보는 날 (오늘이거나 날짜 이동으로 고른 날) */
   today: string;
   /** 보는 날 = 실제 오늘일 때만 true. 아니면 오늘 기준 처리(퇴실처리·빠른 입실·오늘까지 연장·이동 완료)를 숨겨요 */
@@ -201,6 +202,7 @@ interface Props {
 }
 
 export default function NowSidePanel({
+  headerTools,
   today,
   liveDay = true,
   uaFilter = "today",
@@ -530,6 +532,7 @@ export default function NowSidePanel({
 
   return (
     <aside className="nowside" aria-label="운영">
+      {headerTools}
       <div className="nowside-modes" role="tablist" aria-label="패널 모드">
         {(["room", "simple", "out"] as SideMode[]).map((m) => (
           <button

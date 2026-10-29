@@ -1,16 +1,14 @@
 /**
- * 「미니맵」— 상태 밴드 · 공실 요약 · 타입 칩 단일 sticky 패널.
+ * 「미니맵」— 상태 밴드 · 점유 집계 · 타입 칩. 개별 공실번호 목록은 표시하지 않는다.
  * 총/사용/남음 = 헤더「미니맵」토글 바로 옆(왼쪽 한 줄) · 탭=점유 필터(사이드 목록 ❌).
  */
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { GLANCE_ROOM_CHIP_CAP, type GlanceOccFilter } from "../shared/boardGlance";
+import { type GlanceOccFilter } from "../shared/boardGlance";
 import type { RoomType } from "../shared/ledger";
 import { typeLabel } from "../shared/ledger";
 import BoardStatusMinimap, { type MinimapBuilding } from "./BoardStatusMinimap";
 import { TypeStockChip } from "./primitives";
-
-export type GlanceVacantRoom = { id: string; label: string };
 
 export type GlanceTypeStock = {
   t: RoomType;
@@ -26,8 +24,6 @@ interface Props {
   total: number;
   used: number;
   left: number;
-  vacantRooms: GlanceVacantRoom[];
-  onVacantChip: (roomId: string) => void;
   typeStock: GlanceTypeStock[];
   lowThreshold: number;
   onTypeStock: (typeId: string) => void;
@@ -44,8 +40,6 @@ export default function NowGlancePanel({
   total,
   used,
   left,
-  vacantRooms,
-  onVacantChip,
   typeStock,
   lowThreshold,
   onTypeStock,
@@ -56,14 +50,6 @@ export default function NowGlancePanel({
   occFilter,
   onOccFilterChange,
 }: Props) {
-  const [roomsExpand, setRoomsExpand] = useState(false);
-
-  const roomHidden =
-    !roomsExpand && vacantRooms.length > GLANCE_ROOM_CHIP_CAP
-      ? vacantRooms.length - GLANCE_ROOM_CHIP_CAP
-      : 0;
-  const roomsShown = roomHidden ? vacantRooms.slice(0, GLANCE_ROOM_CHIP_CAP) : vacantRooms;
-
   const toggle = () => onOpenChange(!open);
 
   /** 사용/남음 = 토글 · 총(또는 활성 재탭) = 해제 */
@@ -104,46 +90,12 @@ export default function NowGlancePanel({
     </div>
   );
 
-  const vacantRow =
-    left > 0 ? (
-      <div
-        className={`now-vacancy-nos board-glance-nos${roomsExpand ? " open" : ""}${
-          occFilter === "left" ? " filter-on" : ""
-        }`}
-      >
-        {roomsShown.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            className="now-vacancy-no"
-            title={`${r.label}로 이동`}
-            onClick={() => onVacantChip(r.id)}
-          >
-            {r.label}
-          </button>
-        ))}
-        {roomHidden ? (
-          <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(true)}>
-            +{roomHidden}
-          </button>
-        ) : null}
-        {roomsExpand && vacantRooms.length > GLANCE_ROOM_CHIP_CAP ? (
-          <button type="button" className="now-vacancy-more" onClick={() => setRoomsExpand(false)}>
-            접기
-          </button>
-        ) : null}
-      </div>
-    ) : (
-      <span className="now-vacancy-none">잔여 객실 없음</span>
-    );
-
   let body: ReactNode = null;
   if (open) {
     body = (
       <div className="board-glance-body">
         <BoardStatusMinimap buildings={buildings} onRoomClick={onRoomBlock} occFilter={occFilter} />
 
-        <div className="board-glance-rooms">{vacantRow}</div>
 
         {typeStock.length ? (
           <div className="now-vacancy-row now-vacancy-types">

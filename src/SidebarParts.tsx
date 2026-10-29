@@ -44,12 +44,12 @@ export function TopAlerts(p: TopAlertsProps) {
       <button
         type="button"
         className={`top-alert-btn top-notice-btn${p.tangleCount ? " has" : ""}`}
-        aria-label={p.tangleCount ? `확인 필요 ${p.tangleCount}건` : "확인 필요"}
-        title="확인 필요"
+        aria-label={p.tangleCount ? `관리기록 · 확인사항 ${p.tangleCount}건` : "관리기록"}
+        title="관리기록 · 기록 작성과 확인사항"
         onClick={p.onTangles}
       >
         <AlertTriangle size={18} strokeWidth={2.2} aria-hidden />
-        <span className="top-notice-label">확인 필요</span>
+        <span className="top-notice-label">관리기록</span>
         {p.tangleCount ? <span className="top-alert-badge tng">{p.tangleBadge}</span> : null}
       </button>
       <button type="button" className={`top-alert-btn${p.settingsOn ? " has" : ""}`} aria-label="설정" title="설정" onClick={p.onSettings}>

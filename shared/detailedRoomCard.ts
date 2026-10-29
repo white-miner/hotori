@@ -2,6 +2,23 @@ import { addDays, md, stayEnd, type Booking, type HotelSettings } from "./ledger
 import { clampHours } from "./extratime";
 import { shiftTime } from "./tiers";
 import { nowFlags, type NowOpts } from "./nowboard";
+import { contrast, shade, HEX } from "./platform";
+
+/** 흰색 번호를 유지하고 밝은 선택색의 번호 배경만 같은 계열로 보정한다. */
+export function roomNumberColor(color: string): string {
+  let bg = HEX.test(color) ? color : "#2F7BEA";
+  for (let i = 0; i < 16 && contrast(bg, "#FFFFFF") < 4.5; i++) bg = shade(bg, .12);
+  return bg;
+}
+
+/** 요약에는 날짜, 상세에는 시간·연도까지 표시한다. */
+export function compactCardPeriod(b: Booking, s: Pick<HotelSettings, "stayTimes">): string {
+  const t = detailedTimes(b, s);
+  if (b.kind === "dayuse") return `${t.inTime ?? "미정"}–${t.outTime ?? "미정"}`;
+  if (!t.outDate) return `${md(t.inDate)} → 미정`;
+  const end = t.inDate.slice(0, 7) === t.outDate.slice(0, 7) ? String(Number(t.outDate.slice(8))) : md(t.outDate);
+  return `${md(t.inDate)} → ${end} · ${b.nights ?? 0}박`;
+}
 
 export type CardStatus = { label: string; tone: "stay" | "dayuse" | "available" | "departing" | "neutral"; note?: string };
 
