@@ -3,6 +3,20 @@ import { clampHours } from "./extratime";
 import { shiftTime } from "./tiers";
 import { nowFlags, type NowOpts } from "./nowboard";
 import { contrast, shade, HEX } from "./platform";
+import { nowPayParts, nowPayText } from "./nowCard";
+import type { RoomCardModel } from "./roomCard";
+
+/** 단체 공통 수납은 객실 자체의 결제와 혼동하지 않도록 범위를 함께 표시한다. */
+export function cardPaymentMethods(b: Booking, model: RoomCardModel | null) {
+  const ctx = model?.groupCtx;
+  const payments = ctx ? [...(ctx.info?.payments ?? []), ...ctx.members.flatMap((m) => m.payments ?? [])] : b.payments ?? [];
+  const parts = nowPayParts(payments);
+  const scope = ctx ? "단체 " : "";
+  return {
+    label: parts.length ? scope + parts.map((p) => p.method).join("·") : "수납 기록 없음",
+    title: parts.length ? `${scope}실제 수납 · ${nowPayText(parts, parts.length)}` : "결제수단을 임의로 추정하지 않습니다. 수납 기록이 없습니다.",
+  };
+}
 
 /** 흰색 번호를 유지하고 밝은 선택색의 번호 배경만 같은 계열로 보정한다. */
 export function roomNumberColor(color: string): string {

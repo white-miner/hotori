@@ -241,7 +241,7 @@ interface Props {
   today: string;
   selDate: string;
   setSelDate: (d: string) => void;
-  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean }) => void;
+  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean; openGuests?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
   /** 간단 예약 축약 폼 (기본 Path A · 미배정 · roomIds=현황 복수선택 Path B) */
   onSimple?: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
@@ -3175,10 +3175,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       className={`cell detail-card ${b ? "bk" : "em"} ${cx ? "cx" : ""} ${hold ? "held" : ""} ${selectedRoomIds.includes(r.id) && !mvB ? "nowsel" : ""} ${flashRoomId === r.id ? "nowflash" : ""} ${gsCellClass(r.id)} ${shown ? pfCls(shown) : ""} ${mvCls} ${assignCls} ${readOnly ? "ro" : ""} ${highlightGroup && group?.id === highlightGroup ? "group-highlight" : ""}`}
       onClick={click} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); click(); } }}>
       {canAssign ? <label className="board-assign-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={false} disabled={assignBusy} aria-label={`${r.no}호에 배정`} onChange={() => requestAssign(assignBk!, r.id)} /></label> : null}
-      <NowRoomCard roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} color={color} booking={shown} platform={shown ? L.plats.get(shown.platformId) : undefined} settings={s} model={model} status={status} group={group} showGroup={showGroupLinks}
+      <NowRoomCard roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} roomTypeId={r.typeId} color={color} booking={shown} platform={shown ? L.plats.get(shown.platformId) : undefined} settings={s} model={model} status={status} group={group} showGroup={showGroupLinks}
         readOnly={readOnly} busy={!!mvB || assignMode}
         hasAlerts={!!(status.note || hold || scheduled || dueMove || warnings.length || b?.noClean || b?.tentative || (b && b.typeId !== r.typeId) || (glance?.count ?? 0))}
         onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}
+        onGuests={shown ? () => onOpen(shown, viewDate, { openGuests: true }) : undefined}
         onGroup={() => setHighlightGroup(group?.id === highlightGroup ? null : group?.id ?? null)}
         onMemo={() => { setNightPopId(null); setMemoRoomId(r.id); }} memoCount={glance?.count ?? 0} memoText={glance?.title}
         onPeriod={b?.kind === "stay" ? () => setNightPopId(popOpen ? null : b.id) : undefined}
