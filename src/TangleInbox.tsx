@@ -4,6 +4,7 @@ import { AlertTriangle, X } from "lucide-react";
 import type { Tangle } from "../shared/tangles";
 
 interface Props {
+  embedded?: boolean;
   tangles: Tangle[];
   ignoredCount: number;
   onFix: (t: Tangle) => Promise<void>;
@@ -16,7 +17,7 @@ interface Props {
 
 const BULK_MIN = 4;
 
-export default function TangleInbox({ tangles, ignoredCount, onFix, onFixMany, onIgnore, onRestore, onClose }: Props) {
+export default function TangleInbox({ tangles, ignoredCount, onFix, onFixMany, onIgnore, onRestore, onClose, embedded = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   useEffect(() => {
@@ -40,10 +41,10 @@ export default function TangleInbox({ tangles, ignoredCount, onFix, onFixMany, o
   };
 
   return (
-    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal tng-panel" role="dialog" aria-label="확인 필요">
+    <div className={embedded ? "management-checks" : "dim"} onMouseDown={(e) => !embedded && e.target === e.currentTarget && onClose()}>
+      <div className={embedded ? "tng-panel" : "modal tng-panel"} role={embedded ? "region" : "dialog"} aria-label="확인 필요">
         <div className="grab" />
-        <div className="mh">
+        {!embedded ? <div className="mh">
           <h2>
             <AlertTriangle size={18} strokeWidth={2.2} aria-hidden />
             확인 필요
@@ -53,7 +54,7 @@ export default function TangleInbox({ tangles, ignoredCount, onFix, onFixMany, o
             <X size={16} strokeWidth={2.2} aria-hidden />
             <kbd>Esc</kbd>닫기
           </button>
-        </div>
+        </div> : null}
         <p className="muted tng-note">알려 드리기만 해요. 저장·입실·퇴실·결제는 막지 않아요.</p>
 
         {!tangles.length ? <div className="lempty">지금 확인할 것이 없어요</div> : null}

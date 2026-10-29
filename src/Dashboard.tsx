@@ -201,7 +201,6 @@ import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import NowRoomCard, { type CardGroup } from "./NowRoomCard";
-import FloorColorPicker from "./FloorColorPicker";
 import NowGroupBar from "./NowGroupBar";
 import { useCardGroups } from "./useCardGroups";
 import { detailedStatus, orderedGroupMembers } from "../shared/detailedRoomCard";
@@ -519,7 +518,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [highlightGroup, setHighlightGroup] = useState<string | null>(null);
   const [onlyGroups, setOnlyGroups] = useState(false);
   const [showGroupLinks, setShowGroupLinks] = useState(true);
-  const [floorPreview, setFloorPreview] = useState<Record<string, string>>({});
   const nowSide = useMemo(() => nowLists(nowBookings, viewDate, nowOpts), [nowBookings, viewDate, nowOpts]);
   const [coBusy, setCoBusy] = useState<string | null>(null);
   const [ncxBusy, setNcxBusy] = useState<string | null>(null);
@@ -3125,7 +3123,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  const floorCardColor = (id: string, raw: string | null | undefined) => floorPreview[id] ?? (raw && HEX.test(raw) ? raw : FLOOR_PALETTE[orderedFloors(s).findIndex((f) => f.id === id) % FLOOR_PALETTE.length]?.value ?? "#2F7BEA");
+  const floorCardColor = (id: string, raw: string | null | undefined) => (raw && HEX.test(raw) ? raw : FLOOR_PALETTE[orderedFloors(s).findIndex((f) => f.id === id) % FLOOR_PALETTE.length]?.value ?? "#2F7BEA");
   const cardGroupIds = new Set([...nowBoardMap.values()].map((b) => b.groupId).filter((id): id is string => !!id));
   const cardGroupViews = [...cardGroupIds].map((id) => {
     const members = orderedGroupMembers(cardGroups, id, bookings);
@@ -3136,14 +3134,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!g || !b) return null;
     const rid = g.lead ? roomForNowBoard(g.lead, viewDate) ?? g.lead.roomId : null;
     return { id: g.id, label: g.label, name: g.name, color: g.color, index: g.members.findIndex((x) => x.id === b.id) + 1, count: g.members.length, lead: g.lead?.id === b.id, leadRoom: rid ? `${L.roomLabel(rid)}호` : "미배정" };
-  };
-  const saveFloorCardColor = async (id: string, color: string) => {
-    if (readOnly) return;
-    const fresh = await data.fetchFreshAround(viewDate, 1);
-    if (!fresh) throw new Error("최신 층 설정을 읽지 못했어요");
-    await data.saveHotel({ settings: { ...fresh.settings, floors: fresh.settings.floors.map((f) => f.id === id ? { ...f, color } : f) } });
-    setFloorPreview((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    notify("층 색상을 저장했어요");
   };
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], color: string) => {
     const stay = nowBoardMap.get(r.id) ?? null;
@@ -3187,6 +3177,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {canAssign ? <label className="board-assign-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={false} disabled={assignBusy} aria-label={`${r.no}호에 배정`} onChange={() => requestAssign(assignBk!, r.id)} /></label> : null}
       <NowRoomCard roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} color={color} booking={shown} platform={shown ? L.plats.get(shown.platformId) : undefined} settings={s} model={model} status={status} group={group} showGroup={showGroupLinks}
         readOnly={readOnly} busy={!!mvB || assignMode}
+        hasAlerts={!!(status.note || hold || scheduled || dueMove || warnings.length || b?.noClean || b?.tentative || (b && b.typeId !== r.typeId) || (glance?.count ?? 0))}
         onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}
         onGroup={() => setHighlightGroup(group?.id === highlightGroup ? null : group?.id ?? null)}
         onMemo={() => { setNightPopId(null); setMemoRoomId(r.id); }} memoCount={glance?.count ?? 0} memoText={glance?.title}
@@ -3279,11 +3270,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         total={glanceTotal}
         used={glanceUsed}
         left={glanceLeft}
-        vacantRooms={glanceVacant.map((r) => ({
-          id: r.id,
-          label: multi && bScope === "all" ? (L.roomLabel(r.id) ?? r.no) : r.no,
-        }))}
-        onVacantChip={jumpToVacantRoom}
         typeStock={typeStockAll}
         lowThreshold={s.lowThreshold}
         onTypeStock={(typeId) => {
@@ -3333,14 +3319,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 사이드바 열기
               </div>
             </div>
-            <div className="dnav nowfilters">
-              {nowFilterChips}
-              {!readOnly && nowSide.tentative.length ? (
-                <button type="button" className="btn sm dark" disabled={tentBusy || !!mvB} onClick={() => void confirmAllTentative()}>
-                  {tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}
-                </button>
-              ) : null}
-            </div>
+
           </div>
           {mvBar}
           {!mvB && assignBk ? (
@@ -3386,11 +3365,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                     {fl.map((f) => (
                       <div className="floor" key={f.id}>
                         <div className="fh">
-                          <span className="fn" style={floorPaint(f.color) ? { ["--fc" as string]: floorPaint(f.color)! } : undefined}>
+                          <span className="fn"><i className="detail-floor-mark" style={{ background: floorCardColor(f.id, f.color) }} aria-hidden />
                             {f.name}
                           </span>
                           <span className="detail-floor-count">{f.rooms.length}실</span>
-                          {!readOnly ? <FloorColorPicker name={f.name} color={floorCardColor(f.id, f.color)} onPreview={(color) => setFloorPreview((v) => ({ ...v, [f.id]: color }))} onSave={(color) => saveFloorCardColor(f.id, color)} /> : null}
                         </div>
                         <div className="rooms">{f.rooms.map((r) => nowCell(r, floorCardColor(f.id, f.color)))}</div>
                       </div>
@@ -3401,6 +3379,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             </div>
             {opsWrap(
             <NowSidePanel
+              headerTools={nowSide.tentative.length || nowFilter !== "all" ? <div className="now-tentative-tools" aria-label="임시 예약 관리">{nowFilterChips}{!readOnly && nowSide.tentative.length ? <button type="button" className="btn sm dark" disabled={tentBusy || !!mvB} onClick={() => void confirmAllTentative()}>{tentBusy ? "확정 중…" : `임시 ${nowSide.tentative.length}건 확정`}</button> : null}</div> : null}
               today={viewDate}
               liveDay={liveDay}
               s={s}

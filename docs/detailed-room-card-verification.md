@@ -1,5 +1,7 @@
 # HOTORI 상세형 객실카드 구현·검증 기록
 
+> 초기 구현 당시 기록입니다. 최종 4:5 요약 카드 기준과 최신 검증은 `compact-room-card-verification.md` 및 `room-card-spec.md`를 참조하세요.
+
 검증일: 2026-10-29 (Asia/Seoul). 개발 브랜치: `codex/detailed-room-cards`. 기준 코드: 원격 main `4f4ec23`.
 
 ## 기준 정정과 범위

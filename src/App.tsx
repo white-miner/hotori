@@ -14,6 +14,7 @@ import Dashboard from "./Dashboard";
 import Entry from "./Entry";
 import HandoverAlertsPanel from "./HandoverAlertsPanel";
 import TangleInbox from "./TangleInbox";
+import ManagementRecords from "./ManagementRecords";
 import { useTangles } from "./useTangles";
 import { useOpenFollow } from "./useOpenFollow";
 import { applyCheckoutMany, applyTangleFix } from "./tangleFix";
@@ -417,7 +418,11 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
         />
       ) : null}
       {tangleOpen ? (
+        <ManagementRecords records={memos.list} loadError={memos.error} onRefresh={memos.refresh} settings={hotel.settings} checkCount={tangles.visible.length}
+          onClose={() => setTangleOpen(false)} onSave={memos.save} onSetStatus={memos.setStatus} notify={notify}
+          checks={
         <TangleInbox
+          embedded
           tangles={tangles.visible}
           ignoredCount={tangles.ignoredCount}
           onClose={() => setTangleOpen(false)}
@@ -445,6 +450,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
             }
           }}
         />
+          } />
       ) : null}
       {issuesOpen && hotel.settings ? (
         <HandoverAlertsPanel
