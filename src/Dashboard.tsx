@@ -3792,6 +3792,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         banner={banner}
         readOnly={readOnly}
         notify={(m) => notify(m)}
+        onOpenBooking={(b) => onOpen(b)}
       />
     );
 

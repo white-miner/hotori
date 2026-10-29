@@ -96,6 +96,16 @@ test("색 대비와 공유: 밝고 어두운 층 색 모두 대비를 확보하�
   assert.match(html, /공유 비공개/);
 });
 
+test("스마트등록 예약은 원문 타입을 상세에서 보여주고 공유 화면에는 노출하지 않는다", () => {
+  const b=make({memo:"[스마트등록] 야놀자 예약번호 TEST-PRIVATE · Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)"});
+  assert.match(render(b),/스마트등록/);
+  const details=render(b,null,false,true);
+  assert.match(details,/원문 객실 타입/);
+  assert.match(details,/Standard2 ㅣ스탠다드/);
+  for (const detail of [false,true]) assert.doesNotMatch(render(b,null,true,detail),/Standard2|스마트등록|TEST-PRIVATE/);
+  assert.doesNotMatch(render(make({memo:"직접 적은 일반 예약 메모"})),/스마트등록/);
+});
+
 test("단체 일부 결제는 오늘까지 미수가 있어도 미결제로 오표시하지 않는다", () => {
   const c = CARD_CASES.find((x) => x.id === "C10")!;
   const m = roomCardModel({ b: c.b, plat: c.plat, bookings: c.bookings, info: c.info, view: TODAY, today: TODAY, preferredLeadId: c.info?.leadBookingId });
