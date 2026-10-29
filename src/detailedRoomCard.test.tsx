@@ -17,8 +17,8 @@ const make = (patch: Partial<Booking> = {}): Booking => ({ ...base, ...patch });
 const opts = (time: string) => ({ stayTimes: { ...s.stayTimes, checkInMode: "manual" as const }, clock: { wallDate: TODAY, time } });
 
 test("확대 날짜: 날짜 범위와 박수만 분리하고 미정·대실의 실제 기간은 유지한다", () => {
-  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", nights: 3 }), s), { range: "10/30 → 11/2", duration: "3박" });
-  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", openEnded: true }), s), { range: "10/30 → 미정", duration: null });
+  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", nights: 3 }), s), { range: "10/30(금) → 11/2(월)", duration: "3박" });
+  assert.deepEqual(compactCardPeriodParts(make({ checkIn: "2026-10-30", openEnded: true }), s), { range: "10/30(금) → 미정", duration: null });
   assert.deepEqual(compactCardPeriodParts(make({ kind: "dayuse", startTime: "23:00", endTime: "02:00" }), s), { range: "23:00–02:00", duration: null });
 });
 
@@ -122,9 +122,9 @@ test("요약은 단체 라벨 자리를 고정하고 흰색 번호·실제 예�
 });
 
 test("요약 날짜는 달·연도 경계, 열린 숙박, 대실 자정 시간을 실제 데이터로 구분한다", () => {
-  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", nights: 4 }), s), "10/26 → 30 · 4박");
-  assert.equal(compactCardPeriod(make({ checkIn: "2026-12-31", nights: 2 }), s), "12/31 → 1/2 · 2박");
-  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", openEnded: true, earlyOut: null }), s), "10/26 → 미정");
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", nights: 4 }), s), "10/26(월) → 30(금) · 4박");
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-12-31", nights: 2 }), s), "12/31(목) → 1/2(토) · 2박");
+  assert.equal(compactCardPeriod(make({ checkIn: "2026-10-26", openEnded: true, earlyOut: null }), s), "10/26(월) → 미정");
   assert.equal(compactCardPeriod(make({ kind: "dayuse", startTime: "23:00", endTime: "02:00" }), s), "23:00–02:00");
 });
 
