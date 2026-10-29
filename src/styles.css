@@ -6391,6 +6391,28 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .book-management-group .btn { min-height: 40px; font-size: 14px; border-radius: 8px; }
 .book-management-group p { flex-basis: 100%; margin: 0; font-size: 13px; line-height: 1.5; color: #59616d; }
 .book-management-group .book-delete { color: #b62235; }
+/* 인원·결제수단·단체 표식의 고정 자리. 168×210px 카드에서도 보존한다. */
+.now-page .detail-head { padding: 1px 6px 0; }
+.now-page .detail-identity { min-height: 27px; }
+.now-page .detail-number { line-height: 1; }
+.now-page .detail-summary { padding-top: 0; }
+.now-page .detail-group-slot { flex: none; height: 20px; min-height: 20px; }
+.now-page .detail-group-slot .detail-group { width: 100%; height: 20px; min-height: 20px; margin: 0; }
+.now-page .detail-guest-line { height: 30px; }
+.now-page .detail-guest-name,.now-page .detail-guest-name.is-empty { font-size: 28px; line-height: 1.05; letter-spacing: -.5px; }
+.now-page .detail-period { height: 24px; line-height: 1.09; }
+.now-page .detail-money { min-height: 20px; }
+.now-page .detail-money > b { flex: none; }
+.now-page .detail-tenders { display: flex; justify-content: space-between; gap: 3px; height: 18px; min-height: 18px; flex: none; font-size: 16px; line-height: 18px; color: #43516a; }
+.now-page .detail-tenders > span:first-child { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.now-page .detail-occupancy { flex: none; font-size: 16px; color: #3f536b; line-height: 18px; text-decoration: underline; text-underline-offset: 2px; }
+.now-page .detail-occupancy:disabled { opacity: .5; }
+.book-editor .gfld:focus { outline: 2px solid #2864d7; outline-offset: 4px; border-radius: 6px; }
+@container (min-width: 240px) {
+  .now-page .detail-group-slot { height: 24px; min-height: 24px; }
+  .now-page .detail-group-slot .detail-group { height: 24px; }
+  .now-page .detail-period { height: 31px; line-height: 1.15; }
+}
 .book-delete-confirm { border: 1px solid #e6a7af; background: #fff5f5; padding: 10px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
 .book-delete-confirm p { color: #922131; }
 .book-shell .book-choice { width: 100%; max-width: 100%; min-height: 44px; padding: 9px 32px 9px 12px; border: 1px solid #cbd2dc; border-radius: 9px; background: #fff; color: #242830; font-size: 16px; }

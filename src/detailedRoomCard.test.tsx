@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { emptySettings, type Booking } from "../shared/ledger";
-import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups, roomNumberColor, compactCardPeriod, compactCardPeriodParts } from "../shared/detailedRoomCard";
+import { detailedStatus, detailedTimes, emptyRegistry, orderedGroupMembers, registerCardGroups, roomNumberColor, compactCardPeriod, compactCardPeriodParts, cardPaymentMethods } from "../shared/detailedRoomCard";
 import { CARD_CASES, TODAY } from "../shared/roomCardCases";
 import { roomCardModel } from "../shared/roomCard";
 import { contrast } from "../shared/platform";
@@ -106,17 +106,19 @@ test("단체 일부 결제는 오늘까지 미수가 있어도 미결제로 오�
 });
 
 
-test("요약은 빈 단체 자리와 반복 라벨을 없애고 흰색 번호·실제 예약 총액·업무 입구를 유지한다", () => {
+test("요약은 단체 라벨 자리를 고정하고 흰색 번호·실제 예약 총액·업무 입구를 유지한다", () => {
   const html = render(make({ guestName: "실제 손님", price: 123456 }));
   assert.match(html, /실제 손님/);
   assert.match(html, /color:#FFFFFF/);
   assert.match(html, /123,456/);
   assert.match(html, /상세보기/);
   assert.match(html, /빠른 업무/);
-  assert.doesNotMatch(html, /detail-group-space|<dt>|detail-facts/);
+  assert.match(html, /detail-group-slot/);
+  assert.doesNotMatch(html, /<dt>|detail-facts/);
   const empty = render(null);
   assert.match(empty, /예약 없음/);
-  assert.doesNotMatch(empty, /detail-money|detail-group|₩/);
+  assert.match(empty, /class="detail-group-slot"><\/div>/);
+  assert.doesNotMatch(empty, /detail-money|class="detail-group |₩/);
 });
 
 test("요약 날짜는 달·연도 경계, 열린 숙박, 대실 자정 시간을 실제 데이터로 구분한다", () => {
@@ -142,10 +144,36 @@ test("관리기록은 해결된 과거 기록을 보존하고 객실 특이사�
 });
 
 
-test("고액 요약은 금액을 줄이거나 반올림하지 않고 결제 상태를 메타 행으로 옮긴다", () => {
+test("고액 요약은 금액을 보존하고 결제 상태를 수납수단 행에 표시한다", () => {
   const html = render(make({ price: 1234567890, priceUnset: false }));
   assert.match(html, /1,234,567,890/);
-  assert.match(html, /detail-meta[^]*detail-payment/);
+  assert.match(html, /detail-tenders[^]*detail-payment/);
   const money = html.split('class="detail-money"')[1]?.split('</div>')[0] ?? "";
   assert.doesNotMatch(money, /detail-payment/);
+});
+
+
+test("실제 수납수단: 카드·현금·이체와 단체 공통 수납의 범위를 구분한다", () => {
+  const p = (id: string, method: "card" | "cash" | "transfer", amount: number) => ({ id, method, amount, bookingId: base.id, kind: "deposit" as const, bizDate: TODAY, createdAt: "" });
+  const b = make({ payments: [p("p1", "card", 30000), p("p2", "cash", 20000), p("p3", "transfer", 10000)] });
+  assert.equal(cardPaymentMethods(b, null).label, "카드·현금·이체");
+  assert.match(cardPaymentMethods(b, null).title, /카드30,000/);
+  assert.equal(cardPaymentMethods(make({ payments: [] }), null).label, "수납 기록 없음");
+  const c = CARD_CASES.find((x) => x.id === "C10")!;
+  const model = roomCardModel({ b: c.b, plat: c.plat, bookings: c.bookings, info: c.info, view: TODAY, today: TODAY });
+  const before = JSON.stringify(c);
+  assert.match(cardPaymentMethods(c.b, model).label, /^단체 /);
+  assert.equal(JSON.stringify(c), before);
+});
+
+test("인원은 객실의 기본값을 사용하고 저장된 인원은 우선하며 단체 라벨은 이름 위다", () => {
+  const settings = { ...s, types: [{ id: "actual", name: "트윈", baseGuests: 3, maxGuests: 4 }] };
+  const renderGuest = (guests: number | null) => renderToStaticMarkup(<NowRoomCard roomNo="602" roomType="트윈" roomTypeId="actual" color="#224488" booking={make({ guests, typeId: "sold" })} platform={{ id: "p", name: "에어비앤비", abbr: "에", onsite: false }} settings={settings} model={null} status={{label:"투숙 중",tone:"stay"}} group={null} showGroup onDetail={() => {}} onQuick={() => {}} onGuests={() => {}} onMemo={() => {}} memoCount={0}/>);
+  assert.match(renderGuest(null), /602 인원 3명 · 조회·수정/);
+  assert.match(renderGuest(2), /602 인원 2명 · 조회·수정/);
+  assert.match(renderGuest(null), /에어비앤비 결제/);
+  assert.doesNotMatch(renderGuest(null), />플랫폼<|detail-platform/);
+  const group: CardGroup = { id: "g", label: "G1", name: "실제 단체", color: "g1", count: 2, index: 1, lead: true, leadRoom: "602" };
+  const html = render(make(), group);
+  assert.ok(html.indexOf('class="detail-group g1"') < html.indexOf('class="detail-guest-line"'));
 });

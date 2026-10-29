@@ -376,7 +376,8 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [memo, setMemo] = useState(base?.memo ?? "");
   // 인원 · 추가 인원 금액 (판매 가격에 들어 있어요)
   const baseOf = (tid: string) => typeGuests(s.types.find((t) => t.id === tid)).base;
-  const [guests, setGuests] = useState<number>(base?.guests ?? baseOf(base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? ""));
+  const guestRoomType = req.openGuests && base?.roomId ? L.rooms.get(base.kind === "stay" ? roomOnNight(base, req.night ?? today) ?? base.roomId : base.roomId)?.typeId : null;
+  const [guests, setGuests] = useState<number>(base?.guests ?? baseOf(guestRoomType ?? base?.typeId ?? p.typeId ?? usableTypes(s.types)[0]?.id ?? ""));
   const gTouched = useRef(!!base?.guests);
   const [extraFee, setExtraFee] = useState<number>(base?.extraFee ?? 0);
   const [xManual, setXManual] = useState(false);
@@ -1171,6 +1172,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [confirmDel, setConfirmDel] = useState(false);
   const [dayuseWarn, setDayuseWarn] = useState<{ message: string; again: boolean; override?: Status } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const guestsRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLInputElement>(null);
   // PC 크롬·엣지는 날짜 칸을 눌러도 달력 아이콘이 아니면 달력이 안 열려요 → 직접 열어 줘요
   const openPicker = (el: HTMLInputElement) => {
@@ -1182,7 +1184,10 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   };
 
   useEffect(() => {
-    nameRef.current?.focus();
+    if (req.openGuests) {
+      guestsRef.current?.scrollIntoView({ block: "center" });
+      guestsRef.current?.focus({ preventScroll: true });
+    } else nameRef.current?.focus();
   }, []);
 
   const liveCharges = (base ? data.bookings.find((x) => x.id === base.id)?.charges : null) ?? base?.charges ?? [];
@@ -1307,7 +1312,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   }, [sur.total]);
   // 새 예약: 인원을 안 건드렸으면 타입을 바꿀 때 기본 인원으로
   useEffect(() => {
-    if (!gTouched.current) setGuests(baseOf(typeId));
+    if (!gTouched.current) setGuests(baseOf(guestRoomType ?? typeId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId]);
   const setXFee = (v: number, manual: boolean) => {
@@ -2933,7 +2938,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           </div>
         </div>
 
-        <AdvWrap on={!isNew && !sur.over} label={`회사·인원 · ${company.trim() || "회사 미입력"} · ${guests}명${extraFee > 0 ? ` · 추가 ${won(extraFee)}원` : ""}`}>
+        <AdvWrap on={!isNew && !sur.over && !req.openGuests} label={`회사·인원 · ${company.trim() || "회사 미입력"} · ${guests}명${extraFee > 0 ? ` · 추가 ${won(extraFee)}원` : ""}`}>
         <div className="fld">
           <label htmlFor="entry-company">회사명</label>
           <div className="payb">
@@ -2950,7 +2955,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           </div>
         </div>
 
-        <div className="fld gfld">
+        <div className="fld gfld" ref={guestsRef} tabIndex={-1} role="group" aria-label="이용 인원 수정">
           <label>인원</label>
           <div className="payb">
             <Stepper
@@ -2968,7 +2973,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                 ) : sur.line ? (
                   <span className="gline">{sur.line}</span>
                 ) : (
-                  <span className="muted">기본 {typeGuests(s.types.find((t) => t.id === typeId)).base}명 · 넘으면 1명마다 추가 요금</span>
+                  <span className="muted">기본 {typeGuests(s.types.find((t) => t.id === (guestRoomType ?? typeId))).base}명 · 넘으면 1명마다 추가 요금</span>
                 )}
               </span>
             </Stepper>
