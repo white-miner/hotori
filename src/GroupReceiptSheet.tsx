@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import ModalTabs, { ModalTabPanel } from "./ModalTabs";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { type Booking, md, won } from "../shared/ledger";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, type BookPayMethod, type Payment } from "../shared/payment";
@@ -59,6 +60,7 @@ export default function GroupReceiptSheet({
   onClose: () => void;
   onEditSchedule?: () => void;
 }) {
+  const [tab, setTab] = useState("register"), scope = useId();
   const ledger = useMemo(() => groupLedger(members, groupLump, today, { extras }), [members, groupLump, today, extras]);
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const [amountEdit, setAmountEdit] = useState<string | null>(null);
@@ -114,14 +116,14 @@ export default function GroupReceiptSheet({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !busy) {
         e.preventDefault();
         onClose();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   return (
     <div className="dim assign-type-dim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
@@ -134,11 +136,13 @@ export default function GroupReceiptSheet({
             닫기
           </button>
         </div>
-        <div className="mb">
+        <ModalTabs scope={scope} label="단체 결제 업무" value={tab} onChange={setTab} disabled={busy} tabs={[{id:"register",label:"결제 등록"},{id:"charges",label:"청구 근거"},{id:"payments",label:"결제 내역"},...(!readOnly ? [{id:"manage",label:"객실 관리"}] : [])]} actions={onEditSchedule && !readOnly ? <button type="button" className="btn line" disabled={busy} onClick={onEditSchedule}>일정·요금 수정</button> : null} />
+        <div className="mb modal-task-body">
           <div className={`grc-sum ${tone}`} aria-label="단체 결제 현황" aria-live="polite">
             <b className="grc-bal">{balanceLabel(ledger)}</b>
             <span>{diffLine(ledger)}</span>
           </div>
+          <ModalTabPanel scope={scope} id="register" active={tab}>
           {done ? (
             <div className="gpp-done" role="status">
               <span className="gpp-done-ic"><Check size={22} /></span>
@@ -186,9 +190,12 @@ export default function GroupReceiptSheet({
             </>
           )}
 
-          {onEditSchedule && !readOnly ? <button type="button" className="btn line" disabled={busy} onClick={onEditSchedule}>날짜별 객실·요금 수정</button> : null}
+          </ModalTabPanel>
+          <ModalTabPanel scope={scope} id="charges" active={tab}>
           <GroupCharges ledger={ledger} today={today} roomLabel={(id) => { const b = byId.get(id); return b ? roomLabel(b) : "객실"; }} readOnly />
 
+          </ModalTabPanel>
+          <ModalTabPanel scope={scope} id="payments" active={tab}>
           <section className="grc-pays" aria-label="결제 내역">
             <div className="gch-h">
               <b>결제 내역</b>
@@ -205,9 +212,11 @@ export default function GroupReceiptSheet({
             ) : null}
           </section>
 
+          </ModalTabPanel>
+          <ModalTabPanel scope={scope} id="manage" active={tab}>
           {!readOnly ? (
-            <details className="gpp-more">
-              <summary>객실 관리 · 대표객실 · 뱃지 색{lead ? ` — 대표객실 ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</summary>
+            <section className="gpp-more">
+              <h3>대표객실·단체 색상{lead ? ` · ${roomLabel(lead)}${leadPinned ? "" : " (자동)"}` : ""}</h3>
               <div className="gpp-lead-pick">
                 {onLeave ? (
                   <div className="grc-leave">
@@ -242,12 +251,13 @@ export default function GroupReceiptSheet({
                   </span>
                 ) : null}
               </div>
-            </details>
+            </section>
           ) : null}
+          </ModalTabPanel>
           {err ? <div className="ferr">{err}</div> : null}
         </div>
         <div className="mf assign-type-acts gpp-acts">
-          {done ? (
+          {tab !== "register" ? <><button type="button" className="btn line" disabled={busy} onClick={onClose}>닫기</button><button type="button" className="btn dark" disabled={busy} onClick={()=>setTab("register")}>결제 등록으로</button></> : done ? (
             <>
               <button type="button" className="btn line" disabled={busy} onClick={() => void undo()}>
                 방금 결제 등록 취소
