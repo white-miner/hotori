@@ -108,6 +108,8 @@ export interface EntryRequest {
   openSurcharge?: boolean;
   /** 객실 카드 인원 버튼: 기존 예약 수정의 인원 항목으로 바로 이동 */
   openGuests?: boolean;
+  /** 상태 변경 모달에서 기존 중도 퇴실·잔액 처리 폼으로 직접 이동 */
+  openEarlyOut?: boolean;
   /** 간단 예약 축약 폼 (미배정/즉시 배정) */
   simple?: boolean;
   /** 「현황」공실 복수선택 → Path B 호실 prefill (다타입 OK · #70) */
@@ -339,7 +341,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           today={today}
           selDate={selDate}
           setSelDate={setSelDate}
-          onOpen={(b, night, opts) => setEntry({ booking: b, night, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge, openGuests: opts?.openGuests })}
+          onOpen={(b, night, opts) => setEntry({ booking: b, night, openExtend: opts?.openExtend, openSurcharge: opts?.openSurcharge, openGuests: opts?.openGuests, openEarlyOut: opts?.openEarlyOut })}
           onNew={openNew}
           onSimple={openSimple}
           notify={notify}

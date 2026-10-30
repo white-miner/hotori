@@ -6583,6 +6583,20 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-page .detail-due-line { text-align:left; min-height:22px; flex:none; font-size:15px; }
 .room-details-contract { margin:12px 0; padding:12px; border:1px solid #cbd4de; border-radius:10px; }
 .room-details-contract>div { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #e6e9ee; }
+.dim.rw-dim { justify-content:center; align-items:center; padding:24px; z-index:62; overflow:hidden; }
+.modal.rw-modal { width:820px; max-height:calc(100dvh - 48px); display:flex; flex-direction:column; padding:22px; box-shadow:0 12px 40px #0002; }
+.rw-modal .mh { justify-content:space-between; flex:none; margin-bottom:12px; }.rw-modal h2 { display:flex; gap:10px; align-items:center; }.rw-modal .detail-number { border-radius:6px; padding:2px 7px; font-size:27px; }
+.rw-context { border:1px solid #d5dce5; background:#f7f9fb; border-radius:10px; padding:10px 12px; font-size:15px; flex:none; }.rw-context>span { display:block; color:#59616d; }.rw-context p { margin:6px 0 0; }
+.rw-tabs { display:flex; gap:6px; padding:12px 0; flex:none; overflow-x:auto; }.rw-tabs button { min-height:42px; padding:8px 12px; border:1px solid #cfd6e0; border-radius:8px; white-space:nowrap; font-size:15px; }.rw-tabs button[aria-selected=true] { color:#fff; background:#252a32; border-color:#252a32; }
+.rw-body { min-height:0; overflow:auto; font-size:16px; line-height:1.5; padding:2px 3px; flex:1; }.rw-body h3 { font-size:18px; margin:12px 0 8px; }.rw-body p { margin:10px 0; }
+.rw-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }.rw-actions .btn { min-height:46px; font-size:16px; border-radius:9px; }.rw-actions .btn:disabled { opacity:.4; }
+.rw-table { overflow:auto; max-height:360px; border:1px solid #d6dce5; border-radius:9px; }.rw-table table { width:100%; min-width:490px; border-collapse:collapse; }.rw-table th,.rw-table td { padding:9px 10px; text-align:left; border-bottom:1px solid #e0e5eb; }.rw-table thead { position:sticky; top:0; background:#f2f5f8; }
+.rw-pays,.rw-candidates { padding:0; list-style:none; }.rw-pays li { display:flex; justify-content:space-between; gap:10px; padding:10px; border:1px solid #d4dce6; border-radius:8px; margin:7px 0; }.rw-pays small { display:block; color:#59616d; }
+.rw-assign-tools { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }.rw-assign-tools input[type=search] { min-height:42px; border:1px solid #c8d0db; border-radius:8px; padding:8px 10px; font-size:16px; }.rw-candidates li { border:1px solid #cbd4df; border-radius:10px; padding:12px; margin:10px 0; }.rw-candidates span,.rw-candidates small { display:block; }.rw-candidates small { color:#59616d; }.rw-candidates .btn { margin:8px 8px 0 0; min-height:42px; }
+.rw-modal .mf { flex:none; flex-wrap:wrap; margin-top:12px; }.rw-modal :is(button,input):focus-visible { outline:3px solid #2864d7; outline-offset:2px; }
+.now-page .room-assignment { border-color:#bdc7d4; cursor:default; }.now-page .room-assignment.assign-ok { border:2px solid #62a97b; }.now-page .room-assignment.assign-off { opacity:1; background:#f6f7f9; }
+.assignment-empty { display:flex; flex:1; flex-direction:column; justify-content:center; padding:12px; gap:7px; font-size:16px; }.assignment-empty>b { font-size:21px; }.assignment-empty p { margin:0; }.assignment-empty span,.assignment-empty small { color:#536073; font-size:14px; }.assignment-action { grid-template-columns:1fr!important; }.now-page .assignment-action button { color:#17653a; font-weight:750; }
+@media(max-width:700px) { .dim.rw-dim { padding:8px; }.modal.rw-modal { max-height:calc(100dvh - 16px); padding:14px; }.rw-actions { grid-template-columns:1fr; } }
 .ge-members { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
 .ge-member { border:1px solid #cbd3df; border-radius:10px; padding:12px; }.ge-member h4 { margin:0 0 5px; }.ge-member .btn { min-height:40px; margin:5px 5px 0 0; }
 .ge-member table { width:100%; font-size:14px; }.ge-member small { display:block; color:#59616d; }

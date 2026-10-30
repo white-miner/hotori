@@ -1,7 +1,6 @@
 import { receiptBatch } from "../shared/receiptBatch";
 import { createPaymentLines, type CreatePaymentLine } from "../shared/payment";
 import { useCreateReceipts } from "./useCreateReceipts";
-import { nowStatusAction } from "../shared/nowboard";
 import { changesFor, extendSummary, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
 import ChangeLogSheet from "./ChangeLogSheet";
 import { parkingMark } from "../shared/parking";
@@ -206,6 +205,9 @@ import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
 import { pastelColor } from "../shared/floorColor";
 import NowRoomCard, { type CardGroup } from "./NowRoomCard";
+import AssignmentRoomCard from "./AssignmentRoomCard";
+import RoomWorkSheet, { type RoomWorkTab } from "./RoomWorkSheet";
+import { assignmentRoom, assignableBooking } from "../shared/roomWork";
 import NowGroupBar from "./NowGroupBar";
 import { useCardGroups } from "./useCardGroups";
 import { detailedStatus, orderedGroupMembers } from "../shared/detailedRoomCard";
@@ -246,7 +248,7 @@ interface Props {
   today: string;
   selDate: string;
   setSelDate: (d: string) => void;
-  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean; openGuests?: boolean }) => void;
+  onOpen: (b: Booking, night?: string, opts?: { openExtend?: boolean; openSurcharge?: boolean; openGuests?: boolean; openEarlyOut?: boolean }) => void;
   onNew: (preset: Partial<Booking>) => void;
   /** 간단 예약 축약 폼 (기본 Path A · 미배정 · roomIds=현황 복수선택 Path B) */
   onSimple?: (preset?: Partial<Booking>, opts?: { roomIds?: string[] }) => void;
@@ -548,6 +550,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const [moveSchedFor, setMoveSchedFor] = useState<Booking | null>(null);
   /** 기록 정정 시트 (단체면 groupId, 개인이면 bookingId) */
   const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null; focusKey?: string | null } | null>(null);
+  const [roomWork, setRoomWork] = useState<{ roomId: string; bookingId: string | null; date: string; color: string; tab: RoomWorkTab } | null>(null);
   const [leaveBkId, setLeaveBkId] = useState<string | null>(null);
   /** 메모 · 기록 시트 (단체 또는 예약 하나) */
   const [logScope, setLogScope] = useState<{ groupId: string | null; bookingIds: string[]; title: string } | null>(null);
@@ -714,6 +717,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           );
           return (
             <OverbookSubModal
+              key={`${ot.id}:${night}`}
               s={s}
               overType={ot}
               date={night}
@@ -1427,7 +1431,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const pfCls = (b: Booking | null | undefined) => (pfDimOf(b) ? "pf-dim" : "");
   const assignBk = useMemo(() => {
     if (!assigning) return null;
-    return bookings.find((x) => x.id === assigning && isActive(x) && !x.roomId) ?? null;
+    return bookings.find((x) => x.id === assigning && assignableBooking(x)) ?? null;
   }, [assigning, bookings]);
 
   const assignFree = useMemo(
@@ -3040,6 +3044,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return { id: g.id, label: g.label, name: g.name, color: g.color, index: g.members.findIndex((x) => x.id === b.id) + 1, count: g.members.length, lead: g.lead?.id === b.id, leadRoom: rid ? `${L.roomLabel(rid)}호` : "미배정" };
   };
   const nowCell = (r: (typeof s.floors)[number]["rooms"][number], color: string) => {
+    if (!mvB && assignBk) return <AssignmentRoomCard key={r.id} roomId={r.id} roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} color={color} booking={assignBk} option={assignmentRoom(s, bookings, assignBk, r.id, assignFree ?? new Set())} busy={assignBusy} onAssign={() => requestAssign(assignBk, r.id)} />;
     const stay = nowBoardMap.get(r.id) ?? null;
     const du = nowDayuseByRoom.get(r.id) ?? [];
     // 대실도 실제 예약 필드를 상세 표시한다. 숙박과 병행하는 예약은 별도 입구를 남긴다.
@@ -3049,29 +3054,23 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const shown = b ?? cx;
     const group = cardGroupOf(b);
     if (onlyGroups && !group && !mvB && !assignBk) return null;
-    const f = b?.kind === "stay" ? nowFlags(b, viewDate, nowOpts) : null;
     if (nowFilter === "tentative" && !b?.tentative) return null;
     const hold = !b ? holdOnNight(s.roomHolds ?? [], r.id, viewDate) : null;
     const model = b ? cardModelOf(b, L.plats.get(b.platformId), viewDate, today) : null;
-    const status = detailedStatus(b, viewDate, nowOpts, !!hold);
+    const status = detailedStatus(b, viewDate, nowOpts, !!hold, today);
     const glance = glanceByRoom.get(r.id);
     const { mvCls, mvClick, mvAttr } = mvCellBits(r);
     const assignMode = !mvB && !!assignBk;
     const canAssign = assignMode && assignEligible.has(r.id) && !hold;
     const assignCls = assignMode ? canAssign ? "assign-ok" : "assign-off" : "";
-    const quick = () => { setNightPopId(null); setSelectedRoomIds([r.id]); setSideMode("room"); sbx.reveal(); };
+    const openWork = (tab: RoomWorkTab) => { if (readOnly || mvB) return; setNightPopId(null); setRoomWork({ roomId: r.id, bookingId: shown?.id ?? null, date: viewDate, color, tab }); };
+    const quick = () => openWork("quick");
     const click = mvClick ?? (() => {
       if (assignMode) { if (canAssign) requestAssign(assignBk!, r.id); return; }
       if (cx) { onOpen(cx, viewDate); return; }
       selectRoom(r.id);
     });
-    const statusTap = b && f && !readOnly ? () => {
-      const action = nowStatusAction(b, viewDate, today, nowOpts, !!mvB);
-      if (action === "detail") { onOpen(b, viewDate); return; }
-      if (action === "checkout") { void doCheckOut(b, true); return; }
-      if (action === "arrive") { void markArrivedFromStatus(b); return; }
-      quick();
-    } : undefined;
+    const statusTap = !readOnly ? () => openWork("status") : undefined;
     const popOpen = !!b && nightPopId === b.id;
     const scheduled = b ? nextMove(b, viewDate) : null;
     const dueMove = b && liveDay ? moveDueToday(b, today, data.changes) : null;
@@ -3195,7 +3194,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       />
     );
     /** 상태 범례 — 건물명 행 우측 · 페이지 하단 금지 */
-    const nowLegend = <div className="detail-legend" aria-label="상태 범례">
+    const nowLegend = assignBk ? <div className="detail-legend"><span className="detail-status available">배정 가능</span><span className="detail-status neutral">배정 불가 · 예약 전체 기간 기준</span></div> : viewDate < today ? <div className="detail-legend"><span className="detail-status neutral">이용완료 · 해당 날짜 이용 기록</span><span>실제 현재 상태는 상태 칩에서 확인</span></div> : <div className="detail-legend" aria-label="상태 범례">
       <span className="detail-status stay">투숙 중</span><span className="detail-status dayuse">대실</span><span className="detail-status available">판매가능</span><span className="detail-status departing">퇴실예정</span>
       <span className="detail-status neutral">입실예정·판매중지 별도 표시</span>
     </div>;
@@ -3226,7 +3225,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             <div>
               <h1>현황</h1>
               <div className="bdh-s">
-                영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 사이드바 열기
+                영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 객실 업무 모달 열기
               </div>
             </div>
 
@@ -3235,8 +3234,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           {!mvB && assignBk ? (
             <div className="now-assign-banner" role="status">
               <span>
-                <b>{assignBk.guestName}</b>
-                {` · ${typeLabel(L.types.get(assignBk.typeId))} · 칸 체크 → 배정`}
+                <b>배정 전용 모드 · {assignBk.guestName}</b>
+                {` · ${typeLabel(L.types.get(assignBk.typeId))} · ${dayLabel(assignBk.checkIn)}~${dayLabel(stayEnd(assignBk))} 전체 기간 기준`}
                 {assignBk.nights ? ` · ${assignBk.nights}박` : ""}
               </span>
               <button type="button" className="btn sm line" onClick={() => setAssigningMode(null)}>
@@ -3250,16 +3249,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               <div className="board-chrome-sticky">
                 <div className="board-filter-sticky">
                   {buildingTabs}
-                  {guestSearchBar}
-                  {platformFilterBar}
+                  {!assignBk ? guestSearchBar : null}
+                  {!assignBk ? platformFilterBar : null}
                 </div>
-                {nowGlance}
+                {!assignBk ? nowGlance : null}
               </div>
               {floorChips}
-              <NowGroupBar data={data} groups={cardGroupViews} selected={highlightGroup} onlyGroups={onlyGroups} showLinks={showGroupLinks} readOnly={readOnly}
+              {!assignBk ? <NowGroupBar data={data} groups={cardGroupViews} selected={highlightGroup} onlyGroups={onlyGroups} showLinks={showGroupLinks} readOnly={readOnly}
                 roomLabel={(b) => { const rid = roomForNowBoard(b, viewDate) ?? b.roomId; return rid ? `${L.roomLabel(rid)}호` : "미배정"; }}
                 onSelect={setHighlightGroup} onOnlyGroups={setOnlyGroups} onShowLinks={setShowGroupLinks} onManage={openGroupPay}
-                candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} />
+                candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} /> : null}
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
                   <section key={bd.id} className="bblock" style={{ ["--floor-columns" as string]: Math.max(1, ...fl.map((f) => f.rooms.length)) }}>
@@ -3267,7 +3266,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
                       {multi ? (
                         <span className="bname-n">
-                          숙박 {nowNightIn(fl)}/{roomsIn(fl)}
+                          {assignBk ? `배정 가능 ${fl.flatMap(f=>f.rooms).filter(r=>assignEligible.has(r.id)).length}/${roomsIn(fl)}` : `숙박 ${nowNightIn(fl)}/${roomsIn(fl)}`}
                         </span>
                       ) : null}
                       {gi === 0 ? nowLegend : null}
@@ -3667,6 +3666,27 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {joinGroupId ? renderJoin(joinGroupId) : null}
 {renderMoveSched()}
       {renderRecord()}
+      {roomWork && !readOnly ? <RoomWorkSheet data={data} roomId={roomWork.roomId} bookingId={roomWork.bookingId} date={roomWork.date} today={today} color={roomWork.color} initialTab={roomWork.tab}
+        onClose={() => setRoomWork(null)}
+        onSidebar={() => { setSelectedRoomIds([roomWork.roomId]); setSideMode("room"); sbx.reveal(); }}
+        onStay={() => setStaySale({ roomIds: [roomWork.roomId], roomLabels: [L.roomLabel(roomWork.roomId) ?? "호실"], occupied: null })}
+        onDayuse={() => { const r = L.rooms.get(roomWork.roomId); if (r?.typeId) setDayuseSale({ roomId: r.id, typeId: r.typeId, roomLabel: L.roomLabel(r.id) ?? r.no }); }}
+        onAssignmentMode={b => setAssigningMode(b.id)}
+        onAssign={b => void (async () => {
+          const rid = roomWork.roomId;
+          const ok = await askConfirm({ title: "객실 배정 확인", body: `${b.guestName} · ${dayLabel(b.checkIn)}~${dayLabel(stayEnd(b))} · ${L.roomLabel(rid)}호에 배정합니다. 기존 이용 기록은 삭제하지 않습니다.`, confirmLabel: "배정 진행" });
+          if (!ok) return;
+          const live = bookingsRef.current.find(x=>x.id===b.id);
+          if (!live || !assignmentRoom(s, bookingsRef.current, live, rid).eligible) { notify("예약이나 객실 상태가 변경됐습니다. 배정 전용 모드에서 다시 확인해 주세요."); return; }
+          requestAssign(live, rid);
+        })()}
+        onArrive={b => void markArrivedFromStatus(b)} onCheckout={b => void doCheckOut(b, true)}
+        onEarlyOut={b => onOpen(b, roomWork.date, { openEarlyOut: true })}
+        onEndDayuse={b => void doEndDayuse(b)} onUndoCheckout={b => void doUndoCheckOut(b)}
+        onEdit={b => onOpen(b, roomWork.date)}
+        onRates={b => setRecordFor({ groupId: null, bookingId: b.id, focusKey: `in-${b.id}` })}
+        onFinance={b => b.groupId ? setEvidenceGroupId(b.groupId) : setRecordFor({ groupId: null, bookingId: b.id })}
+      /> : null}
       {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
       {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}
         onHighlight={() => { setHighlightGroup(evidenceGroupId); setEvidenceGroupId(null); }}
