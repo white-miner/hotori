@@ -6602,3 +6602,25 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .ge-member table { width:100%; font-size:14px; }.ge-member small { display:block; color:#59616d; }
 @media(max-width:600px) { .ge-members { grid-template-columns:1fr; } }
 @media(max-width:800px) { .dim.gs-dim,.dim.ge-dim { padding:8px; }.modal.gs-modal { height:calc(100dvh - 16px); padding:14px; }.modal.ge-modal { max-height:calc(100dvh - 16px); padding:14px; }.gs-tools>div { justify-content:flex-start; }.gs-table th:first-child { min-width:210px; }.gs-foot .btn { padding:9px 12px; } }
+
+/* 업무별 팝업 탐색: 머리글·목적 탭·저장 출구는 고정, 선택 본문만 스크롤 */
+.modal-task-nav { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:10px 0 12px; border-bottom:1px solid #d8dde5; margin-bottom:12px; background:#fff; }
+.modal-task-tabs { display:flex; flex-wrap:wrap; gap:6px; }
+.modal-task-tabs>[role=tab] { min-height:44px; padding:9px 13px; border:1px solid #d0d6df; border-radius:9px; background:#fff; color:#384252; font-size:15px; font-weight:700; white-space:nowrap; }
+.modal-task-tabs>[role=tab][aria-selected=true] { color:#fff; background:#252a32; border-color:#252a32; }
+.modal-task-shortcuts { display:flex; flex-wrap:wrap; gap:6px; }
+.modal-task-shortcuts .btn { min-height:42px; padding:8px 12px; font-size:14px; }
+.modal-task-nav button:focus-visible,.modal-task-panel:focus-visible { outline:3px solid #2864d7; outline-offset:2px; }
+.modal-task-panel { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.modal-task-panel[hidden],.modal-task-body [hidden] { display:none!important; }
+.modal-task-body { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; padding:2px 4px 8px 0; }
+.modal.ge-modal { height:min(860px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); width:min(1100px,100%); }
+.modal.grc-modal,.modal.rec-modal,.modal.payment-desk-modal { display:flex; flex-direction:column; height:min(860px,calc(100dvh - 48px)); max-height:calc(100dvh - 48px); overflow:hidden; width:min(900px,100%); }
+:is(.ge-modal,.grc-modal,.rec-modal,.payment-desk-modal)>.mh,:is(.ge-modal,.grc-modal,.rec-modal,.payment-desk-modal)>.mf { flex:none; }
+:is(.grc-modal,.rec-modal,.payment-desk-modal)>.mf { position:static; }
+.ge-overview { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.ge-overview button { display:flex; flex-direction:column; gap:8px; padding:18px 14px; border:1px solid #cbd4df; border-radius:10px; text-align:left; background:#fff; }
+.ge-overview button span { color:#59616d; font-size:15px; }.ge-overview button b { font-size:23px; font-variant-numeric:tabular-nums; }
+.rec-task-help { color:#59616d; font-size:14px; margin:0; }
+.gs-review-list { list-style:none; padding:0; }.gs-review-list li { border:1px solid #cbd4df; padding:12px; border-radius:10px; margin-bottom:10px; }.gs-review-list small { display:block; }
+@media(max-width:800px) { .modal.ge-modal,.modal.grc-modal,.modal.rec-modal,.modal.payment-desk-modal { height:calc(100dvh - 16px); max-height:calc(100dvh - 16px); }.modal-task-tabs>[role=tab] { padding:8px 10px; }.modal-task-nav { gap:8px; }.ge-overview { grid-template-columns:1fr; }.ge-overview button { flex-direction:row; align-items:center; justify-content:space-between; } }

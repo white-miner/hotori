@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import ModalTabs, { ModalTabPanel } from "./ModalTabs";
+import { useId, useMemo, useRef, useState } from "react";
 import { addDays, dayLabel, daysBetween, fitSegments, roomOnNight, STAY_NIGHTS_MAX, stockTable, type Booking, won } from "../shared/ledger";
 import { balanceLabel, groupLedger } from "../shared/groupLedger";
 import { extrasTotal, occupiedNightDates } from "../shared/nightrates";
@@ -10,6 +11,7 @@ import { askConfirm } from "./ConfirmDialog";
 export default function GroupScheduleSheet({ data, groupId, today, onClose, onSaved }: {
   data: HotelData; groupId: string; today: string; onClose: () => void; onSaved: (message: string) => void;
 }) {
+  const [tab, setTab] = useState("rooms"), scope = useId();
   const s = data.hotel!.settings, L = lookups(s);
   const membersNow = data.bookings.filter(b => b.groupId === groupId);
   const [base, setBase] = useState(() => membersNow);
@@ -88,10 +90,12 @@ export default function GroupScheduleSheet({ data, groupId, today, onClose, onSa
   return <div className="dim gs-dim" onMouseDown={e => e.target === e.currentTarget && void close()}>
     <section className="modal gs-modal" role="dialog" aria-modal="true" aria-label="단체 일정·요금 수정" onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); void close(); } }}>
       <div className="mh"><div><h2>단체 일정·요금 수정</h2><span className="muted">{name} · {base.length}개 예약</span></div><button type="button" className="x" aria-label="닫기" autoFocus disabled={busy} onClick={() => void close()}>닫기</button></div>
-      <div className="gs-body">
+      <ModalTabs scope={scope} label="단체 일정·요금 업무" value={tab} onChange={setTab} disabled={busy} tabs={[{id:"rooms",label:"객실별 일정·요금"},{id:"daily",label:"날짜별 객실 수"},{id:"review",label:"변경 확인"}]} />
+      <div className="gs-body modal-task-body">
         <p className="gs-help">퇴실할 객실의 날짜를 바꾸거나 ±1박으로 연장하세요. 표의 ‘이날 퇴실’은 그날 밤부터 제외합니다. 새로 늘어난 박의 요금은 직접 입력합니다.</p>
         <div className="gs-money" aria-label="일정 수정 전후 금액"><span>청구 <b>{won(beforeLedger.due)} → {invalid ? "요금 입력 중" : `${won(afterLedger.due)}원`}</b></span><span>기존 결제 <b>{won(afterLedger.paid)}원 유지</b></span><strong>{invalid ? "요금 입력 완료 후 잔액 계산" : balanceLabel(afterLedger)}</strong></div>
         <div className="gs-tools"><label>객실 타입 <select aria-label="일정 객실 타입" value={typeFilter} disabled={busy} onChange={e => setTypeFilter(e.target.value)}><option value="">전체</option>{s.types.filter(t => base.some(b => b.typeId === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label><div><button type="button" className="btn line" onClick={() => setAnchor(addDays(anchor, -7))}>이전 7일</button><label>표 시작일 <input type="date" aria-label="표 시작일" value={anchor} onChange={e => e.target.value && setAnchor(e.target.value)} /></label><button type="button" className="btn line" onClick={() => setAnchor(addDays(anchor, 7))}>다음 7일</button></div></div>
+        <ModalTabPanel scope={scope} id="rooms" active={tab}>
         <div className="gs-scroll"><table className="gs-table"><caption>객실별 퇴실일과 날짜별 숙박 요금 (원)</caption><thead><tr><th scope="col">객실 · 예정 퇴실</th>{dates.map(d => <th key={d} scope="col">{dayLabel(d)}</th>)}<th scope="col">객실 총액</th></tr></thead><tbody>
           {rows.filter(r => !typeFilter || r.b.typeId === typeFilter).map(({ b, edit, plan, reason, dirty }) => {
             const roomName = label(b), initial = scheduleEdit(b), complete = Object.values(initial.rates).every(v => v != null);
@@ -102,12 +106,19 @@ export default function GroupScheduleSheet({ data, groupId, today, onClose, onSa
             </tr>;
           })}
         </tbody></table></div>
+        </ModalTabPanel>
+        <ModalTabPanel scope={scope} id="daily" active={tab}>
         <section className="gs-daily" aria-label="수정 후 날짜별 객실 수·요금"><h3>날짜별 숙박 객실·요금</h3><p className="muted">위 객실별 일정과 약정 요금의 합입니다. 추가 항목·환불은 위 청구 합계에서 반영합니다. 예약은 삭제하거나 새로 만들지 않습니다.</p><div className="gs-scroll"><table><thead><tr><th>객실 타입</th>{dates.map(d => <th key={d}>{dayLabel(d)}</th>)}</tr></thead><tbody>{s.types.filter(t => preview.some(b => b.typeId === t.id) && (!typeFilter || t.id === typeFilter)).map(t => <tr key={t.id}><th>{t.name}</th>{dates.map(d => {
           const occupied = preview.filter(b => b.typeId === t.id && b.status === "active" && b.kind === "stay" && b.stayMode !== "long_stay" && d >= b.checkIn && d < (b.earlyOut || addDays(b.checkIn, b.nights ?? 0)));
           const amounts = occupied.map(b => { const row = rows.find(r => r.b.id === b.id); return row ? row.edit.rates[d] : b.nightRates?.nights?.[d]; });
           const missing = amounts.filter(v => v == null).length;
           return <td key={d}><b>{occupied.length}실</b><span>{missing ? `약정 미등록 ${missing}실` : `${won(amounts.reduce<number>((n, v) => n + (v ?? 0), 0))}원`}</span><small>호텔 잔여 {stock.get(t.id)?.get(d) ?? 0}실</small></td>;
         })}</tr>)}</tbody></table></div></section>
+        </ModalTabPanel>
+        <ModalTabPanel scope={scope} id="review" active={tab}>
+          <h3>저장할 변경 {pending.length}객실</h3>
+          {pending.length ? <ul className="gs-review-list">{pending.map(r=><li key={r.b.id}><b>{label(r.b)}</b><small>예정 퇴실 {dayLabel(addDays(r.b.checkIn,r.b.nights??1))} → {validDate(r.edit.out)?dayLabel(r.edit.out):"날짜 입력 중"}</small><small>객실 총액 {won(r.b.price)}원 → {r.plan.error ? r.plan.error : `${won(r.plan.patch?.price??r.b.price)}원`}</small><span>기존 수납 {(r.b.payments??[]).length}건·객실 배정 유지</span></li>)}</ul> : <p>변경한 객실이 없습니다. 객실별 일정·요금 탭에서 수정하세요.</p>}
+        </ModalTabPanel>
         {clashes.length ? <div className="ferr" role="status">연장 일정의 객실 겹침 {clashes.length}건 · {clashes.slice(0, 4).map(c => `${L.roomLabel(c.roomId)}호 ${dayLabel(c.date)}`).join(", ")}</div> : null}
         <p className="muted">박별 요금이 없는 기존 예약은 총액을 나누지 않습니다. 수정할 객실의 모든 박 요금을 입력하고 총액 변경을 선택하세요. 결제 취소·환불과 실제 체크아웃은 기존 업무에서 별도로 처리합니다.</p>
         {error ? <div className="ferr" role="alert">{error} <button type="button" className="btn line" disabled={busy} onClick={() => void reload()}>최신 일정 다시 불러오기</button></div> : null}

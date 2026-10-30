@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import ModalTabs, { ModalTabPanel } from "./ModalTabs";
+import { useId, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { saveFailMessage } from "../shared/errors";
 import { type Booking, type HotelSettings, addDays, daysBetween, dayLabel, md, STAY_NIGHTS_MAX, won } from "../shared/ledger";
@@ -88,6 +89,7 @@ export default function RecordSheet({
   });
   const advisories = recordAdvisories({ bookings: members, groupPayments: groupPays, ledger: ledger.roomCount ? ledger : null, roomName: roomNo });
 
+  const [tab, setTab] = useState(focusKey?.startsWith("in-") ? "stay" : "payments"), scopeId = useId();
   const [open, setOpen] = useState<string | null>(focusKey ?? null); // timeline key | "new"
   const [msg, setMsg] = useState<string | null>(null);
   const [undo, setUndo] = useState<Payment | null>(null);
@@ -155,50 +157,7 @@ export default function RecordSheet({
   const payOf = (id: string | null) => (id ? allPays.find((p) => p.id === id) ?? null : null);
   const sideOf = (r: TimelineRow) => (r.bookingId ? members.find((m) => m.id === r.bookingId) ?? null : null);
 
-  return (
-    <div className="dim assign-type-dim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal assign-type-modal gpp-modal rec-modal" role="dialog" aria-label="기록 정정" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="grab" />
-        <div className="mh">
-          <h2>{readOnly ? "결제 · 기록" : "기록 정정"}</h2>
-          <span className="muted sm gpp-gname">{name}</span>
-          <button type="button" className="x" aria-label="닫기" onClick={onClose}>닫기</button>
-        </div>
-        <div className="mb">
-          <div className="rec-sum">
-            <b>{ledger.roomCount ? balanceLabel(ledger) : `결제 ${won(lines.reduce((n, l) => n + l.amount, 0))}원`}</b>
-            <span className="muted sm">
-              {ledger.roomCount ? diffLine(ledger) : `${lines.length}건`}
-            </span>
-          </div>
-
-          {msg ? <div className="rec-ok" role="status">{msg}</div> : null}
-          {undo ? (
-            <div className="rec-undo" role="status">
-              <span>삭제했어요 · {PAYMENT_METHOD_LABEL[undo.method]} {won(undo.amount)}원</span>
-              <button type="button" className="btn line" onClick={() => void doUndo()}>되돌리기</button>
-            </div>
-          ) : null}
-          {err ? <div className="ferr">{err}</div> : null}
-
-          {readOnly ? null : open === "new" ? (
-            <PayEditor key="new" payment={null} members={live} groupId={groupId} today={today} roomName={bookingName} onCancel={() => setOpen(null)} onSave={(e) => doSave(null, e)} />
-          ) : (
-            <button type="button" className="btn dark rec-add" onClick={() => setOpen("new")}>
-              <Plus size={16} aria-hidden /> 빠진 결제 기록하기
-            </button>
-          )}
-
-          {advisories.length ? (
-            <ul className="rec-adv" aria-label="참고">
-              {advisories.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          ) : null}
-
-          <ol className="rec-tl" aria-label="기록 순서">
-            {rows.map((r) => {
+  const renderRow = (r: TimelineRow) => {
               const p = payOf(r.paymentId);
               const b = sideOf(r);
               const editable = !readOnly && (!!p || (!!b && r.kind !== "fix" && r.kind !== "move"));
@@ -240,9 +199,62 @@ export default function RecordSheet({
                   ) : null}
                 </li>
               );
-            })}
-            {!rows.length ? <li className="muted sm rec-empty">아직 기록이 없어요</li> : null}
+            };
+  return (
+    <div className="dim assign-type-dim" role="presentation" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal assign-type-modal gpp-modal rec-modal" role="dialog" aria-label="기록 정정" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="grab" />
+        <div className="mh">
+          <h2>{readOnly ? "결제 · 기록" : "기록 정정"}</h2>
+          <span className="muted sm gpp-gname">{name}</span>
+          <button type="button" className="x" aria-label="닫기" onClick={onClose}>닫기</button>
+        </div>
+        <ModalTabs scope={scopeId} label="기록 정정 업무" value={tab} onChange={setTab} tabs={[{id:"payments",label:"결제 내역·정정"},{id:"stay",label:"객실 일정·요금"},{id:"history",label:"변경 이력"}]} />
+        <div className="mb modal-task-body">
+          <div className="rec-sum">
+            <b>{ledger.roomCount ? balanceLabel(ledger) : `결제 ${won(lines.reduce((n, l) => n + l.amount, 0))}원`}</b>
+            <span className="muted sm">
+              {ledger.roomCount ? diffLine(ledger) : `${lines.length}건`}
+            </span>
+          </div>
+
+          {msg ? <div className="rec-ok" role="status">{msg}</div> : null}
+          {undo ? (
+            <div className="rec-undo" role="status">
+              <span>삭제했어요 · {PAYMENT_METHOD_LABEL[undo.method]} {won(undo.amount)}원</span>
+              <button type="button" className="btn line" onClick={() => void doUndo()}>되돌리기</button>
+            </div>
+          ) : null}
+          {err ? <div className="ferr">{err}</div> : null}
+
+          {advisories.length ? (
+            <ul className="rec-adv" aria-label="참고">
+              {advisories.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          {(["payments", "stay", "history"] as const).map(id => {
+            const filtered = rows.filter(r => id === "payments" ? r.kind === "pay" : id === "stay" ? ["checkin","join","checkout"].includes(r.kind) : ["move","fix"].includes(r.kind));
+            return <ModalTabPanel key={id} scope={scopeId} id={id} active={tab}>
+              <p className="rec-task-help">{id === "payments" ? "수납 금액·수단·날짜를 확인하거나 해당 결제 줄에서 정정합니다." : id === "stay" ? "객실별 입퇴실 일정과 박별 약정 요금을 선택해 수정합니다." : "객실 이동과 기록 정정 이력입니다. 결제·요금 수정은 각 탭에서 시작하세요."}</p>
+              {id === "payments" ? <>
+          {readOnly ? null : open === "new" ? (
+            <PayEditor key="new" payment={null} members={live} groupId={groupId} today={today} roomName={bookingName} onCancel={() => setOpen(null)} onSave={(e) => doSave(null, e)} />
+          ) : (
+            <button type="button" className="btn dark rec-add" onClick={() => setOpen("new")}>
+              <Plus size={16} aria-hidden /> 빠진 결제 기록하기
+            </button>
+          )}
+
+              </> : null}
+          <ol className="rec-tl" aria-label="기록 순서">
+            {filtered.map(renderRow)}
+            {!filtered.length ? <li className="muted sm rec-empty">아직 기록이 없어요</li> : null}
           </ol>
+            </ModalTabPanel>;
+          })}
         </div>
         <div className="mf assign-type-acts gpp-acts">
           <button type="button" className="btn line" onClick={() => void copy()}>{copied ? "복사했어요" : "결제 내역 복사"}</button>

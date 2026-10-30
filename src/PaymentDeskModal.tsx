@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import ModalTabs, { ModalTabPanel } from "./ModalTabs";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { type Booking, type HotelSettings, md, won } from "../shared/ledger";
 import type { GroupInfo } from "../shared/settle";
@@ -109,14 +110,37 @@ export default function PaymentDeskModal({
   const [creditId, setCreditId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const scope = useId();
+  const drafts = useRef<Partial<Record<Mode,string>>>({});
+  const deskKey = members.map(b=>b.id).sort().join(":");
   useEffect(() => {
-    if (glance.left > 0) setAmount(String(glance.left));
-    else setAmount("");
-    setKind("balance");
-    setMode("pay");
-    setCreditId(matchedCredits[0]?.id ?? null);
-    setErr(null);
-  }, [glance.left, first?.id, members.length, matchedCredits]);
+    setAmount(glance.left > 0 ? String(glance.left) : "");
+    setKind("balance"); setMode("pay"); setCreditId(matchedCredits[0]?.id ?? null); setErr(null);
+    drafts.current = {};
+    // 재조회로 새 배열이 와도 선택한 업무와 입력값은 유지. 대상 예약이 바뀔 때만 초기화.
+  }, [deskKey]);
+  const changeMode = (next: Mode) => {
+    if (busy || next === mode) return;
+    drafts.current[mode] = amount;
+    if (drafts.current[next] == null) {
+      if (next === "pay") drafts.current[next] = glance.left > 0 ? String(glance.left) : "";
+      else if (next === "surcharge") { drafts.current[next] = "0"; setCollect(false); }
+      else if (next === "credit") {
+        const c = matchedCredits[0];
+        const cap = c ? Math.min(c.amountRemaining, glance.left > 0 ? glance.left : c.amountRemaining) : 0;
+        drafts.current[next] = cap > 0 ? String(cap) : ""; setCreditId(c?.id ?? null);
+      }
+    }
+    setAmount(drafts.current[next] ?? ""); setMode(next); setErr(null);
+  };
+  useEffect(() => {
+    // 외부 재조회로 보관 잔액이 소진되거나 지원 업무가 사라져도 빈 화면에 남지 않는다.
+    if ((mode === "credit" && !canCredit) || (mode === "surcharge" && !canSurcharge)) {
+      drafts.current[mode] = amount;
+      setAmount(drafts.current.pay ?? (glance.left > 0 ? String(glance.left) : ""));
+      setMode("pay"); setErr(null);
+    }
+  }, [mode, canCredit, canSurcharge, amount, glance.left]);
 
   const submitPay = () => {
     if (busy) return;
@@ -227,7 +251,8 @@ export default function PaymentDeskModal({
             닫기
           </button>
         </div>
-        <div className="mb">
+        <ModalTabs scope={scope} label="데스크 모드" value={mode} onChange={changeMode} disabled={busy} tabs={[{id:"pay",label:"수납·선금"},...(canSurcharge ? [{id:"surcharge" as const,label:"할증"}] : []),...(canCredit ? [{id:"credit" as const,label:STAY_CREDIT_COPY.use}] : []),{id:"ledger",label:"결제 내역"}]} />
+        <div className="mb modal-task-body">
           <p>
             <b>{roomLabels.map((n) => `${n}호`).join(", ")}</b> · {guestLabel}
             {glance.group ? ` · ${glance.memberCount}실` : ""}
@@ -251,59 +276,7 @@ export default function PaymentDeskModal({
             </button>
           ) : null}
 
-          <ChipGroup role="group" aria-label="데스크 모드">
-            <Chip
-              sm
-              active={mode === "pay"}
-              disabled={busy}
-              onClick={() => {
-                setMode("pay");
-                setAmount(glance.left > 0 ? String(glance.left) : "");
-                setErr(null);
-              }}
-            >
-              수납 · 선금
-            </Chip>
-            {canSurcharge ? (
-              <Chip
-                sm
-                active={mode === "surcharge"}
-                disabled={busy}
-                onClick={() => {
-                  setMode("surcharge");
-                  // D: 받기 left를 할증 금액으로 재사용하지 않음 · 면제 기본 0 (원하면 시간×요금으로)
-                  setAmount("0");
-                  setCollect(false);
-                  setErr(null);
-                }}
-              >
-                할증
-              </Chip>
-            ) : null}
-            {canCredit ? (
-              <Chip
-                sm
-                active={mode === "credit"}
-                disabled={busy}
-                onClick={() => {
-                  setMode("credit");
-                  const c = matchedCredits[0];
-                  const cap = c ? Math.min(c.amountRemaining, glance.left > 0 ? glance.left : c.amountRemaining) : 0;
-                  setAmount(cap > 0 ? String(cap) : "");
-                  setCreditId(c?.id ?? null);
-                  setErr(null);
-                }}
-              >
-                {STAY_CREDIT_COPY.use}
-              </Chip>
-            ) : null}
-            <Chip sm active={mode === "ledger"} disabled={busy} onClick={() => { setMode("ledger"); setErr(null); }}>
-              내역
-            </Chip>
-          </ChipGroup>
-
-          {mode === "pay" ? (
-            <>
+          <ModalTabPanel scope={scope} id="pay" active={mode}>
               <div className="paytake">
                 <PriceInp sm>
                   <span className="pl">금액</span>
@@ -342,11 +315,10 @@ export default function PaymentDeskModal({
                   ))}
                 </ChipGroup>
               </div>
-            </>
-          ) : null}
+          </ModalTabPanel>
 
-          {mode === "credit" && canCredit ? (
-            <>
+          {canCredit ? (
+            <ModalTabPanel scope={scope} id="credit" active={mode}>
               <p className="muted sm">
                 매칭된 {STAY_CREDIT_COPY.balance} {matchedCredits.length}건 · 부분 사용 OK · 현금 환불과 별개
               </p>
@@ -392,11 +364,11 @@ export default function PaymentDeskModal({
                   />
                 </PriceInp>
               </div>
-            </>
+            </ModalTabPanel>
           ) : null}
 
-          {mode === "surcharge" ? (
-            <>
+          {canSurcharge ? (
+            <ModalTabPanel scope={scope} id="surcharge" active={mode}>
               <ChipGroup role="group" aria-label="할증 사유">
                 {PAYMENT_DESK_SURCHARGE_REASONS.map((r) => (
                   <Chip key={r} sm active={reason === r} disabled={busy} onClick={() => setReason(r)}>
@@ -461,10 +433,10 @@ export default function PaymentDeskModal({
                   </ChipGroup>
                 ) : null}
               </div>
-            </>
+            </ModalTabPanel>
           ) : null}
 
-          {mode === "ledger" ? (
+          <ModalTabPanel scope={scope} id="ledger" active={mode}>
             <div className="payment-desk-ledger" aria-label="결제 내역">
               {lines.length ? (
                 lines.map((line) => {
@@ -501,7 +473,7 @@ export default function PaymentDeskModal({
                 <p className="muted sm">단체는 내역에서 결제 내역을 삭제하거나, 단실로 「잔금 조정」를 써 주세요.</p>
               ) : null}
             </div>
-          ) : null}
+          </ModalTabPanel>
 
           {err ? <div className="ferr">{err}</div> : null}
         </div>
