@@ -13,7 +13,6 @@ import {
   STAY_SALE_CTA,
   STAY_SALE_SAVE,
   STAY_SALE_TITLE,
-  staySaleExtendPreview,
   staySaleNightsSummary,
   staySaleOtaPlatforms,
   staySalePlatformIdForMode,
@@ -52,6 +51,7 @@ export default function StaySaleModal({
   onCancel,
   onConfirmCreate,
   onConfirmOccupied,
+  onExtend,
 }: {
   s: HotelSettings;
   bookings: Booking[];
@@ -66,6 +66,7 @@ export default function StaySaleModal({
   onCancel: () => void;
   onConfirmCreate: (input: StaySaleCreateInput) => void;
   onConfirmOccupied: (input: StaySaleOccupiedInput) => void;
+  onExtend?: () => void;
 }) {
   const L = lookups(s);
   const [checkInDay, setCheckInDay] = useState(date ?? today);
@@ -90,7 +91,6 @@ export default function StaySaleModal({
   const [payMode, setPayMode] = useState<OnsitePayMode>("prepaid");
   const [depAmt, setDepAmt] = useState("");
   const [depMethod, setDepMethod] = useState<BookPayMethod>("card");
-  const [extend, setExtend] = useState(false);
   const [earlyH, setEarlyH] = useState(0);
   const [earlyAmt, setEarlyAmt] = useState("");
   const [earlyMethod, setEarlyMethod] = useState<EarlyInPayMethod>("service");
@@ -122,7 +122,6 @@ export default function StaySaleModal({
     setPayMode("prepaid");
     setDepAmt("");
     setDepMethod("card");
-    setExtend(false);
     setEarlyH(0);
     setEarlyAmt("");
     setEarlyMethod("service");
@@ -176,7 +175,6 @@ export default function StaySaleModal({
   const headLine = roomLabels.map((n, i) => `${n}호 · ${typeNames[i] ?? ""}`).join(" · ");
   const stayCompact = !isOcc ? staySaleNightsSummary(checkInDay, nights) : null;
 
-  const extendPrev = occupied ? staySaleExtendPreview(occupied, null) : null;
   const showExtend = isOcc && occupied && canExtend(occupied);
 
   const switchChannel = (next: StaySaleChannelMode) => {
@@ -193,14 +191,14 @@ export default function StaySaleModal({
 
   const submitOccupied = () => {
     if (busy || !occupied) return;
-    if (!extend && earlyH < 1 && lateH < 1) {
-      setErr("1박 연장 · 빠른 입실 · 늦은 퇴실 중 하나를 골라 주세요.");
+    if (earlyH < 1 && lateH < 1) {
+      setErr("빠른 입실 또는 늦은 퇴실을 고르세요. 연장은 날짜·요금 설정에서 진행합니다.");
       return;
     }
     setErr(null);
     onConfirmOccupied({
       bookingId: occupied.id,
-      extend,
+      extend: false,
       earlyInHours: earlyH || undefined,
       earlyInAmount: earlyMethod === "service" ? 0 : Number(earlyAmt || 0),
       earlyInMethod: earlyMethod,
@@ -574,21 +572,8 @@ export default function StaySaleModal({
           {showExtend ? (
             <div className="fld">
               <label>1박 연장</label>
-              <ChipGroup role="group" aria-label="1박 연장">
-                <Chip
-                  sm
-                  active={extend}
-                  disabled={busy}
-                  aria-pressed={extend}
-                  onClick={() => {
-                    setExtend((v) => !v);
-                    setErr(null);
-                  }}
-                >
-                  +1박
-                  {extendPrev ? ` · ${won(extendPrev.rate)}원` : ""}
-                </Chip>
-              </ChipGroup>
+              <button type="button" className="btn line" disabled={busy || !onExtend} onClick={onExtend}>연장 날짜·요금 설정</button>
+              <small className="muted">요금 입력과 결제 방식 확인 후 연장합니다. 무료는 서비스 선택.</small>
             </div>
           ) : null}
 

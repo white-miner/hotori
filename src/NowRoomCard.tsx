@@ -9,6 +9,7 @@ import { cardPaymentMethods, cardWeekdayDate, compactCardPeriodParts, detailedTi
 import { spacedPay } from "./RoomCardFacts";
 import { isOnsite, payState } from "../shared/payment";
 import { typeGuests } from "../shared/surcharge";
+import { cardCharges } from "../shared/cardCharges";
 
 export interface CardGroup {
   id: string; label: string; name: string; color: string;
@@ -20,6 +21,9 @@ export interface NowRoomCardProps {
   onDetail: () => void; onQuick: () => void; onStatus?: () => void; onGroup?: () => void; onPeriod?: () => void; onGuests?: () => void;
   periodPopup?: ReactNode; onMemo: () => void; memoCount: number; memoText?: string; notes?: ReactNode;
   hasAlerts?: boolean; readOnly?: boolean; busy?: boolean;
+  today?: string;
+  onEditCharges?: () => void;
+  onFinance?: () => void;
 }
 
 function cardFacts(p: NowRoomCardProps) {
@@ -28,7 +32,8 @@ function cardFacts(p: NowRoomCardProps) {
   const times = b ? detailedTimes(b, p.settings) : null;
   const snap = b ? payState(b, platform) : null;
   const groupPaid = model?.groupCtx ? [...(model.groupCtx.info?.payments ?? []), ...model.groupCtx.members.flatMap((m) => m.payments ?? [])].reduce((n, x) => n + x.amount, 0) : 0;
-  const payment = !active ? "—" : b.priceUnset ? "금액 미정" : group && model && !model.longStay
+  const priceReview = b ? cardCharges(b, model, platform, p.today ?? b.checkIn).needsPrice : false;
+  const payment = !active ? "—" : b.priceUnset ? "금액 미정" : priceReview ? "요금 확인 필요" : b.price === 0 ? "0원 약정" : group && model && !model.longStay
     ? model.tone === "paid" ? "결제 완료" : groupPaid > 0 ? "일부 결제" : "미결제"
     : !platform ? "경로 미지정" : !snap?.tracked ? "플랫폼 결제" : snap.full || snap.left <= 0 ? "결제 완료" : snap.paid > 0 ? "일부 결제" : "미결제";
   const guest = active ? group?.lead ? `${group.name} · 대표` : b.guestName || group?.name || "이름 미입력" : b ? b.guestName : "예약 없음";
@@ -59,17 +64,18 @@ export default function NowRoomCard(p: NowRoomCardProps) {
   const summaryGuest = active && group?.lead ? group.name : guest;
   const occupancy = cardOccupancy(p);
   const methods = b ? cardPaymentMethods(b, model) : null;
+  const charges = b ? cardCharges(b, model, platform, p.today ?? b.checkIn) : null;
   const ota = !!platform && !isOnsite(platform);
   const paymentLabel = payment === "플랫폼 결제" ? "완료" : shortPay;
   const tenderLabel = ota ? `${platform.name}${methods && (b?.payments?.length || model?.groupCtx) ? ` · ${methods.label}` : " 결제"}` : methods?.label;
   return <>
     <div className="detail-head">
       <div className="detail-identity">
-        <strong className="detail-number" style={{ background: roomNumberColor(color), color: "#FFFFFF" }}>{roomNo}</strong>
+        <button type="button" title={`${roomNo} 객실 상세 보기`} onClick={e => { e.stopPropagation(); setDetails(true); }}><strong className="detail-number" style={{ background: roomNumberColor(color), color: "#FFFFFF" }}>{roomNo}</strong></button>
         {onStatus ? <button type="button" className={`detail-status ${status.tone}`} onClick={(e) => { e.stopPropagation(); onStatus(); }}>{status.label}</button>
-          : <span className={`detail-status ${status.tone}`}>{status.label}</span>}
+          : <button type="button" className={`detail-status ${status.tone}`} title="객실 상태 상세" onClick={e => { e.stopPropagation(); setDetails(true); }}>{status.label}</button>}
       </div>
-      <div className="detail-meta"><span className="detail-type" title={roomType}>{roomType || "타입 미지정"}</span><button type="button" className="detail-occupancy" disabled={busy} title={`${occupancy.basis} · 기본 ${occupancy.base}명${occupancy.max ? ` · 최대 ${occupancy.max}명` : ""}`} aria-label={`${roomNo} 인원 ${occupancy.count}명 · ${active && !readOnly ? "조회·수정" : "조회"}`} onClick={(e) => { e.stopPropagation(); if (active && !readOnly && p.onGuests) p.onGuests(); else setDetails(true); }}>{b ? "" : "기본 "}{occupancy.count}명</button>{memoCount > 0 ? <button type="button" className="detail-memo" title={p.memoText} aria-label={`${roomNo} 특이사항 ${memoCount}건`} onClick={(e) => { e.stopPropagation(); onMemo(); }}><MessageCircle size={16} /><span>{memoCount}</span></button> : null}</div>
+      <div className="detail-meta"><button type="button" className="detail-type" title={`${roomType} · 상세 확인`} onClick={e => { e.stopPropagation(); setDetails(true); }}>{roomType || "타입 미지정"}</button><button type="button" className="detail-occupancy" disabled={busy} title={`${occupancy.basis} · 기본 ${occupancy.base}명${occupancy.max ? ` · 최대 ${occupancy.max}명` : ""}`} aria-label={`${roomNo} 인원 ${occupancy.count}명 · ${active && !readOnly ? "조회·수정" : "조회"}`} onClick={(e) => { e.stopPropagation(); if (active && !readOnly && p.onGuests) p.onGuests(); else setDetails(true); }}>{b ? "" : "기본 "}{occupancy.count}명</button>{memoCount > 0 ? <button type="button" className="detail-memo" title={p.memoText} aria-label={`${roomNo} 특이사항 ${memoCount}건`} onClick={(e) => { e.stopPropagation(); onMemo(); }}><MessageCircle size={16} /><span>{memoCount}</span></button> : null}</div>
     </div>
     <div className="detail-summary">
       <div className="detail-group-slot">
@@ -77,18 +83,22 @@ export default function NowRoomCard(p: NowRoomCardProps) {
         <b>{group.label}</b>{group.lead ? <span className="detail-group-role"><Crown size={14} aria-hidden />대표</span> : <span className="detail-group-name"><Link2 size={14} aria-hidden /><span>{group.name}</span></span>}<strong>{String(group.index).padStart(2, "0")}/{String(group.count).padStart(2, "0")}</strong>
       </button> : null}
       </div>
-      <div className="detail-guest-line"><strong className={`detail-guest-name${b ? "" : " is-empty"}`} title={guest}>{summaryGuest}</strong>{!readOnly && b && smartImportInfo(b) ? <button type="button" className="smart-import-label detail-import-label" title={`원문 객실 타입: ${smartImportInfo(b)?.rawType || "저장된 원문 없음"}`} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>스마트등록</button> : null}</div>
+      <div className="detail-guest-line"><button type="button" className="detail-guest-button" title={`${guest} · 예약 상세 확인`} onClick={e => { e.stopPropagation(); setDetails(true); }}><strong className={`detail-guest-name${b ? "" : " is-empty"}`}>{summaryGuest}</strong></button>{!readOnly && b && smartImportInfo(b) ? <button type="button" className="smart-import-label detail-import-label" title={`원문 객실 타입: ${smartImportInfo(b)?.rawType || "저장된 원문 없음"}`} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>스마트등록</button> : null}</div>
       {period ? <button type="button" className="detail-period" ref={periodAnchor} aria-label={fullPeriod} aria-expanded={periodHint} aria-describedby={periodHint ? hintId : undefined}
         onMouseEnter={showHint} onMouseLeave={hideHint} onFocus={showHint} onBlur={hideHint}
         onClick={(e) => { e.stopPropagation(); periodPinned.current = !periodPinned.current; if (periodPinned.current) showHint(); else closeHint(); }}>
         <span className="detail-period-range"><span>{periodRows?.[0]}</span>{periodRows?.[1] ? <span>{b?.kind === "dayuse" ? "" : "→ "}{periodRows[1]}</span> : null}</span>
         {period.duration ? <small>{period.duration}</small> : null}
-      </button> : <span className="detail-empty">{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</span>}
-      {active && b ? <div className="detail-money" title={readOnly ? "공유 비공개" : `예약 총액 · ${payment}${group ? " (단체 결제 기준)" : ""}`}>
-        <b aria-label={readOnly ? "금액 비공개" : `예약 총액 ${b.priceUnset ? "미정" : won(b.price) + "원"}`}>{readOnly ? "비공개" : b.priceUnset ? "금액 미정" : `₩${won(b.price)}`}</b>
-        {!readOnly && !wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${platform?.name || "경로 미지정"} · ${group ? "단체 " : ""}${payment}`} aria-label={`${ota ? `${platform.name} · ` : ""}${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}
+      </button> : <button type="button" className="detail-empty" onClick={e => { e.stopPropagation(); if (readOnly) setDetails(true); else onQuick(); }}>{status.label === "판매중지" ? "판매중지 · 상세 확인" : "새 예약을 받을 수 있어요"}</button>}
+      {active && b ? <div className="detail-money" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); } }} title={readOnly ? "공유 비공개" : `예약 총액 · ${payment}${group ? " (단체 결제 기준)" : ""} · 클릭하여 금액 근거 확인`}>
+        <b className={charges?.needsPrice ? "detail-charge-warning" : undefined} aria-label={readOnly ? "금액 비공개" : `예약 총액 ${b.priceUnset ? "미정" : won(b.price) + "원"}`}>{readOnly ? "비공개" : charges?.needsPrice ? "요금 확인" : `₩${won(b.price)}`}</b>
+        {!readOnly && !wideAmount ? <span className={`detail-payment ${charges?.needsPrice ? "due" : model?.tone ?? "neutral"}`} title={`${platform?.name || "경로 미지정"} · ${group ? "단체 " : ""}${payment}`} aria-label={`${ota ? `${platform.name} · ` : ""}${group ? "단체 " : ""}${charges?.needsPrice ? "약정 금액 확인 필요" : payment}`}>{charges?.needsPrice ? "확인 필요" : paymentLabel}</span> : null}
       </div> : b ? <span className="detail-cancelled">{b.status === "cancelled" ? "취소 예약" : "노쇼 예약"} · 상세 확인</span> : null}
-      {active && b ? <div className="detail-tenders"><span title={readOnly ? "예약 경로" : `${ota ? `${platform.name} · ` : ""}${methods?.title ?? ""}`}>{readOnly ? platform?.name || "경로 미지정" : tenderLabel}</span>{!readOnly && wideAmount ? <span className={`detail-payment ${model?.tone ?? "neutral"}`} title={`${group ? "단체 " : ""}${payment}`}>{paymentLabel}</span> : null}</div> : null}
+      {active && b ? <div className="detail-tenders" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); } }} title={readOnly ? "예약 경로" : `${ota ? `${platform.name} · ` : ""}${methods?.title ?? ""} · 클릭하여 수납 기록 확인`}><span title={readOnly ? "예약 경로" : undefined}>{readOnly ? platform?.name || "경로 미지정" : tenderLabel}</span>{!readOnly && wideAmount ? <span className={`detail-payment ${charges?.needsPrice ? "due" : model?.tone ?? "neutral"}`} title={`${group ? "단체 " : ""}${payment}`}>{charges?.needsPrice ? "확인 필요" : paymentLabel}</span> : null}</div> : null}
+      {active && b && charges && !readOnly ? <div className="detail-contract">
+        {charges.due > 0 ? <button type="button" className="detail-charge-warning detail-due-line" title={group ? "단체 청구−단체 결제. 이 객실에 임의로 나눈 미수금이 아닙니다. 클릭하여 결제 근거 확인" : "객실 청구−실제 수납. 클릭하여 상세 확인"} onClick={e => { e.stopPropagation(); setDetails(true); }}>{charges.scope} ₩{won(charges.due)}</button> : null}
+        {charges.nights.length ? <><button type="button" className="detail-contract-title" title="총액을 나누지 않은 실제 저장 박별 요금. 클릭하여 전체 근거·수정" onClick={e => { e.stopPropagation(); setDetails(true); }}>박별 약정 요금 <span>전체 보기</span></button><div className="detail-contract-list" aria-label="박별 약정 요금">{charges.nights.map(n => <button type="button" key={n.date} title={`${cardWeekdayDate(n.date, true)} · ${n.amount == null ? "약정 요금 미등록" : `${won(n.amount)}원 (저장된 약정 금액)`}`} onClick={e => { e.stopPropagation(); setDetails(true); }}><span>{cardWeekdayDate(n.date)}</span><b className={n.amount == null ? "detail-charge-warning" : undefined}>{n.amount == null ? "요금 미등록" : `₩${won(n.amount)}`}</b></button>)}</div></> : null}
+      </div> : null}
     </div>
     <div className="detail-actions">
       <button type="button" className={p.hasAlerts ? "has-alert" : undefined} title={p.hasAlerts ? "메모·예약 안내 확인" : undefined} onClick={(e) => { e.stopPropagation(); setDetails(true); }}>상세보기{p.hasAlerts ? <i aria-label="확인할 안내 있음" /> : null}</button>
@@ -138,6 +148,7 @@ export function RoomCardDetails(p: NowRoomCardProps & { onClose: () => void }) {
   const { active, times, guest, payment } = cardFacts(p);
   const occupancy = cardOccupancy(p);
   const methods = b ? cardPaymentMethods(b, model) : null;
+  const charges = b ? cardCharges(b, model, platform, p.today ?? b.checkIn) : null;
   const close = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const closeHandler = useRef(onClose);
@@ -178,6 +189,7 @@ export function RoomCardDetails(p: NowRoomCardProps & { onClose: () => void }) {
           {row("payment", "결제 상태", readOnly ? "공유 비공개" : <><span className={`detail-payment ${model?.tone ?? "neutral"}`}>{group && active ? `단체 ${payment}` : payment}</span>{model?.payText ? <small>{spacedPay(model.payText)}</small> : null}{model && model.due > 0 ? <small className="detail-due">{group ? "단체 " : ""}받을 돈 ₩{won(model.due)}</small> : null}</>)}
           {row("methods", "실제 결제수단", readOnly ? "공유 비공개" : active && methods ? <span title={methods.title}>{methods.label}</span> : "—")}
         </dl>
+        {charges && active && !readOnly ? <section className="room-details-contract" aria-label="객실 약정 요금 상세"><h3>박별 약정 요금</h3>{charges.needsPrice ? <p className="detail-charge-warning">저장된 총액은 {won(b!.price)}원입니다. 무료 숙박인지 요금 누락인지 약정을 확인해 주세요.</p> : null}{charges.nights.map(n => <div key={n.date}><span>{cardWeekdayDate(n.date, true)}</span><b>{n.amount == null ? "약정 요금 미등록" : `${won(n.amount)}원`}</b></div>)}{charges.due > 0 ? <p className="detail-charge-warning">{charges.scope} {won(charges.due)}원{group ? " · 단체 전체 기준 (객실별 배분 없음)" : ""}</p> : null}{p.onEditCharges ? <button type="button" className="btn line" onClick={() => act(() => p.onEditCharges?.())}>일정·약정 요금 수정</button> : null}</section> : null}
         {b?.kind === "stay" && p.onPeriod ? <button type="button" className="btn line" onClick={() => act(() => p.onPeriod?.())}>점유 밤 달력 보기</button> : null}
         {times ? <p className="room-details-time-note">{times.basis}</p> : null}
         <div className="detail-notes">

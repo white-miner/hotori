@@ -6,6 +6,7 @@ import { type GroupSummary, groupDateBlock, groupSummaries } from "../shared/gro
 import { settle, settleBadge } from "../shared/settle";
 import GroupSettle from "./GroupSettle";
 import GroupAdd from "./GroupAdd";
+import GroupScheduleSheet from "./GroupScheduleSheet";
 import {
   type HotelData,
   queryLedger,
@@ -56,7 +57,7 @@ import {
 import { STAY_CREDIT_COPY, listOpenCredits } from "../shared/stayCredit";
 import StayCreditsModal from "./StayCreditsModal";
 import { type NightShiftMode, shiftDays, shiftDifferences, shiftMemberRates } from "../shared/nightShift";
-import { EXTEND_COPY, NIGHTS_PRICE_WARN, canExtend, planGroupExtend, repriceForNights, skippedNote } from "../shared/extend";
+import { NIGHTS_PRICE_WARN, canExtend, repriceForNights } from "../shared/extend";
 import { isTimeService, timeLine, timeTags } from "../shared/extratime";
 import { parkingMark, plateMatches } from "../shared/parking";
 import { type PaySplit, ledgerSummary, payLine, shopTotals } from "../shared/shop";
@@ -172,9 +173,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   };
   const [gOpen, setGOpen] = useState<Set<string>>(new Set());
   const [gEdit, setGEdit] = useState<{ id: string; name: string; checkIn: string; nights: number } | null>(null);
-  const [gExt, setGExt] = useState<{ id: string; collect: boolean; method: BookPayMethod } | null>(null);
   const [gBusy, setGBusy] = useState(false);
   const [settleId, setSettleId] = useState<string | null>(null);
+  const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [addGroupId, setAddGroupId] = useState<string | null>(null);
   const [payCash, setPayCash] = useState(0);
   const [paySum, setPaySum] = useState<ReturnType<typeof paySplit> | null>(null);
@@ -389,132 +390,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     }
   };
   const saveGroupEdit = async (g: GroupSummary) => {
-    if (!gEdit || gBusy) return;
+    if (!gEdit || gBusy || gEdit.id !== g.groupId) return;
     const nm = gEdit.name.trim();
     if (!nm) return notify("단체명을 입력해 주세요");
-    const dateChanged = gEdit.checkIn !== g.checkIn || gEdit.nights !== g.nights;
-    const nightsUp = gEdit.nights > g.nights;
-    const nightsDown = gEdit.nights < g.nights;
-    if (dateChanged) {
-      const block = groupDateBlock(data.hotel!.settings, data.bookings, g.members, gEdit.checkIn, gEdit.nights);
-      if (block) return notify(block);
-      // 박수↑만 경고(연장 유도). 박수↓는 단가×박수로 자동 맞춤.
-      if (nightsUp) {
-        const nightsOk = await askConfirm({
-          title: "박수 변경",
-          body: NIGHTS_PRICE_WARN,
-          confirmLabel: "저장",
-        });
-        if (!nightsOk) return;
-      }
-    }
-    // 입실일이 바뀌면 방마다 고쳐 둔 박별 요금을 어떻게 할지 물어요 (요금을 지우지 않아요)
-    const ciChanged = gEdit.checkIn !== g.checkIn;
-    let shiftMode: NightShiftMode = "move";
-    if (ciChanged) {
-      const rates = data.groups.get(g.groupId)?.rates ?? null;
-      const needAsk = g.members.filter((x) => isActive(x)).some((m) => {
-        if (!m.nightRates?.nights) return false;
-        const n = Math.min(gEdit.nights, m.nights ?? 1);
-        return shiftDifferences(m.nightRates, m.checkIn, m.nights ?? 1, gEdit.checkIn, n, { typeRate: rates?.[m.typeId] }).length > 0;
-      });
-      if (needAsk) {
-        const d = shiftDays(g.checkIn, gEdit.checkIn);
-        const moveOk = await askConfirm({
-          title: "입실일 변경 · 박별 요금",
-          body: `입실일이 ${Math.abs(d)}일 ${d > 0 ? "뒤로" : "앞으로"} 바뀌어요. 방마다 고쳐 둔 박별 요금을 어떻게 할까요?\n· 박 따라 옮기기: 1박째 요금은 새 1박째로, 2박째는 새 2박째로 가요.\n· 날짜에 그대로 두기: 같은 날짜는 그 요금 그대로, 새 날짜는 기본 요금이에요. (창을 닫아도 이쪽이에요)`,
-          confirmLabel: "박 따라 옮기기",
-          cancelLabel: "날짜에 그대로 두기",
-        });
-        shiftMode = moveOk ? "move" : "keep";
-      }
-    }
     setGBusy(true);
     try {
-      await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name, ...(dateChanged ? { checkIn: gEdit.checkIn, nights: gEdit.nights } : {}) });
-      let repriceNote = "";
-      if (nightsDown || ciChanged) {
-        const rates = data.groups.get(g.groupId)?.rates ?? null;
-        let sum = 0;
-        let touched = 0;
-        for (const m of g.members.filter((x) => isActive(x))) {
-          const cur = data.bookings.find((x) => x.id === m.id) ?? m;
-          const shifted = ciChanged ? shiftMemberRates(m, gEdit.checkIn, gEdit.nights, shiftMode, rates?.[m.typeId]) : null;
-          let price: number;
-          let nightRates = cur.nightRates;
-          if (shifted) {
-            price = shifted.price;
-            nightRates = shifted.nightRates;
-          } else if (nightsDown) {
-            const next = repriceForNights({ ...m, checkIn: gEdit.checkIn }, gEdit.nights, rates?.[m.typeId]);
-            price = next.price;
-            nightRates = next.nightRates ?? cur.nightRates;
-          } else continue;
-          sum += price;
-          touched++;
-          await data.saveBooking({ ...cur, checkIn: gEdit.checkIn, nights: gEdit.nights, price, nightRates }, false);
-        }
-        if (touched) repriceNote = ` · ${ciChanged ? (shiftMode === "move" ? "박별 요금 박 따라 옮김" : "박별 요금 날짜에 그대로") : "판매가 맞춤"} 합 ${won(sum)}원`;
-      }
-      notify(`단체 ${nm} 바꿨어요${dateChanged ? ` · ${dayLabel(gEdit.checkIn)} 입실 ${gEdit.nights}박` : ""}${repriceNote}`);
+      await data.patchGroup(g.groupId, { groupName: nm, oldName: g.name });
+      notify(`단체 ${nm} 이름을 바꿨어요`);
       setGEdit(null);
-    } catch (e) {
-      notify(saveFailMessage(e));
-    } finally {
-      setGBusy(false);
-    }
-  };
-  const saveGroupExtend = async (g: GroupSummary) => {
-    if (!gExt || gBusy || gExt.id !== g.groupId) return;
-    const rates = data.groups.get(g.groupId)?.rates ?? null;
-    const planned = planGroupExtend(data.hotel!.settings, data.bookings, g.members, rates);
-    if ("err" in planned) return notify(planned.err);
-    if (gExt.collect && planned.ok.totalRate > 0) {
-      const pv = validatePayment(planned.ok.totalRate, gExt.method, today);
-      if (pv) return notify(pv);
-    }
-    setGBusy(true);
-    try {
-      for (const m of planned.ok.members) {
-        const cur = data.bookings.find((x) => x.id === m.id);
-        if (!cur) continue;
-        await data.saveBooking(
-          {
-            ...cur,
-            nights: m.draft.nights,
-            price: m.draft.price,
-            segments: m.draft.segments,
-            nightRates: m.draft.nightRates ?? cur.nightRates,
-          },
-          false,
-        );
-      }
-      let payNote = "";
-      if (gExt.collect && planned.ok.totalRate > 0) {
-        try {
-          await data.addGroupPayment(g.groupId, { method: gExt.method, amount: planned.ok.totalRate, bizDate: today });
-          payNote = ` · 오늘 요금 ${won(planned.ok.totalRate)}원 수납 (${BOOK_PAY_LABEL[gExt.method]})`;
-        } catch (e) {
-          payNote = ` · 수납하지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
-        }
-      } else if (planned.ok.totalRate > 0) {
-        payNote = ` · 잔금 +${won(planned.ok.totalRate)}원`;
-      }
-      const skipTxt = skippedNote(data.hotel!.settings, planned.ok.skipped);
-      void data.logChange({
-        kind: "stay",
-        groupId: g.groupId,
-        bookingId: null,
-        effectiveOn: null,
-        summary: `전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${skipTxt ? ` (${skipTxt})` : ""}`.slice(0, 300),
-      });
-      notify(`단체 ${g.name} 전 방 ${EXTEND_COPY} · ${planned.ok.members.length}실${skipTxt ? ` · ${skipTxt}` : ""}${payNote}`);
-      setGExt(null);
-    } catch (e) {
-      notify(saveFailMessage(e));
-    } finally {
-      setGBusy(false);
-    }
+    } catch (e) { notify(saveFailMessage(e)); }
+    finally { setGBusy(false); }
   };
   const renderGroup = (g: GroupSummary) => {
     const open = gOpen.has(g.groupId);
@@ -574,16 +459,16 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                   <Check size={14} strokeWidth={2.6} /> 모두 입실
                 </button>
                 <button type="button" className="btn sm line" disabled={gBusy} onClick={() => setGEdit(gEdit?.id === g.groupId ? null : { id: g.groupId, name: g.name, checkIn: g.checkIn, nights: g.nights })}>
-                  이름·날짜 바꾸기
+                  단체명 바꾸기
                 </button>
                 {g.active.some((b) => canExtend(b)) ? (
                   <button
                     type="button"
                     className="btn sm line"
                     disabled={gBusy}
-                    onClick={() => setGExt(gExt?.id === g.groupId ? null : { id: g.groupId, collect: true, method: "card" })}
+                    onClick={() => setScheduleId(g.groupId)}
                   >
-                    전 방 {EXTEND_COPY}
+                    날짜별 객실·요금 수정
                   </button>
                 ) : null}
                 <button type="button" className="btn sm line" onClick={() => setAddGroupId(g.groupId)}>
@@ -606,64 +491,10 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             {gEdit?.id === g.groupId ? (
               <div className="gedit noprint">
                 <input className="inp" aria-label="단체명" maxLength={40} value={gEdit.name} onChange={(e) => setGEdit({ ...gEdit, name: e.target.value })} />
-                <input className="inp" type="date" aria-label="단체 입실일" value={gEdit.checkIn} onChange={(e) => e.target.value && setGEdit({ ...gEdit, checkIn: e.target.value })} />
-                <span className="step sm">
-                  <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setGEdit({ ...gEdit, nights: Math.max(1, gEdit.nights - 1) })}>
-                    −
-                  </button>
-                  <b className="num">{gEdit.nights}박</b>
-                  <button type="button" className="sb" aria-label="1박 늘리기" onClick={() => setGEdit({ ...gEdit, nights: Math.min(90, gEdit.nights + 1) })}>
-                    +
-                  </button>
-                </span>
-                <span className="muted sm">
-                  모든 방에 같이 적용돼요 · 가격은 그대로
-                  {gEdit.nights !== g.nights ? ` · 박수만 바꾸면 잔금이 안 맞을 수 있어요 → 「전 방 ${EXTEND_COPY}」 권장` : ""}
-                </span>
+                <span className="muted sm">기간과 약정 요금은 ‘날짜별 객실·요금 수정’에서 객실별로 바꿉니다.</span>
                 <button type="button" className="btn sm dark" disabled={gBusy} onClick={() => void saveGroupEdit(g)}>
                   저장
                 </button>
-              </div>
-            ) : null}
-            {gExt?.id === g.groupId ? (
-              <div className="gedit gext noprint">
-                {(() => {
-                  const planned = planGroupExtend(data.hotel!.settings, data.bookings, g.members, data.groups.get(g.groupId)?.rates ?? null);
-                  if ("err" in planned) return <span className="muted sm">{planned.err}</span>;
-                  return (
-                    <>
-                      <span className="muted sm">
-                        {planned.ok.members.length}실 +1박 · 요금 합 {won(planned.ok.totalRate)}원 (타입/방 단가)
-                      </span>
-                      {planned.ok.skipped.length ? (
-                        <span className="muted sm">{skippedNote(data.hotel!.settings, planned.ok.skipped)}</span>
-                      ) : null}
-                      <span className="chips">
-                        <button type="button" className={`chip ${gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: true })}>
-                          즉시 수납
-                        </button>
-                        <button type="button" className={`chip ${!gExt.collect ? "on" : ""}`} onClick={() => setGExt({ ...gExt, collect: false })}>
-                          후불
-                        </button>
-                      </span>
-                      {gExt.collect ? (
-                        <span className="chips">
-                          {BOOK_PAY_METHODS.map((m) => (
-                            <button type="button" key={m} className={`chip ${gExt.method === m ? "on" : ""}`} onClick={() => setGExt({ ...gExt, method: m })}>
-                              {BOOK_PAY_LABEL[m]}
-                            </button>
-                          ))}
-                        </span>
-                      ) : null}
-                      <button type="button" className="btn sm" disabled={gBusy} onClick={() => setGExt(null)}>
-                        닫기
-                      </button>
-                      <button type="button" className="btn sm dark" disabled={gBusy} onClick={() => void saveGroupExtend(g)}>
-                        {gBusy ? "저장 중…" : `전 방 ${EXTEND_COPY}`}
-                      </button>
-                    </>
-                  );
-                })()}
               </div>
             ) : null}
             {[...g.members].sort((a, b) => (L.roomLabel(a.roomId) ?? "").localeCompare(L.roomLabel(b.roomId) ?? "", "ko", { numeric: true })).map((b) => renderRow(b, true))}
@@ -1438,6 +1269,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           groupId={settleId}
           members={allGroups.get(settleId)!.members}
           onClose={() => setSettleId(null)}
+          onEditSchedule={() => { setScheduleId(settleId); setSettleId(null); }}
           notify={notify}
           onAddRooms={() => {
             setAddGroupId(settleId);
@@ -1445,6 +1277,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           }}
         />
       ) : null}
+      {scheduleId ? <GroupScheduleSheet data={data} groupId={scheduleId} today={today} onClose={() => setScheduleId(null)} onSaved={notify} /> : null}
       {addGroupId && allGroups.get(addGroupId) ? (
         <GroupAdd
           data={data}

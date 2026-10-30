@@ -34,6 +34,7 @@ export default function GroupReceiptSheet({
   onJoin,
   onLeave,
   onClose,
+  onEditSchedule,
 }: {
   today: string;
   /** 단체 활성 숙박 예약(퇴실한 객실 포함) · 최신 데이터 */
@@ -56,6 +57,7 @@ export default function GroupReceiptSheet({
   onJoin?: () => void;
   onLeave?: (bookingId: string) => void;
   onClose: () => void;
+  onEditSchedule?: () => void;
 }) {
   const ledger = useMemo(() => groupLedger(members, groupLump, today, { extras }), [members, groupLump, today, extras]);
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
@@ -184,6 +186,7 @@ export default function GroupReceiptSheet({
             </>
           )}
 
+          {onEditSchedule && !readOnly ? <button type="button" className="btn line" disabled={busy} onClick={onEditSchedule}>날짜별 객실·요금 수정</button> : null}
           <GroupCharges ledger={ledger} today={today} roomLabel={(id) => { const b = byId.get(id); return b ? roomLabel(b) : "객실"; }} readOnly />
 
           <section className="grc-pays" aria-label="결제 내역">

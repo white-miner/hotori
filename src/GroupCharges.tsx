@@ -21,6 +21,8 @@ export default function GroupCharges({
   moveTargets,
   roomNoOf,
   onMoveRoom,
+  onEvidence,
+  onEditSchedule,
 }: {
   ledger: GroupLedger;
   today: string;
@@ -40,6 +42,8 @@ export default function GroupCharges({
   roomNoOf?: (roomId: string) => string;
   /** 객실을 다른 단체로(groupId) 또는 단체에서 빼기(null) */
   onMoveRoom?: (bookingId: string, groupId: string | null) => Promise<void>;
+  onEvidence?: () => void;
+  onEditSchedule?: () => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [groupDate, setGroupDate] = useState(false);
@@ -76,9 +80,9 @@ export default function GroupCharges({
       <div className="gch-h">
         <b>객실별 요금</b>
         {live.some((r) => r.openEnded) ? <i className="gch-open-tag" title="끝 날짜 없이 계속 묵어요">∞ 퇴실 미정 {live.filter((r) => r.openEnded).length}/{live.length}실</i> : null}
-        <span className="muted sm">청구 합계 {won(ledger.due)}원</span>
+        {onEvidence ? <button type="button" className="muted sm" title={`객실 청구 ${won(ledger.roomCharges)}원 + 단체 추가 ${won(ledger.extras)}원. 클릭하여 박별 근거 확인`} onClick={onEvidence}>청구 합계 {won(ledger.due)}원</button> : <span className="muted sm">청구 합계 {won(ledger.due)}원</span>}
       </div>
-      {can && live.length ? (
+      {can && live.length && !onEditSchedule ? (
         <div className="gch-grp" role="group" aria-label="단체 전체 퇴실">
           <button type="button" className={`gch-tog${allOpen ? " on" : ""}`} aria-pressed={allOpen} disabled={busy} onClick={() => void run(live.map((r) => r.bookingId), allOpen ? maxOut : null)}>
             <InfinityIcon size={15} aria-hidden /> {allOpen ? "모두 퇴실 미정 · 누르면 퇴실일로" : "전체 퇴실 미정으로"}
@@ -111,6 +115,8 @@ export default function GroupCharges({
             onMove={onMoveRoom && !readOnly ? (gid) => void run2(() => onMoveRoom(r.bookingId, gid)) : undefined}
             onToggle={() => setOpenId(openId === r.bookingId ? null : r.bookingId)}
             onSetEnd={(out) => void run([r.bookingId], out)}
+            onEvidence={onEvidence}
+            onEditSchedule={onEditSchedule}
             onEdit={onEditRoom && !readOnly ? () => onEditRoom(r.bookingId) : undefined} />
         ))}
         {ledger.extras > 0 ? (
@@ -149,11 +155,13 @@ export default function GroupCharges({
 }
 
 function RoomRow({
-  r, name, today, open, can, busy, onToggle, onSetEnd, onEdit, isLead, leadPinned, onSetLead, moveTargets, roomNoOf, onMove,
+  r, name, today, open, can, busy, onToggle, onSetEnd, onEdit, isLead, leadPinned, onSetLead, moveTargets, roomNoOf, onMove, onEvidence, onEditSchedule,
 }: {
   r: RoomLedger; name: string; today: string; open: boolean; can: boolean; busy: boolean; onToggle: () => void; onSetEnd: (out: string | null) => void; onEdit?: () => void;
   isLead: boolean; leadPinned: boolean; onSetLead?: (lead: boolean) => void;
   moveTargets?: GroupMoveTarget[]; roomNoOf?: (roomId: string) => string; onMove?: (groupId: string | null) => void;
+  onEvidence?: () => void;
+  onEditSchedule?: () => void;
 }) {
   const [date, setDate] = useState(r.checkOut);
   const [moving, setMoving] = useState(false);
@@ -174,11 +182,11 @@ function RoomRow({
             stayRangeLabel(r)
           )}
         </span>
-        <span className="r gch-rate">{rateLabel(r)}</span>
-        <span className="r gch-sub">
+        <button type="button" className="r gch-rate" title={r.rows.map(x => `${x.date} · ${won(x.amount)}원 (장부 청구 반영액)`).join("\n")} onClick={onEvidence ?? onToggle}>{rateLabel(r)}</button>
+        <button type="button" className="r gch-sub" title={`${name}: ${r.rows.map(x => `${x.date} ${won(x.amount)}원`).join(" + ")} = ${won(r.subtotal)}원`} onClick={onEvidence ?? onToggle}>
           {won(r.subtotal)}원
           {r.upcoming > 0 ? <small className="gch-up-tag" title="오늘 밤 이후 예정 청구는 미수금에 넣지 않아요">예정 {won(r.upcoming)}</small> : null}
-        </span>
+        </button>
       </div>
       {r.extraLines.length ? (
         <ul className="gch-xl" aria-label={`${name} 추가 항목`}>
@@ -196,6 +204,7 @@ function RoomRow({
       ) : null}
       {open ? (
         <div className="gch-ed" role="group" aria-label={`${name} 퇴실`}>
+          {onEditSchedule ? <button type="button" className="btn line" onClick={onEditSchedule}>퇴실일·박별 요금 수정</button> : <>
           <button type="button" className={`gch-tog${r.openEnded ? " on" : ""}`} aria-pressed={r.openEnded} disabled={busy} onClick={() => onSetEnd(r.openEnded ? r.checkOut : null)}>
             <InfinityIcon size={15} aria-hidden /> {r.openEnded ? "퇴실 미정 중 · 누르면 퇴실일로" : "퇴실 미정으로"}
           </button>
@@ -205,7 +214,8 @@ function RoomRow({
               퇴실 {md(date)}
             </button>
           </div>
-          {onEdit ? (
+          </>}
+          {onEdit && !onEditSchedule ? (
             <button type="button" className="gch-link" onClick={onEdit}>
               박별 요금 · 추가 항목 고치기
             </button>

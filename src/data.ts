@@ -62,6 +62,7 @@ import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
 import { hashGroupBadgeColor } from "../shared/group";
 import { groupMoveRow } from "../shared/groupMove";
+import { saveScheduleChanges, scheduleLock, scheduleUpdateRow, type ScheduleChange } from "../shared/groupSchedule";
 import {
   type NightCharge,
   chargesOutsideWindow,
@@ -951,6 +952,28 @@ export function useHotelData(hotelId: string) {
     },
     [hotelId],
   );
+  /** 기존 단체 일정/요금만 수정. 배정·수납을 쓰지 않고 행 버전으로 동시 수정을 감지한다. */
+  const saveGroupSchedule = useCallback(async (groupId: string, changes: ScheduleChange[]) => {
+    if (changes.some(c => c.before.groupId !== groupId || scheduleLock(c.before))) throw new Error("이 단체의 수정 가능한 숙박 예약만 선택해 주세요.");
+    const result = await saveScheduleChanges(changes, {
+      read: async ids => {
+        const r = await supabase.from("bookings").select(COLS).eq("hotel_id", hotelId).in("id", ids);
+        if (r.error) throw r.error;
+        return (r.data as BookingRow[]).map(fromRow);
+      },
+      update: async ({ before, patch }) => {
+        const row = scheduleUpdateRow(patch);
+        const r = await supabase.from("bookings").update(row).eq("hotel_id", hotelId).eq("group_id", groupId).eq("id", before.id)
+          .eq("updated_at", before.updatedAt).eq("status", "active").is("checked_out_at", null).select(COLS).single();
+        if (r.error) throw r.error;
+        return fromRow(r.data as BookingRow);
+      },
+    });
+    const saved = new Map(result.saved.map(b => [b.id, b]));
+    setBookingsLocal(list => list.map(b => saved.get(b.id) ?? b));
+    if (result.error) void refresh();
+    return result;
+  }, [hotelId, refresh]);
   // 단체 한꺼번에: 모두 입실 · 단체 취소 · 이름/날짜 (정상 예약만, 한 문장)
   const patchGroup = useCallback(
     async (groupId: string, patch: { arrived?: boolean; status?: "cancelled"; groupName?: string; oldName?: string; checkIn?: string; nights?: number }): Promise<Booking[]> => {
@@ -1255,6 +1278,7 @@ export function useHotelData(hotelId: string) {
     deleteBooking,
     saveHotel,
     saveGroup,
+    saveGroupSchedule,
     patchGroup,
     groups,
     saveGroupInfo,

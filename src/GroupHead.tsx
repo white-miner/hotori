@@ -5,6 +5,7 @@ import type { PayLine } from "../shared/recordTimeline";
 import type { GroupMoveTarget } from "../shared/groupMove";
 import GroupCharges from "./GroupCharges";
 import PayEvidence from "./PayEvidence";
+import { groupEvidenceText } from "../shared/groupEvidence";
 
 /**
  * 단체 머리글 — 청구(객실별 요금)와 결제(받은 돈)를 따로 보여 주고 차액만 크게.
@@ -23,6 +24,8 @@ export default function GroupHead({
   lead,
   moves,
   record,
+  onEditSchedule,
+  onEvidence,
 }: {
   ledger: GroupLedger;
   today: string;
@@ -39,18 +42,21 @@ export default function GroupHead({
   moves?: { targets: GroupMoveTarget[]; roomNoOf: (roomId: string) => string; onMove: (bookingId: string, groupId: string | null) => Promise<void> } | null;
   /** 결제 내역 + 기록 정정 열기 */
   record?: { lines: PayLine[]; onOpen: () => void } | null;
+  onEditSchedule?: () => void;
+  onEvidence?: () => void;
 }) {
   const tone = groupTone(ledger);
   const next = receiptNextAction(ledger);
+  const evidence = groupEvidenceText(ledger, roomLabel);
   return (
     <section className={`ghead ${tone}`} aria-label="단체 결제 현황">
       <div className="ghead-top">
         <b className="ghead-name">{name || "단체"}</b>
         <span className="muted sm">{ledger.liveCount}객실 이용 중</span>
       </div>
-      <div className="ghead-bal">{balanceLabel(ledger)}</div>
+      {onEvidence ? <button type="button" className="ghead-bal ghead-evidence" title={evidence} onClick={onEvidence}>{balanceLabel(ledger)} <small>근거 보기</small></button> : <div className="ghead-bal">{balanceLabel(ledger)}</div>}
       <div className="ghead-meta">
-        <span>{diffLine(ledger)}</span>
+        {onEvidence ? <button type="button" title={evidence} onClick={onEvidence}>{diffLine(ledger)}</button> : <span>{diffLine(ledger)}</span>}
       </div>
       {!readOnly ? (
         <div className="ghead-acts">
@@ -64,7 +70,8 @@ export default function GroupHead({
           ) : null}
         </div>
       ) : null}
-      <GroupCharges ledger={ledger} today={today} roomLabel={roomLabel} readOnly={readOnly} onSetEnd={onSetEnd} onEditRoom={onEditRoom} leadId={lead?.id ?? null} leadPinned={lead?.pinned} onSetLead={lead?.onSet} moveTargets={moves?.targets} roomNoOf={moves?.roomNoOf} onMoveRoom={moves?.onMove} />
+      {onEditSchedule && !readOnly ? <button type="button" className="btn line ghead-schedule" onClick={onEditSchedule}>날짜별 객실·요금 수정</button> : null}
+      <GroupCharges ledger={ledger} today={today} roomLabel={roomLabel} readOnly={readOnly} onSetEnd={onSetEnd} onEditRoom={onEditRoom} leadId={lead?.id ?? null} leadPinned={lead?.pinned} onSetLead={lead?.onSet} moveTargets={moves?.targets} roomNoOf={moves?.roomNoOf} onMoveRoom={moves?.onMove} onEvidence={onEvidence} onEditSchedule={onEditSchedule} />
       {record ? <PayEvidence title={name || "단체"} lines={record.lines} ledger={ledger} readOnly={readOnly} onOpen={record.onOpen} /> : null}
     </section>
   );
