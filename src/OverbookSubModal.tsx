@@ -44,18 +44,17 @@ export default function OverbookSubModal({
   const need = Math.max(0, -overRem);
   const existing = useMemo(() => subsForNight(subs, overType.id, date), [subs, overType.id, date]);
   const had = existing.length > 0;
+  const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
+  const [err, setErr] = useState<string | null>(null);
 
   const candidates = useMemo(() => {
     return s.types.filter((t) => {
       if (t.id === overType.id) return false;
       const spare = spareByType.get(t.id) ?? 0;
       const prev = existing.find((x) => x.fromTypeId === t.id)?.qty ?? 0;
-      return spare > 0 || prev > 0;
+      return spare > 0 || prev > 0 || (qtyMap[t.id] ?? 0) > 0;
     });
-  }, [s.types, overType.id, spareByType, existing]);
-
-  const [qtyMap, setQtyMap] = useState<Record<string, number>>({});
-  const [err, setErr] = useState<string | null>(null);
+  }, [s.types, overType.id, spareByType, existing, qtyMap]);
 
   useEffect(() => {
     const init: Record<string, number> = {};
@@ -65,7 +64,9 @@ export default function OverbookSubModal({
     }
     setQtyMap(init);
     setErr(null);
-  }, [overType.id, date, existing, s.types]);
+    // 3초/10초 재조회로 배열 참조가 바뀌어도 편집 중인 수량을 초기화하지 않는다.
+    // 날짜·대상 타입을 바꿨을 때만 새 저장값으로 시작한다.
+  }, [overType.id, date]);
 
   const allocs: OverbookSubAlloc[] = useMemo(
     () =>
@@ -164,6 +165,7 @@ export default function OverbookSubModal({
                       unit="실"
                       min={0}
                       max={Math.max(0, max)}
+                      disabled={busy}
                       onChange={(n) => setQty(t.id, n)}
                     />
                   </li>

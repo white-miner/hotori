@@ -44,10 +44,15 @@ export const cardWeekdayDate = (date: string, full = false) => `${full ? date : 
 export type CardStatus = { label: string; tone: "stay" | "dayuse" | "available" | "departing" | "neutral"; note?: string };
 
 /** 표시만 바꾼다. 점유·자동 입실·퇴실 판단은 기존 nowFlags가 소유한다. */
-export function detailedStatus(b: Booking | null, date: string, opts: NowOpts, held = false): CardStatus {
+export function detailedStatus(b: Booking | null, date: string, opts: NowOpts, held = false, today?: string): CardStatus {
+  if (!b && today && date < today) return { label: held ? "당일 판매중지" : "이용 기록 없음", tone: "neutral", note: "과거 날짜의 기록 표시이며 현재 객실 가용성은 배정 전용 모드에서 예약 기간으로 확인합니다." };
   if (!b || b.status !== "active") return held
     ? { label: "판매중지", tone: "neutral" }
     : { label: "판매가능", tone: "available" };
+  if (today && date < today) {
+    const current = detailedStatus(b, today, opts, held);
+    return { label: "이용완료", tone: "neutral", note: `${cardWeekdayDate(date)}의 이용 기록입니다. 예약 전체의 현재 상태: ${current.label}. 실제 입퇴실·수납 기록은 변경하지 않습니다.` };
+  }
   if (b.checkedOutAt) return { label: b.kind === "dayuse" ? "이용 종료" : "퇴실 완료", tone: "neutral", note: "실제 퇴실 처리 기록이 있는 예약" };
   if (b.kind === "dayuse") return { label: "대실", tone: "dayuse", note: b.arrived ? undefined : "대실 예약 · 입실 전" };
   const f = nowFlags(b, date, opts);

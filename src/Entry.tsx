@@ -537,6 +537,13 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       method: "transfer",
     });
   };
+  const earlyOutOpened = useRef<string | null>(null);
+  useEffect(() => {
+    if (!req.openEarlyOut || !live || earlyOutOpened.current === live.id) return;
+    earlyOutOpened.current = live.id;
+    if (!live.checkedOutAt && !isEarlyOut(live) && (eoToday || eoPast)) openEo();
+    // 예약 재조회가 입력 중인 잔액/날짜를 초기화하지 않게 예약 ID당 한 번만 연다.
+  }, [req.openEarlyOut, live?.id]);
   const openEx = () => {
     if (!live || !canExtend(live)) return;
     setExErr(null);
