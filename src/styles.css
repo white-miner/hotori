@@ -3307,28 +3307,28 @@ button.nowstatus { cursor: pointer; }
 .side-ua-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 10px;
   max-height: min(70vh, 560px);
   overflow-y: auto;
   margin: 0 -2px;
-  padding: 0 2px;
+  padding: 2px;
 }
 .side-ua-row {
   flex: none; /* document-flow stack — scroll for overflow, never crush */
   position: relative;
   padding: 0;
-  border-radius: 8px;
-  background: transparent;
+  border: 1px solid #cbd2dc;
+  border-radius: 12px;
+  background: #fff;
   min-height: auto;
 }
 .side-ua-row.open {
   background: #f7f8fa;
-  border: 1px solid var(--line);
-  margin: 2px 0;
+  border-color: #8794a5;
 }
 .side-ua-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   min-width: 0;
   flex: none;
@@ -3340,7 +3340,7 @@ button.nowstatus { cursor: pointer; }
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -3384,9 +3384,9 @@ button.nowstatus { cursor: pointer; }
 }
 .side-ua-assign {
   flex: none;
-  height: var(--nowside-assign-h, 30px);
+  height: 40px;
   padding: 0 10px;
-  margin: 0 4px 0 0;
+  margin: 8px 8px 0 0;
   border-radius: 7px;
   border: 1px solid var(--ink);
   background: #fff;

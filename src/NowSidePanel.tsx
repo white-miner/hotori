@@ -426,7 +426,7 @@ export default function NowSidePanel({
               {` · ${md(x.checkIn)}`}
               {payG ? ` · ${payG}` : ""}
             </span>
-            {!readOnly && source ? <span className="side-ua-source"><span className="smart-import-label">스마트등록</span><span>원문: {source.rawType || "저장된 원문 없음"}</span></span> : null}
+            {!readOnly && source ? <span className="side-ua-source"><span className="smart-import-label">스마트등록</span><span>{source.rawType || "저장된 원문 없음"}</span></span> : null}
           </button>
           {isActive(x) && !readOnly ? (
             <button
