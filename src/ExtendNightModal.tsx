@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { type Booking, dayLabel, won } from "../shared/ledger";
+import { type Booking, addDays, dayLabel, won } from "../shared/ledger";
 import {
   EXTEND_COPY,
   EXTEND_PAY_LABEL,
@@ -33,13 +33,14 @@ export default function ExtendNightModal({
   onConfirm: (input: OpsExtendInput) => void;
 }) {
   const defaultRate = nightRate(booking, typeRate);
-  const [rate, setRate] = useState(String(defaultRate));
-  const [method, setMethod] = useState<ExtendPayMethod>("card");
+  const [rate, setRate] = useState(defaultRate > 0 ? String(defaultRate) : "");
+  const [method, setMethod] = useState<ExtendPayMethod>("deferred");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    setRate(String(nightRate(booking, typeRate)));
-    setMethod("card");
+    const amount = nightRate(booking, typeRate);
+    setRate(amount > 0 ? String(amount) : "");
+    setMethod("deferred");
     setErr(null);
   }, [booking.id, booking.price, booking.nights, typeRate]);
 
@@ -92,15 +93,16 @@ export default function ExtendNightModal({
           <p>
             <b>{roomLabel}</b> · {booking.guestName} · 숙박
           </p>
-          <p className="muted sm">다음 숙박일 +1 · 늦은 퇴실(당일 시간)과 달라요</p>
+          <p><b>{dayLabel(addDays(booking.checkIn, booking.nights ?? 0))} 밤</b> 추가 · {dayLabel(addDays(booking.checkIn, (booking.nights ?? 0) + 1))} 퇴실</p>
+          <p className="muted sm">기존 총액 {won(booking.price)}원에 입력한 약정 요금을 더합니다. 기본 후불이며, 카드·현금·이체는 이번 금액을 실제 수납한 경우 선택하세요.</p>
           <div className="paytake">
             <PriceInp sm>
-              <span className="pl">오늘 요금</span>
+              <span className="pl">연장할 박 요금</span>
               <input
                 className="num"
                 inputMode="numeric"
-                placeholder="0"
-                aria-label="오늘 요금"
+                placeholder="연장 약정 요금 입력"
+                aria-label="연장 약정 요금"
                 disabled={busy || method === "service"}
                 value={method === "service" ? "" : rate ? won(Number(rate)) : ""}
                 onChange={(e) => {

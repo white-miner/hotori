@@ -819,6 +819,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         return;
       }
       const rate = Number(ex.rate || 0);
+      if (!(rate > 0)) return setExErr("연장 약정 요금을 입력해 주세요. 무료 연장은 빠른 업무의 서비스를 선택해 주세요.");
       const rv = validateExtendRate(rate);
       if (rv) return setExErr(rv);
       const block = extendBlock(s, data.bookings, live, rate, (id) => L.roomLabel(id));

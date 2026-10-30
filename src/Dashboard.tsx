@@ -66,6 +66,8 @@ import OpsPanelSearch from "./OpsPanelSearch";
 import RoomMemoModal from "./RoomMemoModal";
 import { askConfirm } from "./ConfirmDialog";
 import GroupReceiptSheet from "./GroupReceiptSheet";
+import GroupScheduleSheet from "./GroupScheduleSheet";
+import GroupEvidenceSheet from "./GroupEvidenceSheet";
 import GroupJoinSheet from "./GroupJoinSheet";
 import MoveScheduleSheet from "./MoveScheduleSheet";
 import { type PendingMove, cancelScheduledMove, moveDoneSummary, moveDueToday, moveLabel, nextMove } from "../shared/scheduledMove";
@@ -125,7 +127,6 @@ import {
   extendOverlaps,
   nightRate,
   planOpsExtend,
-  planThroughToday,
   throughOverlaps,
   type ThroughPlan,
   type OpsExtendInput,
@@ -542,6 +543,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 단체 「기간 결제」 시트 (뱃지·패널에서 열림) */
   const [periodPay, setPeriodPay] = useState<{ groupId: string } | null>(null);
   const [joinGroupId, setJoinGroupId] = useState<string | null>(null);
+  const [scheduleGroupId, setScheduleGroupId] = useState<string | null>(null);
+  const [evidenceGroupId, setEvidenceGroupId] = useState<string | null>(null);
   const [moveSchedFor, setMoveSchedFor] = useState<Booking | null>(null);
   /** 기록 정정 시트 (단체면 groupId, 개인이면 bookingId) */
   const [recordFor, setRecordFor] = useState<{ groupId: string | null; bookingId: string | null; focusKey?: string | null } | null>(null);
@@ -1910,6 +1913,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         roomLabel={labelOf}
         readOnly={readOnly}
         onClose={() => setPeriodPay(null)}
+        onEditSchedule={readOnly ? undefined : () => { setPeriodPay(null); setScheduleGroupId(groupId); }}
         onPay={async (plan) => {
           if (!plan.line) return [];
           const saved = await data.addReceipt(groupId, plan.line, { leadBookingId: lead?.id ?? null });
@@ -2579,19 +2583,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     setStaySaleBusy(true);
     try {
       let live = b;
-      if (input.extend && canExtend(live)) {
-        const rate = nightRate(live, null);
-        const hits = extendOverlaps(bookings, live, rate);
-        if (hits.length) {
-          setExtendOverlap({ booking: live, rate, hits });
-          setStaySaleBusy(false);
-          return;
-        }
-        const d = applyExtend(live, rate);
-        live = await data.saveBooking(
-          { ...live, nights: d.nights, price: d.price, segments: d.segments, nightRates: d.nightRates ?? live.nightRates },
-          false,
-        );
+      if (input.extend) {
+        setStaySale(null);
+        setExtendNight({ booking: live, roomLabel: live.roomId ? L.roomLabel(live.roomId) ?? "호실" : "미배정" });
+        return; // 기존 호출도 요금 확인 없이 예약을 쓰지 않는다.
       }
       const earlyH = clampHours(input.earlyInHours ?? 0);
       const lateH = clampHours(input.lateOutHours ?? 0);
@@ -2897,52 +2892,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
-  /** 오늘까지 연장 · 한 번 탭 · 퇴실 예정일이 오늘 이전이면 오늘 밤까지 박수를 늘려요 (결제는 따로) */
-  const extendThroughToday = async (bk: Booking) => {
-    if (readOnly || extendNightBusy) return;
-    const live = data.bookings.find((x) => x.id === bk.id) ?? bk;
-    const plan = planThroughToday(live, today, null, 0);
-    if (!plan) return;
-    const lab = (live.roomId ? L.roomLabel(live.roomId) : "") ?? "";
-    const hits = throughOverlaps(bookings, live, plan);
-    if (hits.length) {
-      const names = hits.map((h) => h.guestName).join(", ");
-      const ok = await askConfirm({
-        title: "이 객실에 예약이 있습니다",
-        body: `${lab}호는 연장하는 밤에 ${names} 예약이 겹쳐요. 그래도 ${plan.add}박 연장할까요? (겹침은 확인 필요로 남아요)`,
-        cancelLabel: "취소",
-        confirmLabel: "그래도 연장",
-        danger: false,
-      });
-      if (!ok) return;
-    }
-    setExtendNightBusy(true);
-    try {
-      await data.saveBooking(
-        {
-          ...live,
-          nights: plan.draft.nights,
-          price: plan.draft.price,
-          segments: plan.draft.segments,
-          nightRates: plan.draft.nightRates ?? live.nightRates ?? null,
-        },
-        false,
-      );
-      void data.logChange({
-        kind: "stay",
-        groupId: live.groupId ?? null,
-        bookingId: live.id,
-        effectiveOn: plan.checkOut,
-        summary: extendSummary({ roomNo: lab || "?", fromNights: live.nights ?? 0, toNights: plan.draft.nights, throughDate: today }),
-      });
-      notify(`${live.guestName} 님 ${lab ? `${lab}호 ` : ""}오늘 밤까지 ${plan.add}박 연장 · 1박 ${won(plan.rate)}원 (결제는 결제 등록에서)`);
-    } catch (e) {
-      notify(saveFailMessage(e, "오늘까지 연장을 저장하지 못했어요"));
-    } finally {
-      setExtendNightBusy(false);
-    }
-  };
-
   /** 연박 연결 · B.succeeds → A · 같은 호실 · 결제 불변 */
   const commitConnectStay = async (nextPick: Booking, opts: { alignCheckIn: boolean }) => {
     if (readOnly || connectStayBusy || !connectStay) return;
@@ -3132,11 +3081,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       onClick={click} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); click(); } }}>
       {canAssign ? <label className="board-assign-check" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={false} disabled={assignBusy} aria-label={`${r.no}호에 배정`} onChange={() => requestAssign(assignBk!, r.id)} /></label> : null}
       <NowRoomCard roomNo={r.no} roomType={typeLabel(r.typeId ? L.types.get(r.typeId) : null)} roomTypeId={r.typeId} color={color} booking={shown} platform={shown ? L.plats.get(shown.platformId) : undefined} settings={s} model={model} status={status} group={group} showGroup={showGroupLinks}
+        today={today}
+        onEditCharges={shown && !readOnly ? () => shown.groupId ? setScheduleGroupId(shown.groupId) : setRecordFor({ groupId: null, bookingId: shown.id, focusKey: `in-${shown.id}` }) : undefined}
+        onFinance={shown?.groupId && !readOnly ? () => setEvidenceGroupId(shown.groupId!) : undefined}
         readOnly={readOnly} busy={!!mvB || assignMode}
         hasAlerts={!!(status.note || hold || scheduled || dueMove || warnings.length || b?.noClean || b?.tentative || (b && b.typeId !== r.typeId) || (glance?.count ?? 0))}
         onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}
         onGuests={shown ? () => onOpen(shown, viewDate, { openGuests: true }) : undefined}
-        onGroup={() => setHighlightGroup(group?.id === highlightGroup ? null : group?.id ?? null)}
+        onGroup={() => { if (group?.id && !readOnly) setEvidenceGroupId(group.id); }}
         onMemo={() => { setNightPopId(null); setMemoRoomId(r.id); }} memoCount={glance?.count ?? 0} memoText={glance?.title}
         onPeriod={b?.kind === "stay" ? () => setNightPopId(popOpen ? null : b.id) : undefined}
         periodPopup={popOpen && b ? <NowNightPopover booking={b} bookings={bookings} today={today} roomLabel={L.roomLabel(r.id) ?? r.no} onClose={() => setNightPopId(null)} onOpen={() => { setNightPopId(null); onOpen(b, viewDate); }} /> : null}
@@ -3412,6 +3364,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 selectedGroupHead
                   ? {
                       ...selectedGroupHead,
+                      onEditSchedule: readOnly ? undefined : () => setScheduleGroupId(selectedGroupHead.groupId),
+                      onEvidence: readOnly ? undefined : () => setEvidenceGroupId(selectedGroupHead.groupId),
                       roomLabel: (id) => {
                         const bk = data.bookings.find((x) => x.id === id);
                         return bk?.roomId ? `${L.roomLabel(bk.roomId) ?? "?"}호` : "미배정";
@@ -3476,7 +3430,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : "";
                 setExtendNight({ booking: bk, roomLabel: lab || "호실" });
               }}
-              onExtendThrough={(bk) => void extendThroughToday(bk)}
               onOpenEnded={(bk, on, hold) => void setOpenEnded(bk, on, hold)}
               allBookings={bookings}
               onEditRates={(bk) => setRecordFor({ groupId: null, bookingId: bk.id, focusKey: `in-${bk.id}` })}
@@ -3651,6 +3604,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           occupied={staySale.occupied}
           busy={staySaleBusy || stayReceipts.pending}
           onCancel={() => !staySaleBusy && setStaySale(null)}
+          onExtend={staySale.occupied ? () => { const bk = data.bookings.find(b => b.id === staySale.occupied!.id) ?? staySale.occupied!; setExtendNight({ booking: bk, roomLabel: bk.roomId ? L.roomLabel(bk.roomId) ?? "호실" : "미배정" }); setStaySale(null); } : undefined}
           onConfirmCreate={(input) => void commitStaySaleCreate(input)}
           onConfirmOccupied={(input) => void commitStaySaleOccupied(input)}
         />
@@ -3713,6 +3667,13 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {joinGroupId ? renderJoin(joinGroupId) : null}
 {renderMoveSched()}
       {renderRecord()}
+      {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
+      {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}
+        onHighlight={() => { setHighlightGroup(evidenceGroupId); setEvidenceGroupId(null); }}
+        onAddRooms={() => { setJoinGroupId(evidenceGroupId); setEvidenceGroupId(null); }}
+        onPay={() => { setPeriodPay({ groupId: evidenceGroupId }); setEvidenceGroupId(null); }}
+        onRoom={b => { setEvidenceGroupId(null); if (b.roomId) { setSelectedRoomIds([b.roomId]); setSideMode("room"); sbx.reveal(); } else onOpen(b, viewDate); }}
+        onEditSchedule={() => { setScheduleGroupId(evidenceGroupId); setEvidenceGroupId(null); }} onEditPayments={() => { setRecordFor({ groupId: evidenceGroupId, bookingId: null }); setEvidenceGroupId(null); }} /> : null}
       {leaveBkId ? renderLeave(leaveBkId) : null}
     {renderChangeLog()}
       {renderChangeLog()}

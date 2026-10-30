@@ -133,8 +133,8 @@ export function unusedNightRefund(
 }
 
 /** 활성 숙박 · 조기 퇴실 아님 · 366박 미만 */
-export function canExtend(b: Pick<Booking, "status" | "kind" | "checkIn" | "nights" | "earlyOut">): boolean {
-  return b.status === "active" && b.kind === "stay" && !!b.nights && b.nights >= 1 && b.nights < STAY_NIGHTS_MAX && !isEarlyOut(b);
+export function canExtend(b: Pick<Booking, "status" | "kind" | "checkIn" | "nights" | "earlyOut"> & Partial<Pick<Booking, "checkedOutAt">>): boolean {
+  return b.status === "active" && b.kind === "stay" && !b.checkedOutAt && !!b.nights && b.nights >= 1 && b.nights < STAY_NIGHTS_MAX && !isEarlyOut(b);
 }
 
 export interface ExtendDraft {
@@ -159,10 +159,8 @@ export function applyExtend(
   const price = b.price + r;
   const segments = fitSegments(b.segments, b.roomId, nights);
   const extraNight = addDays(b.checkIn, nights - 1);
-  const nightRates =
-    b.nightRates?.nights || b.nightRates?.flat
-      ? appendNightAmount(b.nightRates, extraNight, r)
-      : b.nightRates ?? null;
+  // 과거 박의 단가는 추측하지 않되 이번에 명시한 연장 단가는 반드시 저장한다.
+  const nightRates = { ...appendNightAmount(b.nightRates, extraNight, r), flat: b.nightRates?.flat ?? null };
   return {
     nights,
     price,
@@ -337,6 +335,7 @@ export interface OpsExtendPlan {
 /** 운영패널 1박 연장: planExtend + 결제수단. StaySale 비경유. */
 export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan | { err: string } {
   if (!canExtend(b)) {
+    if (b.checkedOutAt) return { err: "이미 퇴실한 예약은 연장할 수 없습니다. 실제 퇴실 기록을 확인해 주세요." };
     if (isEarlyOut(b)) return { err: "조기 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요." };
     if (b.status !== "active") return { err: "취소·노쇼 예약은 1박 연장할 수 없어요." };
     if (b.kind !== "stay") return { err: "숙박만 1박 연장할 수 있어요." };
@@ -344,6 +343,7 @@ export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan 
     return { err: "1박 연장할 수 없어요." };
   }
   if (!isExtendPayMethod(input.method)) return { err: "카드 · 이체 · 현금 · 서비스 · 후불 중에 골라 주세요." };
+  if (input.method !== "service" && (!Number.isFinite(input.rate) || input.rate <= 0)) return { err: "연장할 박의 약정 요금을 입력해 주세요. 무료 연장은 서비스를 선택해 주세요." };
   const effectiveRate = input.method === "service" ? 0 : Math.max(0, Math.round(input.rate));
   const rv = validateExtendRate(effectiveRate);
   if (rv) return { err: rv };
