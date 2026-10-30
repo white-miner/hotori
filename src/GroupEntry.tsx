@@ -1,6 +1,8 @@
 // 단체 예약 만들기: 방 여러 개를 한 번에 (모두 되거나 모두 안 돼요)
 // · 호실 지정 / 타입만(호실 나중에) · 요금은 객실마다 박별 (GroupRoomRates) — 총액 나누기·타입 요금 없음
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import GroupDailyPlanFields from "./GroupDailyPlanFields";
+import { buildGroupDailyPlan, groupDailyDrafts, type GroupDailyPlan } from "../shared/groupDailyPlan";
 import OpenStayToggle from "./OpenStayToggle";
 import GroupRoomRates from "./GroupRoomRates";
 import { OPEN_HOLD_DEFAULT, openStayNights } from "../shared/openStay";
@@ -41,7 +43,7 @@ import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
 import RoomClashNote from "./RoomClashNote";
 
-type AssignMode = "rooms" | "typeOnly";
+type AssignMode = "rooms" | "typeOnly" | "daily";
 interface Props {
   data: HotelData;
   today: string;
@@ -79,6 +81,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const [rateEdits, setRateEdits] = useState<RateEdits>({});
   const [picked, setPicked] = useState<string[]>([]);
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [dailyPlan, setDailyPlan] = useState<GroupDailyPlan>({});
+  const saveLock = useRef(false);
   const [view, setView] = useState<"count" | "board">("count");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -88,14 +92,16 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const free = useMemo(() => freeForStay(s, data.bookings, checkIn, nights), [s, data.bookings, checkIn, nights]);
   const order = useMemo(() => roomOrder(s), [s]);
   const rmap = useMemo(() => new Map(allRooms(s).map((r) => [r.id, r])), [s]);
-  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, rateEdits, payMode, assignMode]);
+  useEffect(() => setErr(null), [picked, typeCounts, nights, checkIn, rateEdits, payMode, assignMode, dailyPlan]);
 
   const types = usableTypes(s.types);
   const sorted = [...picked].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
-  const typeOnlySlots = types.map((t) => ({ typeId: t.id, count: typeCounts[t.id] ?? 0 })).filter((x) => x.count > 0);
-  const typeIds = assignMode === "typeOnly" ? expandTypeSlots(typeOnlySlots) : sorted.map((id) => rmap.get(id)?.typeId ?? "");
+  const dailyMode = assignMode === "daily";
+  const dailyResult = buildGroupDailyPlan(s, checkIn, nights, dailyPlan);
+  const typeOnlySlots = types.map((t) => ({ typeId: t.id, count: dailyMode ? dailyResult.members.filter((m) => m.typeId === t.id).length : typeCounts[t.id] ?? 0 })).filter((x) => x.count > 0);
+  const typeIds = assignMode !== "rooms" ? expandTypeSlots(typeOnlySlots) : sorted.map((id) => rmap.get(id)?.typeId ?? "");
   const n = typeIds.length;
-  const countOf = (tid: string) => (assignMode === "typeOnly" ? typeCounts[tid] ?? 0 : sorted.filter((id) => rmap.get(id)?.typeId === tid).length);
+  const countOf = (tid: string) => (dailyMode ? dailyResult.members.filter((m) => m.typeId === tid).length : assignMode === "typeOnly" ? typeCounts[tid] ?? 0 : sorted.filter((id) => rmap.get(id)?.typeId === tid).length);
   const freeOf = (tid: string) => allRooms(s).filter((r) => r.typeId === tid && free.has(r.id)).length;
   const stockLeft = (tid: string) => {
     const dates = Array.from({ length: nights }, (_, i) => addDays(checkIn, i));
@@ -127,10 +133,12 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           return { typeId: tid, label: `${L.roomLabel(id)}호`, sub: typeLabel(L.types.get(tid)) };
         });
   const rows = slotRows(s, slots, rateEdits, checkIn, nights);
-  const { memberNightRates, prices } = draftRates(rows);
+  const regularRates = draftRates(rows);
+  const memberNightRates = dailyMode ? dailyResult.members.map((m) => m.rates) : regularRates.memberNightRates;
+  const prices = dailyMode ? dailyResult.members.map((m) => m.price) : regularRates.prices;
   const sum = prices.reduce((a, b) => a + b, 0);
   const impact =
-    assignMode === "typeOnly"
+    dailyMode ? dailyResult.days.flatMap((d) => groupStockImpactByTypes(s, data.bookings, d.date, 1, Object.fromEntries(types.map((t) => [t.id, dailyPlan[t.id]?.[d.date]?.rooms ?? 0]))).map((x) => ({ ...x, date: d.date }))) : assignMode === "typeOnly"
       ? groupStockImpactByTypes(
           s,
           data.bookings,
@@ -149,11 +157,13 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
     setTypeCounts({});
     setNote(null);
     setView("count");
-    if (m === "typeOnly") setTentative(false); // 미배정 = 타입 홀드 · 임시 아님
+    if (m !== "rooms") setTentative(false); // 미배정 = 타입 홀드 · 임시 아님
+    if (m === "daily") setOpenOn(false);
   };
 
-  const save = async () => {
+  const saveNow = async () => {
     if (busy) return;
+    if (dailyMode && dailyResult.error) return setErr(dailyResult.error);
     const v = validateGroup({
       name,
       platformId,
@@ -161,26 +171,26 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       roomIds: assignMode === "rooms" ? sorted : [],
       prices,
       free,
-      typeOnly: assignMode === "typeOnly" ? typeOnlySlots : undefined,
+      typeOnly: assignMode !== "rooms" ? typeOnlySlots : undefined,
     });
     if (v) return setErr(v);
     // 타입 오버부킹: 경고만 · 저장 허용 (호실 모드의 물리 방 겹침은 free/validate에서 차단)
     if (over.length) {
       const overOk = await askConfirm({
         title: "타입 재고 부족",
-        body: `${over.map((x) => typeLabel(L.types.get(x.typeId))).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
+        body: `${over.map((x) => `${"date" in x ? `${dayLabel(String(x.date))} ` : ""}${typeLabel(L.types.get(x.typeId))}`).join(", ")} 타입 재고가 모자랍니다(오버부킹). 그래도 저장할까요?`,
         confirmLabel: "저장",
       });
       if (!overOk) return;
     }
-    const unpriced = unpricedMessage(rows);
+    const unpriced = dailyMode ? null : unpricedMessage(rows);
     if (unpriced) return setErr(unpriced);
     if (payMode === "postpaid" && !payer.company.trim() && !payer.name.trim()) return setErr("후불이면 결제자(회사 또는 담당자)를 입력해 주세요.");
     setBusy(true);
     setErr(null);
     try {
       const groupId = crypto.randomUUID();
-      const list = groupDrafts({
+      const list = dailyMode ? groupDailyDrafts(dailyResult, { s, groupId, groupName: name, platformId, guestsOf: (tid) => typeGuests(L.types.get(tid)).base }) : groupDrafts({
         groupId,
         groupName: name,
         platformId,
@@ -206,16 +216,21 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         extras: [],
         badgeColor: hashGroupBadgeColor(groupId),
       });
-      const how = assignMode === "typeOnly" ? `${n}실(간단 예약·호실 미정)` : `${n}실`;
+      const how = assignMode !== "rooms" ? `${n}실(${dailyMode ? "날짜별 객실·요금" : "간단 예약"}·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(
-        `단체 ${name.trim()} ${how} · ${openOn ? "∞ 미정" : `${nights}박`} 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
+        `단체 ${name.trim()} ${how} · ${dailyMode ? `${dailyResult.roomNights}객실박` : openOn ? "∞ 미정" : `${nights}박`} 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
       );
     } catch (e) {
       setErr(saveFailMessage(e, "하나도 저장하지 않았어요"));
     } finally {
       setBusy(false);
     }
+  };
+  const save = async () => {
+    if (saveLock.current) return;
+    saveLock.current = true;
+    try { await saveNow(); } finally { saveLock.current = false; }
   };
 
   const dateChips = [today, addDays(today, 1), addDays(today, 2)];
@@ -268,7 +283,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         </div>
         <div className="fld">
           <label>
-            입실<em>*</em>
+            {dailyMode ? "첫 숙박일" : "입실"}<em>*</em>
           </label>
           <div className="chips scroll">
             {dateChips.map((d, i) => (
@@ -283,7 +298,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
             </label>
           </div>
         </div>
-        <div className="fld">
+        {!dailyMode ? <div className="fld">
           <label>이용 기간</label>
           <OpenStayToggle
             on={openOn}
@@ -293,12 +308,12 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               setOpenHold(h);
             }}
           />
-        </div>
+        </div> : null}
         {openOn ? null : (
           <>
         <div className="fld">
           <label>
-            퇴실<em>*</em>
+            {dailyMode ? "일정 종료" : "퇴실"}<em>*</em>
           </label>
           <div className="step stayio">
             <label className="chip datechip on">
@@ -318,14 +333,13 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               <b>
                 {dayLabel(checkOutDate)} {s.stayTimes.checkOut}
               </b>{" "}
-              퇴실
-              {assignMode === "rooms" ? " · 이 기간 내내 빈 방만 고를 수 있어요" : " · 호실은 나중에 배정해요 (타입 재고만 차감)"}
+              {dailyMode ? "마지막 숙박 다음 날 · 객실별 퇴실일은 아래 실 수로 계산해요" : <>퇴실{assignMode === "rooms" ? " · 이 기간 내내 빈 방만 고를 수 있어요" : " · 호실은 나중에 배정해요 (타입 재고만 차감)"}</>}
             </span>
           </div>
         </div>
         <div className="fld">
           <label>
-            박수<em>*</em>
+            {dailyMode ? "일정 박수" : "박수"}<em>*</em>
           </label>
           <div className="step">
             <button type="button" className="sb" aria-label="1박 줄이기" onClick={() => setStayNights(nights - 1)}>
@@ -339,7 +353,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               <Plus size={16} />
             </button>
             <span className="rng stayglance" aria-label={`입실 ${dayLabel(checkIn)} 퇴실 ${dayLabel(checkOutDate)} ${nights}박`}>
-              <b>{dayLabel(checkIn)}</b> 입실 → <b>{dayLabel(checkOutDate)}</b> 퇴실 · <b>{nights}박</b>
+              <b>{dayLabel(checkIn)}</b> {dailyMode ? "첫 숙박" : "입실"} → <b>{dayLabel(checkOutDate)}</b> {dailyMode ? "일정 종료" : "퇴실"} · <b>{dailyMode ? "최대 " : ""}{nights}박</b>
             </span>
           </div>
         </div>
@@ -359,15 +373,16 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 <button type="button" className={assignMode === "rooms" ? "on" : ""} onClick={() => switchAssign("rooms")}>
                   호실까지
                 </button>
+                <button type="button" className={dailyMode ? "on" : ""} onClick={() => switchAssign("daily")}>날짜별 객실·요금</button>
               </div>
               <span className="gsum">
                 {n ? (
                   <>
                     <b>{n}실</b> · {summary}
-                    {assignMode === "typeOnly" ? <span className="muted"> · 호실 미정</span> : null}
+                    {assignMode !== "rooms" ? <span className="muted"> · 호실 미정</span> : null}
                   </>
                 ) : (
-                  <span className="muted">{assignMode === "typeOnly" ? "타입별 실 수를 입력해 주세요" : "아직 고른 방이 없어요"}</span>
+                  <span className="muted">{dailyMode ? "날짜별 실 수와 요금을 입력해 주세요" : assignMode === "typeOnly" ? "타입별 실 수를 입력해 주세요" : "아직 고른 방이 없어요"}</span>
                 )}
               </span>
               {n ? (
@@ -377,6 +392,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                   onClick={() => {
                     setPicked([]);
                     setTypeCounts({});
+                    if (dailyMode) setDailyPlan({});
                   }}
                 >
                   모두 빼기
@@ -393,7 +409,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 </button>
               </div>
             ) : null}
-            {assignMode === "typeOnly" || view === "count" ? (
+            {dailyMode ? <GroupDailyPlanFields s={s} bookings={data.bookings} checkIn={checkIn} nights={nights} plan={dailyPlan} onChange={setDailyPlan} disabled={busy} /> : null}
+            {assignMode === "typeOnly" || (assignMode === "rooms" && view === "count") ? (
               <div className="gcounts">
                 {types.map((t) => {
                   const c = countOf(t.id);
@@ -479,14 +496,14 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
           </div>
         </div>
 
-        <div className="fld">
+        {!dailyMode ? <div className="fld">
           <label>
             객실별 요금<em>*</em>
           </label>
           <div className="payb">
             <GroupRoomRates s={s} slots={slots} edits={rateEdits} onEdits={setRateEdits} checkIn={checkIn} nights={nights} />
           </div>
-        </div>
+        </div> : null}
 
         {assignMode === "rooms" ? (
           <div className="fld">
@@ -551,10 +568,10 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               {impact.map((r) => {
                 const t = L.types.get(r.typeId);
                 return (
-                  <div className="pvr" key={r.typeId}>
+                  <div className="pvr" key={`${r.typeId}-${"date" in r ? r.date : ""}`}>
                     <TypeBadge t={t} />
                     <span className="pn">
-                      {typeLabel(t)} {r.n}실
+                      {"date" in r ? `${dayLabel(String(r.date))} · ` : ""}{typeLabel(t)} {r.n}실
                     </span>
                     <span className="v">
                       <s>{r.before}</s>
@@ -571,7 +588,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
               })}
             </>
           ) : (
-            <div className="pt">{assignMode === "typeOnly" ? "타입 실 수를 입력하면 잔여 객실이 어떻게 바뀌는지 보여요." : "방을 고르면 잔여 객실이 어떻게 바뀌는지 보여요. 겹치는 방은 고를 수 없어요."}</div>
+            <div className="pt">{dailyMode ? "날짜별 실 수와 요금을 입력하면 각 날짜의 잔여 객실을 보여요." : assignMode === "typeOnly" ? "타입 실 수를 입력하면 잔여 객실이 어떻게 바뀌는지 보여요." : "방을 고르면 잔여 객실이 어떻게 바뀌는지 보여요. 겹치는 방은 고를 수 없어요."}</div>
           )}
         </div>
 
@@ -579,7 +596,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
         <div className="mf">
           <div className="keys">
             <span className="muted sm">
-              {assignMode === "typeOnly" ? "타입마다 예약이 한 줄씩 생기고, 호실은 나중에 배정해요" : "방마다 예약이 한 줄씩 생기고 장부에서는 한 줄로 묶여요"}
+              {dailyMode ? `객실마다 실제 기간과 박별 요금으로 저장 · ${dailyResult.roomNights}객실박 · ${won(sum)}원` : assignMode === "typeOnly" ? "객실마다 예약이 한 줄씩 생기고, 호실은 나중에 배정해요" : "방마다 예약이 한 줄씩 생기고 장부에서는 한 줄로 묶여요"}
             </span>
           </div>
           <button type="button" className="btn" onClick={onClose}>
