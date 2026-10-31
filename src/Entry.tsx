@@ -172,7 +172,8 @@ import {
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OpenStayToggle from "./OpenStayToggle";
-import NightRatesTable from "./NightRatesTable";
+import StayPriceEditor from './StayPriceEditor';
+import { type StayPriceDraft, resolveStayPrice, singleNightFromPrice } from '../shared/stayPricing';
 import RoomClashNote from "./RoomClashNote";
 import PayEvidence from "./PayEvidence";
 import RecordSheet from "./RecordSheet";
@@ -355,16 +356,12 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   /** 플랫폼 전용 판매금 모드 · 기본 총액 */
   const [salesMode, setSalesMode] = useState<SalesMode>("total");
   /** 방×밤 요금 행렬 (있으면 총액 = Σ 셀 + 가산) */
+  const [priceDraft, setPriceDraft] = useState<StayPriceDraft | null>(null);
   const [nightRates, setNightRates] = useState<StayNightRates | null>(() => {
-    if (!base || base.kind !== "stay" || base.stayMode === "long_stay" || !base.nights) return null;
-    // 적어 둔 박만 그대로 — 안 적은 박은 비워 둬요 (판매금을 박수로 나눠 채우지 않아요)
-    if (base.nightRates) return { ...base.nightRates, nights: enteredNightMap(base.checkIn, base.nights, base.nightRates.nights) };
-    return null;
+    const initial = base ?? p;
+    if (initKind !== 'stay' || initial.stayMode === 'long_stay') return null;
+    return initial.nightRates ? { ...initial.nightRates, nights: enteredNightMap(initial.checkIn ?? checkIn, initial.nights ?? nights, initial.nightRates.nights) } : null;
   });
-  /** 박별 합계가 판매금과 다를 때 「판매금도 박별 합계로 바꾸기」 · 이미 박별 표가 판매금과 같던 예약만 처음부터 켜져 있어요 */
-  const [useSum, setUseSum] = useState<boolean>(() => !!base && base.kind === "stay" && !!base.nights && hasFullNightMatrix(base.checkIn, base.nights, base.nightRates) && priceFromNightMatrix(base.nightRates, 0) === base.price);
-  /** 체크를 켠 순간의 판매금 (끄면 이 값으로 돌아가요) */
-  const [sumBase, setSumBase] = useState<number | null>(() => (base && base.kind === "stay" ? base.price : null));
   const [wdStr, setWdStr] = useState(() => (base?.nightRates?.weekday != null ? String(base.nightRates.weekday) : ""));
   const [weStr, setWeStr] = useState(() => (base?.nightRates?.weekend != null ? String(base.nightRates.weekend) : ""));
   const [roomId, setRoomId] = useState<string | null>(base?.roomId ?? p.roomId ?? null);
@@ -569,11 +566,11 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       openEx();
       return;
     }
-    if (!long && kind === "stay" && next >= 1 && (next !== nights || nextCheckIn !== checkIn)) {
+    if ((!priceDraft || priceDraft.mode === "daily") && !long && kind === "stay" && next >= 1 && (next !== nights || nextCheckIn !== checkIn)) {
       const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
       // 총액 모드(플랫폼 + 현장·전화): 판매금 그대로 · 적어 둔 박만 옮기고 새 박은 비워 둬요 (총액을 나눠 채우지 않아요)
       if (salesMode === "total") {
-        const oldMap = nightRates?.nights ?? null;
+        const oldMap = priceDraft?.rates?.nights ?? nightRates?.nights ?? null;
         if (nextCheckIn !== checkIn && nightShiftAmbiguous(oldMap, checkIn, nights, nextCheckIn, next) && !opts?.shift) {
           const d = shiftDays(checkIn, nextCheckIn);
           void askConfirm({
@@ -585,7 +582,8 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           return;
         }
         const moved = shiftEnteredNights(oldMap, checkIn, nights, nextCheckIn, next, opts?.shift ?? (nextCheckIn !== checkIn ? "move" : "keep"));
-        setNightRates(nightRates || Object.keys(moved).length ? { ...(nightRates ?? { flat: null }), nights: moved } : null);
+        if (priceDraft) setPriceDraft({ ...priceDraft, rates: { ...priceDraft.rates, nights: moved } });
+        else setNightRates(nightRates || Object.keys(moved).length ? { ...(nightRates ?? { flat: null }), nights: moved } : null);
       } else {
         const typeRate = base?.groupId ? data.groups.get(base.groupId)?.rates?.[typeId] : undefined;
         const rate = Number(rateStr || 0) > 0 ? Math.round(Number(rateStr)) : roomNightRate(
@@ -645,92 +643,15 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   };
   const setStayNights = (n: number) => applyStayNights(n);
   const setStayCheckOut = (d: string) => setStayNights(nightsFromStayDates(checkIn, d));
-  const setRateAndTotal = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 9);
-    setRateStr(digits);
-    if (long || kind !== "stay" || nights < 1) return;
-    const rate = Number(digits || 0);
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    const next = syncStayNightRates(
-      checkIn,
-      nights,
-      { ...(nightRates ?? {}), flat: rate, weekday: wdStr ? Number(wdStr) : nightRates?.weekday, weekend: weStr ? Number(weStr) : nightRates?.weekend },
-      { typeRate: rate },
-    );
-    // 박당 요금을 바꾸면 자동으로 채워진 박만 새 금액으로 — 손으로 고친 박은 그대로 (전부 덮으려면 「모두 이 금액으로 덮어쓰기」)
-    const refilled = { ...next, nights: refillKeepingEdits(checkIn, nights, nightRates, { flat: rate, weekday: next.weekday, weekend: next.weekend }) };
-    setNightRates(refilled);
-    setPrice(String(priceFromNightMatrix(refilled, addons)));
-  };
-  const setTotalAndRate = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 9);
-    setPrice(digits);
-    if (long || kind !== "stay" || nights < 1) return;
-    // 판매금은 판매금대로 — 박수로 나누지 않아요. 박별 표와 다르면 차액을 알려 줘요
-    if (useSum) {
-      setUseSum(false);
-      setSumBase(null);
-    }
-  };
-  const applyWdWe = (wd: string, we: string) => {
-    setWdStr(wd);
-    setWeStr(we);
-    if (long || kind !== "stay" || nights < 1) return;
-    const defs = {
-      flat: Number(rateStr || 0) || nightRates?.flat || null,
-      weekday: wd ? Number(wd) : null,
-      weekend: we ? Number(we) : null,
-    };
-    const next = { ...(nightRates ?? {}), ...defs, nights: refillKeepingEdits(checkIn, nights, nightRates, defs) };
-    setNightRates(next);
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    setPrice(String(priceFromNightMatrix(next, addons)));
-  };
-  /** 「모두 이 금액으로 덮어쓰기」 — 손으로 고친 박까지 전부 박당 요금으로 (직접 누를 때만) */
-  const overwriteAllNights = () => {
-    const defs = { flat: Number(rateStr || 0) || nightRates?.flat || null, weekday: wdStr ? Number(wdStr) : null, weekend: weStr ? Number(weStr) : null };
-    if (!(defs.flat || defs.weekday || defs.weekend)) return;
-    const next = { ...(nightRates ?? {}), ...defs, nights: refillKeepingEdits(checkIn, nights, nightRates, defs, true) };
-    setNightRates(next);
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    setPrice(String(priceFromNightMatrix(next, addons)));
-  };
-  /** 박별 표가 바뀔 때: 박당 입력 모드는 1박 요금을 빈 박에 적용한 합이 판매금 · 총액 모드는 체크했을 때만 판매금을 합계로 */
   const commitNights = (next: StayNightRates) => {
-    setNightRates(next);
-    if (long || kind !== "stay") return;
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    if (salesMode === "perNight") {
-      const rate = Number(rateStr || 0) || next.flat || 0;
-      if (rate > 0) {
-        const full = syncStayNightRates(checkIn, nights, { ...next, flat: rate }, { typeRate: rate });
-        if (hasFullNightMatrix(checkIn, nights, full)) setPrice(String(priceFromNightMatrix(full, addons)));
-      }
-      return;
-    }
-    if (useSum) {
-      const st = nightTableStatus({ checkIn, nights, rates: next, price: Number(price || 0), addons });
-      if (st.allEntered) setPrice(String(st.sumTotal));
-    }
+    if (long || kind !== 'stay') return;
+    setPriceDraft({ mode: 'daily', amount: '', rates: next });
   };
   const editNightAmount = (date: string, amount: number) => {
-    if (long || kind !== "stay") return;
-    const map = { ...(nightRates?.nights ?? {}) };
-    if (amount > 0) map[date] = Math.round(amount);
-    else delete map[date];
-    commitNights({ ...(nightRates ?? { flat: null }), nights: map });
-  };
-  const toggleUseSum = (on: boolean) => {
-    const addons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-    setUseSum(on);
-    if (on) {
-      setSumBase(Number(price || 0));
-      const st = nightTableStatus({ checkIn, nights, rates: nightRates, price: Number(price || 0), addons });
-      if (st.allEntered) setPrice(String(st.sumTotal));
-    } else {
-      if (sumBase != null) setPrice(String(sumBase));
-      setSumBase(null);
-    }
+    const currentRates = priceDraft ? resolveStayPrice(checkIn, nights, priceDraft).rates : nightRates;
+    const map = { ...currentRates?.nights };
+    if (amount > 0) map[date] = Math.round(amount); else delete map[date];
+    commitNights({ ...currentRates, nights: map });
   };
   const confirmAs = async () => {
     if (!live || !as || asBusy) return;
@@ -1250,12 +1171,13 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const multiAddons = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
   const multiPrices = multiRows.map((r) => r.subtotal + multiAddons);
   const multiTotal = multiPrices.reduce((a, b) => a + b, 0);
+  const enteredPrice = priceDraft && kind === 'stay' && !long ? resolveStayPrice(checkIn, nights, priceDraft, multiAddons) : null;
   const draftPrice =
     long && draftLongPreview && !("err" in draftLongPreview)
       ? draftLongPreview.price
       : multi
         ? (multiPrices[0] ?? 0)
-        : Number(price || 0);
+        : enteredPrice?.price ?? Number(price || 0);
   const draftBase: Booking = {
     id: base?.id ?? "__draft__",
     kind,
@@ -1287,7 +1209,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     memo: memo || null,
     groupId: base?.groupId ?? null,
     groupName: base?.groupName ?? null,
-    nightRates: kind === "stay" && !long ? (multi ? (multiRows[0]?.rates ?? null) : nightRates && (Object.keys(nightRates.nights ?? {}).length || nightRates.flat || nightRates.extras?.length) ? nightRates : null) : null,
+    nightRates: kind === "stay" && !long ? (multi ? multiRows[0]?.rates ?? null : enteredPrice ? enteredPrice.rates : !base ? singleNightFromPrice(checkIn, nights, draftPrice, nightRates, multiAddons) : nightRates) : null,
     ...(openOn && kind === "stay" && !long ? { openEnded: true, holdAhead: openHold } : {}),
     guests,
     extraFee: long ? null : extraFee || null,
@@ -1671,6 +1593,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     opts?: { allowDayuseOverlap?: boolean; walkInImmediate?: boolean },
   ) {
     if (busy || receipts.pending) return;
+    if (!multi && enteredPrice?.error) return setErr(enteredPrice.error);
     const walkInImmediate = !!opts?.walkInImmediate;
     let draft = override ? { ...draftBase, status: override } : { ...draftBase };
     if (walkInImmediate) {
@@ -2570,7 +2493,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                   today={today}
                   onPick={(cin, n) => applyStayNights(isNew && openOn ? openStayNights(cin, today, openHold) : n, { checkIn: cin })}
                   onBlocked={() => notify("이미 예약된 밤이에요 · 연속된 빈 밤만 고를 수 있어요")}
-                  nightAmounts={nightRates?.nights ?? null}
+                  nightAmounts={enteredPrice?.rates.nights ?? nightRates?.nights ?? null}
                   onEditNight={editNightAmount}
                 />
               </div>
@@ -3267,146 +3190,12 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
               )}
             </label>
             <div className="payb">
-              {kind === "stay" ? (
-                <div className="seg sm" role="tablist" aria-label="판매금 입력 모드">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={salesMode === "perNight"}
-                    className={salesMode === "perNight" ? "on" : ""}
-                    onClick={() => setSalesMode("perNight")}
-                  >
-                    박당
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={salesMode === "total"}
-                    className={salesMode === "total" ? "on" : ""}
-                    onClick={() => setSalesMode("total")}
-                  >
-                    총액
-                  </button>
-                </div>
-              ) : null}
-              {kind === "stay" ? (
-                salesMode === "total" ? (
-                  <>
-                    <PriceRow>
-                      <PriceInp total>
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          placeholder="총액"
-                          value={price ? won(Number(price)) : ""}
-                          onChange={(e) => setTotalAndRate(e.target.value)}
-                          aria-label="판매금 총액"
-                        />
-                      </PriceInp>
-                    </PriceRow>
-                    <div className="muted sm">
-                      {isOnsite(curPlat) ? "총액 · 박별 요금은 아래에서 직접 적어요 (총액을 나눠 채우지 않아요)" : "플랫폼 총액 그대로 · 박별 요금은 아래에서 직접 적어요"}
-                      {Number(price || 0) > 0 ? (
-                        <>
-                          {" · "}
-                          <b>{won(Number(price))}원</b>
-                          {nights > 1 ? ` · ${nights}박` : null}
-                        </>
-                      ) : null}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <PriceRow>
-                      <PriceInp sm suffix="원/박">
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          placeholder="1박"
-                          value={rateStr ? won(Number(rateStr)) : ""}
-                          onChange={(e) => setRateAndTotal(e.target.value)}
-                          aria-label="1박 요금"
-                        />
-                      </PriceInp>
-                      <span className="muted sm">× {nights}박 =</span>
-                      <PriceInp total>
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          placeholder="총액"
-                          value={price ? won(Number(price)) : ""}
-                          onChange={(e) => setTotalAndRate(e.target.value)}
-                          aria-label="판매금"
-                        />
-                      </PriceInp>
-                    </PriceRow>
-                    <PriceRow wdwe>
-                      <PriceInp sm suffix="평일">
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          placeholder="평일"
-                          value={wdStr ? won(Number(wdStr)) : ""}
-                          onChange={(e) => applyWdWe(e.target.value.replace(/\D/g, "").slice(0, 9), weStr)}
-                          aria-label="평일 1박 기본"
-                        />
-                      </PriceInp>
-                      <PriceInp sm suffix="주말">
-                        <input
-                          className="num"
-                          inputMode="numeric"
-                          placeholder="주말"
-                          value={weStr ? won(Number(weStr)) : ""}
-                          onChange={(e) => applyWdWe(wdStr, e.target.value.replace(/\D/g, "").slice(0, 9))}
-                          aria-label="주말 1박 기본 (금·토)"
-                        />
-                      </PriceInp>
-                      <span className="muted sm">금·토 · 날짜 셀에서 밤마다 고칠 수 있어요</span>
-                      {hasHandEditedNights(checkIn, nights, nightRates) ? (
-                        <button type="button" className="nrt-same" onClick={overwriteAllNights} title="직접 고친 박까지 전부 위 박당 요금으로 바꿔요">
-                          모두 이 금액으로 덮어쓰기
-                        </button>
-                      ) : null}
-                    </PriceRow>
-                  </>
-                )
-              ) : (
-                <PriceInp>
-                  <input
-                    className="num"
-                    inputMode="numeric"
-                    placeholder="금액"
-                    value={price ? won(Number(price)) : ""}
-                    onChange={(e) => setPrice(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                    aria-label="판매 가격"
-                  />
-                </PriceInp>
-              )}
-              {kind === "stay" && !long && nights >= 1 && nights <= STAY_NIGHTS_MAX ? (
-                <NightRatesTable
-                  checkIn={checkIn}
-                  nights={nights}
-                  rates={nightRates}
-                  suggestions={Object.fromEntries(occupiedNightDates(checkIn, nights).map((d) => [d, resolveNightRate(s, typeId, d).amount]))}
-                  addons={stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff })}
-                  price={useSum && sumBase != null ? sumBase : Number(price || 0)}
-                  useSum={useSum}
-                  onUseSum={toggleUseSum}
-                  onChange={commitNights}
-                />
-              ) : null}
-              {kind === "stay" && Number(price || 0) > 0 && salesMode !== "total" ? (
-                <div className="muted sm">
-                  {hasFullNightMatrix(checkIn, nights, nightRates)
-                    ? "총액 = 선택 밤 금액 합"
-                    : "총액 = 1박 요금 × 박수"}
-                  {(() => {
-                    const a = stayAddons({ kind: "stay", extraFee, earlyIn, lateOut, timeFee, arrival, carFee, walkOff });
-                    return a ? ` + 가산 ${won(a)}원` : "";
-                  })()}
-                  {" · "}박수 줄이면 뒤 밤을 빼고 맞춰요
-                </div>
-              ) : null}
+              {kind === 'stay' ? <StayPriceEditor checkIn={checkIn} nights={nights} draft={priceDraft}
+                rates={enteredPrice?.rates ?? nightRates} price={draftPrice} addons={multiAddons}
+                suggestions={Object.fromEntries(occupiedNightDates(checkIn, nights).map(d => [d, resolveNightRate(s, typeId, d).amount]))}
+                onChange={d => { setPriceDraft(d); setSalesMode('total'); }} /> :
+                <PriceInp><input className="num" inputMode="numeric" placeholder="금액" value={price ? won(Number(price)) : ''} onChange={e => setPrice(e.target.value.replace(/\D/g, '').slice(0, 9))} aria-label="판매 가격" /></PriceInp>}
+
             </div>
           </div>
         )}
