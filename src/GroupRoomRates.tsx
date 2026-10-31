@@ -11,7 +11,8 @@ import {
   slotRows,
   suggestNights,
 } from "../shared/groupRates";
-import NightRatesTable from "./NightRatesTable";
+import StayPriceEditor from './StayPriceEditor';
+import type { StayPriceDraft } from '../shared/stayPricing';
 import RoomExtrasEditor from "./RoomExtrasEditor";
 
 const num = (v: string) => Math.max(0, Math.min(100_000_000, Math.round(Number(v.replace(/\D/g, "").slice(0, 9)) || 0)));
@@ -67,8 +68,8 @@ export default function GroupRoomRates({
               checkIn={checkIn}
               nights={nights}
               disabled={disabled}
-              onRates={(rates) => patch(r.slot.key, { rates })}
-              onReset={() => patch(r.slot.key, { rates: null })}
+              onPricing={(pricing) => patch(r.slot.key, { pricing })}
+              onReset={() => patch(r.slot.key, { rates: null, pricing: null })}
               onExtras={(extras) => patch(r.slot.key, { extras })}
             />
           ))}
@@ -92,7 +93,7 @@ function RateRow({
   checkIn,
   nights,
   disabled,
-  onRates,
+  onPricing,
   onReset,
   onExtras,
 }: {
@@ -102,7 +103,7 @@ function RateRow({
   checkIn: string;
   nights: number;
   disabled?: boolean;
-  onRates: (r: NonNullable<RateEdits[string]["rates"]>) => void;
+  onPricing: (draft: StayPriceDraft) => void;
   onReset: () => void;
   onExtras: (e: ExtraDraft[]) => void;
 }) {
@@ -112,7 +113,7 @@ function RateRow({
   const sug = suggestNights(s, slot.typeId, checkIn, nights);
   const noRate = !(row.roomCharge > 0);
   const sugMap: Record<string, number> = Object.fromEntries(sug.map((x) => [x.date, x.amount]));
-  const own = edits[slot.key]?.rates ?? null;
+  const own = edits[slot.key]?.pricing ? row.rates : edits[slot.key]?.rates ?? null;
   // 직접 적지 않은 박은 호텔 요금표의 제안이에요 — 소계에는 들어가지만 미확정이라고 표시해요
   const entered = own?.nights ?? {};
   const label = { date: "특별일", season: "시즌", weekend: "주말", weekday: "평일", flat: "기본", none: "" } as const;
@@ -163,21 +164,9 @@ function RateRow({
           </>
         ) : null}
       </div>
-      <NightRatesTable
-        checkIn={checkIn}
-        nights={nights}
-        rates={own}
-        suggestions={sugMap}
-        label={slot.label}
-        bare
-        disabled={disabled}
-        notes={notes}
-        onChange={(r) => {
-          // 적은 박만 저장 — 비운 박은 호텔 요금 제안이 칸을 채워요 (한 박 금액을 다른 박에 복사하지 않아요)
-          if (!Object.keys(r.nights ?? {}).length) onReset();
-          else onRates({ flat: null, weekday: null, weekend: null, nights: r.nights, extras: null });
-        }}
-      />
+      <StayPriceEditor checkIn={checkIn} nights={nights} draft={edits[slot.key]?.pricing}
+        rates={row.rates} price={row.subtotal} suggestions={sugMap} label={`${slot.label} 객실 요금`} disabled={disabled}
+        onChange={onPricing} />
       <div className="grr-x">
         <button type="button" className={`grr-xtg${extras.length ? " on" : ""}`} aria-expanded={xOpen} onClick={() => setXOpen((o) => !o)}>
           <Plus size={13} aria-hidden /> 추가 항목{row.extras > 0 ? ` · +${won(row.extras)}원` : ""}

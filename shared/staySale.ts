@@ -23,6 +23,7 @@ import {
   walkInDisplayName,
 } from "./payment";
 import { applyExtend, canExtend, nightRate } from "./extend";
+import { singleNightFromPrice } from './stayPricing';
 import { clampHours } from "./extratime";
 
 export const STAY_SALE_TITLE = "숙박 판매";
@@ -266,8 +267,8 @@ export function buildStaySaleDrafts(
       createdAt: now,
       updatedAt: now,
       payments: [],
-      // 총액을 박수로 나눠 채우지 않아요 — 직접 적은 박별 요금(roomRates)만 저장
-      nightRates: input.priceUnset ? null : (input.roomRates?.[0] ?? null),
+      // 명시적으로 입력한 박별 요금 유지. 1박 총액만 있으면 그 날짜 객실료로 함께 저장.
+      nightRates: input.priceUnset ? null : singleNightFromPrice(input.checkIn, nights, base, input.roomRates?.[0]),
       earlyIn: earlyH || null,
       lateOut: lateH || null,
       timeFee: timeExtra > 0 ? timeExtra : null,

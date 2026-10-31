@@ -1,3 +1,7 @@
+import StayPriceEditor from './StayPriceEditor';
+import { type StayPriceDraft, resolveStayPrice, singleNightFromPrice } from '../shared/stayPricing';
+import { occupiedNightDates } from '../shared/nightrates';
+import { resolveNightRate } from '../shared/salesCalendar';
 import StayDatesPopup from "./StayDatesPopup";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -17,11 +21,9 @@ import {
   staySaleOtaPlatforms,
   staySalePlatformIdForMode,
   staySaleDraftSessionKey,
-  staySaleResolvePrice,
   type StaySaleChannelMode,
   type StaySaleCreateInput,
   type StaySaleOccupiedInput,
-  type StaySaleSalesMode,
 } from "../shared/staySale";
 import { type BookPayMethod, type OnsitePayMode, type TenderAmounts, isOnsite } from "../shared/payment";
 import { ADD_TIME_HOUR_CHIPS, ADD_TIME_METHOD_LABEL, ADD_TIME_METHODS, type AddTimeMethod } from "../shared/addTime";
@@ -82,9 +84,8 @@ export default function StaySaleModal({
   const [company, setCompany] = useState(occupied?.company ?? "");
   const [guests, setGuests] = useState(occupied?.guests ?? 1);
   const [nights, setNights] = useState(Math.max(1, occupied?.nights ?? 1));
+  const [priceDraft, setPriceDraft] = useState<StayPriceDraft | null>(null);
   const [price, setPrice] = useState(occupied && occupied.price > 0 ? String(occupied.price) : "");
-  const [salesMode, setSalesMode] = useState<StaySaleSalesMode>("total");
-  const [perNight, setPerNight] = useState("");
   const [priceUnset, setPriceUnset] = useState(false);
   /** 2실 이상: 객실별 요금 수정분 (비면 호텔 요금표 제안) */
   const [rateEdits, setRateEdits] = useState<RateEdits>({});
@@ -115,9 +116,7 @@ export default function StaySaleModal({
     setGuests(occupied?.guests ?? 1);
     setNights(Math.max(1, occupied?.nights ?? 1));
     setPrice(occupied && occupied.price > 0 ? String(occupied.price) : "");
-    setSalesMode("total");
-    setPerNight("");
-    setPriceUnset(false);
+    setPriceUnset(false); setPriceDraft(null);
     setRateEdits({});
     setPayMode("prepaid");
     setDepAmt("");
@@ -149,6 +148,15 @@ export default function StaySaleModal({
       return { typeId: tid, label: `${roomLabels[i] ?? ""}호`, sub: typeNames[i] ?? "" };
     });
   }, [s, roomIds, roomLabels, typeNames]);
+  const singleResult = priceDraft ? resolveStayPrice(checkInDay, nights, priceDraft) : null;
+  const singlePrice = singleResult?.price ?? Number(price || 0);
+  const singleRates = singleResult?.rates ?? singleNightFromPrice(checkInDay, nights, singlePrice, null);
+  const singlePriceUi = <div className="fld"><label>객실 요금</label><div className="payb">
+    <label className="ck"><input type="checkbox" checked={priceUnset} disabled={busy} onChange={e => setPriceUnset(e.target.checked)} />금액미정</label>
+    {!priceUnset ? <StayPriceEditor checkIn={checkInDay} nights={nights} draft={priceDraft} rates={singleRates} price={singlePrice} disabled={busy}
+      suggestions={Object.fromEntries(occupiedNightDates(checkInDay, nights).map(d => [d, resolveNightRate(s, slots[0]?.typeId ?? '', d).amount]))}
+      onChange={d => {setPriceDraft(d); setErr(null);}} /> : null}
+  </div></div>;
   const rateRows = slotRows(s, slots, rateEdits, checkInDay, nights);
   const multiPriceUi = (
     <div className="fld">
@@ -181,8 +189,6 @@ export default function StaySaleModal({
     if (next === channel) return;
     setChannel(next);
     setPlatformId(staySalePlatformIdForMode(s, next));
-    setSalesMode("total");
-    setPerNight("");
     setPriceUnset(false);
     setPayMode("prepaid");
     setDepAmt("");
@@ -231,14 +237,8 @@ export default function StaySaleModal({
         return;
       }
     }
-    const resolved = multi && !priceUnset ? groupTotal(rateRows) : staySaleResolvePrice({
-      channel,
-      salesMode,
-      priceUnset,
-      total: Number(price || 0),
-      perNight: Number(perNight || 0),
-      nights,
-    });
+    if (!priceUnset && !multi && singleResult?.error) { setErr(singleResult.error); return; }
+    const resolved = priceUnset ? 0 : multi ? groupTotal(rateRows) : singlePrice;
     const input: StaySaleCreateInput = {
       roomIds,
       checkIn: checkInDay,
@@ -248,7 +248,7 @@ export default function StaySaleModal({
       company: company.trim() || null,
       guests,
       price: resolved,
-      roomRates: multi && !priceUnset ? rateRows.map((r) => r.rates) : undefined,
+      roomRates: priceUnset ? undefined : multi ? rateRows.map((r) => r.rates) : singleRates ? [singleRates] : undefined,
       priceUnset: priceUnset || undefined,
       platformId,
       payMode: onsite ? payMode : "postpaid",
@@ -399,7 +399,7 @@ export default function StaySaleModal({
               {channel === "onsite" ? (
                 <>
                   <OnsitePayModeFields
-                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : singlePrice}
                     part="chips"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -410,7 +410,7 @@ export default function StaySaleModal({
                     disabled={busy}
                   />
                   <OnsitePayModeFields
-                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : singlePrice}
                     part="method"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -420,30 +420,9 @@ export default function StaySaleModal({
                     onDepMethod={setDepMethod}
                     disabled={busy}
                   />
-                  {multi ? (
-                    multiPriceUi
-                  ) : (
-                  <div className="fld">
-                    <label>판매가</label>
-                    <PriceInp sm>
-                      <span className="pl">판매가</span>
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        placeholder="0"
-                        aria-label="판매가"
-                        disabled={busy}
-                        value={price ? won(Number(price)) : ""}
-                        onChange={(e) => {
-                          setPrice(e.target.value.replace(/\D/g, "").slice(0, 9));
-                          setErr(null);
-                        }}
-                      />
-                    </PriceInp>
-                  </div>
-                  )}
+                  {multi ? multiPriceUi : singlePriceUi}
                   <OnsitePayModeFields
-                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : Number(price || 0)}
+                    tenders={tenders} onTenders={setTenders} saleTotal={multi ? groupTotal(rateRows) : singlePrice}
                     part="take"
                     payMode={payMode}
                     onPayMode={setPayMode}
@@ -454,118 +433,7 @@ export default function StaySaleModal({
                     disabled={busy}
                   />
                 </>
-              ) : (
-                multi ? (
-                  multiPriceUi
-                ) : (
-                <div className="fld">
-                  <label>판매금</label>
-                  <div className="stay-sale-plat-price">
-                    <div className="seg sm" role="tablist" aria-label="판매금 입력 모드">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={salesMode === "perNight"}
-                        className={salesMode === "perNight" ? "on" : ""}
-                        disabled={busy || priceUnset}
-                        onClick={() => {
-                          setSalesMode("perNight");
-                          setErr(null);
-                        }}
-                      >
-                        박당
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={salesMode === "total"}
-                        className={salesMode === "total" ? "on" : ""}
-                        disabled={busy || priceUnset}
-                        onClick={() => {
-                          setSalesMode("total");
-                          setErr(null);
-                        }}
-                      >
-                        총액
-                      </button>
-                    </div>
-                    <label className="ck">
-                      <input
-                        type="checkbox"
-                        checked={priceUnset}
-                        disabled={busy}
-                        onChange={(e) => {
-                          setPriceUnset(e.target.checked);
-                          if (e.target.checked) {
-                            setPrice("");
-                            setPerNight("");
-                          }
-                          setErr(null);
-                        }}
-                      />
-                      금액미정
-                    </label>
-                    {!priceUnset ? (
-                      salesMode === "total" ? (
-                        <>
-                          <PriceRow style={{ marginTop: "var(--space-chip)" }}>
-                            <PriceInp total>
-                              <input
-                                className="num"
-                                inputMode="numeric"
-                                aria-label="판매금 총액"
-                                placeholder="총액"
-                                disabled={busy}
-                                value={price ? won(Number(price)) : ""}
-                                onChange={(e) => {
-                                  setPrice(e.target.value.replace(/\D/g, "").slice(0, 9));
-                                  setErr(null);
-                                }}
-                              />
-                            </PriceInp>
-                          </PriceRow>
-                          <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                            플랫폼 총액 그대로
-                            {Number(price) > 0 ? (
-                              <>
-                                {" · "}
-                                <b>{won(Number(price))}원</b>
-                                {nights > 1 ? ` · ${nights}박` : null}
-                              </>
-                            ) : null}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <PriceRow style={{ marginTop: "var(--space-chip)" }}>
-                            <PriceInp sm suffix="원/박">
-                              <input
-                                className="num"
-                                inputMode="numeric"
-                                aria-label="판매금 박당"
-                                placeholder="1박"
-                                disabled={busy}
-                                value={perNight ? won(Number(perNight)) : ""}
-                                onChange={(e) => {
-                                  setPerNight(e.target.value.replace(/\D/g, "").slice(0, 9));
-                                  setErr(null);
-                                }}
-                              />
-                            </PriceInp>
-                          </PriceRow>
-                          {Number(perNight) > 0 ? (
-                            <div className="muted sm" style={{ marginTop: "var(--space-chip)" }}>
-                              총액 제안 <b>{won(Number(perNight) * nights)}원</b>
-                              {nights > 1 ? ` · ${nights}박` : null}
-                            </div>
-                          ) : null}
-                        </>
-                      )
-                    ) : null}
-                  </div>
-                </div>
-                )
-              )}
+              ) : (multi ? multiPriceUi : singlePriceUi)}
             </>
           ) : null}
 
