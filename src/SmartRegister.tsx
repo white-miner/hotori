@@ -47,7 +47,7 @@ import {
   isFixBlockingRow,
   isFixLabelRow,
   matchPlatformId,
-  htmlTableToPlain,
+  smartClipboardText,
   nightRatesDiff,
   previewNightDates,
   suggestedNightAmounts,
@@ -219,14 +219,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     if (!opts?.keepSummary) setSummary(null);
   }, []);
 
-  /** Prefer clipboard HTML table when partner UI copies markup (야놀자 통합내역 등). */
+  /** 카드 원문은 HTML 표로 대체하지 않는다. 표 전용 복사는 기존 변환을 사용한다. */
   const onPasteEvent = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const html = e.clipboardData.getData("text/html");
-    if (!html || !/<table[\s>]/i.test(html)) return;
-    const plain = htmlTableToPlain(html);
-    if (!plain) return;
+    const plain = e.clipboardData.getData("text/plain");
+    const selected = smartClipboardText(plain, html);
+    // 텍스트를 그대로 쓰는 경우 브라우저의 선택 영역 삽입/추가 붙여넣기를 보존한다.
+    if (!selected || selected === plain) return;
     e.preventDefault();
-    onPasteChange(plain);
+    onPasteChange(selected);
   };
 
   const onPickProfile = (id: PlatformProfileId) => {
@@ -367,7 +368,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     );
   };
 
-  const createTargets = rows.filter((r) => !r.skip && r.rowStatus === "ok");
+  const createTargets = rows.filter((r) => !r.skip && !r.pasteCancel && r.rowStatus === "ok");
   const cancelTargets = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
   const readyCount = createTargets.length + cancelTargets.length;
   const existingCount = rows.filter((r) => isExistingReservationRow(r)).length;
@@ -423,7 +424,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       await guideEmptyOrBlockedUpload("fix");
       return;
     }
-    const creates = rows.filter((r) => !r.skip && r.rowStatus === "ok");
+    const creates = rows.filter((r) => !r.skip && !r.pasteCancel && r.rowStatus === "ok");
     const cancels = rows.filter((r) => !r.skip && r.rowStatus === "cancel");
     if (!creates.length && !cancels.length) {
       await guideEmptyOrBlockedUpload("empty");
@@ -931,6 +932,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             {statusLabel(r)}
                             {r.nightsInclusiveSuspect ? " · 일→박" : ""}
                           </span>
+                          {r.statusRaw ? <div className="sub">가져온 상태: {r.statusRaw}</div> : null}
                         </td>
                         <td>
                           <Inp
@@ -939,6 +941,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             onChange={(e) => patchRow(r.key, { guestName: e.target.value })}
                             aria-label="이름"
                           />
+                          {r.sourceGuestName ? <div className="sub smart-reg-source-name">붙여넣기 이름: {r.sourceGuestName}</div> : null}
                           {r.nestedChannelRaw ? (
                             <div
                               className="sub"
