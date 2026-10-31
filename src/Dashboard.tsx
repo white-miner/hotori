@@ -1,3 +1,7 @@
+import BatchCheckoutSheet from "./BatchCheckoutSheet";
+import { batchCheckoutRows, runBatchCheckout } from "../shared/batchCheckout";
+import RoomMovePicker from "./RoomMovePicker";
+import { executeRoomSwap, moveSourceKey, planRoomMove, roomMoveRange } from "../shared/roomMoveSearch";
 import { receiptBatch } from "../shared/receiptBatch";
 import { createPaymentLines, type CreatePaymentLine } from "../shared/payment";
 import { useCreateReceipts } from "./useCreateReceipts";
@@ -1129,6 +1133,11 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const mvNight = mvB ? (mvB.kind === "dayuse" ? mvB.checkIn : move!.night) : null;
   const [pick, setPick] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const [searchMoveOpen, setSearchMoveOpen] = useState(false);
+  const [batchCheckoutOpen, setBatchCheckoutOpen] = useState(false);
+  const moveSettingsRef = useRef(s); moveSettingsRef.current = s;
+  const moveGroupsRef = useRef(data.groups); moveGroupsRef.current = data.groups;
+  const moveWriteLock = useRef(false);
   const [swapChoice, setSwapChoice] = useState<RoomSwapPlan | null>(null);
   const [swapTypeGate, setSwapTypeGate] = useState<RoomSwapPlan | null>(null);
   const [dayuseMoveWarn, setDayuseMoveWarn] = useState<{ message: string; to: string } | null>(null);
@@ -1140,6 +1149,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const mvFrom = mvB && mvNight ? (mvB.kind === "stay" ? roomOnNight(mvB, mvNight) : mvB.roomId) : null;
   useEffect(() => {
     if (!move) {
+      setSearchMoveOpen(false);
       setPick(null);
       setSwapChoice(null);
       setSwapTypeGate(null);
@@ -1161,7 +1171,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   useEffect(() => {
     if (!mvB) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || moving || searchMoveOpen) return;
       e.preventDefault();
       if (swapChoice || swapTypeGate) {
         setSwapChoice(null);
@@ -1173,7 +1183,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mvB, pick, swapChoice, swapTypeGate, onMoveEnd]);
+  }, [mvB, pick, swapChoice, swapTypeGate, onMoveEnd, moving, searchMoveOpen]);
   const roomName = (id: string | null | undefined) => {
     if (!id) return "방 미배정";
     const r = L.rooms.get(id);
@@ -1187,34 +1197,34 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
   /** A→Y · B→X · 중간 null로 unique 점유 충돌 회피 */
   const doSwap = async (plan: RoomSwapPlan) => {
-    if (moving) return;
-    const aBefore = placementOf(plan.a);
-    const bBefore = placementOf(plan.b);
+    if (moving || moveWriteLock.current) return;
+    const fresh = planRoomMove(moveSettingsRef.current, bookingsRef.current, plan.a.id, plan.a.checkIn, plan.toRoomId, moveSourceKey(plan.a));
+    if (fresh.kind !== "swap" || fresh.swap.b.id !== plan.b.id || moveSourceKey(fresh.swap.b) !== moveSourceKey(plan.b)) {
+      setSwapChoice(null); setSwapTypeGate(null);
+      notify("예약이나 객실 상태가 변경됐습니다. 검색창에서 다시 확인해 주세요.");
+      return;
+    }
+    plan = fresh.swap;
+    moveWriteLock.current = true;
     setMoving(true);
     setSwapChoice(null);
     setSwapTypeGate(null);
     try {
-      await data.setPlacement(plan.a.id, { roomId: null, segments: null });
-      try {
-        await data.setPlacement(plan.b.id, plan.bPlace);
-        await data.setPlacement(plan.a.id, plan.aPlace);
-      } catch (e) {
-        await data.setPlacement(plan.a.id, aBefore).catch(() => {});
-        await data.setPlacement(plan.b.id, bBefore).catch(() => {});
-        throw e;
-      }
+      await executeRoomSwap(data.setPlacement, plan);
       setPick(null);
       onMoveEnd();
       notify(
         `${plan.a.guestName || "손님"} ↔ ${plan.b.guestName || "손님"} 맞교환 · ${roomName(plan.toRoomId)}↔${roomName(plan.fromRoomId)}`,
       );
-    } catch {
-      notify("맞교환하지 못했어요. 다시 해 주세요");
+    } catch (e) {
+      notify(e instanceof Error && e.name === "RoomSwapRecoveryError" ? e.message : "맞교환하지 못했어요. 다시 해 주세요");
     } finally {
+      moveWriteLock.current = false;
       setMoving(false);
     }
   };
   const requestSwap = (plan: RoomSwapPlan) => {
+    setSearchMoveOpen(false);
     setPick(null);
     setSwapTypeGate(null);
     setSwapChoice(plan);
@@ -1227,16 +1237,22 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
     void doSwap(plan);
   };
-  const doMove = async (opts?: { allowDayuseOverlap?: boolean; to?: string }) => {
+  const doMove = async (opts?: { allowDayuseOverlap?: boolean; to?: string; expectedKey?: string }) => {
     const to = opts?.to ?? pick;
-    if (!mvB || !mvNight || !to || moving) return;
-    // 점유 방이면 맞교환 (빈 방만 여기로)
-    const swap = swapTargets.get(to);
+    if (!mvB || !mvNight || !to || moving || moveWriteLock.current) return;
+    let b = mvB;
+    let swap = swapTargets.get(to);
+    if (opts?.expectedKey) {
+      const fresh = planRoomMove(moveSettingsRef.current, bookingsRef.current, b.id, mvNight, to, opts.expectedKey);
+      if (fresh.kind === "blocked") { notify(fresh.reason); return; }
+      b = fresh.booking;
+      swap = fresh.kind === "swap" ? fresh.swap : undefined;
+    }
+    // 점유 방이면 기존 상대 예약·타입 확인을 거친다.
     if (swap) {
       requestSwap(swap);
       return;
     }
-    const b = mvB;
     if (b.kind === "dayuse" && !opts?.allowDayuseOverlap) {
       const w = dayuseStayOverlapWarn(s, bookings, { ...b, roomId: to });
       if (!w.ok) {
@@ -1249,6 +1265,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const after = boardMove(b, mvNight, to);
     const toName = roomName(to);
     const fromName = roomName(mvFrom);
+    moveWriteLock.current = true;
     setMoving(true);
     try {
       await data.setPlacement(b.id, after);
@@ -1268,12 +1285,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     } catch {
       notify("옮기지 못했어요. 다시 해 주세요");
     } finally {
+      moveWriteLock.current = false;
       setMoving(false);
     }
   };
   /** 현황 운영패널 · 단실 점유만 — 공실/복수 공실은 숨김.
    * night = checkIn: 퍼즐 맞교환·전체 이동 (today면 중간 밤 whole=false로 점유 타깃이 전부 죽음).
    * 퇴실예정/숙박/숙박예약 셀 상태 게이트 없음. */
+  const startSearchRoomMove = (b: Booking) => {
+    if (readOnly || !roomMoveRange(b)) { notify("이동할 수 있는 숙박 예약이 아닙니다."); return; }
+    setAssigningMode(null); setPick(null); setSearchMoveOpen(true);
+    onMoveStart({ id: b.id, night: b.checkIn });
+  };
   const startOpsRoomMove = () => {
     if (readOnly || selectedRoomIds.length !== 1) return;
     const rid = selectedRoomIds[0];
@@ -1281,7 +1304,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (!b || !isActive(b) || b.kind !== "stay") return;
     setAssigningMode(null);
     setSideMode("room");
-    onMoveStart({ id: b.id, night: b.checkIn });
+    startSearchRoomMove(b);
   };
   const mvCellBits = (r: { id: string; typeId?: string | null; no: string }) => {
     const mvSwap = !!mvB && swapTargets.has(r.id);
@@ -1362,7 +1385,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const swapTargetsRef = useRef(swapTargets);
   swapTargetsRef.current = swapTargets;
   const mvBar =
-    mvB && mvNight ? (
+    mvB && mvNight && !searchMoveOpen ? (
       <div className={`mvbar ${pick ? "ask" : ""}`} role="status">
         {pick ? (
           <>
@@ -1397,6 +1420,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                   : "옮길 수 있는 방이 없어요"}
               </small>
             </span>
+            {mvB.kind === "stay" ? <button className="btn line" disabled={moving} onClick={()=>setSearchMoveOpen(true)}>객실 검색</button> : null}
             <button className="btn line" onClick={onMoveEnd}>
               취소 <kbd className="kbdh">Esc</kbd>
             </button>
@@ -3228,7 +3252,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 객실 업무 모달 열기
               </div>
             </div>
-
+            {!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={()=>setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : null}
           </div>
           {mvBar}
           {!mvB && assignBk ? (
@@ -3666,11 +3690,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {joinGroupId ? renderJoin(joinGroupId) : null}
 {renderMoveSched()}
       {renderRecord()}
+      {batchCheckoutOpen && !readOnly ? <BatchCheckoutSheet data={data} today={today} opts={nowOpts} busy={!!coBusy} onClose={()=>!coBusy&&setBatchCheckoutOpen(false)} onRun={async(ids,leaveBalance)=>{
+        if(coBusy)return {done:[],failed:ids.map(id=>({id,reason:"다른 퇴실 업무가 진행 중입니다."}))};
+        setCoBusy("batch");
+        try {return await runBatchCheckout(ids,()=>batchCheckoutRows(moveSettingsRef.current,bookingsRef.current,moveGroupsRef.current,today,{stayTimes:moveSettingsRef.current.stayTimes,clock:hotelWallClock()}),(id,patch)=>data.patchBooking(id,patch),leaveBalance)}finally{setCoBusy(null)}
+      }}/> : null}
+      {searchMoveOpen && mvB && mvNight && !readOnly ? <RoomMovePicker key={mvB.id} s={s} bookings={bookings} booking={mvB} night={mvNight} date={viewDate} busy={moving} groupPaymentCount={mvB.groupId?(data.groups.get(mvB.groupId)?.payments??[]).length:0}
+        onNightChange={night=>{setPick(null);onMoveStart({id:mvB.id,night});}}
+        onMove={(to,expectedKey)=>doMove({to,expectedKey})}
+        onClose={()=>{if(!moving){setSearchMoveOpen(false);onMoveEnd();}}} /> : null}
       {roomWork && !readOnly ? <RoomWorkSheet data={data} roomId={roomWork.roomId} bookingId={roomWork.bookingId} date={roomWork.date} today={today} color={roomWork.color} initialTab={roomWork.tab}
         onClose={() => setRoomWork(null)}
         onSidebar={() => { setSelectedRoomIds([roomWork.roomId]); setSideMode("room"); sbx.reveal(); }}
         onStay={() => setStaySale({ roomIds: [roomWork.roomId], roomLabels: [L.roomLabel(roomWork.roomId) ?? "호실"], occupied: null })}
         onDayuse={() => { const r = L.rooms.get(roomWork.roomId); if (r?.typeId) setDayuseSale({ roomId: r.id, typeId: r.typeId, roomLabel: L.roomLabel(r.id) ?? r.no }); }}
+        onMove={startSearchRoomMove}
         onAssignmentMode={b => setAssigningMode(b.id)}
         onAssign={b => void (async () => {
           const rid = roomWork.roomId;
