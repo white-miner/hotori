@@ -25,6 +25,7 @@ import {
   detectProfile,
   findActiveBookingByReservationId,
   htmlTableToPlain,
+  smartClipboardText,
   isAlreadyCancelledReservation,
   isCancelGuardBlocked,
   isCancelStatus,
@@ -469,7 +470,7 @@ test("cancel+match → cancel existing draft; cancel+no match → Path A cancell
     platformLabel: "야놀자",
     id: "b-active",
     nowIso,
-  }).status, "active");
+  }).status, "cancelled", "취소 원문은 일반 생성 함수에서도 정상 예약으로 저장할 수 없음");
 
   // stockTable skips !isActive — cancelled Path A must not deduct type-hold
   const dates = ["2026-10-21"];
@@ -1265,4 +1266,57 @@ test("스마트등록 출처는 신규 라벨과 기존 메모를 읽고 원문�
   assert.deepEqual(smartImportInfo({memo:reservationMemo("야놀자","TEST-OLD")}),{rawType:null,reservationId:"TEST-OLD"});
   assert.equal(smartImportInfo({memo:"직접 등록한 예약"}),null);
   assert.equal(smartImportInfo({memo:null}),null);
+});
+
+
+// 사용자 제보와 동일한 구조. 재현 데이터는 개인정보 대신 가상 이름·번호를 사용한다.
+const maskedCancelCard = `9910301319550117
+김*지
+안심번호 만료
+차량
+Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)
+(객실 타입 ID: 427045)
+숙박
+/ 1박
+2026.10.30(금) 16:00
+2026.10.31(토) 12:00
+2026.10.30(금) 13:20:26
+당일
+예약취소
+고객취소
+2026.10.30(금)
+14:04:25
+판매가 100,000원
+입금예정가 90,000원
+쿠폰5,000원
+REST쿠폰10_5`;
+const sourceSettings=normalizeSettings({...settings,types:[...settings.types,{id:"pc",name:"스탠다드 2PC"}],typeAliases:[{id:"pc-alias",platformId:"p-ya",platformTypeName:"Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)",typeId:"pc"}]});
+const maskedPreview=(raw=maskedCancelCard)=>buildPreviewRows(parsePasteTable(raw)!,profileById("yanolja")!,sourceSettings,[],"p-ya")[0]!;
+
+test("마스킹 이름·고객취소 원문은 2PC 취소 예약으로 보존하고 재고를 차감하지 않음",()=>{
+ const p=maskedPreview();
+ assert.equal(p.guestName,"김*지"); assert.equal(p.sourceGuestName,"김*지"); assert.equal(p.typeId,"pc"); assert.equal(p.pasteCancel,true); assert.equal(p.rowStatus,"cancel");
+ assert.equal(looksLikeGuestNameLine("김*지"),true); assert.equal(isKnownNestedChannelLabel("김*지"),false);
+ const d=pathADraftFromPreview(p,{platformId:"p-ya",platformLabel:"야놀자",id:"cx",nowIso:"2026-10-31T00:00:00Z",status:"active"});
+ assert.equal(d.status,"cancelled"); assert.equal(d.guestName,"김*지"); assert.equal(isActive(d),false);
+ assert.match(d.memo!,/이름 김\*지 · 상태 예약취소/);
+ assert.deepEqual(stockTable(sourceSettings,[d],["2026-10-30"]),stockTable(sourceSettings,[],["2026-10-30"]));
+});
+test("클립보드 HTML 표가 다른 이름·정상 상태여도 완전한 카드 텍스트의 취소·이름을 우선",()=>{
+ const html=`<table><tr><th>야놀자예약번호</th><th>예약자</th><th>객실상품</th><th>체크인</th><th>체크아웃</th><th>판매금액</th><th>상태</th></tr><tr><td>9910301319550117</td><td>다른이름</td><td>스탠다드</td><td>2026-10-30</td><td>2026-10-31</td><td>100000</td><td>예약완료</td></tr></table>`;
+ assert.equal(smartClipboardText(maskedCancelCard,html),maskedCancelCard);
+ const p=maskedPreview(smartClipboardText(maskedCancelCard,html)); assert.equal(p.guestName,"김*지"); assert.equal(p.rowStatus,"cancel");
+ assert.equal(smartClipboardText("",html),htmlTableToPlain(html));
+ assert.equal(smartClipboardText("plain","<div>not a table</div>"),"plain");
+});
+test("판매금 뒤·공백 있는 취소도 인식하고 인접한 정상 예약·취소 규정은 혼동하지 않음",()=>{
+ const moved=maskedCancelCard.replace("예약취소\n고객취소\n","")+"\n고객 취소\n입실완료";
+ assert.equal(maskedPreview(moved).rowStatus,"cancel");
+ const active=maskedCancelCard.replace("9910301319550117","9910301319550118").replace("김*지","이*나").replace("예약취소\n고객취소","예약완료").replace("REST쿠폰10_5","무료취소불가\n취소 규정: 당일 취소 불가");
+ const ps=buildPreviewRows(parsePasteTable(moved+"\n"+active)!,profileById("yanolja")!,sourceSettings,[],"p-ya");
+ assert.deepEqual(ps.map(p=>p.rowStatus),["cancel","ok"]); assert.deepEqual(ps.map(p=>p.guestName),["김*지","이*나"]);
+});
+test("미리보기 이름을 수정해도 가져온 이름을 메모에 보존하고 원문 취소 상태는 생성 방어",()=>{
+ const p=maskedPreview(),d=pathADraftFromPreview({...p,guestName:"직원확인명",pasteCancel:false,rowStatus:"ok"},{platformId:"p-ya",platformLabel:"야놀자",id:"cx",nowIso:"2026-10-31T00:00:00Z"});
+ assert.equal(d.guestName,"직원확인명"); assert.equal(d.status,"cancelled"); assert.match(d.memo!,/이름 김\*지/);
 });

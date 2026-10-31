@@ -634,6 +634,8 @@ function hardRejectNestedChannelLine(raw: string): boolean {
 export function looksLikeGuestNameLine(raw: string): boolean {
   const s = normalizePasteLine(raw);
   if (!s || isOccupancyOrPlanChrome(s)) return false;
+  // 마스킹된 이름도 이름이다. 별표를 추정하거나 채널명으로 소비하지 않는다.
+  if (/^[가-힣*＊●○·]{2,8}$/.test(s) && /[가-힣]/.test(s) && /[*＊●○]/.test(s)) return true;
   // Latin full name with spaces
   if (/^[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)+$/.test(s)) return true;
   // Compact Latin / romanized OTA name (CHOISANGYEON) — letters only, no digits
@@ -956,6 +958,11 @@ function parseYanoljaCardBlock(
   }
   if (sawCancel) statusRaw = "예약취소";
   else if (sawComplete) statusRaw = "예약완료";
+  // 상세 카드의 취소 상태가 판매가·입금액 뒤에 놓여도 같은 예약 블록 안에서 보존한다.
+  // 객실명/취소 규정/쿠폰 이름의 부분 문자열은 상태로 간주하지 않는다.
+  if (lines.some(l => /^(?:예약\s*취소|고객\s*취소|취소\s*완료)(?=$|[\s:(（·]|예약완료|고객취소|예약취소)/u.test(l))) {
+    statusRaw = "예약취소";
+  }
 
   let amount = "";
   while (i < lines.length) {
@@ -1063,6 +1070,12 @@ export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPaste
     if (forced) return forced;
   }
   return null;
+}
+
+/** 카드 텍스트에는 HTML 표 밖의 취소 상태·마스킹 이름도 포함된다. 이를 표로 덮어쓰지 않는다. */
+export function smartClipboardText(plain: string, html: string): string {
+  if (parseYanoljaCardPaste(plain)) return plain;
+  return (/<table[\s>]/i.test(html) ? htmlTableToPlain(html) : null) || plain;
 }
 
 export interface DetectResult {
@@ -1640,6 +1653,8 @@ export interface PreviewRow {
   key: string;
   sourceIndex: number;
   guestName: string;
+  /** 직원이 미리보기에서 이름을 수정해도 붙여넣기에서 읽은 이름은 별도로 보존한다. */
+  sourceGuestName?: string;
   guestPhone: string;
   typeRaw: string;
   typeId: string | null;
@@ -1853,6 +1868,7 @@ export function buildPreviewRows(
       key: `r${i}`,
       sourceIndex: i,
       guestName: n.guestName,
+      sourceGuestName: n.guestName,
       guestPhone: n.guestPhone,
       typeRaw: n.typeRaw,
       typeId,
@@ -1917,7 +1933,9 @@ export function pathADraftFromPreview(
   },
 ): Booking {
   const priceUnset = row.priceUnset || row.amount == null;
-  const status = opts.status ?? "active";
+  // 생성 경로가 잘못 선택되더라도 취소 원문을 정상 예약으로 저장하지 않는다.
+  const cancelledSource = row.pasteCancel || PLATFORM_PROFILES.some(p => isCancelStatus(row.statusRaw, p));
+  const status = cancelledSource ? "cancelled" : opts.status ?? "active";
   return {
     id: opts.id,
     kind: "stay",
@@ -1941,7 +1959,7 @@ export function pathADraftFromPreview(
       row.reservationId,
       row.typeRaw,
       row.nestedChannelRaw || undefined,
-    ),
+    ) + `\n[가져온 정보] 이름 ${row.sourceGuestName ?? row.guestName} · 상태 ${row.statusRaw || "미표시"}`,
     guests: null,
     // 박별 요금: 직원이 가져오기 화면에서 입력한 박만 저장 (총액을 박수로 나눠 채우지 않아요)
     nightRates: status === "active" && !priceUnset ? enteredNightRates(row) : null,
