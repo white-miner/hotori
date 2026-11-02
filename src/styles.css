@@ -6677,3 +6677,10 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-floor-row-options button:focus-visible {outline:3px solid #2864d7;outline-offset:2px}
 .now-page .nowgrid .floor .rooms {grid-template-columns:repeat(var(--floor-columns,10),minmax(264px,1fr))}
 @media(max-width:760px) {.now-view-tools {justify-content:flex-start;gap:8px}.now-floor-layout {font-size:14px}.now-floor-row-options button {min-width:48px}}
+
+/* 층별 배치 조작은 현황판 각 층 제목 바로 옆에서 제공한다. */
+.now-page .floor .fh {flex-wrap:wrap}
+.now-floor-controls {display:flex;align-items:center;gap:8px;margin-left:auto;color:#536073;font-size:14px;font-weight:650}
+.now-floor-controls .now-floor-row-options button {min-width:46px;padding:6px 9px}
+.now-floor-mixed {font-size:13px;font-weight:500;color:#536073;white-space:nowrap}
+.now-floor-layout {flex-wrap:wrap}
