@@ -391,9 +391,28 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
   const [floorRowsPref, setFloorRowsPref] = useState(() => ({ key: floorRowsKey, rows: readFloorRows() }));
   const floorRows = floorRowsPref.key === floorRowsKey ? floorRowsPref.rows : readFloorRows();
+  const floorRowsMapKey = `${floorRowsKey}:floors`;
+  const readFloorRowsMap = (): Record<string, 1 | 2 | 3> => {
+    try {
+      const raw: unknown = JSON.parse(lsGet(floorRowsMapKey) ?? '{}');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+      return Object.fromEntries(Object.entries(raw).filter(([, rows]) => rows === 1 || rows === 2 || rows === 3));
+    } catch { return {}; }
+  };
+  const [floorRowsOverrides, setFloorRowsOverrides] = useState(() => ({ key: floorRowsMapKey, rows: readFloorRowsMap() }));
+  const floorRowsById = floorRowsOverrides.key === floorRowsMapKey ? floorRowsOverrides.rows : readFloorRowsMap();
+  const getFloorRows = (floorId: string): 1 | 2 | 3 => floorRowsById[floorId] ?? floorRows;
+  const mixedFloorRows = new Set(s.floors.map(f => getFloorRows(f.id))).size > 1;
+  const setOneFloorRows = (floorId: string, rows: 1 | 2 | 3) => {
+    const next = { ...floorRowsById, [floorId]: rows };
+    setFloorRowsOverrides({ key: floorRowsMapKey, rows: next });
+    lsSet(floorRowsMapKey, JSON.stringify(next));
+  };
   const setFloorRows = (rows: 1 | 2 | 3) => {
     setFloorRowsPref({ key: floorRowsKey, rows });
+    setFloorRowsOverrides({ key: floorRowsMapKey, rows: {} });
     lsSet(floorRowsKey, String(rows));
+    lsSet(floorRowsMapKey, '{}');
   };
   const { bookings } = data;
   const L = useMemo(() => lookups(s), [s]);
@@ -3265,13 +3284,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="now-view-tools">
-              <div className="now-floor-layout" role="group" aria-label="층별 객실 줄 수">
-                <span>층별 배치</span>
+              <div className="now-floor-layout" role="group" aria-label="전체 층 객실 줄 수">
+                <span>전체 층 일괄</span>
                 <div className="now-floor-row-options">
-                  {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={floorRows === rows}
-                    title={`한 층을 최대 ${rows}줄로 배치 · 좁은 화면에서는 가로 스크롤`}
+                  {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={!mixedFloorRows && (s.floors[0] ? getFloorRows(s.floors[0].id) : floorRows) === rows}
+                    title={`모든 층을 최대 ${rows}줄로 일괄 변경`}
                     onClick={() => setFloorRows(rows)}>{rows}줄</button>)}
                 </div>
+                {mixedFloorRows ? <small className="now-floor-mixed">층별 설정 중</small> : null}
               </div>
               {!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={()=>setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : null}
             </div>
@@ -3307,8 +3327,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} /> : null}
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
-                  <section key={bd.id} className="bblock" data-floor-rows={floorRows}
-                    style={{ ["--floor-columns" as string]: Math.ceil(Math.max(1, ...s.floors.filter(f => f.buildingId === bd.id).map(f => f.rooms.length), ...fl.map(f => f.rooms.length)) / floorRows) }}>
+                  <section key={bd.id} className="bblock">
                     <div className="bname-row">
                       <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
                       {multi ? (
@@ -3319,12 +3338,21 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                       {gi === 0 ? nowLegend : null}
                     </div>
                     {fl.map((f) => (
-                      <div className="floor" key={f.id}>
+                      <div className="floor" key={f.id} data-floor-id={f.id} data-floor-rows={getFloorRows(f.id)}
+                        style={{ ["--floor-columns" as string]: Math.ceil(Math.max(1, f.rooms.length, ...s.floors.filter(x => x.buildingId === bd.id).map(x => x.rooms.length)) / getFloorRows(f.id)) }}>
                         <div className="fh">
                           <span className="fn"><i className="detail-floor-mark" style={{ background: floorCardColor(f.id, f.color) }} aria-hidden />
                             {f.name}
                           </span>
                           <span className="detail-floor-count">{f.rooms.length}실</span>
+                          <div className="now-floor-controls" role="group" aria-label={`${L.buildings.get(bd.id)?.name ?? bd.name} ${f.name} 객실 줄 수`}>
+                            <span>보기</span>
+                            <div className="now-floor-row-options">
+                              {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={getFloorRows(f.id) === rows}
+                                title={`${f.name}만 최대 ${rows}줄로 변경 · 좁은 화면에서는 가로 스크롤`}
+                                onClick={() => setOneFloorRows(f.id, rows)}>{rows}줄</button>)}
+                            </div>
+                          </div>
                         </div>
                         <div className="rooms">{f.rooms.map((r) => nowCell(r, floorCardColor(f.id, f.color)))}</div>
                       </div>
