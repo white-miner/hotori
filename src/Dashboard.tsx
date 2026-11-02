@@ -383,6 +383,18 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   const act = readOnly ? {} : { role: "button" as const, tabIndex: 0 };
   const [tab, setTab] = useBoardTab();
   const s = data.hotel!.settings;
+  // 개인별·호텔별 보기 설정. 객실/예약 데이터와 분리하여 이 브라우저에만 저장한다.
+  const floorRowsKey = `hotori.now.floorRows.v1:${data.meId ?? 'shared'}:${data.hotel!.id}`;
+  const readFloorRows = (): 1 | 2 | 3 => {
+    const v = lsGet(floorRowsKey);
+    return v === '2' ? 2 : v === '3' ? 3 : 1;
+  };
+  const [floorRowsPref, setFloorRowsPref] = useState(() => ({ key: floorRowsKey, rows: readFloorRows() }));
+  const floorRows = floorRowsPref.key === floorRowsKey ? floorRowsPref.rows : readFloorRows();
+  const setFloorRows = (rows: 1 | 2 | 3) => {
+    setFloorRowsPref({ key: floorRowsKey, rows });
+    lsSet(floorRowsKey, String(rows));
+  };
   const { bookings } = data;
   const L = useMemo(() => lookups(s), [s]);
   const dates = useMemo(() => Array.from({ length: DAYS }, (_, i) => addDays(today, i)), [today]);
@@ -3252,7 +3264,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 객실 업무 모달 열기
               </div>
             </div>
-            {!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={()=>setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : null}
+            <div className="now-view-tools">
+              <div className="now-floor-layout" role="group" aria-label="층별 객실 줄 수">
+                <span>층별 배치</span>
+                <div className="now-floor-row-options">
+                  {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={floorRows === rows}
+                    title={`한 층을 최대 ${rows}줄로 배치 · 좁은 화면에서는 가로 스크롤`}
+                    onClick={() => setFloorRows(rows)}>{rows}줄</button>)}
+                </div>
+              </div>
+              {!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={()=>setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : null}
+            </div>
           </div>
           {mvBar}
           {!mvB && assignBk ? (
@@ -3285,7 +3307,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                 candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} /> : null}
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
-                  <section key={bd.id} className="bblock" style={{ ["--floor-columns" as string]: Math.max(1, ...fl.map((f) => f.rooms.length)) }}>
+                  <section key={bd.id} className="bblock" data-floor-rows={floorRows}
+                    style={{ ["--floor-columns" as string]: Math.ceil(Math.max(1, ...s.floors.filter(f => f.buildingId === bd.id).map(f => f.rooms.length), ...fl.map(f => f.rooms.length)) / floorRows) }}>
                     <div className="bname-row">
                       <h2 className="bname">{L.buildings.get(bd.id)?.name ?? bd.name}</h2>
                       {multi ? (
