@@ -414,6 +414,17 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     lsSet(floorRowsKey, String(rows));
     lsSet(floorRowsMapKey, '{}');
   };
+  const cardTextKey = `hotori.now.cardTextScale.v1:${data.meId ?? 'shared'}:${data.hotel!.id}`;
+  const readCardTextScale = (): 100 | 115 | 130 => {
+    const v = lsGet(cardTextKey);
+    return v === '115' ? 115 : v === '130' ? 130 : 100;
+  };
+  const [cardTextPref, setCardTextPref] = useState(() => ({ key: cardTextKey, scale: readCardTextScale() }));
+  const cardTextScale = cardTextPref.key === cardTextKey ? cardTextPref.scale : readCardTextScale();
+  const setCardTextScale = (scale: 100 | 115 | 130) => {
+    setCardTextPref({ key: cardTextKey, scale });
+    lsSet(cardTextKey, String(scale));
+  };
   const { bookings } = data;
   const L = useMemo(() => lookups(s), [s]);
   const dates = useMemo(() => Array.from({ length: DAYS }, (_, i) => addDays(today, i)), [today]);
@@ -3268,7 +3279,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     );
     return (
     <>
-      <main className="page board-page now-page">
+      <main className="page board-page now-page" style={{ ['--card-text-scale' as string]: cardTextScale / 100 }}>
         <div className="main">
           {tabs}
           {banner}
@@ -3284,6 +3295,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
               </div>
             </div>
             <div className="now-view-tools">
+              <label className="now-card-text-control">
+                <span>카드 글자</span>
+                <select aria-label="객실카드 글자 배율" value={cardTextScale}
+                  title="카드 너비에 맞춰 자동 확대하며, 선택한 배율을 추가 적용합니다. 이 브라우저에 저장됩니다."
+                  onChange={e => setCardTextScale(Number(e.target.value) as 100 | 115 | 130)}>
+                  <option value={100}>100% · 자동</option>
+                  <option value={115}>115% · 크게</option>
+                  <option value={130}>130% · 더 크게</option>
+                </select>
+              </label>
               <div className="now-floor-layout" role="group" aria-label="전체 층 객실 줄 수">
                 <span>전체 층 일괄</span>
                 <div className="now-floor-row-options">
