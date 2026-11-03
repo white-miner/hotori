@@ -203,6 +203,7 @@ import {
 } from "../shared/boardGlance";
 import NowGlancePanel from "./NowGlancePanel";
 import NowBoardHeader, { type NowHeaderPanel, type NowHeaderFilter } from "./NowBoardHeader";
+import CalendarDateNavigation from "./CalendarDateNavigation";
 import type { MinimapBuilding } from "./BoardStatusMinimap";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
@@ -2164,82 +2165,19 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       ))}
     </div>
   );
-  const rangeNavOld = readOnly ? null : (
-    <div className="rnav">
-      <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
-        <ChevronLeft size={16} />
-      </button>
-      {period === "range" ? (
-        <span className="rnav-r">
-          <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
-          <span className="muted">~</span>
-          <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
-        </span>
-      ) : (
-        <b className="rnav-l">{stockRangeLabel(period, view.from, view.to, today)}</b>
-      )}
-      <button className="ar" aria-label="다음" onClick={() => shift(1)}>
-        <ChevronRight size={16} />
-      </button>
-      <button className="btn sm" disabled={atToday} onClick={goToday}>
-        오늘
-      </button>
-      <span className="rnav-n muted">
-        {period === "range" ? `${viewDates.length}일` : null}
-        {viewLoading ? " 불러오는 중…" : null}
-      </span>
-      {viewOvers.length ? (
-        <span className="rnav-o">
-          {dayLabel(viewGlanceNight)} 오버부킹 {viewOvers.length}건
-        </span>
-      ) : null}
-    </div>
-  );
-
-  /** 사이드바 ON: 이전·다음·오늘(+보는 범위 표시)은 사이드바, 기간 단위·기간 날짜·일수·오버부킹 안내는 본문에 그대로 */
-  const rangeNavDateEl = readOnly ? null : (
-    <div className="rnav sb-rnav">
-      <button className="ar" aria-label="이전" onClick={() => shift(-1)}>
-        <ChevronLeft size={16} />
-      </button>
-      <b className="rnav-l">{stockRangeLabel(period, view.from, view.to, today)}</b>
-      <button className="ar" aria-label="다음" onClick={() => shift(1)}>
-        <ChevronRight size={16} />
-      </button>
-      <button className="btn sm" disabled={atToday} onClick={goToday}>
-        오늘
-      </button>
-    </div>
-  );
-  const rangeNavBodyEl =
-    readOnly || !(period === "range" || viewLoading || viewOvers.length) ? null : (
-      <div className="rnav">
-        {period === "range" ? (
-          <span className="rnav-r">
-            <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
-            <span className="muted">~</span>
-            <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
-          </span>
-        ) : null}
-        <span className="rnav-n muted">
-          {period === "range" ? `${viewDates.length}일` : null}
-          {viewLoading ? " 불러오는 중…" : null}
-        </span>
-        {viewOvers.length ? (
-          <span className="rnav-o">
-            {dayLabel(viewGlanceNight)} 오버부킹 {viewOvers.length}건
-          </span>
-        ) : null}
-      </div>
-    );
-  const rangeNav = sbOn ? (
-    <>
-      {sbx.into("date", rangeNavDateEl)}
-      {rangeNavBodyEl}
-    </>
-  ) : (
-    rangeNavOld
-  );
+  // 운영 규칙: 판매 캘린더·월간 예약 날짜는 사이드바가 아닌 본문 중앙에 항상 표시한다.
+  const rangeNav = <CalendarDateNavigation label={stockRangeLabel(period, view.from, view.to, today)}
+    onPrevious={readOnly ? undefined : () => shift(-1)} onNext={readOnly ? undefined : () => shift(1)}
+    onToday={readOnly ? undefined : goToday} atToday={atToday}
+    customFields={!readOnly && period === "range" ? <>
+      <DateChip value={custom.from} label="시작 날짜" onChange={(v) => setCustom(v, custom.to < v ? v : custom.to)} />
+      <span className="muted">~</span>
+      <DateChip value={custom.to} label="끝 날짜" onChange={(v) => setCustom(custom.from, v)} />
+    </> : null}
+    status={!readOnly && (period === "range" || viewLoading || viewOvers.length) ? <>
+      <span className="muted">{period === "range" ? `${viewDates.length}일` : null}{viewLoading ? " 불러오는 중…" : null}</span>
+      {viewOvers.length ? <span className="rnav-o">{dayLabel(viewGlanceNight)} 오버부킹 {viewOvers.length}건</span> : null}
+    </> : null} />;
 
   const confirmAllTentative = async () => {
     if (readOnly || tentBusy || !nowSide.tentative.length) return;

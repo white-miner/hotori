@@ -260,6 +260,7 @@ export default function SalesCalendar({
           </div>
         </div>
 
+        {rangeNav}
         <div className="sales-glance" aria-label={`${md(glanceNight)} 타입별 재고`}>
           {types.map((t) => {
             const g = glance.get(t.id)!;
@@ -306,7 +307,6 @@ export default function SalesCalendar({
           })}
         </div>
 
-        {rangeNav}
         {buildingTabs}
         {jumpWeeks.length > 1 ? (
           <nav className="sales-week-rail" aria-label="주 이동">
