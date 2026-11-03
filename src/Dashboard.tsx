@@ -197,11 +197,9 @@ import {
   occupiesRoom,
 } from "../shared/ledger";
 import {
-  GLANCE_OPEN_KEY,
   glanceMapKindNow,
   glanceMapKindPlacement,
   type GlanceOccFilter,
-  type GlanceSurface,
 } from "../shared/boardGlance";
 import NowGlancePanel from "./NowGlancePanel";
 import NowBoardHeader, { type NowHeaderPanel, type NowHeaderFilter } from "./NowBoardHeader";
@@ -659,18 +657,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   /** 글랜스/미니맵 → 칸 스크롤·하이라이트 */
   const [flashRoomId, setFlashRoomId] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
-  /** 「미니맵」펼침 (localStorage · 표면별) */
-  const [glanceOpenNow, setGlanceOpenNow] = useState(() => {
-    const v = lsGet(GLANCE_OPEN_KEY.now);
-    if (v === "0") return false;
-    if (v === "1") return true;
-    return false;
-  });
+  /** 재고는 상시 표시하고 지도는 요청할 때만 연다. 이전 재고 펼침 저장값과 분리한다. */
+  const [roomMapOpen, setRoomMapOpen] = useState(false);
   const [nowHeaderPanel, setNowHeaderPanel] = useState<NowHeaderPanel>(null);
-  const rememberGlanceOpen = (surface: GlanceSurface, open: boolean) => {
-    setGlanceOpenNow(open);
-    lsSet(GLANCE_OPEN_KEY[surface], open ? "1" : "0");
-  };
   /** 글랜스 칩 → 판매 캘린더 오늘·타입 포커스 */
   const [stockFocus, setStockFocus] = useState<{ typeId: string; date: string } | null>(null);
   /** 월간 예약 헤더 ‘요금 설정’ (판매 캘린더와 같은 시트) */
@@ -3246,8 +3235,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         }}
         buildings={minimapNow}
         onRoomBlock={jumpSelectNowRoom}
-        open={glanceOpenNow}
-        onOpenChange={(o) => { if (o) setNowHeaderPanel(null); rememberGlanceOpen("now", o); }}
+        open={roomMapOpen}
+        onOpenChange={(o) => { if (o) setNowHeaderPanel(null); setRoomMapOpen(o); }}
         occFilter={occFilter}
         onOccFilterChange={setOccFilter}
       />
@@ -3311,7 +3300,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             summary={!assignBk ? nowGlance : null} view={nowViewControls}
             filter={!assignBk ? <>{platformFilterBar}{nowGroupControls}</> : undefined}
             work={!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={() => setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : undefined}
-            panel={nowHeaderPanel} onPanelChange={next => { if (next) rememberGlanceOpen("now", false); setNowHeaderPanel(next); }}
+            panel={nowHeaderPanel} onPanelChange={next => { if (next) setRoomMapOpen(false); setNowHeaderPanel(next); }}
             activeFilters={nowHeaderFilters} onClearFilters={() => { setPfSel([]); setHighlightGroup(null); setOnlyGroups(false); setShowGroupLinks(true); }} />
           {mvBar}
           {!mvB && assignBk ? (

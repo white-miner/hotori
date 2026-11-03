@@ -21,15 +21,12 @@
 .now-glance-compact .now-glance-details {
   padding:14px;margin:4px 0 12px;border:1px solid #dce1e8;border-radius:10px;background:#fafbfc;min-width:0;
 }
+.now-glance-compact .now-glance-stock {padding:12px;margin:4px 0 12px;border:1px solid #dce1e8;border-radius:10px;background:#fafbfc;min-width:0}
+.now-glance-compact .now-glance-stock h2,.now-glance-compact .now-glance-details-head h2 {margin:0;font-size:16px;font-weight:650}
+.now-glance-compact .now-glance-stock h2 {margin-bottom:10px}
 .now-glance-compact .now-glance-details-head {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.now-glance-compact .now-glance-tabs {display:flex;gap:4px;padding:3px;background:#eef0f3;border-radius:9px;min-width:0}
-.now-glance-compact .now-glance-tabs button {
-  min-height:40px;padding:7px 12px;border:0;border-radius:7px;background:transparent;font-size:16px;color:#4b5563;white-space:nowrap;
-}
-.now-glance-compact .now-glance-tabs button[aria-selected=true] {background:#242830;color:#fff}
 .now-glance-compact .now-glance-close {min-height:44px;padding:8px 14px;border:1px solid #cbd2dc;border-radius:8px;background:#fff;font-size:16px;color:#242830}
-.now-glance-compact :is(.now-glance-tabs button,.now-glance-details-toggle,.now-glance-close):focus-visible {outline:3px solid #2864d7;outline-offset:2px}
-.now-glance-compact [role=tabpanel][hidden] {display:none}
+.now-glance-compact :is(.now-glance-details-toggle,.now-glance-close):focus-visible {outline:3px solid #2864d7;outline-offset:2px}
 .now-page .now-glance-compact .bmap {margin:0}
 .now-page .now-glance-compact .now-vacancy-types {margin:0;padding:0}
 .now-page .now-glance-compact .now-vacancy-typechips {gap:8px;flex-wrap:wrap;overflow:visible;max-width:100%}
@@ -38,5 +35,4 @@
   .now-page .now-glance-compact .now-vacancy-stat {padding:7px 8px}
   .now-glance-compact .now-glance-entrypoints {margin-left:auto}
   .now-glance-compact .now-glance-details {padding:10px}
-  .now-glance-compact .now-glance-tabs button {padding:7px 9px}
 }
