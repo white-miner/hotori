@@ -204,6 +204,7 @@ import {
   type GlanceSurface,
 } from "../shared/boardGlance";
 import NowGlancePanel from "./NowGlancePanel";
+import NowBoardHeader, { type NowHeaderPanel, type NowHeaderFilter } from "./NowBoardHeader";
 import type { MinimapBuilding } from "./BoardStatusMinimap";
 import { type HotelData, WINDOW_BACK, queryStays, useRoomMemos } from "./data";
 import type { BoardMove, ToastOpt } from "./App";
@@ -284,16 +285,6 @@ const TAB_KEY = "hotori.boardTab";
 const B_KEY = "hotori.boardBuilding";
 const P_KEY = "hotori.stockPeriod";
 const R_KEY = "hotori.stockRange";
-/** 「배치」우측 패널 접기 — 기기별 기억 */
-/** 「미니맵」펼침 — 표면별 */
-const glanceOpenDefault = (): boolean => {
-  if (typeof window === "undefined") return true;
-  try {
-    return !window.matchMedia("(max-width: 760px)").matches;
-  } catch {
-    return true;
-  }
-};
 const PERIODS: { id: StockPeriod; label: string }[] = [
   { id: "d14", label: "14일" },
   { id: "week", label: "주" },
@@ -673,8 +664,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const v = lsGet(GLANCE_OPEN_KEY.now);
     if (v === "0") return false;
     if (v === "1") return true;
-    return glanceOpenDefault();
+    return false;
   });
+  const [nowHeaderPanel, setNowHeaderPanel] = useState<NowHeaderPanel>(null);
   const rememberGlanceOpen = (surface: GlanceSurface, open: boolean) => {
     setGlanceOpenNow(open);
     lsSet(GLANCE_OPEN_KEY[surface], open ? "1" : "0");
@@ -2101,7 +2093,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             setFloorTab("all");
           }}
         >
-          <span className="bn">{bName(id)}</span>
+          <span className="bn">{tab === "now" && id === "all" ? "전체 건물" : bName(id)}</span>
           {id !== "all" ? <small>{roomsIn(orderedFloors(s).filter((f) => f.buildingId === id))}</small> : null}
         </button>
       ))}
@@ -3241,6 +3233,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }));
     const nowGlance = (
       <NowGlancePanel
+        compact
         key={`now-glance-${bScope}-${viewDate}`}
         total={glanceTotal}
         used={glanceUsed}
@@ -3254,7 +3247,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         buildings={minimapNow}
         onRoomBlock={jumpSelectNowRoom}
         open={glanceOpenNow}
-        onOpenChange={(o) => rememberGlanceOpen("now", o)}
+        onOpenChange={(o) => { if (o) setNowHeaderPanel(null); rememberGlanceOpen("now", o); }}
         occFilter={occFilter}
         onOccFilterChange={setOccFilter}
       />
@@ -3277,46 +3270,49 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         </button>
       </>
     );
+    const nowViewControls = <div className="now-view-tools">
+      <label className="now-card-text-control">
+        <span>카드 글자</span>
+        <select aria-label="객실카드 글자 배율" value={cardTextScale}
+          title="카드 너비에 맞춰 자동 확대하며, 선택한 배율을 추가 적용합니다. 이 브라우저에 저장됩니다."
+          onChange={e => setCardTextScale(Number(e.target.value) as 100 | 115 | 130)}>
+          <option value={100}>100% · 자동</option>
+          <option value={115}>115% · 크게</option>
+          <option value={130}>130% · 더 크게</option>
+        </select>
+      </label>
+      <div className="now-floor-layout" role="group" aria-label="전체 층 객실 줄 수">
+        <span>전체 층 일괄</span>
+        <div className="now-floor-row-options">
+          {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={!mixedFloorRows && (s.floors[0] ? getFloorRows(s.floors[0].id) : floorRows) === rows}
+            title={`모든 층을 최대 ${rows}줄로 일괄 변경`}
+            onClick={() => setFloorRows(rows)}>{rows}줄</button>)}
+        </div>
+        {mixedFloorRows ? <small className="now-floor-mixed">층별 설정 중</small> : null}
+      </div>
+    </div>;
+    const nowGroupControls = <NowGroupBar data={data} groups={cardGroupViews} selected={highlightGroup} onlyGroups={onlyGroups} showLinks={showGroupLinks} readOnly={readOnly}
+      roomLabel={(b) => { const rid = roomForNowBoard(b, viewDate) ?? b.roomId; return rid ? `${L.roomLabel(rid)}호` : "미배정"; }}
+      onSelect={setHighlightGroup} onOnlyGroups={setOnlyGroups} onShowLinks={setShowGroupLinks} onManage={openGroupPay}
+      candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} />;
+    const nowHeaderFilters: NowHeaderFilter[] = [
+      ...pfSel.map(id => ({ key: `platform-${id}`, label: `경로 · ${platformChips(s.platforms, bookings).find(p => p.id === id)?.label ?? "선택 경로"}`, onClear: () => setPfSel(pfSel.filter(p => p !== id)) })),
+      ...(highlightGroup ? [{ key: "group", label: `단체 · ${cardGroupViews.find(g => g.id === highlightGroup)?.name ?? "선택 단체"}`, onClear: () => setHighlightGroup(null) }] : []),
+      ...(onlyGroups ? [{ key: "groups-only", label: "단체 객실만", onClear: () => setOnlyGroups(false) }] : []),
+      ...(!showGroupLinks ? [{ key: "group-links", label: "연결 정보 숨김", onClear: () => setShowGroupLinks(true) }] : []),
+    ];
     return (
     <>
       <main className="page board-page now-page" style={{ ['--card-text-scale' as string]: cardTextScale / 100 }}>
         <div className="main">
           {tabs}
           {banner}
-          {/* 날짜 이동: 페이지 상단 중앙 (전날 · 날짜 · 다음날 · 오늘) */}
-          <div className="nowdatebar">
-            <div className="dnav">{nowDateNav}</div>
-          </div>
-          <div className="bdh">
-            <div>
-              <h1>현황</h1>
-              <div className="bdh-s">
-                영업일 {dayLabel(today)} · 층별 객실 · 상세보기로 예약 확인 · 빠른 업무로 객실 업무 모달 열기
-              </div>
-            </div>
-            <div className="now-view-tools">
-              <label className="now-card-text-control">
-                <span>카드 글자</span>
-                <select aria-label="객실카드 글자 배율" value={cardTextScale}
-                  title="카드 너비에 맞춰 자동 확대하며, 선택한 배율을 추가 적용합니다. 이 브라우저에 저장됩니다."
-                  onChange={e => setCardTextScale(Number(e.target.value) as 100 | 115 | 130)}>
-                  <option value={100}>100% · 자동</option>
-                  <option value={115}>115% · 크게</option>
-                  <option value={130}>130% · 더 크게</option>
-                </select>
-              </label>
-              <div className="now-floor-layout" role="group" aria-label="전체 층 객실 줄 수">
-                <span>전체 층 일괄</span>
-                <div className="now-floor-row-options">
-                  {([1, 2, 3] as const).map(rows => <button key={rows} type="button" aria-pressed={!mixedFloorRows && (s.floors[0] ? getFloorRows(s.floors[0].id) : floorRows) === rows}
-                    title={`모든 층을 최대 ${rows}줄로 일괄 변경`}
-                    onClick={() => setFloorRows(rows)}>{rows}줄</button>)}
-                </div>
-                {mixedFloorRows ? <small className="now-floor-mixed">층별 설정 중</small> : null}
-              </div>
-              {!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={()=>setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : null}
-            </div>
-          </div>
+          <NowBoardHeader dateNav={nowDateNav} buildings={buildingTabs} search={!assignBk ? guestSearchBar : null}
+            summary={!assignBk ? nowGlance : null} view={nowViewControls}
+            filter={!assignBk ? <>{platformFilterBar}{nowGroupControls}</> : undefined}
+            work={!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={() => setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : undefined}
+            panel={nowHeaderPanel} onPanelChange={next => { if (next) rememberGlanceOpen("now", false); setNowHeaderPanel(next); }}
+            activeFilters={nowHeaderFilters} onClearFilters={() => { setPfSel([]); setHighlightGroup(null); setOnlyGroups(false); setShowGroupLinks(true); }} />
           {mvBar}
           {!mvB && assignBk ? (
             <div className="now-assign-banner" role="status">
@@ -3333,19 +3329,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           <NowLayoutGrid>
             {/* Chrome sticky lives in the board column only — full-width sticky covered .nowside (#128). */}
             <div className="nowboard">
-              <div className="board-chrome-sticky">
-                <div className="board-filter-sticky">
-                  {buildingTabs}
-                  {!assignBk ? guestSearchBar : null}
-                  {!assignBk ? platformFilterBar : null}
-                </div>
-                {!assignBk ? nowGlance : null}
-              </div>
               {floorChips}
-              {!assignBk ? <NowGroupBar data={data} groups={cardGroupViews} selected={highlightGroup} onlyGroups={onlyGroups} showLinks={showGroupLinks} readOnly={readOnly}
-                roomLabel={(b) => { const rid = roomForNowBoard(b, viewDate) ?? b.roomId; return rid ? `${L.roomLabel(rid)}호` : "미배정"; }}
-                onSelect={setHighlightGroup} onOnlyGroups={setOnlyGroups} onShowLinks={setShowGroupLinks} onManage={openGroupPay}
-                candidates={bookings.filter((b) => !b.groupId && b.kind === "stay" && b.status === "active" && !b.checkedOutAt && (nowBoardMap.get(roomForNowBoard(b, viewDate) ?? "")?.id === b.id))} /> : null}
               <div className="nowgrid">
                 {groupsNow.map(({ bd, floors: fl }, gi) => (
                   <section key={bd.id} className="bblock">
