@@ -1,0 +1,40 @@
+/* 현황 세 번째 행에만 적용. 기존 미니맵 표시와 다른 화면은 유지한다. */
+.now-page .board-glance.now-glance-compact {
+  margin:0;padding:0;border-top:0;border-bottom:1px solid #e0e4e9;background:#fff;min-width:0;
+}
+.now-glance-compact .now-glance-summary {
+  display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;min-height:48px;padding:3px 0;
+}
+.now-glance-compact .board-glance-occ {gap:4px;flex-wrap:wrap}
+.now-page .now-glance-compact .now-vacancy-stat {
+  min-height:40px;height:auto;padding:7px 10px;border:0;border-radius:8px;background:transparent;font-size:15px;color:#4b5563;box-shadow:none;
+}
+.now-page .now-glance-compact .now-vacancy-stat .num {font-size:17px;color:#242830}
+.now-page .now-glance-compact .now-vacancy-stat.on,
+.now-page .now-glance-compact .now-vacancy-stat:hover {background:#f0f2f5;color:#242830;box-shadow:none}
+.now-glance-compact .now-glance-details-toggle {
+  display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:7px 8px;border:0;border-radius:8px;background:transparent;color:#245ca8;font-size:15px;font-weight:650;white-space:nowrap;
+}
+.now-glance-compact .now-glance-details-toggle:hover {background:#f0f3f8}
+.now-glance-compact .now-glance-details {
+  padding:14px;margin:4px 0 12px;border:1px solid #dce1e8;border-radius:10px;background:#fafbfc;min-width:0;
+}
+.now-glance-compact .now-glance-details-head {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.now-glance-compact .now-glance-tabs {display:flex;gap:4px;padding:3px;background:#eef0f3;border-radius:9px;min-width:0}
+.now-glance-compact .now-glance-tabs button {
+  min-height:40px;padding:7px 12px;border:0;border-radius:7px;background:transparent;font-size:16px;color:#4b5563;white-space:nowrap;
+}
+.now-glance-compact .now-glance-tabs button[aria-selected=true] {background:#242830;color:#fff}
+.now-glance-compact .now-glance-close {min-height:44px;padding:8px 14px;border:1px solid #cbd2dc;border-radius:8px;background:#fff;font-size:16px;color:#242830}
+.now-glance-compact :is(.now-glance-tabs button,.now-glance-details-toggle,.now-glance-close):focus-visible {outline:3px solid #2864d7;outline-offset:2px}
+.now-glance-compact [role=tabpanel][hidden] {display:none}
+.now-page .now-glance-compact .bmap {margin:0}
+.now-page .now-glance-compact .now-vacancy-types {margin:0;padding:0}
+.now-page .now-glance-compact .now-vacancy-typechips {gap:8px;flex-wrap:wrap;overflow:visible;max-width:100%}
+@media(max-width:520px) {
+  .now-glance-compact .now-glance-summary {gap:4px;align-items:flex-start}
+  .now-page .now-glance-compact .now-vacancy-stat {padding:7px 8px}
+  .now-glance-compact .now-glance-details-toggle {margin-left:auto}
+  .now-glance-compact .now-glance-details {padding:10px}
+  .now-glance-compact .now-glance-tabs button {padding:7px 9px}
+}
