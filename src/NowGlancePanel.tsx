@@ -1,8 +1,8 @@
 /**
  * 점유 요약과 기존 지도/타입별 재고 연결.
- * compact는 현황의 상시 요약 행과 지도/재고 탭을 제공하고 기본 모양은 보존한다.
+ * compact는 요약·타입별 재고를 상시 표시하고 객실 지도만 필요할 때 연다.
  */
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useRef } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { type GlanceOccFilter } from "../shared/boardGlance";
 import type { RoomType } from "../shared/ledger";
@@ -10,13 +10,6 @@ import { typeLabel } from "../shared/ledger";
 import BoardStatusMinimap, { type MinimapBuilding } from "./BoardStatusMinimap";
 import { TypeStockChip } from "./primitives";
 import "./NowGlancePanel.css";
-
-type DetailTab = "map" | "stock";
-const DETAIL_TAB_KEY = "hotori.now.glanceDetailTab.v1";
-const readDetailTab = (): DetailTab => {
-  try { return localStorage.getItem(DETAIL_TAB_KEY) === "map" ? "map" : "stock"; }
-  catch { return "stock"; }
-};
 
 export type GlanceTypeStock = {
   t: RoomType;
@@ -42,7 +35,7 @@ interface Props {
   /** 점유 필터 (총=null · 사용 · 남음) — 보드 칸 dim과 동기 */
   occFilter: GlanceOccFilter;
   onOccFilterChange: (next: GlanceOccFilter) => void;
-  /** 현황의 세 번째 행: 상시 요약 + 지도/재고 중 하나만 펼친다. */
+  /** 현황의 세 번째 조작 행 + 상시 재고. open은 지도만 제어한다. */
   compact?: boolean;
 }
 
@@ -61,35 +54,12 @@ export default function NowGlancePanel({
   onOccFilterChange,
   compact = false,
 }: Props) {
-  const [detailTab, setDetailTab] = useState<DetailTab>(() => compact ? readDetailTab() : "stock");
   const id = useId();
   const mapTriggerRef = useRef<HTMLButtonElement>(null);
-  const stockTriggerRef = useRef<HTMLButtonElement>(null);
-  const lastTrigger = useRef<DetailTab>(detailTab);
-  const mapTabRef = useRef<HTMLButtonElement>(null);
-  const stockTabRef = useRef<HTMLButtonElement>(null);
   const toggle = () => onOpenChange(!open);
-  const selectDetailTab = (next: DetailTab) => {
-    setDetailTab(next);
-    if (!compact) return;
-    try { localStorage.setItem(DETAIL_TAB_KEY, next); }
-    catch { /* 개인 정보 보호 모드에서도 현재 선택은 유지한다. */ }
-  };
-  const openDetail = (next: DetailTab) => {
-    lastTrigger.current = next;
-    selectDetailTab(next);
-    onOpenChange(!(open && detailTab === next));
-  };
   const close = () => {
     onOpenChange(false);
-    (lastTrigger.current === "map" ? mapTriggerRef : stockTriggerRef).current?.focus();
-  };
-  const tabKeys = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const next = event.key === "Home" ? "map" : event.key === "End" ? "stock" : detailTab === "map" ? "stock" : "map";
-    selectDetailTab(next);
-    (next === "map" ? mapTabRef : stockTabRef).current?.focus();
+    mapTriggerRef.current?.focus();
   };
 
   /** 사용/남음 = 토글 · 총(또는 활성 재탭) = 해제 */
@@ -163,37 +133,24 @@ export default function NowGlancePanel({
       <div className="now-glance-summary">
         {occChips}
         <div className="now-glance-entrypoints" role="group" aria-label="객실현황 바로 보기">
-          <button ref={stockTriggerRef} type="button" className="now-glance-details-toggle" onClick={() => openDetail("stock")}
-            aria-expanded={open && detailTab === "stock"} aria-controls={`${id}-details`}>
-            타입별 재고
-            {open && detailTab === "stock" ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
-          </button>
-          <button ref={mapTriggerRef} type="button" className="now-glance-details-toggle" onClick={() => openDetail("map")}
-            aria-expanded={open && detailTab === "map"} aria-controls={`${id}-details`}>
+          <button ref={mapTriggerRef} type="button" className="now-glance-details-toggle" onClick={toggle}
+            aria-expanded={open} aria-controls={`${id}-map`}>
             객실 지도
-            {open && detailTab === "map" ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
+            {open ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
           </button>
         </div>
       </div>
-      {open ? <div className="now-glance-details" id={`${id}-details`}>
+      {typeStock.length ? <section className="now-glance-stock" aria-label="타입별 재고">
+        <h2>타입별 재고</h2>
+        {stock}
+      </section> : null}
+      {open ? <section className="now-glance-details" id={`${id}-map`} aria-label="객실 지도">
         <div className="now-glance-details-head">
-          <div role="tablist" aria-label="객실현황 상세 보기" className="now-glance-tabs">
-            <button ref={mapTabRef} type="button" role="tab" id={`${id}-map-tab`} aria-controls={`${id}-map-panel`}
-              aria-selected={detailTab === "map"} tabIndex={detailTab === "map" ? 0 : -1}
-              onClick={() => selectDetailTab("map")} onKeyDown={tabKeys}>객실 지도</button>
-            <button ref={stockTabRef} type="button" role="tab" id={`${id}-stock-tab`} aria-controls={`${id}-stock-panel`}
-              aria-selected={detailTab === "stock"} tabIndex={detailTab === "stock" ? 0 : -1}
-              onClick={() => selectDetailTab("stock")} onKeyDown={tabKeys}>타입별 재고</button>
-          </div>
+          <h2>객실 지도</h2>
           <button type="button" className="now-glance-close" onClick={close}>닫기</button>
         </div>
-        <div role="tabpanel" id={`${id}-map-panel`} aria-labelledby={`${id}-map-tab`} hidden={detailTab !== "map"}>
-          {detailTab === "map" ? map : null}
-        </div>
-        <div role="tabpanel" id={`${id}-stock-panel`} aria-labelledby={`${id}-stock-tab`} hidden={detailTab !== "stock"}>
-          {detailTab === "stock" ? stock : null}
-        </div>
-      </div> : null}
+        {map}
+      </section> : null}
     </section>
   );
 
