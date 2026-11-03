@@ -11,6 +11,13 @@ import BoardStatusMinimap, { type MinimapBuilding } from "./BoardStatusMinimap";
 import { TypeStockChip } from "./primitives";
 import "./NowGlancePanel.css";
 
+type DetailTab = "map" | "stock";
+const DETAIL_TAB_KEY = "hotori.now.glanceDetailTab.v1";
+const readDetailTab = (): DetailTab => {
+  try { return localStorage.getItem(DETAIL_TAB_KEY) === "map" ? "map" : "stock"; }
+  catch { return "stock"; }
+};
+
 export type GlanceTypeStock = {
   t: RoomType;
   rem: number;
@@ -54,21 +61,34 @@ export default function NowGlancePanel({
   onOccFilterChange,
   compact = false,
 }: Props) {
-  const [detailTab, setDetailTab] = useState<"map" | "stock">("map");
+  const [detailTab, setDetailTab] = useState<DetailTab>(() => compact ? readDetailTab() : "stock");
   const id = useId();
-  const toggleRef = useRef<HTMLButtonElement>(null);
+  const mapTriggerRef = useRef<HTMLButtonElement>(null);
+  const stockTriggerRef = useRef<HTMLButtonElement>(null);
+  const lastTrigger = useRef<DetailTab>(detailTab);
   const mapTabRef = useRef<HTMLButtonElement>(null);
   const stockTabRef = useRef<HTMLButtonElement>(null);
   const toggle = () => onOpenChange(!open);
+  const selectDetailTab = (next: DetailTab) => {
+    setDetailTab(next);
+    if (!compact) return;
+    try { localStorage.setItem(DETAIL_TAB_KEY, next); }
+    catch { /* 개인 정보 보호 모드에서도 현재 선택은 유지한다. */ }
+  };
+  const openDetail = (next: DetailTab) => {
+    lastTrigger.current = next;
+    selectDetailTab(next);
+    onOpenChange(!(open && detailTab === next));
+  };
   const close = () => {
     onOpenChange(false);
-    toggleRef.current?.focus();
+    (lastTrigger.current === "map" ? mapTriggerRef : stockTriggerRef).current?.focus();
   };
   const tabKeys = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     const next = event.key === "Home" ? "map" : event.key === "End" ? "stock" : detailTab === "map" ? "stock" : "map";
-    setDetailTab(next);
+    selectDetailTab(next);
     (next === "map" ? mapTabRef : stockTabRef).current?.focus();
   };
 
@@ -142,21 +162,28 @@ export default function NowGlancePanel({
       }}>
       <div className="now-glance-summary">
         {occChips}
-        <button ref={toggleRef} type="button" className="now-glance-details-toggle" onClick={toggle}
-          aria-expanded={open} aria-controls={`${id}-details`}>
-          객실현황 {open ? "접기" : "펼치기"}
-          {open ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
-        </button>
+        <div className="now-glance-entrypoints" role="group" aria-label="객실현황 바로 보기">
+          <button ref={stockTriggerRef} type="button" className="now-glance-details-toggle" onClick={() => openDetail("stock")}
+            aria-expanded={open && detailTab === "stock"} aria-controls={`${id}-details`}>
+            타입별 재고
+            {open && detailTab === "stock" ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
+          </button>
+          <button ref={mapTriggerRef} type="button" className="now-glance-details-toggle" onClick={() => openDetail("map")}
+            aria-expanded={open && detailTab === "map"} aria-controls={`${id}-details`}>
+            객실 지도
+            {open && detailTab === "map" ? <ChevronDown size={17} aria-hidden /> : <ChevronRight size={17} aria-hidden />}
+          </button>
+        </div>
       </div>
       {open ? <div className="now-glance-details" id={`${id}-details`}>
         <div className="now-glance-details-head">
           <div role="tablist" aria-label="객실현황 상세 보기" className="now-glance-tabs">
             <button ref={mapTabRef} type="button" role="tab" id={`${id}-map-tab`} aria-controls={`${id}-map-panel`}
               aria-selected={detailTab === "map"} tabIndex={detailTab === "map" ? 0 : -1}
-              onClick={() => setDetailTab("map")} onKeyDown={tabKeys}>객실 지도</button>
+              onClick={() => selectDetailTab("map")} onKeyDown={tabKeys}>객실 지도</button>
             <button ref={stockTabRef} type="button" role="tab" id={`${id}-stock-tab`} aria-controls={`${id}-stock-panel`}
               aria-selected={detailTab === "stock"} tabIndex={detailTab === "stock" ? 0 : -1}
-              onClick={() => setDetailTab("stock")} onKeyDown={tabKeys}>타입별 재고</button>
+              onClick={() => selectDetailTab("stock")} onKeyDown={tabKeys}>타입별 재고</button>
           </div>
           <button type="button" className="now-glance-close" onClick={close}>닫기</button>
         </div>

@@ -12,10 +12,12 @@
 .now-page .now-glance-compact .now-vacancy-stat .num {font-size:17px;color:#242830}
 .now-page .now-glance-compact .now-vacancy-stat.on,
 .now-page .now-glance-compact .now-vacancy-stat:hover {background:#f0f2f5;color:#242830;box-shadow:none}
+.now-glance-compact .now-glance-entrypoints {display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-left:auto}
 .now-glance-compact .now-glance-details-toggle {
   display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:7px 8px;border:0;border-radius:8px;background:transparent;color:#245ca8;font-size:15px;font-weight:650;white-space:nowrap;
 }
-.now-glance-compact .now-glance-details-toggle:hover {background:#f0f3f8}
+.now-glance-compact .now-glance-details-toggle:hover,
+.now-glance-compact .now-glance-details-toggle[aria-expanded=true] {background:#f0f3f8}
 .now-glance-compact .now-glance-details {
   padding:14px;margin:4px 0 12px;border:1px solid #dce1e8;border-radius:10px;background:#fafbfc;min-width:0;
 }
@@ -34,7 +36,7 @@
 @media(max-width:520px) {
   .now-glance-compact .now-glance-summary {gap:4px;align-items:flex-start}
   .now-page .now-glance-compact .now-vacancy-stat {padding:7px 8px}
-  .now-glance-compact .now-glance-details-toggle {margin-left:auto}
+  .now-glance-compact .now-glance-entrypoints {margin-left:auto}
   .now-glance-compact .now-glance-details {padding:10px}
   .now-glance-compact .now-glance-tabs button {padding:7px 9px}
 }
