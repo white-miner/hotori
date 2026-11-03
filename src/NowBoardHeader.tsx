@@ -5,9 +5,9 @@ import "./NowBoardHeader.css";
 export type NowHeaderPanel = "view" | "filter" | "work" | null;
 export type NowHeaderFilter = { key: string; label: string; onClear: () => void };
 
-/** Header slots reuse Dashboard's booking/search/setting callbacks without owning hotel data. */
-export default function NowBoardHeader({ dateNav, buildings, search, summary, view, filter, work, panel, onPanelChange, activeFilters, onClearFilters }: {
-  dateNav: ReactNode; buildings: ReactNode; search: ReactNode; summary: ReactNode;
+/** 운영 규칙: 날짜 자체를 중앙에 고정하고 제목·오늘·업무 버튼은 독립 배치한다. */
+export default function NowBoardHeader({ dateNav, todayAction, buildings, search, summary, view, filter, work, panel, onPanelChange, activeFilters, onClearFilters }: {
+  dateNav: ReactNode; todayAction?: ReactNode; buildings: ReactNode; search: ReactNode; summary: ReactNode;
   view: ReactNode; filter?: ReactNode; work?: ReactNode;
   panel: NowHeaderPanel; onPanelChange: (next: NowHeaderPanel) => void;
   activeFilters: NowHeaderFilter[]; onClearFilters: () => void;
@@ -31,7 +31,8 @@ export default function NowBoardHeader({ dateNav, buildings, search, summary, vi
     }
   }}>
     <div className="now-header-top">
-      <div className="now-header-date"><h1>현황</h1><div className="dnav">{dateNav}</div></div>
+      <div className="now-header-title"><h1>현황</h1>{todayAction}</div>
+      <div className="now-header-date"><div className="dnav">{dateNav}</div></div>
       <div className="now-header-tools">
         {triggerButton("view", <><SlidersHorizontal size={17} aria-hidden />보기 설정</>)}
         {work ? triggerButton("work", <>업무<ChevronDown size={16} aria-hidden /></>) : null}
