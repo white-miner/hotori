@@ -45,7 +45,7 @@
 .now-page .now-header-panel .btn { min-height:44px; font-size:16px; }
 .now-page .now-header-summary { margin-top:8px; }
 .now-page .now-board-header :is(button,select,input):focus-visible { outline:3px solid #2864d7; outline-offset:2px; }
-@container(max-width:760px) {
+@container(max-width:600px) {
   .now-page .now-header-find { grid-template-columns:minmax(0,1fr) auto; }
   .now-page .now-header-buildings { grid-column:1/-1; width:max-content; max-width:100%; }
   .now-page .now-header-buildings .btabs { flex-wrap:wrap; }
