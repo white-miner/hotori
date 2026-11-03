@@ -3174,11 +3174,9 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       <button className="ar" aria-label="다음날" disabled={!!mvB} onClick={() => setSelDate(addDays(selDate, 1))}>
         <ChevronRight size={16} />
       </button>
-      <button className="btn sm" disabled={selDate === today || !!mvB} onClick={() => setSelDate(today)}>
-        오늘
-      </button>
     </>
   );
+  const nowTodayAction = <button className="btn sm" disabled={selDate === today || !!mvB} onClick={() => setSelDate(today)}>오늘</button>;
 
   if (tab === "now") {
     const floorsNow = floors;
@@ -3296,7 +3294,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         <div className="main">
           {tabs}
           {banner}
-          <NowBoardHeader dateNav={nowDateNav} buildings={buildingTabs} search={!assignBk ? guestSearchBar : null}
+          <NowBoardHeader dateNav={nowDateNav} todayAction={nowTodayAction} buildings={buildingTabs} search={!assignBk ? guestSearchBar : null}
             summary={!assignBk ? nowGlance : null} view={nowViewControls}
             filter={!assignBk ? <>{platformFilterBar}{nowGroupControls}</> : undefined}
             work={!readOnly ? <button type="button" className="btn line" disabled={!!coBusy} onClick={() => setBatchCheckoutOpen(true)}>퇴실예정 일괄 퇴실</button> : undefined}

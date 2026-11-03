@@ -1,13 +1,16 @@
 /* Scoped to the now board so other dashboard tabs and modal controls stay unchanged. */
 .now-page .now-board-header { container-type:inline-size; margin:4px 0 14px; color:#242830; }
-.now-page .now-header-top { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px 20px; margin-bottom:10px; }
-.now-page .now-header-date { display:flex; align-items:center; flex-wrap:wrap; gap:12px; min-width:0; }
-.now-page .now-header-date h1 { margin:0; font-size:24px; line-height:1.3; font-weight:750; }
-.now-page .now-header-date .dnav { width:auto; margin:0; gap:7px; flex-wrap:wrap; }
-.now-page .now-header-date .dn-day { font-size:28px; font-weight:750; line-height:1.3; white-space:nowrap; }
+/* 운영 규칙: 좌우 폭이 달라도 날짜 텍스트의 중심은 현황 조작부 중앙과 일치한다. */
+.now-page .now-header-top { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:10px 12px; margin-bottom:10px; }
+.now-page .now-header-title { display:flex; align-items:center; gap:10px; min-width:0; }
+.now-page .now-header-title h1 { margin:0; font-size:24px; line-height:1.3; font-weight:750; }
+.now-page .now-header-title .btn { min-height:42px; font-size:15px; }
+.now-page .now-header-date { justify-self:center; min-width:0; }
+.now-page .now-header-date .dnav { width:auto; margin:0; gap:7px; flex-wrap:nowrap; justify-content:center; }
+.now-page .now-header-date .dn-day { font-size:28px; font-weight:750; line-height:1.3; white-space:nowrap; text-align:center; }
 .now-page .now-header-date .ar { width:42px; height:42px; flex:none; }
 .now-page .now-header-date .btn { min-height:42px; font-size:15px; }
-.now-page .now-header-tools { display:flex; align-items:center; gap:8px; margin-left:auto; }
+.now-page .now-header-tools { display:flex; align-items:center; gap:8px; justify-self:end; }
 .now-page .now-header-trigger,.now-page .now-header-close { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:44px; padding:8px 12px; border:1px solid #d8dde4; border-radius:9px; background:#fff; color:#343d4b; font-size:16px; font-weight:650; white-space:nowrap; cursor:pointer; }
 .now-page .now-header-trigger:hover,.now-page .now-header-close:hover { background:#f3f5f8; }
 .now-page .now-header-trigger[aria-expanded=true] { background:#20242a; border-color:#20242a; color:#fff; }
@@ -45,17 +48,22 @@
 .now-page .now-header-panel .btn { min-height:44px; font-size:16px; }
 .now-page .now-header-summary { margin-top:8px; }
 .now-page .now-board-header :is(button,select,input):focus-visible { outline:3px solid #2864d7; outline-offset:2px; }
+/* 폭이 좁으면 날짜를 첫 줄 전체에 두어 중앙 정렬과 버튼 간격을 함께 보존한다. */
+@container(max-width:680px) {
+  .now-page .now-header-top { grid-template-columns:minmax(0,1fr) auto; }
+  .now-page .now-header-date { grid-column:1/-1; grid-row:1; }
+  .now-page .now-header-title { grid-column:1; grid-row:2; flex-wrap:wrap; gap:7px; }
+  .now-page .now-header-tools { grid-column:2; grid-row:2; }
+}
 @container(max-width:600px) {
   .now-page .now-header-find { grid-template-columns:minmax(0,1fr) auto; }
   .now-page .now-header-buildings { grid-column:1/-1; width:max-content; max-width:100%; }
   .now-page .now-header-buildings .btabs { flex-wrap:wrap; }
 }
 @container(max-width:460px) {
-  .now-page .now-header-date { gap:8px; }
   .now-page .now-header-date .dnav { gap:5px; }
   .now-page .now-header-date .dn-day { font-size:24px; }
   .now-page .now-header-top { gap:8px; }
-  .now-page .now-header-tools { margin-left:auto; }
   .now-page .now-header-panel { padding:12px; }
   .now-page .now-header-panel .now-view-tools { align-items:flex-start; }
   .now-page .now-header-panel .now-floor-layout { align-items:flex-start; }
