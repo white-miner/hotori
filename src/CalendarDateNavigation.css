@@ -1,0 +1,20 @@
+/* 판매 캘린더·월간 예약 공통. 사이드바와 다른 화면의 날짜 조작에는 영향 없음. */
+.calendar-date-navigation {container-type:inline-size;margin:8px 0 16px;min-width:0;color:#242830}
+.calendar-date-top {display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:10px 12px;align-items:center}
+.calendar-date-today {justify-self:start;min-width:0}
+.calendar-date-today .btn {min-height:42px;font-size:16px}
+.calendar-date-center {display:grid;grid-template-columns:42px minmax(0,1fr) 42px;gap:7px;align-items:center;justify-self:center;min-width:0;width:max-content;max-width:100%}
+.calendar-date-center .ar {width:42px;height:42px;min-width:42px;border-radius:50%;background:var(--panel);color:var(--ink2);display:inline-flex;align-items:center;justify-content:center}
+.calendar-date-center .ar:hover {background:var(--hover)}
+.calendar-date-label {min-width:0;text-align:center;font-size:26px;line-height:1.35;font-weight:750;white-space:normal;overflow-wrap:anywhere;text-wrap:balance}
+.calendar-date-custom {display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;width:min(100%,460px);margin:10px auto 0}
+.calendar-date-custom .datechip {min-width:0;max-width:100%;width:100%;min-height:44px;font-size:16px}
+.calendar-date-status {display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:15px}
+.calendar-date-navigation :is(button,input):focus-visible {outline:3px solid #2864d7;outline-offset:2px}
+@container(max-width:680px) {
+  .calendar-date-top {grid-template-columns:minmax(0,1fr)}
+  .calendar-date-center {grid-column:1;grid-row:1}
+  .calendar-date-today {grid-column:1;grid-row:2}
+  .calendar-date-today:empty {display:none}
+  .calendar-date-label {font-size:22px}
+}
