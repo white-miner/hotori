@@ -1,5 +1,6 @@
 /** 견적서 (P1.1) — 예약 전 제안. See docs/group-invoice-plan.md */
 import type { PrintLang } from "./hotelBiz";
+import { addDays } from "./ledger";
 import type { IssuanceNightCell } from "./issuanceNightDetail";
 import {
   quoteAmountFromNightCells,
@@ -32,6 +33,7 @@ export type QuoteLine = {
   rooms: number;
   nights: number;
   pax: number;
+  detail?: string;
   /** 1실·1박 단가 */
   rate: number;
   /** 줄 합계 (보통 rooms × nights × rate; 수동 override OK) */
@@ -287,6 +289,18 @@ export function quotePriceSummary(lines: QuoteLine[], mode: QuoteTaxMode = "incl
   return { lineAmount, supplyAmount, vatAmount, grandTotal: lineAmount + (taxMode === "excluded" ? vatAmount : 0), taxMode };
 }
 
+export function quoteLineWithRates(line: QuoteLine, checkIn: string, rates: readonly number[]): QuoteLine {
+  const nightAmounts = rates.map((amount, index) => ({ date: addDays(checkIn, index), amount }));
+  return {
+    ...line,
+    checkIn,
+    nights: rates.length,
+    nightAmounts,
+    rate: unitRateFromCells(nightAmounts),
+    amount: quoteAmountFromNightCells(line.rooms, nightAmounts),
+  };
+}
+
 function normalizeRoomIds(raw: unknown, max: number): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
@@ -327,7 +341,8 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
       .filter((x): x is IssuanceNightCell => !!x);
     if (!nightAmounts.length) nightAmounts = undefined;
   }
-  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts };
+  const detail = typeof o.detail === "string" ? o.detail.trim().slice(0, 60) : undefined;
+  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts, detail };
 }
 
 /** Ensure night detail exists for edit UI; sync amount from cells×rooms when detail present */
@@ -365,6 +380,8 @@ export function validateQuoteDraft(d: QuoteDraft): string | null {
   if (!d.lines.length) return QUOTE_COPY.emptyLines;
   if (d.lines.length > QUOTE_LINES_MAX) return `항목은 ${QUOTE_LINES_MAX}줄까지예요.`;
   if (d.lines.every((l) => l.amount <= 0 && !l.label.trim() && !l.typeId)) return QUOTE_COPY.emptyLines;
+  if (d.guestCount > 9999) return "전체 인원은 9,999명 이하로 입력해 주세요.";
+  if (quotePriceSummary(d.lines, d.taxMode).grandTotal > 2_147_483_647) return "견적 합계가 저장 가능한 금액을 초과했어요.";
   return null;
 }
 

@@ -1526,12 +1526,12 @@ export async function hasShopSales(hotelId: string, itemId: string): Promise<boo
 }
 
 /** 재고 현황·객실 캘린더에서 오래전 기간을 볼 때만: 그 기간에 걸친 예약 (숙박은 최대 90박이라 입실일 90일 앞부터, 대실은 캘린더 점용) */
-export async function queryStays(hotelId: string, from: string, to: string): Promise<Booking[]> {
+export async function queryStays(hotelId: string, from: string, to: string, lookbackDays = 90): Promise<Booking[]> {
   const { data, error } = await supabase
     .from("bookings")
     .select(COLS)
     .eq("hotel_id", hotelId)
-    .gte("check_in", addDays(from, -90))
+    .gte("check_in", addDays(from, -lookbackDays))
     .lte("check_in", to)
     .limit(20000);
   if (error) throw error;

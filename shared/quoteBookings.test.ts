@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { planQuoteTypeHoldBookings, validateQuoteForBookings } from "./quoteBookings";
-import { emptyQuoteLine, type QuoteDraft } from "./quoteDoc";
+import { emptyQuoteLine, freezeQuoteSnapshot, quotePriceSummary, quoteLineWithRates, type QuoteDraft } from "./quoteDoc";
+import { quoteTemplateFromDraft, quoteTemplateLines, readQuoteTemplates } from "./quoteTemplates";
 import type { HotelSettings } from "./ledger";
 
 const s = {
@@ -93,4 +94,41 @@ test("planQuoteTypeHoldBookings: single → one booking", () => {
   assert.equal(plan.booking.roomId, null);
   assert.equal(plan.booking.price, 80_000);
   assert.equal(plan.booking.typeId, "t2");
+});
+
+test("template re-use preserves each arrival offset, duration, rate, headcount and VAT through issue", () => {
+  const rows = [
+    quoteLineWithRates({ ...emptyQuoteLine("t1"), pax: 2, roomIds: ["r1"] }, "2026-11-05", [90_000, 100_000]),
+    quoteLineWithRates({ ...emptyQuoteLine("t1"), pax: 3, detail: "추가 이불", roomIds: ["r2"] }, "2026-11-06", [110_000]),
+    quoteLineWithRates({ ...emptyQuoteLine("t2"), pax: 4, rooms: 2 }, "2026-11-05", [79_999, 95_001, 120_003]),
+  ];
+  const saved = quoteTemplateFromDraft("목·금 단체", draft({ checkIn: "2026-11-05", lines: rows, taxMode: "excluded" }));
+  const [template] = readQuoteTemplates(JSON.stringify([saved]));
+  assert.ok(template);
+  const checkIn = "2026-11-12";
+  const lines = quoteTemplateLines(template, checkIn);
+  assert.deepEqual(lines.map((line) => line.roomIds), [[], [], []]);
+  assert.notDeepEqual(lines.map((line) => line.id), rows.map((line) => line.id));
+  assert.deepEqual(lines.map((line) => [line.checkIn, line.nights, line.pax]), [
+    ["2026-11-12", 2, 2], ["2026-11-13", 1, 3], ["2026-11-12", 3, 4],
+  ]);
+  lines[0]!.roomIds = ["r1"];
+  lines[1]!.roomIds = ["r2"];
+  const reused = draft({ checkIn, lines, taxMode: template.taxMode });
+  const plan = planQuoteTypeHoldBookings({ draft: reused, quoteId: "group-test", s });
+  assert.equal(plan.kind, "group");
+  if (plan.kind !== "group") return;
+  assert.deepEqual(plan.drafts.map((booking) => [booking.roomId, booking.checkIn, booking.nights, booking.guests]), [
+    ["r1", "2026-11-12", 2, 2], ["r2", "2026-11-13", 1, 3],
+    [null, "2026-11-12", 3, 4], [null, "2026-11-12", 3, 4],
+  ]);
+  assert.deepEqual(plan.drafts[0]!.nightRates?.nights, { "2026-11-12": 99_000, "2026-11-13": 110_000 });
+  assert.equal(plan.drafts[1]!.price, 121_000);
+  assert.match(plan.drafts[1]!.memo ?? "", /추가 이불/);
+  assert.equal(plan.drafts.reduce((total, booking) => total + booking.price, 0), 979_007);
+  assert.equal(freezeQuoteSnapshot(reused, "2026-11-05T00:00:00Z").total, 979_007);
+  assert.equal(quotePriceSummary(rows, "included").grandTotal, 890_006);
+  assert.equal(quotePriceSummary(rows, "exempt").vatAmount, 0);
+  lines[1]!.roomIds = ["r1"];
+  assert.match(validateQuoteForBookings(reused, s) ?? "", /기간이 겹쳐요/);
 });
