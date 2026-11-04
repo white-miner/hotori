@@ -2162,9 +2162,11 @@ import {
   type QuoteDraft,
   type QuoteSnapshot,
   normalizeQuoteLines,
-  quoteTotal,
   freezeQuoteSnapshot,
   validateQuoteDraft,
+  QUOTE_NOTES_MAX,
+  quotePriceSummary,
+  normalizeQuoteTaxMode,
 } from "../shared/quoteDoc";
 import {
   type InvoiceDoc,
@@ -2190,6 +2192,8 @@ interface QuoteRow {
   client_name: string;
   client_phone: string;
   notes: string;
+  valid_until?: string | null;
+  tax_mode?: string | null;
   check_in: string | null;
   nights: number;
   guest_count: number;
@@ -2205,7 +2209,7 @@ interface QuoteRow {
   updated_at: string;
 }
 const QUOTE_COLS =
-  "id,hotel_id,status,title,client_name,client_phone,notes,check_in,nights,guest_count,lines,total,show_room_nos,group_id,booking_ids,snapshot,issued_at,created_by,created_at,updated_at";
+  "id,hotel_id,status,title,client_name,client_phone,notes,valid_until,tax_mode,check_in,nights,guest_count,lines,total,show_room_nos,group_id,booking_ids,snapshot,issued_at,created_by,created_at,updated_at";
 
 function fromQuoteRow(r: QuoteRow): QuoteDoc {
   const lines = normalizeQuoteLines(r.lines);
@@ -2214,6 +2218,8 @@ function fromQuoteRow(r: QuoteRow): QuoteDoc {
     ? ({
         ...snapRaw,
         lines: normalizeQuoteLines(snapRaw.lines),
+        validUntil: snapRaw.validUntil ?? r.valid_until ?? null,
+        taxMode: normalizeQuoteTaxMode(snapRaw.taxMode ?? r.tax_mode),
         showRoomNos: !!snapRaw.showRoomNos,
         groupId: snapRaw.groupId ?? r.group_id ?? null,
         bookingIds: snapRaw.bookingIds ?? r.booking_ids ?? [],
@@ -2227,11 +2233,13 @@ function fromQuoteRow(r: QuoteRow): QuoteDoc {
     clientName: r.client_name ?? "",
     clientPhone: r.client_phone ?? "",
     notes: r.notes ?? "",
+    validUntil: r.valid_until ?? null,
+    taxMode: normalizeQuoteTaxMode(r.tax_mode),
     checkIn: r.check_in,
     nights: r.nights ?? 0,
     guestCount: r.guest_count ?? 0,
     lines,
-    total: r.total ?? quoteTotal(lines),
+    total: r.total ?? quotePriceSummary(lines, normalizeQuoteTaxMode(r.tax_mode)).grandTotal,
     showRoomNos: !!r.show_room_nos,
     groupId: r.group_id ?? null,
     bookingIds: r.booking_ids ?? [],
@@ -2275,14 +2283,16 @@ export function useQuoteIssues(hotelId: string) {
       if (v) throw new Error(v);
       const title = (draft.title.trim() || draft.clientName.trim()).slice(0, 80);
       const lines = draft.lines;
-      const total = quoteTotal(lines);
+      const total = quotePriceSummary(lines, draft.taxMode).grandTotal;
       const payload = {
         hotel_id: hotelId,
         status: "draft" as const,
         title,
         client_name: draft.clientName.trim().slice(0, 60),
         client_phone: draft.clientPhone.trim().slice(0, 30),
-        notes: draft.notes.trim().slice(0, 280),
+        notes: draft.notes.trim().slice(0, QUOTE_NOTES_MAX),
+        valid_until: draft.validUntil || null,
+        tax_mode: normalizeQuoteTaxMode(draft.taxMode),
         check_in: draft.checkIn,
         nights: Math.max(0, Math.round(draft.nights) || 0),
         guest_count: Math.max(0, Math.round(draft.guestCount) || 0),
@@ -2324,6 +2334,8 @@ export function useQuoteIssues(hotelId: string) {
         client_name: snapshot.clientName,
         client_phone: snapshot.clientPhone,
         notes: snapshot.notes,
+        valid_until: snapshot.validUntil || null,
+        tax_mode: normalizeQuoteTaxMode(snapshot.taxMode),
         check_in: snapshot.checkIn,
         nights: snapshot.nights,
         guest_count: snapshot.guestCount,

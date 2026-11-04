@@ -56,6 +56,8 @@ import { type GroupInfo } from "../shared/settle";
 import { parseGuestQuery, textMatchesGuest } from "../shared/guestSearch";
 import { ensureHotelBizReady } from "./hotelBizGate";
 import { lookups } from "./ui";
+import { RateSettings } from "./RateSettings";
+import { type HotelSettings } from "../shared/ledger";
 
 type InvoiceTarget = {
   members: Booking[];
@@ -113,6 +115,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
   const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
   const [invoiceTarget, setInvoiceTarget] = useState<InvoiceTarget | null>(null);
   const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
+  const [ratesOpen, setRatesOpen] = useState(false);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [damageBusy, setDamageBusy] = useState(false);
@@ -257,6 +260,12 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
             <span className="iss-card-t">{ISSUANCE_COPY.quote}</span>
             <span className="iss-card-s">{ISSUANCE_COPY.quoteHint}</span>
             <span className="iss-card-cta">{ISSUANCE_COPY.quoteCta}</span>
+          </button>
+          <button type="button" className="iss-card" onClick={() => setRatesOpen(true)}>
+            <Receipt size={22} strokeWidth={2} aria-hidden />
+            <span className="iss-card-t">객실 타입별 요금 설정</span>
+            <span className="iss-card-s">발급 서류에 사용할 객실 타입별 평일·주말·시즌 요금을 관리해요.</span>
+            <span className="iss-card-cta">요금 설정 열기</span>
           </button>
           <button type="button" className="iss-card" onClick={() => void goPanel("invoice")}>
             <Receipt size={22} strokeWidth={2} aria-hidden />
@@ -467,7 +476,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
           onIssue={async (draft, id) => {
             setQuoteBusy(true);
             try {
-              const plan = planQuoteTypeHoldBookings({ draft, quoteId: id ?? "new", s });
+              const plan = planQuoteTypeHoldBookings({ draft, quoteId: id ?? "new", s, bookings: data.bookings });
               if (plan.kind === "skip") throw new Error(plan.reason);
               let groupId: string | null = null;
               let bookingIds: string[] = [];
@@ -491,6 +500,15 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
             setQuoteOpen(null);
             if (panel === "quote") goPanel("home");
           }}
+        />
+      ) : null}
+
+      {ratesOpen ? (
+        <IssuanceRatesModal
+          settings={s}
+          save={data.saveHotel}
+          notify={notify}
+          onClose={() => setRatesOpen(false)}
         />
       ) : null}
 
@@ -625,6 +643,82 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
         />
       ) : null}
     </main>
+  );
+}
+
+function IssuanceRatesModal({
+  settings,
+  save,
+  notify,
+  onClose,
+}: {
+  settings: HotelSettings;
+  save: (patch: { name?: string; settings?: HotelSettings }) => Promise<void>;
+  notify: (message: string, opt?: ToastOpt) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(settings);
+  const [saving, setSaving] = useState(false);
+  const [changed, setChanged] = useState(false);
+  const latest = useRef(settings);
+  const dirty = useRef(false);
+  const revision = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const persist = async () => {
+    if (!dirty.current) return true;
+    clearTimeout(timer.current);
+    const savingRevision = revision.current;
+    setSaving(true);
+    try {
+      await save({ settings: latest.current });
+      if (revision.current === savingRevision) {
+        dirty.current = false;
+        setChanged(false);
+      }
+      return true;
+    } catch (e) {
+      notify(e instanceof Error ? `요금을 저장하지 못했어요: ${e.message}` : "요금을 저장하지 못했어요");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+  const update = (fn: (current: HotelSettings) => HotelSettings) => {
+    setDraft((current) => {
+      const next = fn(current);
+      latest.current = next;
+      dirty.current = true;
+      revision.current += 1;
+      setChanged(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => void persist(), 700);
+      return next;
+    });
+  };
+  const close = async () => {
+    if (!(await persist())) return;
+    onClose();
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return (
+    <div className="dim" role="presentation" onClick={() => void close()}>
+      <div className="modal iss-rates-modal" role="dialog" aria-modal="true" aria-labelledby="iss-rates-title" onClick={(e) => e.stopPropagation()}>
+        <div className="mh">
+          <h2 id="iss-rates-title">객실 타입별 요금 설정</h2>
+          <button type="button" className="x" aria-label="닫기" onClick={() => void close()}>×</button>
+        </div>
+        <div className="iss-rates-body">
+          <p className="muted sm">타입별 평일·주말·기본 요금과 시즌 요금을 설정해요. 저장된 예약과 이미 발급된 서류의 금액은 바뀌지 않아요.</p>
+          <RateSettings s={draft} update={update} notify={(message) => notify(message)} />
+        </div>
+        <div className="mf">
+          <span className="muted sm" role="status">{saving ? "저장 중…" : changed ? "변경 내용을 저장하고 있어요" : "저장됨"}</span>
+          <button type="button" className="btn dark sm" disabled={saving} onClick={() => void close()}>{saving ? "저장 중…" : "완료"}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -10,14 +10,21 @@ import {
 export const QUOTE_TITLE_MAX = 80;
 export const QUOTE_CLIENT_MAX = 60;
 export const QUOTE_PHONE_MAX = 30;
-export const QUOTE_NOTES_MAX = 280;
+export const QUOTE_NOTES_MAX = 1000;
 export const QUOTE_LINE_LABEL_MAX = 40;
 export const QUOTE_LINES_MAX = 40;
 
 export type QuoteStatus = "draft" | "issued";
+export type QuoteTaxMode = "included" | "excluded" | "exempt";
+
+export function normalizeQuoteTaxMode(value: unknown): QuoteTaxMode {
+  return value === "excluded" || value === "exempt" ? value : "included";
+}
 
 export type QuoteLine = {
   id: string;
+  /** 이 항목의 입실일. 이전 견적 데이터는 문서 공통 checkIn을 사용해요. */
+  checkIn?: string | null;
   /** Hotori 타입 id (발급 시 타입홀드용 · 필수) */
   typeId: string;
   /** 객실/타입 라벨 (타입명 fallback) */
@@ -29,10 +36,7 @@ export type QuoteLine = {
   rate: number;
   /** 줄 합계 (보통 rooms × nights × rate; 수동 override OK) */
   amount: number;
-  /**
-   * Optional pre-selected room ids (print opt-in only by default).
-   * Issue: if set & length matches rooms → Path B with roomId; else Path A roomId=null.
-   */
+  /** 미리 배정한 호실 id. 일부만 지정하면 나머지 실은 호실 미정으로 발급해요. */
   roomIds?: string[];
   /** 1실 기준 날짜별 단가 (있으면 amount = rooms × Σ) */
   nightAmounts?: IssuanceNightCell[];
@@ -46,12 +50,14 @@ export type QuoteDoc = {
   clientName: string;
   clientPhone: string;
   notes: string;
+  validUntil?: string | null;
+  taxMode?: QuoteTaxMode;
   checkIn: string | null;
   nights: number;
   guestCount: number;
   lines: QuoteLine[];
   total: number;
-  /** 인쇄 시 객실번호 표시 (기본 false · 타입만) */
+  /** 인쇄 시 배정 호실과 미배정 수량 표시 */
   showRoomNos: boolean;
   /** 발급 시 만든 group / booking 링크 */
   groupId: string | null;
@@ -69,10 +75,16 @@ export type QuoteSnapshot = {
   clientName: string;
   clientPhone: string;
   notes: string;
+  validUntil?: string | null;
+  taxMode?: QuoteTaxMode;
   checkIn: string | null;
   nights: number;
   guestCount: number;
   lines: QuoteLine[];
+  lineAmount?: number;
+  supplyAmount?: number;
+  vatAmount?: number;
+  grandTotal?: number;
   total: number;
   showRoomNos: boolean;
   groupId: string | null;
@@ -85,6 +97,8 @@ export type QuoteDraft = {
   clientName: string;
   clientPhone: string;
   notes: string;
+  validUntil?: string | null;
+  taxMode?: QuoteTaxMode;
   checkIn: string | null;
   nights: number;
   guestCount: number;
@@ -116,7 +130,7 @@ export const QUOTE_COPY = {
   nightDetail: "날짜 요금",
   total: "합계",
   showRoomNos: "객실번호 표시",
-  showRoomNosHint: "기본은 타입만. 손님이 호수를 원할 때만 켜요.",
+  showRoomNosHint: "배정한 호실은 번호로, 미배정은 ‘미정’으로 표시해요.",
   draft: "임시저장",
   issue: "발급",
   issued: "발급됨",
@@ -128,8 +142,8 @@ export const QUOTE_COPY = {
   delete: "삭제",
   attest: "위와 같이 견적합니다.",
   issueDate: "발급일",
-  tip: "발급하면 견적이 고정되고, 같은 날짜·타입으로 미배정 예약이 만들어져요. 호실은 배치에서 정하세요.",
-  tipNights: "예약처럼 타입·실수를 고르고, 캘린더에서 날짜마다 요금을 입력해요.",
+  tip: "발급하면 견적과 날짜별 객실 요금이 고정되고, 항목별 일정·타입·요금대로 예약이 만들어져요.",
+  tipNights: "항목마다 객실 타입·수량·이용 날짜·박별 요금을 입력해요. 수량이 날짜마다 달라지면 날짜별 항목으로 나누세요.",
   emptyLines: "항목을 1개 이상 입력해 주세요.",
   titleRequired: "견적 제목 또는 견적처를 입력해 주세요.",
   saveOk: "견적을 저장했어요.",
@@ -139,7 +153,7 @@ export const QUOTE_COPY = {
   confirmDeleteBody: "임시·발급 기록이 삭제돼요. 되돌릴 수 없어요.",
   confirmIssueTitle: "견적을 발급할까요?",
   confirmIssueBody:
-    "발급 후 견적 내용은 고정돼요.\n같은 날짜·타입·인원·요금으로 미배정(타입 홀드) 예약이 만들어지고, 호실은 배치에서 정할 수 있어요.",
+    "발급 후 견적 내용은 고정돼요.\n항목별 일정·객실 타입·수량·객실별 요금으로 예약이 만들어져요. 지정한 호실은 함께 배정되고, 미정 객실은 타입 홀드로 남아요.",
   recentEmpty: "최근 견적이 없어요.",
   openRecent: "최근 견적",
 } as const;
@@ -265,6 +279,14 @@ export function quoteTotal(lines: QuoteLine[]): number {
   return lines.reduce((n, l) => n + Math.max(0, Math.round(l.amount)), 0);
 }
 
+export function quotePriceSummary(lines: QuoteLine[], mode: QuoteTaxMode = "included") {
+  const lineAmount = quoteTotal(lines);
+  const taxMode = normalizeQuoteTaxMode(mode);
+  const vatAmount = taxMode === "included" ? Math.round(lineAmount / 11) : taxMode === "excluded" ? Math.round(lineAmount / 10) : 0;
+  const supplyAmount = taxMode === "included" ? lineAmount - vatAmount : lineAmount;
+  return { lineAmount, supplyAmount, vatAmount, grandTotal: lineAmount + (taxMode === "excluded" ? vatAmount : 0), taxMode };
+}
+
 function normalizeRoomIds(raw: unknown, max: number): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
@@ -279,6 +301,7 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const id = typeof o.id === "string" && o.id ? o.id : crypto.randomUUID();
+  const checkIn = typeof o.checkIn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.checkIn) ? o.checkIn : null;
   const typeId = typeof o.typeId === "string" ? o.typeId.trim().slice(0, 40) : "";
   const label = typeof o.label === "string" ? o.label.trim().slice(0, QUOTE_LINE_LABEL_MAX) : "";
   const rooms = Math.max(0, Math.round(Number(o.rooms) || 0));
@@ -304,7 +327,7 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
       .filter((x): x is IssuanceNightCell => !!x);
     if (!nightAmounts.length) nightAmounts = undefined;
   }
-  return { id, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts };
+  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts };
 }
 
 /** Ensure night detail exists for edit UI; sync amount from cells×rooms when detail present */
@@ -352,11 +375,13 @@ export function freezeQuoteSnapshot(d: QuoteDraft, issuedAt: string, link?: { gr
     clientName: d.clientName.trim().slice(0, QUOTE_CLIENT_MAX),
     clientPhone: d.clientPhone.trim().slice(0, QUOTE_PHONE_MAX),
     notes: d.notes.trim().slice(0, QUOTE_NOTES_MAX),
+    validUntil: d.validUntil ?? null,
     checkIn: d.checkIn,
     nights: Math.max(0, Math.round(d.nights) || 0),
     guestCount: Math.max(0, Math.round(d.guestCount) || 0),
     lines,
-    total: quoteTotal(lines),
+    ...quotePriceSummary(lines, d.taxMode),
+    total: quotePriceSummary(lines, d.taxMode).grandTotal,
     showRoomNos: !!d.showRoomNos,
     groupId: link?.groupId ?? null,
     bookingIds: link?.bookingIds ?? [],
@@ -373,6 +398,8 @@ export function quotePrintBody(doc: QuoteDoc): QuoteSnapshot {
       clientName: doc.clientName,
       clientPhone: doc.clientPhone,
       notes: doc.notes,
+      validUntil: doc.validUntil ?? null,
+      taxMode: normalizeQuoteTaxMode(doc.taxMode),
       checkIn: doc.checkIn,
       nights: doc.nights,
       guestCount: doc.guestCount,
@@ -384,7 +411,7 @@ export function quotePrintBody(doc: QuoteDoc): QuoteSnapshot {
   );
 }
 
-/** Print cell: type label always; room nos only when showRoomNos && roomIds */
+/** 타입명은 항상 표시하고, 옵션이 켜지면 배정 호실과 미정 수량도 함께 표시해요. */
 export function quoteLinePrintLabel(
   line: QuoteLine,
   showRoomNos: boolean,
@@ -396,7 +423,8 @@ export function quoteLinePrintLabel(
   const nos = (line.roomIds ?? [])
     .map((id) => roomNoOf(id)?.trim())
     .filter((x): x is string => !!x);
-  if (!nos.length) return type;
-  if (lang === "en") return `${type} · ${nos.join(", ")}`;
-  return `${type} · ${nos.join("·")}호`;
+  if (!nos.length) return lang === "en" ? `${type} · Room TBD` : `${type} · 호실 미정`;
+  const unassigned = Math.max(0, Math.round(line.rooms) - nos.length);
+  if (lang === "en") return `${type} · ${nos.join(", ")}${unassigned ? ` · ${unassigned} rooms TBD` : ""}`;
+  return `${type} · ${nos.join("·")}호${unassigned ? ` · ${unassigned}실 미정` : ""}`;
 }

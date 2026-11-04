@@ -1,0 +1,22 @@
+/* Quote form, room assignment, and rate settings */
+.modal.iss-rates-modal { width: min(760px, 100%); max-height: min(900px, calc(100dvh - 32px)); display: flex; flex-direction: column; }
+.iss-rates-body { min-height: 0; overflow: auto; padding: 4px 2px 16px; }
+.iss-rates-body > p { margin: 4px 0 14px; }
+.iss-rates-modal > .mf { flex: none; }
+.quote-load-type-rates { margin: 2px 0 10px; }
+@media (max-width: 700px) {
+  .dim:has(>.iss-rates-modal) { padding: 8px; }
+  .modal.iss-rates-modal { max-height: calc(100dvh - 16px); }
+}
+.quote-form .iss-form label.iss-notes { max-width: none; }
+.quote-doc-purpose { margin: 4px 0 8px; font-size: 16px; font-weight: 800; text-align: center; }
+.quote-line-head { font-size: 13px; font-weight: 800; }
+.quote-room-assign details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel2, #f7f7f7); }
+.quote-room-assign summary { cursor: pointer; padding: 9px 11px; font-size: 13px; font-weight: 750; }
+.quote-room-assign-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 0 10px 10px; }
+.quote-room-assign-list label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-size: 13px; cursor: pointer; }
+.quote-room-assign-list input { width: 17px; height: 17px; }
+.quote-line-period { display: flex; flex-wrap: wrap; gap: 8px; }
+.quote-line-period label { display: grid; gap: 4px; min-width: 118px; font-size: 12px; font-weight: 750; }
+.quote-line-period input { min-height: 38px; }
+.quote-split-rooms { justify-self: start; }

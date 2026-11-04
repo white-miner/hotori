@@ -1,19 +1,21 @@
 /**
- * 견적서 작성·발급·인쇄 (P1.1)
- * 발급 시 Path A 미배정(타입홀드) 예약 생성 · 인쇄 기본=타입만 · 「객실번호 표시」옵트인
+ * 견적서 작성·발급·인쇄: 항목별 숙박일·타입·요금, 선택 호실, 세금, 유효기간을 기록해요.
  */
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { FileDown, Plus, Printer, Trash2, X } from "lucide-react";
+import { Copy, FileDown, Plus, Printer, Trash2, X } from "lucide-react";
 import {
   type QuoteDoc,
   type QuoteDraft,
   type QuoteLine,
   QUOTE_COPY,
+  QUOTE_NOTES_MAX,
   emptyQuoteLine,
   freezeQuoteSnapshot,
   quoteLinePrintLabel,
+  quotePriceSummary,
   quotePrintStrings,
-  quoteTotal,
+  QUOTE_LINES_MAX,
+  normalizeQuoteTaxMode,
   validateQuoteDraft,
 } from "../shared/quoteDoc";
 import { validateQuoteForBookings } from "../shared/quoteBookings";
@@ -42,6 +44,7 @@ import {
 import { askConfirm } from "./ConfirmDialog";
 import IssuancePager, { ISS_PAGER_EN, ISS_PAGER_KO } from "./IssuancePager";
 import IssuanceStayItemEditor from "./IssuanceStayItemEditor";
+import { resolveStayRates } from "../shared/salesCalendar";
 
 interface Props {
   hotelName: string;
@@ -73,6 +76,37 @@ function runPrint(title: string) {
   window.setTimeout(done, 1500);
 }
 
+function plusDays(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+function quoteNumber(id: string | undefined, createdAt: string | undefined, fallbackDate: string): string {
+  if (!id) return "발급 후 부여";
+  const day = (createdAt || fallbackDate).slice(0, 10).replaceAll("-", "");
+  return `Q-${day}-${id.replaceAll("-", "").slice(0, 6).toUpperCase()}`;
+}
+
+function QuoteTaxRows({ summary, mode, lang }: { summary: ReturnType<typeof quotePriceSummary>; mode: "included" | "excluded" | "exempt"; lang: PrintLang }) {
+  const ko = lang === "ko";
+  return (
+    <>
+      <tr>
+        <th colSpan={6}>{ko ? "공급가액" : "Subtotal"}</th>
+        <td>{won(summary.supplyAmount)}</td>
+      </tr>
+      <tr>
+        <th colSpan={6}>{mode === "exempt" ? (ko ? "부가세 (면세)" : "VAT (exempt)") : ko ? `부가세 (${mode === "included" ? "포함" : "별도"})` : `VAT (${mode})`}</th>
+        <td>{won(summary.vatAmount)}</td>
+      </tr>
+      <tr>
+        <th colSpan={6}>{ko ? "최종 견적 금액" : "Total due"}</th>
+        <td>{won(summary.grandTotal)}</td>
+      </tr>
+    </>
+  );
+}
+
 function draftFromDoc(doc: QuoteDoc | null | undefined, today: string, defaultTypeId: string): QuoteDraft {
   if (!doc) {
     return {
@@ -80,11 +114,13 @@ function draftFromDoc(doc: QuoteDoc | null | undefined, today: string, defaultTy
       clientName: "",
       clientPhone: "",
       notes: "",
+      validUntil: plusDays(today, 7),
+      taxMode: "included",
       checkIn: today,
       nights: 1,
       guestCount: 2,
-      lines: [emptyQuoteLine(defaultTypeId)],
-      showRoomNos: false,
+      lines: [{ ...emptyQuoteLine(defaultTypeId), checkIn: today }],
+      showRoomNos: true,
     };
   }
   return {
@@ -92,32 +128,14 @@ function draftFromDoc(doc: QuoteDoc | null | undefined, today: string, defaultTy
     clientName: doc.clientName,
     clientPhone: doc.clientPhone,
     notes: doc.notes,
+    validUntil: doc.validUntil || plusDays(today, 7),
+    taxMode: normalizeQuoteTaxMode(doc.taxMode),
     checkIn: doc.checkIn,
     nights: doc.nights,
     guestCount: doc.guestCount,
-    lines: doc.lines.length ? doc.lines.map((l) => ({ ...l, roomIds: l.roomIds?.slice() ?? [] })) : [emptyQuoteLine(defaultTypeId)],
+    lines: doc.lines.length ? doc.lines.map((l) => ({ ...l, checkIn: l.checkIn || doc.checkIn, roomIds: l.roomIds?.slice() ?? [] })) : [{ ...emptyQuoteLine(defaultTypeId), checkIn: doc.checkIn || today }],
     showRoomNos: doc.showRoomNos,
   };
-}
-
-/** Parse "301, 302" → room ids for type (best-effort) */
-function parseRoomNos(text: string, typeId: string, s: HotelSettings): string[] {
-  const rooms = allRooms(s).filter((r) => r.typeId === typeId);
-  const byNo = new Map(rooms.map((r) => [r.no.replace(/\s/g, ""), r.id]));
-  const out: string[] = [];
-  for (const part of text.split(/[,，\s]+/)) {
-    const key = part.trim().replace(/호$/, "");
-    if (!key) continue;
-    const id = byNo.get(key);
-    if (id && !out.includes(id)) out.push(id);
-  }
-  return out;
-}
-
-function roomNosText(ids: string[] | undefined, s: HotelSettings): string {
-  if (!ids?.length) return "";
-  const map = new Map(allRooms(s).map((r) => [r.id, r.no]));
-  return ids.map((id) => map.get(id)).filter(Boolean).join(", ");
 }
 
 export default function QuoteLetter({
@@ -150,7 +168,9 @@ export default function QuoteLetter({
     if (doc?.status === "issued" && doc.snapshot) return doc.snapshot;
     return freezeQuoteSnapshot(draft, new Date().toISOString());
   }, [doc, draft]);
-  const total = locked && doc?.snapshot ? doc.snapshot.total : quoteTotal(draft.lines);
+  const total = locked && doc?.snapshot ? doc.snapshot.total : quotePriceSummary(draft.lines, draft.taxMode).grandTotal;
+  const priceSummary = quotePriceSummary(body.lines, body.taxMode);
+  const taxMode = normalizeQuoteTaxMode(body.taxMode);
   const fileTitle = `${trade}_${t.title}_${body.clientName || body.title || (lang === "en" ? "Quote" : "견적")}`;
   const roomNoOf = (id: string) => allRooms(s).find((r) => r.id === id)?.no;
 
@@ -174,6 +194,7 @@ export default function QuoteLetter({
         if (patch.typeId != null) {
           const ty = s.types.find((x) => x.id === patch.typeId);
           if (ty) next.label = typeLabel(ty);
+          if (patch.typeId !== l.typeId) next.roomIds = [];
         }
         if (patch.nightAmounts) {
           next.rate = unitRateFromCells(patch.nightAmounts, 0, next.nights);
@@ -181,6 +202,7 @@ export default function QuoteLetter({
         } else if (patch.rooms != null && next.nightAmounts?.length) {
           next.amount = quoteAmountFromNightCells(next.rooms, next.nightAmounts);
         }
+        if (patch.rooms != null) next.roomIds = (next.roomIds ?? []).slice(0, Math.max(0, next.rooms));
         return next;
       });
       return {
@@ -195,17 +217,15 @@ export default function QuoteLetter({
     setDraft((d) => {
       const lines = d.lines.map((l) => {
         if (l.id !== id) return l;
-        const nightAmounts =
-          cells ??
-          quoteLineNightCells({
-            checkIn,
-            nights,
-            rate: l.rate,
-            nightAmounts: l.nightAmounts,
-            roomTotal: nights > 0 ? Math.round(l.amount / Math.max(1, l.rooms)) : 0,
-          });
+        const dateCells = quoteLineNightCells({ checkIn, nights, rate: 0 });
+        const oldAmounts = new Map((l.nightAmounts ?? []).map((cell) => [cell.date, cell.amount]));
+        const nightAmounts = cells ?? dateCells.map((cell) => ({
+          ...cell,
+          amount: oldAmounts.get(cell.date) ?? Math.max(0, Math.round(l.rate) || 0),
+        }));
         return {
           ...l,
+          checkIn,
           nights,
           nightAmounts,
           rate: unitRateFromCells(nightAmounts, 0, nights),
@@ -215,10 +235,39 @@ export default function QuoteLetter({
       return {
         ...d,
         lines,
-        checkIn,
-        nights: Math.max(1, ...lines.map((l) => l.nights || 0), nights),
+        nights: Math.max(1, ...lines.map((l) => l.nights || 0), d.nights || 1),
       };
     });
+  };
+
+  const splitLineByRoom = (line: QuoteLine) => {
+    if (draft.lines.length + Math.max(0, line.rooms - 1) > QUOTE_LINES_MAX) {
+      setErr(`객실별 단가로 나누면 항목이 ${QUOTE_LINES_MAX}줄을 넘어요. 먼저 다른 항목을 정리해 주세요.`);
+      return;
+    }
+    const cells = line.nightAmounts?.length
+      ? line.nightAmounts
+      : quoteLineNightCells({
+          checkIn: line.checkIn || draft.checkIn || today,
+          nights: line.nights || 1,
+          rate: line.rate,
+          roomTotal: line.rate * Math.max(1, line.nights),
+        });
+    const ids = line.roomIds ?? [];
+    const separate = Array.from({ length: Math.max(1, line.rooms) }, (_, i) => ({
+      ...line,
+      id: i === 0 ? line.id : crypto.randomUUID(),
+      rooms: 1,
+      roomIds: ids[i] ? [ids[i]!] : [],
+      nightAmounts: cells.map((cell) => ({ ...cell })),
+      rate: unitRateFromCells(cells, 0, line.nights),
+      amount: quoteAmountFromNightCells(1, cells),
+    }));
+    setDraft((d) => ({
+      ...d,
+      lines: d.lines.flatMap((row) => (row.id === line.id ? separate : [row])),
+      showRoomNos: d.showRoomNos || ids.length > 0,
+    }));
   };
 
   const save = async () => {
@@ -237,6 +286,7 @@ export default function QuoteLetter({
   const issue = async () => {
     const v = validateQuoteDraft(draft) ?? validateQuoteForBookings(draft, s);
     if (v) return setErr(v);
+    if (draft.validUntil && draft.validUntil < today) return setErr("견적 유효기간이 지났어요. 유효기간을 다시 설정해 주세요.");
     const ok = await askConfirm({
       title: QUOTE_COPY.confirmIssueTitle,
       body: QUOTE_COPY.confirmIssueBody,
@@ -305,11 +355,22 @@ export default function QuoteLetter({
             <div className="quote-form">
               <div className="iss-form">
                 <label>
-                  {QUOTE_COPY.client}
+                  견적 제목·행사명
+                  <input
+                    className="inp"
+                    value={draft.title}
+                    maxLength={80}
+                    placeholder="예: 11월 공연팀 숙박 견적"
+                    onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  견적 받는 곳·담당자
                   <input
                     className="inp"
                     value={draft.clientName}
-                    onChange={(e) => setDraft((d) => ({ ...d, clientName: e.target.value, title: d.title || e.target.value }))}
+                    maxLength={60}
+                    onChange={(e) => setDraft((d) => ({ ...d, clientName: e.target.value }))}
                   />
                 </label>
                 <label>
@@ -325,12 +386,30 @@ export default function QuoteLetter({
                     onChange={(e) => setDraft((d) => ({ ...d, guestCount: Number(e.target.value.replace(/\D/g, "")) || 0 }))}
                   />
                 </label>
+                <label>
+                  견적 유효기간
+                  <input
+                    className="inp"
+                    type="date"
+                    min={today}
+                    value={draft.validUntil || ""}
+                    onChange={(e) => setDraft((d) => ({ ...d, validUntil: e.target.value || null }))}
+                  />
+                </label>
+                <label>
+                  부가세 기준
+                  <select className="inp" value={normalizeQuoteTaxMode(draft.taxMode)} onChange={(e) => setDraft((d) => ({ ...d, taxMode: normalizeQuoteTaxMode(e.target.value) }))}>
+                    <option value="included">부가세 포함</option>
+                    <option value="excluded">부가세 별도 (10%)</option>
+                    <option value="exempt">면세</option>
+                  </select>
+                </label>
                 <label className="iss-notes">
-                  {QUOTE_COPY.notes}
-                  <input className="inp iss-notes-inp" value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
+                  견적 조건·안내사항
+                  <textarea className="inp iss-notes-inp" rows={3} maxLength={QUOTE_NOTES_MAX} placeholder="부가세 포함/별도, 결제 조건, 포함 사항, 취소·변경 기준 등을 입력하세요" value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
                 </label>
               </div>
-              <p className="muted sm">{QUOTE_COPY.tipNights}</p>
+              <p className="muted sm">항목마다 입실일·객실 타입·객실 수·호실 배정·박별 단가와 합계를 관리해요. 날짜별 수량이 달라지면 항목을 나누고, 호실별 단가가 다르면 ‘객실별 단가로 나누기’를 사용하세요.</p>
 
               <div className="quote-lines">
                 <div className="quote-lines-h">
@@ -340,18 +419,12 @@ export default function QuoteLetter({
                     className="btn line sm"
                     onClick={() => {
                       const base = emptyQuoteLine(defaultTypeId);
-                      const ci = draft.checkIn || today;
-                      const n = Math.max(1, draft.nights || 1);
+                      const ci = draft.lines.at(-1)?.checkIn || draft.checkIn || today;
+                      const n = Math.max(1, draft.lines.at(-1)?.nights || draft.nights || 1);
+                      const newLine = { ...base, checkIn: ci, nights: n, nightAmounts: quoteLineNightCells({ checkIn: ci, nights: n, rate: 0 }) };
                       setDraft((d) => ({
                         ...d,
-                        lines: [
-                          ...d.lines,
-                          {
-                            ...base,
-                            nights: n,
-                            nightAmounts: quoteLineNightCells({ checkIn: ci, nights: n, rate: 0 }),
-                          },
-                        ],
+                        lines: [...d.lines, newLine],
                         checkIn: ci,
                         nights: n,
                       }));
@@ -360,8 +433,8 @@ export default function QuoteLetter({
                     <Plus size={14} /> {QUOTE_COPY.addLine}
                   </button>
                 </div>
-                {draft.lines.map((l) => {
-                  const lineCi = draft.checkIn || today;
+                {draft.lines.map((l, lineIndex) => {
+                  const lineCi = l.checkIn || draft.checkIn || today;
                   const cells = l.nightAmounts?.length
                     ? l.nightAmounts
                     : quoteLineNightCells({
@@ -372,6 +445,7 @@ export default function QuoteLetter({
                       });
                   return (
                     <div className="quote-line-block" key={l.id}>
+                      <div className="quote-line-head"><strong>객실 내역 {String(lineIndex + 1).padStart(2, "0")}</strong></div>
                       <IssuanceStayItemEditor
                         types={types}
                         typeId={l.typeId || defaultTypeId}
@@ -388,11 +462,66 @@ export default function QuoteLetter({
                           const nextCi =
                             nightAmounts[0]?.date && !nightAmounts[0].date.startsWith("N")
                               ? nightAmounts[0].date
-                              : draft.checkIn || today;
+                              : lineCi;
                           setLineStay(l.id, nextCi, nn, nightAmounts);
                         }}
                         onRemove={() => setDraft((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== l.id) }))}
                       />
+                      <div className="quote-line-period">
+                        <label>
+                          입실일
+                          <input className="inp sm" type="date" value={lineCi} onChange={(e) => e.target.value && setLineStay(l.id, e.target.value, Math.max(1, l.nights || draft.nights || 1))} />
+                        </label>
+                        <label>
+                          박수
+                          <input className="inp sm" type="number" min={1} max={365} value={Math.max(1, l.nights || draft.nights || 1)} onChange={(e) => setLineStay(l.id, lineCi, Math.max(1, Math.min(365, Number(e.target.value) || 1)))} />
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn line sm quote-load-type-rates"
+                        onClick={() => {
+                          const rates = resolveStayRates(s, l.typeId || defaultTypeId, lineCi, Math.max(1, l.nights || draft.nights || 1));
+                          if (!rates.some((rate) => rate.amount > 0)) {
+                            notify("이 객실 타입과 기간에 설정된 요금이 없어요. 발급 화면의 ‘객실 타입별 요금 설정’에서 먼저 입력해 주세요.");
+                            return;
+                          }
+                          setLineStay(l.id, lineCi, Math.max(1, l.nights || draft.nights || 1), rates.map(({ date, amount }) => ({ date, amount })));
+                        }}
+                      >
+                        객실 타입 설정 요금 불러오기
+                      </button>
+                      <div className="quote-room-assign">
+                        <details open={!!l.roomIds?.length}>
+                          <summary>호실 배정 · {l.roomIds?.length ? `${l.roomIds.length}/${l.rooms}실 지정` : "미정"}</summary>
+                          <div className="quote-room-assign-list" role="group" aria-label={`${typeLabel(types.find((t) => t.id === l.typeId)) || "객실 타입"} 호실 배정`}>
+                            {allRooms(s).filter((room) => room.typeId === (l.typeId || defaultTypeId)).length ? (
+                              allRooms(s).filter((room) => room.typeId === (l.typeId || defaultTypeId)).map((room) => {
+                                const selected = (l.roomIds ?? []).includes(room.id);
+                                const full = (l.roomIds?.length ?? 0) >= Math.max(1, l.rooms);
+                                return (
+                                  <label key={room.id}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      disabled={!selected && full}
+                                      onChange={(e) => {
+                                        const next = e.target.checked
+                                          ? [...(l.roomIds ?? []), room.id]
+                                          : (l.roomIds ?? []).filter((id) => id !== room.id);
+                                        patchLine(l.id, { roomIds: next });
+                                        if (next.length) setDraft((d) => ({ ...d, showRoomNos: true }));
+                                      }}
+                                    />
+                                    <span>{room.no}호</span>
+                                  </label>
+                                );
+                              })
+                            ) : <span className="muted sm">이 타입에 등록된 호실이 없어 미정으로 견적을 작성해요.</span>}
+                            {l.roomIds?.length ? <button type="button" className="btn line sm" onClick={() => patchLine(l.id, { roomIds: [] })}>배정 초기화</button> : null}
+                          </div>
+                        </details>
+                      </div>
                       <label className="iss-stay-pax">
                         <span className="muted sm">{QUOTE_COPY.pax}</span>
                         <input
@@ -403,16 +532,10 @@ export default function QuoteLetter({
                           onChange={(e) => patchLine(l.id, { pax: Number(e.target.value.replace(/\D/g, "")) || 0 })}
                         />
                       </label>
-                      {draft.showRoomNos ? (
-                        <label className="quote-room-opt">
-                          <span className="muted sm">{QUOTE_COPY.roomNos} (선택)</span>
-                          <input
-                            className="inp sm"
-                            placeholder="301, 302"
-                            value={roomNosText(l.roomIds, s)}
-                            onChange={(e) => patchLine(l.id, { roomIds: parseRoomNos(e.target.value, l.typeId, s) })}
-                          />
-                        </label>
+                      {l.rooms > 1 ? (
+                        <button type="button" className="btn line sm quote-split-rooms" onClick={() => splitLineByRoom(l)}>
+                          <Copy size={14} /> 객실별 단가로 나누기
+                        </button>
                       ) : null}
                     </div>
                   );
@@ -459,6 +582,7 @@ export default function QuoteLetter({
                     </div>
                     <h1 className="sc-title">{t.title}</h1>
                   </header>
+                  <p className="quote-doc-purpose">{body.title || "숙박 견적"}</p>
                   <dl className="sc-body">
                     <div>
                       <dt>{t.client}</dt>
@@ -467,16 +591,21 @@ export default function QuoteLetter({
                         {body.clientPhone ? ` · ${body.clientPhone}` : null}
                       </dd>
                     </div>
-                    {body.checkIn ? (
+                    {body.guestCount ? <div><dt>총 인원</dt><dd>{t.guests(body.guestCount)}</dd></div> : null}
+                    <div>
+                      <dt>견적번호</dt>
+                      <dd>{quoteNumber(doc?.id, doc?.createdAt, today)}</dd>
+                    </div>
+                    {body.validUntil ? (
                       <div>
-                        <dt>{t.checkIn}</dt>
-                        <dd>
-                          {printDateLabel(lang, body.checkIn, dayLabel)}
-                          {body.nights ? ` · ${t.nights(body.nights)}` : null}
-                          {body.guestCount ? ` · ${t.guests(body.guestCount)}` : null}
-                        </dd>
+                        <dt>유효기간</dt>
+                        <dd>{printDateLabel(lang, body.validUntil, dayLabel)}</dd>
                       </div>
                     ) : null}
+                    <div>
+                      <dt>부가세 기준</dt>
+                      <dd>{taxMode === "included" ? "부가세 포함" : taxMode === "excluded" ? "부가세 별도" : "면세"}</dd>
+                    </div>
                   </dl>
                   {locked ? (
                     <label className="quote-show-rooms">
@@ -496,6 +625,7 @@ export default function QuoteLetter({
               <table className="quote-tbl">
                 <thead>
                   <tr>
+                    <th>{t.checkIn}</th>
                     <th>{t.label}</th>
                     <th>{t.rooms}</th>
                     <th>{t.nightsCol}</th>
@@ -508,24 +638,22 @@ export default function QuoteLetter({
                   {previewChunk.map((l) => (
                     <Fragment key={l.id}>
                       <tr>
+                        <td>{l.checkIn || body.checkIn ? printDateLabel(lang, l.checkIn || body.checkIn!, dayLabel) : "—"}</td>
                         <td>{quoteLinePrintLabel(l, showRoomNos, roomNoOf, lang)}</td>
                         <td>{l.rooms}</td>
                         <td>{l.nights}</td>
                         <td>{l.pax}</td>
-                        <td>{won(l.rate)}</td>
+                        <td>{l.nights > 1 ? "날짜별" : won(l.rate)}</td>
                         <td>{won(l.amount)}</td>
                       </tr>
                       {l.nightAmounts && l.nightAmounts.length > 1 ? (
                         <tr className="inv-night-row">
-                          <td colSpan={6}>
+                          <td colSpan={7}>
                             <ul className="inv-night-list">
                               {l.nightAmounts.map((c) => (
                                 <li key={c.date}>
                                   <span>{formatIssuanceNightDate(c.date, lang)}</span>
-                                  <strong>
-                                    {won(c.amount)}
-                                    {l.rooms > 1 ? ` × ${l.rooms}` : ""}
-                                  </strong>
+                                  <strong>{won(c.amount)} × {l.rooms}실 = {won(c.amount * l.rooms)}</strong>
                                 </li>
                               ))}
                             </ul>
@@ -537,10 +665,7 @@ export default function QuoteLetter({
                 </tbody>
                 {isLastPreview ? (
                   <tfoot>
-                    <tr>
-                      <th colSpan={5}>{t.total}</th>
-                      <th>{won(total)}</th>
-                    </tr>
+                    <QuoteTaxRows summary={priceSummary} mode={taxMode} lang={lang} />
                   </tfoot>
                 ) : null}
               </table>
@@ -590,6 +715,7 @@ export default function QuoteLetter({
             </div>
             <h1 className="sc-title">{t.title}</h1>
           </header>
+          <p className="quote-doc-purpose">{body.title || "숙박 견적"}</p>
           <dl className="sc-body">
             <div>
               <dt>{t.client}</dt>
@@ -598,20 +724,26 @@ export default function QuoteLetter({
                 {body.clientPhone ? ` · ${body.clientPhone}` : null}
               </dd>
             </div>
-            {body.checkIn ? (
+            {body.guestCount ? <div><dt>총 인원</dt><dd>{t.guests(body.guestCount)}</dd></div> : null}
+            <div>
+              <dt>견적번호</dt>
+              <dd>{quoteNumber(doc?.id, doc?.createdAt, today)}</dd>
+            </div>
+            {body.validUntil ? (
               <div>
-                <dt>{t.checkIn}</dt>
-                <dd>
-                  {printDateLabel(lang, body.checkIn, dayLabel)}
-                  {body.nights ? ` · ${t.nights(body.nights)}` : null}
-                  {body.guestCount ? ` · ${t.guests(body.guestCount)}` : null}
-                </dd>
+                <dt>유효기간</dt>
+                <dd>{printDateLabel(lang, body.validUntil, dayLabel)}</dd>
               </div>
             ) : null}
+            <div>
+              <dt>부가세 기준</dt>
+              <dd>{taxMode === "included" ? "부가세 포함" : taxMode === "excluded" ? "부가세 별도" : "면세"}</dd>
+            </div>
           </dl>
           <table className="quote-tbl">
             <thead>
               <tr>
+                <th>{t.checkIn}</th>
                 <th>{t.label}</th>
                 <th>{t.rooms}</th>
                 <th>{t.nightsCol}</th>
@@ -623,14 +755,14 @@ export default function QuoteLetter({
             <tbody>
               {body.lines.map((l) => (
                 <tr key={l.id}>
+                  <td>{l.checkIn || body.checkIn ? printDateLabel(lang, l.checkIn || body.checkIn!, dayLabel) : "—"}</td>
                   <td>
                     {quoteLinePrintLabel(l, showRoomNos, roomNoOf, lang)}
                     {l.nightAmounts && l.nightAmounts.length > 1 ? (
                       <ul className="inv-night-list print-inline">
                         {l.nightAmounts.map((c) => (
                           <li key={c.date}>
-                            {formatIssuanceNightDate(c.date, lang)} {won(c.amount)}
-                            {l.rooms > 1 ? ` × ${l.rooms}` : ""}
+                            {formatIssuanceNightDate(c.date, lang)} {won(c.amount)} × {l.rooms} {lang === "en" ? "rooms" : "실"} = {won(c.amount * l.rooms)}
                           </li>
                         ))}
                       </ul>
@@ -639,16 +771,13 @@ export default function QuoteLetter({
                   <td>{l.rooms}</td>
                   <td>{l.nights}</td>
                   <td>{l.pax}</td>
-                  <td>{won(l.rate)}</td>
+                  <td>{l.nights > 1 ? "날짜별" : won(l.rate)}</td>
                   <td>{won(l.amount)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr>
-                <th colSpan={5}>{t.total}</th>
-                <th>{won(total)}</th>
-              </tr>
+              <QuoteTaxRows summary={priceSummary} mode={taxMode} lang={lang} />
             </tfoot>
           </table>
           {body.notes ? <p className="quote-notes">{body.notes}</p> : null}

@@ -86,7 +86,7 @@ test("quoteLinePrintLabel: default type only · opt-in room nos", () => {
   assert.equal(quoteLinePrintLabel(line, false, noOf), "스탠다드");
   assert.equal(quoteLinePrintLabel(line, true, noOf), "스탠다드 · 301·302호");
   assert.equal(quoteLinePrintLabel(line, true, noOf, "en"), "스탠다드 · 301, 302");
-  assert.equal(quoteLinePrintLabel({ ...line, roomIds: [] }, true, noOf), "스탠다드");
+  assert.equal(quoteLinePrintLabel({ ...line, roomIds: [] }, true, noOf), "스탠다드 · 호실 미정");
 });
 
 test("quotePrintStrings: ko/en titles", () => {
