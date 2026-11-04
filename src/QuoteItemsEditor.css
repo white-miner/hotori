@@ -1,0 +1,61 @@
+.modal.quote-letter.quote-template-letter { width: min(1060px, 96vw); }
+.quote-templates, .quote-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line, #d6dbe2);
+  border-radius: 12px;
+}
+.quote-templates { background: var(--panel, #f5f6f7); }
+.quote-items { display: grid; gap: 8px; }
+.quote-items-head, .quote-template-list, .quote-template-edit, .quote-item-actions, .quote-fast-total {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.quote-items-head, .quote-fast-total { justify-content: space-between; }
+.quote-template-edit { align-items: end; }
+.quote-extra-fields summary { cursor: pointer; font-size: 14px; font-weight: 650; }
+.quote-extra-fields[open] summary { margin-bottom: 8px; }
+.quote-foot > .quote-template-edit { flex: 1 1 100%; }
+.quote-template-edit label, .quote-item label, .quote-item-amount { display: grid; gap: 4px; min-width: 0; font-size: 13px; }
+.quote-item-grid {
+  display: grid;
+  grid-template-columns: minmax(105px, 1.3fr) minmax(130px, 1fr) 55px 55px 70px minmax(170px, 1.7fr) minmax(75px, 0.7fr);
+  gap: 8px;
+  align-items: end;
+}
+.quote-item input, .quote-item select, .quote-fast-total select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--line, #d6dbe2);
+  border-radius: 8px;
+  padding: 5px 7px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+.quote-fast-total select { width: auto; }
+.quote-item-amount strong { font-size: 16px; line-height: 38px; overflow-wrap: anywhere; }
+.quote-item-actions > span { flex: 1 0 175px; font-size: 13px; color: var(--ink2, #465061); }
+.quote-item-detail { border-top: 1px solid var(--line, #d6dbe2); padding-top: 10px; display: grid; gap: 10px; justify-items: start; }
+.quote-item-rates { display: flex; flex-wrap: wrap; gap: 8px; }
+.quote-item-inline-rates { display: grid; grid-template-columns: repeat(auto-fit, minmax(50px, 1fr)); gap: 4px; }
+.quote-item-inline-rates label { font-size: 11px; white-space: nowrap; }
+.quote-item-rates input { max-width: 116px; }
+.quote-fast-total { font-size: 15px; flex: 1 1 100%; }
+.quote-stay-period { display: block; white-space: normal; }
+@media (max-width: 790px) {
+  .quote-item-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .quote-item-grid > label:nth-child(-n+2) { grid-column: span 2; }
+  .quote-item-inline-rates { grid-column: span 2; }
+}
+@media (max-width: 480px) {
+  .quote-item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quote-item-grid > label:nth-child(-n+2) { grid-column: auto; }
+  .quote-item-amount { grid-column: 1 / -1; }
+  .quote-items-head > button { max-width: 100%; }
+}

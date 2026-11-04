@@ -5,10 +5,11 @@
  * See docs/group-invoice-plan.md · type-hold-unassigned-booking-plan.md
  */
 import { groupDrafts, hashGroupBadgeColor } from "./group";
-import { addDays, allRooms, occupiesNight, roomOnNight, type Booking, type HotelSettings, typeLabel, usableTypes } from "./ledger";
+import { addDays, allRooms, freeRooms, type Booking, type HotelSettings, typeLabel, usableTypes } from "./ledger";
+import { nightRatesFromTotal, occupiedNightDates, type StayNightRates } from "./nightrates";
 import { isOnsite } from "./payment";
 import { type GroupInfo } from "./settle";
-import { type QuoteDraft, type QuoteLine, QUOTE_COPY, normalizeQuoteTaxMode } from "./quoteDoc";
+import { type QuoteDraft, type QuoteLine, QUOTE_COPY } from "./quoteDoc";
 
 export const QUOTE_BOOKING_MEMO_PREFIX = "[견적]" as const;
 
@@ -27,41 +28,57 @@ export function quotePlatformId(s: HotelSettings): string {
   return s.platforms.find((p) => isOnsite(p))?.id ?? s.platforms[0]?.id ?? "";
 }
 
-type Slot = { typeId: string; roomId: string | null; checkIn: string; nights: number; price: number; rate: number; nightRates: Record<string, number>; guests: number };
+type Slot = {
+  typeId: string;
+  roomId: string | null;
+  checkIn: string;
+  nights: number;
+  price: number;
+  nightRates: StayNightRates;
+  guests: number;
+  detail?: string;
+};
 
-function expandSlots(lines: QuoteLine[], taxMode: "included" | "excluded" | "exempt"): Slot[] {
+function expandSlots(lines: QuoteLine[], checkIn: string, taxMode: QuoteDraft["taxMode"]): Slot[] {
   const slots: Slot[] = [];
+  let cumulative = 0;
   for (const line of lines) {
     const rooms = Math.max(0, Math.round(line.rooms) || 0);
     if (!line.typeId || rooms <= 0) continue;
     const nights = Math.max(1, Math.round(line.nights) || 1);
-    const rate = Math.max(0, Math.round(line.rate) || 0);
-    const lineAmt = Math.max(0, Math.round(line.amount) || rate * nights * rooms);
-    const nightly = Object.fromEntries((line.nightAmounts ?? []).filter((c) => /^\d{4}-\d{2}-\d{2}$/.test(c.date)).map((c) => [c.date, Math.max(0, Math.round(c.amount))]));
-    const perRoom = rooms > 0 ? Math.floor(lineAmt / rooms) : 0;
+    const start = line.checkIn ?? checkIn;
+    const dates = occupiedNightDates(start, nights);
+    const lineAmt = Math.max(0, Math.round(line.amount));
+    const perRoom = Math.floor(lineAmt / rooms);
     const rem = lineAmt - perRoom * rooms;
     const ids = line.roomIds ?? [];
     for (let i = 0; i < rooms; i++) {
-      const roomAmount = perRoom + (i === 0 ? rem : 0);
-      const hasNightTable = Object.keys(nightly).length === nights;
-      const roomNightRates = hasNightTable
-        ? Object.fromEntries(Object.entries(nightly).map(([date, amount]) => [date, taxMode === "excluded" ? amount + Math.round(amount / 10) : amount]))
-        : {};
-      const price = hasNightTable
-        ? Object.values(roomNightRates).reduce((sum, amount) => sum + amount, 0)
-        : taxMode === "excluded" ? roomAmount + Math.round(roomAmount / 10) : roomAmount;
-      const roomRate = hasNightTable
-        ? Math.round(Object.values(roomNightRates).reduce((sum, amount) => sum + amount, 0) / nights)
-        : taxMode === "excluded" ? rate + Math.round(rate / 10) : rate;
+      const amount = perRoom + (i === 0 ? rem : 0);
+      const cells = line.nightAmounts;
+      const explicit = cells?.length === dates.length &&
+        cells.reduce((sum, cell) => sum + cell.amount, 0) === amount;
+      const amounts = explicit ? cells!.map((cell) => cell.amount) :
+        Object.values(nightRatesFromTotal(start, nights, amount).nights ?? {});
+      const gross = amounts.map((value) => {
+        if (taxMode !== "excluded") return value;
+        const tax = Math.round((cumulative + value) / 10) - Math.round(cumulative / 10);
+        cumulative += value;
+        return value + tax;
+      });
       slots.push({
         typeId: line.typeId,
         roomId: ids[i] ?? null,
-        checkIn: line.checkIn || "",
+        checkIn: start,
         nights,
-        price,
-        rate: roomRate,
-        nightRates: roomNightRates,
+        price: gross.reduce((sum, value) => sum + value, 0),
+        nightRates: {
+          flat: gross.every((value) => value === gross[0]) ? gross[0] ?? null : null,
+          weekday: null,
+          weekend: null,
+          nights: Object.fromEntries(dates.map((day, index) => [day, gross[index] ?? 0])),
+        },
         guests: Math.max(0, Math.round(line.pax) || 0),
+        detail: line.detail,
       });
     }
   }
@@ -70,34 +87,31 @@ function expandSlots(lines: QuoteLine[], taxMode: "included" | "excluded" | "exe
 
 export function validateQuoteForBookings(draft: QuoteDraft, s: HotelSettings, bookings: Booking[] = []): string | null {
   const types = new Set(usableTypes(s.types).map((t) => t.id));
+  const rooms = new Map(allRooms(s).map((room) => [room.id, room]));
+  const assigned = new Map<string, { from: string; to: string }[]>();
   const usable = draft.lines.filter((l) => Math.round(l.rooms) > 0);
   if (!usable.length) return QUOTE_COPY.emptyLines;
-  if (!draft.checkIn && usable.some((line) => !line.checkIn)) return "각 견적 항목의 입실일(이용 날짜)을 입력해 주세요.";
   for (const l of usable) {
     if (!l.typeId || !types.has(l.typeId)) return "객실 타입을 골라 주세요. (발급 시 타입 홀드 예약용)";
-    if ((Math.round(l.nights) || 0) <= 0 && (Math.round(draft.nights) || 0) <= 0) {
-      return "박수를 입력해 주세요.";
-    }
-  }
-  const roomsById = new Map(allRooms(s).map((r) => [r.id, r]));
-  const assigned: Array<{ id: string; typeId: string; from: string; to: string }> = [];
-  for (const line of usable) {
-    const start = line.checkIn || draft.checkIn;
-    if (!start) return "각 견적 항목의 이용 날짜를 입력해 주세요.";
-    const nights = Math.max(1, Math.round(line.nights) || Math.round(draft.nights) || 1);
-    const end = addDays(start, nights);
-    for (const roomId of line.roomIds ?? []) {
-      const room = roomsById.get(roomId);
-      if (!room || room.typeId !== line.typeId) return "객실 타입과 호실 배정이 맞지 않아요. 호실을 다시 선택해 주세요.";
-      for (let offset = 0; offset < nights; offset++) {
-        const date = addDays(start, offset);
-        const occupied = bookings.find((booking) => booking.id !== line.id && occupiesNight(booking, date) && roomOnNight(booking, date) === roomId);
-        if (occupied) return `${room.no}호는 ${date}에 이미 예약되어 있어요. 다른 호실을 선택해 주세요.`;
+    const nights = Math.round(l.nights) || Math.round(draft.nights);
+    if (nights < 1 || nights > 365) return "박수는 1~365박으로 입력해 주세요.";
+    if (l.rooms > 100) return "항목당 객실 수는 100실까지 입력할 수 있어요.";
+    if ((l.roomIds?.length ?? 0) > l.rooms) return "선택한 호실 수가 객실 수보다 많아요.";
+    const from = l.checkIn || draft.checkIn;
+    if (!from) return "입실 예정일을 입력해 주세요.";
+    const to = addDays(from, nights);
+    const free = l.roomIds?.length ? freeRooms(s, bookings, {
+      id: l.id, kind: "stay", checkIn: from, nights, startTime: null, endTime: null,
+    }) : null;
+    for (const id of l.roomIds ?? []) {
+      const room = rooms.get(id);
+      if (!room || room.typeId !== l.typeId) return "객실 타입과 맞는 호실을 다시 골라 주세요.";
+      if (free && !free.has(id)) return `${room.no}호는 해당 기간에 배정할 수 없어요. 다른 호실을 선택해 주세요.`;
+      const periods = assigned.get(id) ?? [];
+      if (periods.some((period) => from < period.to && period.from < to)) {
+        return `${room.no}호의 배정 기간이 겹쳐요. 호실이나 날짜를 확인해 주세요.`;
       }
-      if (assigned.some((x) => x.id === roomId && start < x.to && x.from < end)) {
-        return `${room.no}호가 겹치는 날짜에 두 번 배정됐어요. 날짜별 호실 배정을 확인해 주세요.`;
-      }
-      assigned.push({ id: roomId, typeId: line.typeId, from: start, to: end });
+      assigned.set(id, [...periods, { from, to }]);
     }
   }
   if (!quotePlatformId(s)) return "설정에 플랫폼(현장·전화)이 필요해요.";
@@ -124,15 +138,15 @@ export function planQuoteTypeHoldBookings(opts: {
   const lines: QuoteLine[] = opts.draft.lines.map((l) => ({
     ...l,
     nights: Math.max(1, Math.round(l.nights) || Math.round(opts.draft.nights) || 1),
-    checkIn: l.checkIn || checkIn,
   }));
-  const slots = expandSlots(lines, normalizeQuoteTaxMode(opts.draft.taxMode));
+  const nights = Math.max(...lines.map((l) => l.nights), 1);
+  const slots = expandSlots(lines, checkIn, opts.draft.taxMode);
   if (!slots.length) return { kind: "skip", reason: QUOTE_COPY.emptyLines };
 
   const phone = opts.guestPhone?.trim() || opts.draft.clientPhone.trim() || null;
   const typeIds = slots.map((x) => x.typeId);
-  const rates = slots.map((x) => x.rate);
-  const roomIds = slots.map((x) => x.roomId);
+  const prices = slots.map((x) => x.price);
+  const slotMemo = (slot: Slot) => (slot.detail ? `${memo} · ${slot.detail}` : memo).slice(0, 80);
 
   if (slots.length === 1) {
     const now = new Date().toISOString();
@@ -150,7 +164,7 @@ export function planQuoteTypeHoldBookings(opts: {
       segments: null,
       checkIn: slot.checkIn,
       nights: slot.nights,
-      nightRates: Object.keys(slot.nightRates).length ? { nights: slot.nightRates } : { flat: slot.rate },
+      nightRates: slot.nightRates,
       startTime: null,
       endTime: null,
       arrived: false,
@@ -158,7 +172,7 @@ export function planQuoteTypeHoldBookings(opts: {
       earlyOut: null,
       checkedOutAt: null,
       refund: null,
-      memo,
+      memo: slotMemo(slot),
       guests: slot.guests || null,
       groupId: null,
       groupName: null,
@@ -170,45 +184,27 @@ export function planQuoteTypeHoldBookings(opts: {
   }
 
   const groupId = crypto.randomUUID();
-  const stayGroups = new Map<string, number[]>();
-  slots.forEach((slot, i) => {
-    const key = `${slot.checkIn}|${slot.nights}`;
-    stayGroups.set(key, [...(stayGroups.get(key) ?? []), i]);
-  });
-  const drafts = [...stayGroups.values()].flatMap((indices) => {
-    const first = slots[indices[0]!]!;
-    return groupDrafts({
-      groupId,
-      groupName: name,
-      platformId,
-      checkIn: first.checkIn,
-      nights: first.nights,
-      typeIds: indices.map((i) => slots[i]!.typeId),
-      prices: indices.map((i) => slots[i]!.price),
-      memberRates: indices.map((i) => slots[i]!.rate),
-      memberNightRates: indices.map((i) => {
-        const table = slots[i]!.nightRates;
-        return Object.keys(table).length ? { nights: table } : null;
-      }),
-      s: opts.s,
-      guestsOf: (typeId) => {
-        const i = indices.find((index) => slots[index]!.typeId === typeId);
-        return i == null ? null : slots[i]!.guests || null;
-      },
-    }).map((booking, j) => ({
-      ...booking,
-      id: crypto.randomUUID(),
-      guestPhone: phone,
-      memo,
-      guests: slots[indices[j]!]!.guests || null,
-      roomId: roomIds[indices[j]!] ?? null,
-    }));
-  });
+  const drafts = groupDrafts({ groupId, groupName: name, platformId, checkIn, nights, typeIds, prices, s: opts.s })
+    .map((booking, index) => {
+      const slot = slots[index]!;
+      return {
+        ...booking,
+        id: crypto.randomUUID(),
+        guestPhone: phone,
+        memo: slotMemo(slot),
+        roomId: slot.roomId,
+        guests: slot.guests || null,
+        checkIn: slot.checkIn,
+        nights: slot.nights,
+        nightRates: slot.nightRates,
+      };
+    });
 
   const ratesPersist: Record<string, number> = {};
-  for (let i = 0; i < typeIds.length; i++) {
-    const tid = typeIds[i]!;
-    if (rates[i]! > 0 && ratesPersist[tid] == null) ratesPersist[tid] = rates[i]!;
+  for (const typeId of new Set(typeIds)) {
+    const members = slots.filter((slot) => slot.typeId === typeId);
+    const rate = members[0]?.nightRates.flat;
+    if (rate && members.every((slot) => slot.nightRates.flat === rate)) ratesPersist[typeId] = rate;
   }
 
   return {

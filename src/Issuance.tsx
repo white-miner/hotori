@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import type { HotelData } from "./data";
-import { useDamageIssues, useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
+import { queryStays, useDamageIssues, useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
 import type { ToastOpt } from "./App";
 import { askConfirm } from "./ConfirmDialog";
 import FloorPlanPrint from "./FloorPlanPrint";
@@ -50,7 +50,7 @@ import { planQuoteTypeHoldBookings } from "../shared/quoteBookings";
 import { findLinkedQuote } from "../shared/quoteVariance";
 import { INVOICE_COPY, resolveInvoicePick, type InvoiceDoc } from "../shared/invoiceDoc";
 import { DAMAGE_COPY, type DamageDoc } from "../shared/damageDoc";
-import { STAY_CONFIRM_COPY, businessDate, dayLabel, stayStatusLabel, type Booking } from "../shared/ledger";
+import { STAY_CONFIRM_COPY, STAY_NIGHTS_MAX, addDays, allRooms, buildingName, businessDate, dayLabel, freeRooms, stayStatusLabel, type Booking } from "../shared/ledger";
 import { groupSummaries } from "../shared/group";
 import { type GroupInfo } from "../shared/settle";
 import { parseGuestQuery, textMatchesGuest } from "../shared/guestSearch";
@@ -96,11 +96,12 @@ function vaultIcon(kind: HotelDocKind) {
 interface Props {
   data: HotelData;
   hotelId: string;
+  userId: string;
   today: string;
   notify: (m: string, opt?: ToastOpt) => void;
 }
 
-export default function Issuance({ data, hotelId, today, notify }: Props) {
+export default function Issuance({ data, hotelId, userId, today, notify }: Props) {
   const docs = useHotelDocuments(hotelId);
   const quotes = useQuoteIssues(hotelId);
   const invoices = useInvoiceIssues(hotelId);
@@ -463,6 +464,7 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
           s={s}
           today={today || businessDate()}
           initial={quoteOpen === "new" ? null : quoteOpen}
+          templateKey={`hotori:quote-templates:v1:${hotelId}:${userId}`}
           busy={quoteBusy}
           notify={(m) => notify(m)}
           onSaveDraft={async (draft, id) => {
@@ -478,6 +480,18 @@ export default function Issuance({ data, hotelId, today, notify }: Props) {
             try {
               const plan = planQuoteTypeHoldBookings({ draft, quoteId: id ?? "new", s, bookings: data.bookings });
               if (plan.kind === "skip") throw new Error(plan.reason);
+              const assigned = (plan.kind === "single" ? [plan.booking] : plan.drafts).filter((booking) => booking.roomId);
+              if (assigned.length) {
+                const from = assigned.map((booking) => booking.checkIn).sort()[0]!;
+                const to = assigned.map((booking) => addDays(booking.checkIn, booking.nights ?? 1)).sort().at(-1)!;
+                const stays = await queryStays(hotelId, from, to, STAY_NIGHTS_MAX);
+                for (const booking of assigned) {
+                  if (freeRooms(s, stays, booking).has(booking.roomId!)) continue;
+                  const room = allRooms(s).find((item) => item.id === booking.roomId);
+                  const label = room ? `${buildingName(s, room.buildingId)} ${room.no}호` : "선택한 객실";
+                  throw new Error(`${label}는 견적 기간에 배정할 수 없어요. 객실 내역에서 다른 호실을 선택해 주세요.`);
+                }
+              }
               let groupId: string | null = null;
               let bookingIds: string[] = [];
               if (plan.kind === "single") {

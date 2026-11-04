@@ -361,7 +361,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           notify={notify}
         />
       ) : view === "issuance" ? (
-        <Issuance data={data} hotelId={hotelId} today={today} notify={notify} />
+        <Issuance data={data} hotelId={hotelId} userId={userId} today={today} notify={notify} />
       ) : view === "expenses" ? (
         <ExpensesPage data={data} hotelId={hotelId} today={today} notify={notify} />
       ) : view === "shop" ? (
