@@ -21,11 +21,12 @@ import {
   X,
 } from "lucide-react";
 import type { HotelData } from "./data";
-import { queryStays, useDamageIssues, useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
+import { queryQuoteIssues, queryStays, useDamageIssues, useHotelDocuments, useInvoiceIssues, useQuoteIssues } from "./data";
 import type { ToastOpt } from "./App";
 import { askConfirm } from "./ConfirmDialog";
 import FloorPlanPrint from "./FloorPlanPrint";
 import QuoteLetter from "./QuoteLetter";
+import QuoteTypeRatesModal from "./QuoteTypeRatesModal";
 import InvoiceLetter from "./InvoiceLetter";
 import DamageLetter from "./DamageLetter";
 import StayConfirmLetter from "./StayConfirmLetter";
@@ -56,8 +57,6 @@ import { type GroupInfo } from "../shared/settle";
 import { parseGuestQuery, textMatchesGuest } from "../shared/guestSearch";
 import { ensureHotelBizReady } from "./hotelBizGate";
 import { lookups } from "./ui";
-import { RateSettings } from "./RateSettings";
-import { type HotelSettings } from "../shared/ledger";
 
 type InvoiceTarget = {
   members: Booking[];
@@ -110,13 +109,17 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
   const [vaultKind, setVaultKind] = useState<HotelDocKind | null>(kindFromHash);
   const [floorOpen, setFloorOpen] = useState(() => panelFromHash() === "floor");
   const [quoteOpen, setQuoteOpen] = useState<QuoteDoc | "new" | null>(null);
+  const [quoteEditorVersion, setQuoteEditorVersion] = useState(0);
   const [invoiceView, setInvoiceView] = useState<InvoiceDoc | null>(null);
   const [damageView, setDamageView] = useState<DamageDoc | null>(null);
   const [pickMode, setPickMode] = useState<PickMode | null>(null);
   const [stayConfirm, setStayConfirm] = useState<Booking | null>(null);
   const [invoiceTarget, setInvoiceTarget] = useState<InvoiceTarget | null>(null);
   const [damageBooking, setDamageBooking] = useState<Booking | null>(null);
-  const [ratesOpen, setRatesOpen] = useState(false);
+  const [quoteRatesOpen, setQuoteRatesOpen] = useState(false);
+  const [quoteDraftsOpen, setQuoteDraftsOpen] = useState(false);
+  const [quoteDrafts, setQuoteDrafts] = useState<QuoteDoc[] | null>(null);
+  const [quoteDraftsError, setQuoteDraftsError] = useState(false);
   const [quoteBusy, setQuoteBusy] = useState(false);
   const [invoiceBusy, setInvoiceBusy] = useState(false);
   const [damageBusy, setDamageBusy] = useState(false);
@@ -130,6 +133,16 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
   const openQuote = async (doc: QuoteDoc | "new" = "new") => {
     if (!(await requireBiz())) return;
     setQuoteOpen(doc);
+  };
+  const openQuoteDrafts = async () => {
+    setQuoteDraftsOpen(true);
+    setQuoteDrafts(null);
+    setQuoteDraftsError(false);
+    try {
+      setQuoteDrafts(await queryQuoteIssues(hotelId, "draft"));
+    } catch {
+      setQuoteDraftsError(true);
+    }
   };
   const openInvoiceView = async (doc: InvoiceDoc) => {
     if (!(await requireBiz())) return;
@@ -262,10 +275,10 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
             <span className="iss-card-s">{ISSUANCE_COPY.quoteHint}</span>
             <span className="iss-card-cta">{ISSUANCE_COPY.quoteCta}</span>
           </button>
-          <button type="button" className="iss-card" onClick={() => setRatesOpen(true)}>
+          <button type="button" className="iss-card" onClick={() => setQuoteRatesOpen(true)}>
             <Receipt size={22} strokeWidth={2} aria-hidden />
-            <span className="iss-card-t">객실 타입별 요금 설정</span>
-            <span className="iss-card-s">발급 서류에 사용할 객실 타입별 평일·주말·시즌 요금을 관리해요.</span>
+            <span className="iss-card-t">견적서 타입별 요금 설정</span>
+            <span className="iss-card-s">견적서에 자동으로 들어갈 객실 타입별 1박 단가를 설정해요.</span>
             <span className="iss-card-cta">요금 설정 열기</span>
           </button>
           <button type="button" className="iss-card" onClick={() => void goPanel("invoice")}>
@@ -399,6 +412,7 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
             <button type="button" className="btn line sm" onClick={() => goPanel("vault")}>
               <Shield size={14} /> {ISSUANCE_COPY.vaultHeading}
             </button>
+            <button type="button" className="btn line sm" onClick={() => void openQuoteDrafts()}>임시저장 견적 열기</button>
           </div>
           {docs.error || quotes.error || invoices.error || damages.error ? (
             <p className="warn sm">{docs.error || quotes.error || invoices.error || damages.error}</p>
@@ -460,11 +474,14 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
 
       {quoteOpen ? (
         <QuoteLetter
+          key={`${quoteOpen === "new" ? "new-quote" : quoteOpen.id}:${quoteEditorVersion}`}
           hotelName={hotel.name}
           s={s}
           today={today || businessDate()}
           initial={quoteOpen === "new" ? null : quoteOpen}
           templateKey={`hotori:quote-templates:v1:${hotelId}:${userId}`}
+          onOpenRateSettings={() => setQuoteRatesOpen(true)}
+          onOpenDrafts={() => void openQuoteDrafts()}
           busy={quoteBusy}
           notify={(m) => notify(m)}
           onSaveDraft={async (draft, id) => {
@@ -517,14 +534,34 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
         />
       ) : null}
 
-      {ratesOpen ? (
-        <IssuanceRatesModal
-          settings={s}
-          save={data.saveHotel}
-          notify={notify}
-          onClose={() => setRatesOpen(false)}
-        />
-      ) : null}
+      {quoteRatesOpen && <QuoteTypeRatesModal settings={s}
+        onSave={data.saveQuoteTypeRates}
+        onClose={() => setQuoteRatesOpen(false)} />}
+      {quoteDraftsOpen && <div className="dim quote-overlay">
+        <section className="modal iss-rates-modal" role="dialog" aria-modal="true" aria-labelledby="quote-drafts-title">
+          <div className="mh">
+            <h2 id="quote-drafts-title">임시저장 견적</h2>
+            <button type="button" className="x" aria-label="닫기" onClick={() => setQuoteDraftsOpen(false)}>×</button>
+          </div>
+          <div className="iss-rates-body">
+            {quoteDraftsError ? <>
+              <p className="warn" role="alert">임시저장 견적을 불러오지 못했어요.</p>
+              <button type="button" className="btn line" onClick={() => void openQuoteDrafts()}>다시 불러오기</button>
+            </> : !quoteDrafts ? <p role="status">서버에서 불러오는 중…</p> : !quoteDrafts.length ? <p>이 호텔에 임시저장한 견적이 없어요.</p> :
+              <ul className="iss-list">{quoteDrafts.map((entry) => <li key={entry.id}>
+                <button type="button" className="iss-list-link" onClick={async () => {
+                  if (!(await requireBiz())) return;
+                  setQuoteOpen(entry);
+                  setQuoteEditorVersion((current) => current + 1);
+                  setQuoteDraftsOpen(false);
+                }}>
+                  <span className="iss-list-t">{entry.clientName || entry.title || "견적서"}</span>
+                  <span className="muted sm">{dayLabel(entry.updatedAt.slice(0, 10))}</span>
+                </button>
+              </li>)}</ul>}
+          </div>
+        </section>
+      </div>}
 
       {invoiceView?.snapshot ? (
         <InvoiceLetter
@@ -657,82 +694,6 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
         />
       ) : null}
     </main>
-  );
-}
-
-function IssuanceRatesModal({
-  settings,
-  save,
-  notify,
-  onClose,
-}: {
-  settings: HotelSettings;
-  save: (patch: { name?: string; settings?: HotelSettings }) => Promise<void>;
-  notify: (message: string, opt?: ToastOpt) => void;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState(settings);
-  const [saving, setSaving] = useState(false);
-  const [changed, setChanged] = useState(false);
-  const latest = useRef(settings);
-  const dirty = useRef(false);
-  const revision = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const persist = async () => {
-    if (!dirty.current) return true;
-    clearTimeout(timer.current);
-    const savingRevision = revision.current;
-    setSaving(true);
-    try {
-      await save({ settings: latest.current });
-      if (revision.current === savingRevision) {
-        dirty.current = false;
-        setChanged(false);
-      }
-      return true;
-    } catch (e) {
-      notify(e instanceof Error ? `요금을 저장하지 못했어요: ${e.message}` : "요금을 저장하지 못했어요");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-  const update = (fn: (current: HotelSettings) => HotelSettings) => {
-    setDraft((current) => {
-      const next = fn(current);
-      latest.current = next;
-      dirty.current = true;
-      revision.current += 1;
-      setChanged(true);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => void persist(), 700);
-      return next;
-    });
-  };
-  const close = async () => {
-    if (!(await persist())) return;
-    onClose();
-  };
-  useEffect(() => () => clearTimeout(timer.current), []);
-
-  return (
-    <div className="dim" role="presentation" onClick={() => void close()}>
-      <div className="modal iss-rates-modal" role="dialog" aria-modal="true" aria-labelledby="iss-rates-title" onClick={(e) => e.stopPropagation()}>
-        <div className="mh">
-          <h2 id="iss-rates-title">객실 타입별 요금 설정</h2>
-          <button type="button" className="x" aria-label="닫기" onClick={() => void close()}>×</button>
-        </div>
-        <div className="iss-rates-body">
-          <p className="muted sm">타입별 평일·주말·기본 요금과 시즌 요금을 설정해요. 저장된 예약과 이미 발급된 서류의 금액은 바뀌지 않아요.</p>
-          <RateSettings s={draft} update={update} notify={(message) => notify(message)} />
-        </div>
-        <div className="mf">
-          <span className="muted sm" role="status">{saving ? "저장 중…" : changed ? "변경 내용을 저장하고 있어요" : "저장됨"}</span>
-          <button type="button" className="btn dark sm" disabled={saving} onClick={() => void close()}>{saving ? "저장 중…" : "완료"}</button>
-        </div>
-      </div>
-    </div>
   );
 }
 

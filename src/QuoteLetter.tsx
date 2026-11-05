@@ -9,18 +9,20 @@ import {
   type QuoteDraft,
   type QuoteLine,
   QUOTE_COPY,
+  QUOTE_CONTACT_FIELDS,
   QUOTE_NOTES_MAX,
+  type QuoteContacts,
   emptyQuoteLine,
   freezeQuoteSnapshot,
   normalizeQuoteTaxMode,
   quotePriceSummary,
-  quoteLinePrintLabel,
   quotePrintStrings,
   validateQuoteDraft,
 } from "../shared/quoteDoc";
 import { validateQuoteForBookings } from "../shared/quoteBookings";
 import { formatIssuanceNightDate } from "../shared/issuanceNightDetail";
 import { quoteTemplateFromDraft, quoteTemplateLines, readQuoteTemplates, rebaseQuoteLine, type QuoteTemplate } from "../shared/quoteTemplates";
+import { applyQuoteTypeRates } from "../shared/quoteRates";
 import { chunkIssuanceLines } from "../shared/issuancePages";
 import {
   allRooms,
@@ -28,9 +30,7 @@ import {
   buildingName,
   dayLabel,
   hotelBizDisplayName,
-  hotelBizFieldLabels,
   hotelBizHasAny,
-  hotelBizUpjongUptaeLine,
   printDateLabel,
   typeLabel,
   usableTypes,
@@ -52,6 +52,8 @@ interface Props {
   onSaveDraft: (draft: QuoteDraft, id?: string) => Promise<QuoteDoc>;
   onIssue: (draft: QuoteDraft, id?: string) => Promise<QuoteDoc>;
   onDelete?: (doc: QuoteDoc) => Promise<void>;
+  onOpenRateSettings?: () => void;
+  onOpenDrafts?: () => void;
   onClose: () => void;
   notify: (m: string) => void;
 }
@@ -83,7 +85,7 @@ function draftFromDoc(doc: QuoteDoc | null | undefined, today: string, defaultTy
       checkIn: today,
       nights: 1,
       guestCount: 2,
-      lines: [{ ...emptyQuoteLine(defaultTypeId), label: defaultLabel }],
+      lines: [{ ...emptyQuoteLine(defaultTypeId), label: defaultLabel, rateSource: "type" }],
       showRoomNos: true,
       validUntil: addDays(today, 7),
       taxMode: "included",
@@ -93,6 +95,7 @@ function draftFromDoc(doc: QuoteDoc | null | undefined, today: string, defaultTy
     title: doc.title,
     clientName: doc.clientName,
     clientPhone: doc.clientPhone,
+    contacts: doc.contacts,
     notes: doc.notes,
     checkIn: doc.checkIn,
     nights: doc.nights,
@@ -123,6 +126,8 @@ export default function QuoteLetter({
   onSaveDraft,
   onIssue,
   onDelete,
+  onOpenRateSettings,
+  onOpenDrafts,
   onClose,
   notify,
 }: Props) {
@@ -132,7 +137,9 @@ export default function QuoteLetter({
   const trade = hotelBizDisplayName(biz, hotelName);
   const issued = initial?.status === "issued";
   const [doc, setDoc] = useState<QuoteDoc | null>(initial ?? null);
-  const [draft, setDraft] = useState<QuoteDraft>(() => draftFromDoc(initial, today, defaultTypeId, types[0] ? typeLabel(types[0]) : ""));
+  const [draftState, setDraft] = useState<QuoteDraft>(() => draftFromDoc(initial, today, defaultTypeId, types[0] ? typeLabel(types[0]) : ""));
+  const savedState = useRef(draftState);
+  const editedItems = useRef(!!initial?.lines.length);
   const [templates, setTemplates] = useState<QuoteTemplate[]>(() => {
     try { return readQuoteTemplates(localStorage.getItem(templateKey)); } catch { return []; }
   });
@@ -145,6 +152,10 @@ export default function QuoteLetter({
   const [page, setPage] = useState(0);
   const t = quotePrintStrings(lang);
   const locked = issued || doc?.status === "issued";
+  const draft = useMemo(() => locked ? draftState : {
+    ...draftState,
+    lines: draftState.lines.map((line) => applyQuoteTypeRates(line, draftState.checkIn ?? today, s)),
+  }, [draftState, locked, s, today]);
   const showRoomNos = locked ? !!(doc?.snapshot?.showRoomNos ?? doc?.showRoomNos) : draft.showRoomNos;
 
   const body = useMemo(() => {
@@ -163,8 +174,7 @@ export default function QuoteLetter({
   };
   const lineName = (line: QuoteLine) => {
     const type = types.find((item) => item.id === line.typeId);
-    const name = quoteLinePrintLabel({ ...line, label: line.label || (type ? typeLabel(type) : "") }, showRoomNos, roomNoOf, lang);
-    return line.detail ? `${name} · ${line.detail}` : name;
+    return line.label || (type ? typeLabel(type) : "—");
   };
   const stayLabel = (line: QuoteLine) => {
     const start = line.checkIn ?? body.checkIn;
@@ -176,18 +186,100 @@ export default function QuoteLetter({
     ? { included: "부가세 포함", excluded: "부가세 별도", exempt: "면세" }[amounts.taxMode]
     : { included: "VAT included", excluded: "VAT excluded", exempt: "VAT exempt" }[amounts.taxMode];
   const totalRows = () => <>
-    <tr><th colSpan={5}>{lang === "ko" ? "공급가액" : "Subtotal"}</th><th>{won(body.supplyAmount ?? amounts.supplyAmount)}</th></tr>
-    <tr><th colSpan={5}>{taxLabel}</th><th>{won(body.vatAmount ?? amounts.vatAmount)}</th></tr>
-    <tr><th colSpan={5}>{t.total}</th><th>{won(total)}</th></tr>
+    <tr><th colSpan={6}>{lang === "ko" ? "공급가액" : "Subtotal"}</th><td>{won(body.supplyAmount ?? amounts.supplyAmount)}</td></tr>
+    <tr><th colSpan={6}>{taxLabel}</th><td>{won(body.vatAmount ?? amounts.vatAmount)}</td></tr>
+    <tr className="quote-final-total"><th colSpan={6}>{lang === "ko" ? "최종 합계" : "Total due"}</th><td>{won(total)}</td></tr>
   </>;
   const quoteNumber = doc?.id
     ? `Q-${(doc.createdAt || today).slice(0, 10).replaceAll("-", "")}-${doc.id.replaceAll("-", "").slice(0, 6).toUpperCase()}`
     : lang === "ko" ? "발급 후 부여" : "Assigned on issue";
-  const printMetadata = <>
-    <div><dt>{lang === "ko" ? "견적번호" : "Quote number"}</dt><dd>{quoteNumber}</dd></div>
-    {body.validUntil && <div><dt>{lang === "ko" ? "유효기간" : "Valid until"}</dt><dd>{printDateLabel(lang, body.validUntil, dayLabel)}</dd></div>}
-    <div><dt>{lang === "ko" ? "부가세 기준" : "Tax basis"}</dt><dd>{taxLabel}</dd></div>
+  const ko = lang === "ko";
+  const contacts = body.contacts ?? {};
+  const supplierAddress = contacts.supplierAddress || biz.address;
+  const documentField = (label: string, value?: string) => value ? <div><dt>{label}</dt><dd>{value}</dd></div> : null;
+  const documentHeader = () => <>
+    <header className="quote-doc-heading">
+      <div><h1>{t.title}</h1><p>{body.title}</p></div>
+      <dl>
+        {documentField(ko ? "견적번호" : "Quote no.", quoteNumber)}
+        {documentField(t.issueDate, printDateLabel(lang, (locked && body.issuedAt ? body.issuedAt.slice(0, 10) : today), dayLabel))}
+        {documentField(ko ? "유효기간" : "Valid until", body.validUntil ? printDateLabel(lang, body.validUntil, dayLabel) : undefined)}
+      </dl>
+    </header>
+    <div className="quote-doc-parties">
+      <section>
+        <h2>{ko ? "수신처" : "Prepared for"}</h2>
+        <strong>{body.clientName || "—"}</strong>
+        <dl>
+          {documentField(ko ? "담당자" : "Contact", contacts.contact)}
+          {documentField(t.phone, body.clientPhone)}
+          {documentField(ko ? "이메일" : "Email", contacts.email)}
+          {documentField(t.bizNumber, contacts.businessNumber)}
+          {documentField(ko ? "주소" : "Address", contacts.address)}
+          {documentField(ko ? "사업장 주소" : "Business address", contacts.businessAddress)}
+        </dl>
+      </section>
+      <section>
+        <h2>{ko ? "공급자" : "Supplier"}</h2>
+        <strong>{trade}</strong>
+        <dl>
+          {documentField(t.bizNumber, biz.businessNumber)}
+          {documentField(t.representativeShort, biz.representative)}
+          {documentField(t.phone, biz.phone)}
+          {documentField(ko ? "사업장 주소" : "Business address", supplierAddress)}
+          {documentField(ko ? "업태·종목" : "Business activity", [biz.uptae, biz.upjong].filter(Boolean).join(" · "))}
+        </dl>
+      </section>
+    </div>
+    <div className="quote-doc-summary">
+      <span>{ko ? "숙박 견적" : "Accommodation quote"} · {taxLabel}{body.guestCount ? ` · ${t.guests(body.guestCount)}` : ""}</span>
+      <strong>{won(total)} {ko ? "원" : "KRW"}</strong>
+    </div>
   </>;
+  const documentTable = (lines: QuoteLine[], showTotal: boolean) => <table className="quote-tbl quote-doc-table">
+    <thead><tr>
+      <th scope="col">{ko ? "객실 타입" : "Room type"}</th>
+      <th scope="col">{ko ? "객실 배정" : "Assignment"}</th>
+      <th scope="col">{ko ? "숙박 기간" : "Stay period"}</th>
+      <th scope="col">{t.rooms}</th>
+      <th scope="col">{ko ? "실당 인원" : "Guests / room"}</th>
+      <th scope="col">{t.rate}</th>
+      <th scope="col">{t.amount}</th>
+    </tr></thead>
+    <tbody>{lines.map((line) => {
+      const ids = [...new Set(line.roomIds ?? [])].slice(0, line.rooms);
+      const assigned = ids.length;
+      const roomNames = ids.map(roomNoOf).filter(Boolean);
+      const varied = line.nightAmounts?.some((cell) => cell.amount !== line.nightAmounts?.[0]?.amount);
+      return <Fragment key={line.id}>
+        <tr>
+          <th scope="row">{lineName(line)}{line.detail && <small>{line.detail}</small>}</th>
+          <td>{assigned === 0 ? (ko ? "미배정" : "Room TBD") :
+            assigned === line.rooms ? (ko ? "배정 완료" : "Assigned") : (ko ? "일부 배정" : "Partially assigned")}
+            {assigned > 0 && <small>{ko ? `${assigned}/${line.rooms}실` : `${assigned}/${line.rooms} rooms`}</small>}
+            {showRoomNos && roomNames.length > 0 && <small>{roomNames.join(" · ")}</small>}
+          </td>
+          <td>{stayLabel(line)}</td>
+          <td>{line.rooms}</td>
+          <td>{line.pax}</td>
+          <td>{varied ? (ko ? "날짜별" : "By date") : won(line.rate)}</td>
+          <td>{won(line.amount)}</td>
+        </tr>
+        {varied && <tr className="quote-doc-night-row"><td colSpan={7}>
+          <ul>{line.nightAmounts?.map((cell) => <li key={cell.date}>{formatIssuanceNightDate(cell.date, lang)} <b>{won(cell.amount)}</b></li>)}</ul>
+        </td></tr>}
+      </Fragment>;
+    })}</tbody>
+    {showTotal && <tfoot>{totalRows()}</tfoot>}
+  </table>;
+  const documentFooter = () => <div className="quote-doc-footer">
+    {body.notes && <section><h2>{ko ? "견적 조건·안내사항" : "Terms and notes"}</h2><p>{body.notes}</p></section>}
+    <p>{t.attest}</p>
+    <div>{trade} · {t.representativeShort} {biz.representative || "____________"} <span>{t.seal}</span></div>
+  </div>;
+  const updateContact = (name: keyof QuoteContacts, value: string) =>
+    setDraft((current) => ({ ...current, contacts: { ...current.contacts, [name]: value } }));
+  const draftForSave = () => ({ ...draft, contacts: { ...draft.contacts, supplierAddress: draft.contacts?.supplierAddress || biz.address } });
 
   const storeTemplates = (next: QuoteTemplate[]) => {
     try {
@@ -215,7 +307,7 @@ export default function QuoteLetter({
     }
   };
   const applyTemplate = async (template: QuoteTemplate) => {
-    if (draft.lines.some((line) => line.amount > 0 || line.roomIds?.length) &&
+    if (editedItems.current &&
       !(await askConfirm({ title: "템플릿을 적용할까요?", body: "현재 객실 내역과 부가세 설정을 템플릿 내용으로 바꿔요.",
         confirmLabel: "템플릿 적용", cancelLabel: "돌아가기" }))) return;
     setDraft((current) => {
@@ -223,6 +315,7 @@ export default function QuoteLetter({
       return withQuoteLines({ ...current, checkIn: start, taxMode: normalizeQuoteTaxMode(template.taxMode), showRoomNos: template.showRoomNos }, quoteTemplateLines(template, start));
     });
     setActiveTemplate(template.id);
+    editedItems.current = true;
     setTemplateName(template.name);
     setErr(null);
     clientInput.current?.focus();
@@ -245,8 +338,9 @@ export default function QuoteLetter({
     if (v) return setErr(v);
     setErr(null);
     try {
-      const saved = await onSaveDraft(draft, doc?.id);
+      const saved = await onSaveDraft(draftForSave(), doc?.id);
       setDoc(saved);
+      savedState.current = draftState;
       notify(QUOTE_COPY.saveOk);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "저장 실패");
@@ -265,7 +359,7 @@ export default function QuoteLetter({
     if (!ok) return;
     setErr(null);
     try {
-      const saved = await onIssue(draft, doc?.id);
+      const saved = await onIssue(draftForSave(), doc?.id);
       setDoc(saved);
       notify(QUOTE_COPY.issueOk);
     } catch (e) {
@@ -307,6 +401,16 @@ export default function QuoteLetter({
         <div className="mh noprint">
           <h2 id="quote-title">{t.title}</h2>
           {doc?.status === "issued" ? <span className="tag">{QUOTE_COPY.issued}</span> : null}
+          {!locked && onOpenRateSettings && <button type="button" className="btn dark sm quote-open-type-rates" onClick={onOpenRateSettings}>
+            타입별 요금 설정
+          </button>}
+          {!locked && onOpenDrafts && <button type="button" className="btn line sm" onClick={async () => {
+            if (draftState !== savedState.current && !(await askConfirm({
+              title: "다른 임시저장 견적을 열까요?", body: "현재 견적에서 저장하지 않은 변경은 사라질 수 있어요.",
+              confirmLabel: "임시저장 목록 열기", cancelLabel: "계속 작성",
+            }))) return;
+            onOpenDrafts();
+          }}>임시저장 견적 열기</button>}
           <div className="seg sm sc-lang" role="tablist" aria-label={t.langAria}>
             <button
               type="button"
@@ -347,7 +451,7 @@ export default function QuoteLetter({
                 </div> : <small>반복하는 객실 내역을 한 번 저장하면 다음 견적에서 바로 불러올 수 있어요.</small>}
                 {editingTemplates && templateNameField}
               </section>
-              <div className="iss-form">
+              <div className="iss-form quote-core-fields">
                 <label>
                   {QUOTE_COPY.client}
                   <input
@@ -356,6 +460,9 @@ export default function QuoteLetter({
                     value={draft.clientName}
                     onChange={(e) => setDraft((d) => ({ ...d, clientName: e.target.value }))}
                   />
+                </label>
+                <label>수신처 연락처
+                  <input className="inp" type="tel" value={draft.clientPhone} onChange={(e) => setDraft((d) => ({ ...d, clientPhone: e.target.value }))} />
                 </label>
                 <label>
                   기준 입실일 · 전체 일정 이동
@@ -367,13 +474,17 @@ export default function QuoteLetter({
                 </label>
               </div>
               <details className="quote-extra-fields">
-                <summary>견적 제목·연락처·유효기간·안내사항</summary>
+                <summary>수신처·사업자 정보와 견적 조건</summary>
                 <div className="iss-form">
+                  {([
+                    ["contact", "수신처 담당자"], ["email", "수신처 이메일"], ["address", "수신처 주소"],
+                    ["businessNumber", "수신처 사업자등록번호"], ["businessAddress", "수신처 사업장 주소"], ["supplierAddress", "공급자 사업장 주소"],
+                  ] as const).map(([name, label]) => <label key={name}>{label}
+                    <input className="inp" maxLength={QUOTE_CONTACT_FIELDS[name]} value={draft.contacts?.[name] ?? ""}
+                      placeholder={name === "supplierAddress" ? biz.address : undefined} onChange={(e) => updateContact(name, e.target.value)} />
+                  </label>)}
                   <label>견적 제목
                     <input className="inp" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
-                  </label>
-                  <label>{QUOTE_COPY.clientPhone}
-                    <input className="inp" value={draft.clientPhone} onChange={(e) => setDraft((d) => ({ ...d, clientPhone: e.target.value }))} />
                   </label>
                   <label>유효기간
                     <input className="inp" type="date" value={draft.validUntil ?? ""} onChange={(e) => setDraft((d) => ({ ...d, validUntil: e.target.value || null }))} />
@@ -384,240 +495,31 @@ export default function QuoteLetter({
                 </div>
               </details>
               <QuoteItemsEditor settings={s} start={draft.checkIn ?? today} lines={draft.lines}
-                onChange={(lines) => setDraft((d) => withQuoteLines(d, lines))} notify={notify} />
+                onChange={(lines) => {
+                  editedItems.current = true;
+                  setDraft((d) => withQuoteLines(d, lines));
+                }} />
               <label className="quote-show-rooms">
                 <input type="checkbox" checked={draft.showRoomNos} onChange={(e) => setDraft((d) => ({ ...d, showRoomNos: e.target.checked }))} />
                 <span>
-                  <strong>{QUOTE_COPY.showRoomNos}</strong>
-                  <span className="muted sm"> — {QUOTE_COPY.showRoomNosHint}</span>
+                  <strong>견적서에 객실번호 표시</strong>
+                  <span className="muted sm"> — 배정 상태는 항상 표시돼요.</span>
                 </span>
               </label>
             </div>
           ) : (
-            <div className={`quote-print-slide${lang === "en" ? " en" : ""}`}>
-              {previewChunkIdx === 0 ? (
-                <>
-                  <header className="sc-head">
-                    <div className="sc-hotel">
-                      <div className="sc-trade">{trade}</div>
-                      {biz.businessNumber ? (
-                        <div>
-                          {t.bizNumber} {biz.businessNumber}
-                        </div>
-                      ) : null}
-                      {(() => {
-                        const uu = hotelBizUpjongUptaeLine(biz, hotelBizFieldLabels(lang));
-                        return uu ? <div>{uu}</div> : null;
-                      })()}
-                      {biz.address ? <div>{biz.address}</div> : null}
-                      {biz.phone || biz.representative ? (
-                        <div>
-                          {biz.phone ? `${t.phone} ${biz.phone}` : null}
-                          {biz.phone && biz.representative ? " · " : null}
-                          {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
-                        </div>
-                      ) : null}
-                    </div>
-                    <h1 className="sc-title">{t.title}</h1>
-                  </header>
-                  <p className="quote-doc-purpose">{body.title}</p>
-                  <dl className="sc-body">
-                    {printMetadata}
-                    <div>
-                      <dt>{t.client}</dt>
-                      <dd>
-                        {body.clientName || "—"}
-                        {body.clientPhone ? ` · ${body.clientPhone}` : null}
-                      </dd>
-                    </div>
-                    {body.checkIn ? (
-                      <div>
-                        <dt>{t.checkIn}</dt>
-                        <dd>
-                          {printDateLabel(lang, body.checkIn, dayLabel)}
-                          {body.nights ? ` · ${t.nights(body.nights)}` : null}
-                          {body.guestCount ? ` · ${t.guests(body.guestCount)}` : null}
-                        </dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                  {locked ? (
-                    <label className="quote-show-rooms">
-                      <input type="checkbox" checked={showRoomNos} disabled />
-                      <span>
-                        <strong>{QUOTE_COPY.showRoomNos}</strong>
-                        <span className="muted sm"> — 발급 시 설정이 고정돼요</span>
-                      </span>
-                    </label>
-                  ) : null}
-                </>
-              ) : (
-                <div className="iss-slide-cont muted sm">
-                  {t.title} · {previewChunkIdx + 1}/{lineChunks.length}
-                </div>
-              )}
-              <table className="quote-tbl">
-                <thead>
-                  <tr>
-                    <th>{t.label}</th>
-                    <th>{t.rooms}</th>
-                    <th>{t.nightsCol}</th>
-                    <th>{t.pax}</th>
-                    <th>{t.rate}</th>
-                    <th>{t.amount}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewChunk.map((l) => (
-                    <Fragment key={l.id}>
-                      <tr>
-                        <td>{lineName(l)}</td>
-                        <td>{l.rooms}</td>
-                        <td>{stayLabel(l)}</td>
-                        <td>{l.pax}</td>
-                        <td>{l.nightAmounts?.some((cell) => cell.amount !== l.nightAmounts?.[0]?.amount) ? (lang === "ko" ? "날짜별" : "By date") : won(l.rate)}</td>
-                        <td>{won(l.amount)}</td>
-                      </tr>
-                      {l.nightAmounts && l.nightAmounts.length > 1 ? (
-                        <tr className="inv-night-row">
-                          <td colSpan={6}>
-                            <ul className="inv-night-list">
-                              {l.nightAmounts.map((c) => (
-                                <li key={c.date}>
-                                  <span>{formatIssuanceNightDate(c.date, lang)}</span>
-                                  <strong>
-                                    {won(c.amount)}
-                                    {l.rooms > 1 ? ` × ${l.rooms}` : ""}
-                                  </strong>
-                                </li>
-                              ))}
-                            </ul>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))}
-                </tbody>
-                {isLastPreview ? (
-                  <tfoot>{totalRows()}</tfoot>
-                ) : null}
-              </table>
-              {isLastPreview ? (
-                <>
-                  {body.notes ? <p className="quote-notes">{body.notes}</p> : null}
-                  <p className="sc-attest">{t.attest}</p>
-                  <div className="sc-issue">
-                    {t.issueDate} {printDateLabel(lang, today, dayLabel)}
-                  </div>
-                  <div className="sc-sign">
-                    <div className="sc-sign-trade">{trade}</div>
-                    <div className="sc-sign-rep">
-                      {t.representative} {biz.representative || "____________"}
-                      <span className="sc-seal">{t.seal}</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <p className="muted sm iss-more-hint">다음 페이지에 이어져요</p>
-              )}
+            <div className="quote-print-slide quote-document">
+              {previewChunkIdx === 0 ? documentHeader() : <p className="quote-doc-cont">{t.title} · {previewChunkIdx + 1}/{lineChunks.length}</p>}
+              {documentTable(previewChunk, isLastPreview)}
+              {isLastPreview && documentFooter()}
             </div>
           )}
         </div>
 
-        <div className={`quote-print iss-print-src${lang === "en" ? " en" : ""}`} aria-hidden>
-          <header className="sc-head">
-            <div className="sc-hotel">
-              <div className="sc-trade">{trade}</div>
-              {biz.businessNumber ? (
-                <div>
-                  {t.bizNumber} {biz.businessNumber}
-                </div>
-              ) : null}
-              {(() => {
-                const uu = hotelBizUpjongUptaeLine(biz, hotelBizFieldLabels(lang));
-                return uu ? <div>{uu}</div> : null;
-              })()}
-              {biz.address ? <div>{biz.address}</div> : null}
-              {biz.phone || biz.representative ? (
-                <div>
-                  {biz.phone ? `${t.phone} ${biz.phone}` : null}
-                  {biz.phone && biz.representative ? " · " : null}
-                  {biz.representative ? `${t.representativeShort} ${biz.representative}` : null}
-                </div>
-              ) : null}
-            </div>
-            <h1 className="sc-title">{t.title}</h1>
-          </header>
-          <p className="quote-doc-purpose">{body.title}</p>
-          <dl className="sc-body">
-            {printMetadata}
-            <div>
-              <dt>{t.client}</dt>
-              <dd>
-                {body.clientName || "—"}
-                {body.clientPhone ? ` · ${body.clientPhone}` : null}
-              </dd>
-            </div>
-            {body.checkIn ? (
-              <div>
-                <dt>{t.checkIn}</dt>
-                <dd>
-                  {printDateLabel(lang, body.checkIn, dayLabel)}
-                  {body.nights ? ` · ${t.nights(body.nights)}` : null}
-                  {body.guestCount ? ` · ${t.guests(body.guestCount)}` : null}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-          <table className="quote-tbl">
-            <thead>
-              <tr>
-                <th>{t.label}</th>
-                <th>{t.rooms}</th>
-                <th>{t.nightsCol}</th>
-                <th>{t.pax}</th>
-                <th>{t.rate}</th>
-                <th>{t.amount}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {body.lines.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    {lineName(l)}
-                    {l.nightAmounts && l.nightAmounts.length > 1 ? (
-                      <ul className="inv-night-list print-inline">
-                        {l.nightAmounts.map((c) => (
-                          <li key={c.date}>
-                            {formatIssuanceNightDate(c.date, lang)} {won(c.amount)}
-                            {l.rooms > 1 ? ` × ${l.rooms}` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </td>
-                  <td>{l.rooms}</td>
-                  <td>{stayLabel(l)}</td>
-                  <td>{l.pax}</td>
-                  <td>{l.nightAmounts?.some((cell) => cell.amount !== l.nightAmounts?.[0]?.amount) ? (lang === "ko" ? "날짜별" : "By date") : won(l.rate)}</td>
-                  <td>{won(l.amount)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>{totalRows()}</tfoot>
-          </table>
-          {body.notes ? <p className="quote-notes">{body.notes}</p> : null}
-          <p className="sc-attest">{t.attest}</p>
-          <div className="sc-issue">
-            {t.issueDate} {printDateLabel(lang, today, dayLabel)}
-          </div>
-          <div className="sc-sign">
-            <div className="sc-sign-trade">{trade}</div>
-            <div className="sc-sign-rep">
-              {t.representative} {biz.representative || "____________"}
-              <span className="sc-seal">{t.seal}</span>
-            </div>
-          </div>
+        <div className="quote-print iss-print-src quote-document" aria-hidden>
+          {documentHeader()}
+          {documentTable(body.lines, true)}
+          {documentFooter()}
         </div>
 
         <div className="mf noprint quote-foot">

@@ -4,6 +4,7 @@ import {
   emptyQuoteLine,
   freezeQuoteSnapshot,
   lineAmount,
+  normalizeQuoteContacts,
   quoteLinePrintLabel,
   quotePrintStrings,
   quoteTotal,
@@ -94,4 +95,17 @@ test("quotePrintStrings: ko/en titles", () => {
   assert.equal(quotePrintStrings("en").title, "Quote");
   assert.match(quotePrintStrings("en").attest, /quote/i);
   assert.equal(quotePrintStrings("en").nights(2), "2 nights");
+});
+
+test("recipient and supplier address fields round trip with the issued quote snapshot", () => {
+  const contacts = normalizeQuoteContacts({
+    contact: " 담당자 ", address: "수신 주소", businessAddress: "수신처 사업장", supplierAddress: "공급자 사업장", unknown: "제외",
+  });
+  const snapshot = freezeQuoteSnapshot({
+    title: "견적", clientName: "회사", clientPhone: "010-0000-0000", contacts, notes: "",
+    checkIn: "2026-11-05", nights: 1, guestCount: 2, lines: [emptyQuoteLine("t1")], showRoomNos: true,
+  }, "2026-11-05T00:00:00Z");
+  assert.deepEqual(normalizeQuoteContacts(JSON.parse(JSON.stringify(snapshot)).contacts), {
+    contact: "담당자", address: "수신 주소", businessAddress: "수신처 사업장", supplierAddress: "공급자 사업장",
+  });
 });

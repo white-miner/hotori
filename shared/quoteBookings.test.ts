@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { planQuoteTypeHoldBookings, validateQuoteForBookings } from "./quoteBookings";
 import { emptyQuoteLine, freezeQuoteSnapshot, quotePriceSummary, quoteLineWithRates, type QuoteDraft } from "./quoteDoc";
 import { quoteTemplateFromDraft, quoteTemplateLines, readQuoteTemplates } from "./quoteTemplates";
+import { applyQuoteTypeRates } from "./quoteRates";
+import { normalizeSettings } from "./ledger";
 import type { HotelSettings } from "./ledger";
 
 const s = {
@@ -131,4 +133,20 @@ test("template re-use preserves each arrival offset, duration, rate, headcount a
   assert.equal(quotePriceSummary(rows, "exempt").vatAmount, 0);
   lines[1]!.roomIds = ["r1"];
   assert.match(validateQuoteForBookings(reused, s) ?? "", /기간이 겹쳐요/);
+});
+
+test("quotes use the dedicated type price across nights and preserve manually entered exceptions", () => {
+  const settings = normalizeSettings({
+    ...s, typeRates: { t1: { flat: 240_000 } }, quoteTypeRates: { t1: 90_000, t2: 110_000 },
+  });
+  const original = { ...emptyQuoteLine("t1"), rooms: 2, nights: 2, rateSource: "type" as const };
+  const applied = applyQuoteTypeRates(original, "2026-11-05", settings);
+  assert.equal(applied.amount, 360_000);
+  assert.deepEqual(applied.nightAmounts?.map((night) => night.amount), [90_000, 90_000]);
+  const changedType = applyQuoteTypeRates({ ...applied, typeId: "t2" }, "2026-11-05", settings);
+  assert.equal(changedType.amount, 440_000);
+  const manual = quoteLineWithRates({ ...applied, rateSource: "manual" }, "2026-11-05", [90_000, 100_000]);
+  assert.equal(applyQuoteTypeRates(manual, "2026-11-05", settings), manual);
+  const missing = applyQuoteTypeRates(original, "2026-11-05", { ...settings, quoteTypeRates: {} });
+  assert.match(validateQuoteForBookings(draft({ checkIn: "2026-11-05", lines: [missing] }), settings) ?? "", /요금이 비어 있어요/);
 });

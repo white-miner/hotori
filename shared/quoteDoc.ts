@@ -16,6 +16,26 @@ export const QUOTE_LINE_LABEL_MAX = 40;
 export const QUOTE_LINES_MAX = 40;
 
 export type QuoteStatus = "draft" | "issued";
+export const QUOTE_CONTACT_FIELDS = {
+  contact: 60,
+  email: 120,
+  address: 180,
+  businessNumber: 30,
+  businessAddress: 180,
+  supplierAddress: 180,
+} as const;
+export type QuoteContacts = Partial<Record<keyof typeof QUOTE_CONTACT_FIELDS, string>>;
+
+export function normalizeQuoteContacts(raw: unknown): QuoteContacts {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+  const contacts: QuoteContacts = {};
+  for (const [key, max] of Object.entries(QUOTE_CONTACT_FIELDS) as [keyof QuoteContacts, number][]) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) contacts[key] = value.trim().slice(0, max);
+  }
+  return contacts;
+}
 export type QuoteTaxMode = "included" | "excluded" | "exempt";
 
 export function normalizeQuoteTaxMode(value: unknown): QuoteTaxMode {
@@ -34,6 +54,8 @@ export type QuoteLine = {
   nights: number;
   pax: number;
   detail?: string;
+  /** 타입 요금으로 자동 계산하는 항목. 예전 견적과 직접 입력은 저장된 단가를 사용해요. */
+  rateSource?: "type" | "manual";
   /** 1실·1박 단가 */
   rate: number;
   /** 줄 합계 (보통 rooms × nights × rate; 수동 override OK) */
@@ -45,6 +67,7 @@ export type QuoteLine = {
 };
 
 export type QuoteDoc = {
+  contacts?: QuoteContacts;
   id: string;
   hotelId: string;
   status: QuoteStatus;
@@ -73,6 +96,7 @@ export type QuoteDoc = {
 };
 
 export type QuoteSnapshot = {
+  contacts?: QuoteContacts;
   title: string;
   clientName: string;
   clientPhone: string;
@@ -95,6 +119,7 @@ export type QuoteSnapshot = {
 };
 
 export type QuoteDraft = {
+  contacts?: QuoteContacts;
   title: string;
   clientName: string;
   clientPhone: string;
@@ -148,7 +173,7 @@ export const QUOTE_COPY = {
   tipNights: "항목마다 객실 타입·수량·이용 날짜·박별 요금을 입력해요. 수량이 날짜마다 달라지면 날짜별 항목으로 나누세요.",
   emptyLines: "항목을 1개 이상 입력해 주세요.",
   titleRequired: "견적 제목 또는 견적처를 입력해 주세요.",
-  saveOk: "견적을 저장했어요.",
+  saveOk: "견적을 서버에 임시저장했어요.",
   issueOk: "견적을 발급하고 미배정 예약을 만들었어요.",
   deleteOk: "견적을 삭제했어요.",
   confirmDeleteTitle: "견적을 삭제할까요?",
@@ -342,7 +367,8 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
     if (!nightAmounts.length) nightAmounts = undefined;
   }
   const detail = typeof o.detail === "string" ? o.detail.trim().slice(0, 60) : undefined;
-  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts, detail };
+  const rateSource = o.rateSource === "type" || o.rateSource === "manual" ? o.rateSource : undefined;
+  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts, detail, rateSource };
 }
 
 /** Ensure night detail exists for edit UI; sync amount from cells×rooms when detail present */
@@ -391,6 +417,7 @@ export function freezeQuoteSnapshot(d: QuoteDraft, issuedAt: string, link?: { gr
     title: (d.title.trim() || d.clientName.trim() || QUOTE_COPY.title).slice(0, QUOTE_TITLE_MAX),
     clientName: d.clientName.trim().slice(0, QUOTE_CLIENT_MAX),
     clientPhone: d.clientPhone.trim().slice(0, QUOTE_PHONE_MAX),
+    contacts: normalizeQuoteContacts(d.contacts),
     notes: d.notes.trim().slice(0, QUOTE_NOTES_MAX),
     validUntil: d.validUntil ?? null,
     checkIn: d.checkIn,
@@ -414,6 +441,7 @@ export function quotePrintBody(doc: QuoteDoc): QuoteSnapshot {
       title: doc.title,
       clientName: doc.clientName,
       clientPhone: doc.clientPhone,
+      contacts: doc.contacts,
       notes: doc.notes,
       validUntil: doc.validUntil ?? null,
       taxMode: normalizeQuoteTaxMode(doc.taxMode),

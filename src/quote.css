@@ -20,3 +20,64 @@
 .quote-line-period label { display: grid; gap: 4px; min-width: 118px; font-size: 12px; font-weight: 750; }
 .quote-line-period input { min-height: 38px; }
 .quote-split-rooms { justify-self: start; }
+
+.quote-overlay { z-index: 65; }
+.modal.quote-only-rates { width: min(520px, 100%); }
+.quote-rate-explain { margin: 0 0 12px; font-size: 14px; color: var(--ink2); }
+.quote-type-rates-table { width: 100%; border-collapse: collapse; text-align: left; }
+.quote-type-rates-table :is(th, td) { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.quote-type-rates-table thead { position: sticky; top: 0; background: #fff; z-index: 1; }
+.quote-type-rates-table input { width: 100%; min-width: 0; min-height: 38px; text-align: right; }
+.quote-rate-source { color: var(--ink2); }
+.quote-rate-missing { color: #a32921; font-weight: 750; }
+.quote-form .quote-core-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.quote-letter .mh { flex-wrap: wrap; }
+.quote-letter .mh .quote-open-type-rates { min-height: 40px; }
+
+.quote-document { color: #1c2530; background: #fff; }
+.quote-print-slide.quote-document { max-width: 850px; margin-inline: auto; padding: 14px 20px 20px; }
+.quote-doc-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; border-bottom: 2px solid #29394b; padding-bottom: 12px; margin-bottom: 14px; }
+.quote-doc-heading h1 { margin: 0; font-size: 29px; letter-spacing: .12em; }
+.quote-doc-heading p { margin: 4px 0 0; font-size: 14px; }
+.quote-document dl { margin: 0; }
+.quote-document dl > div { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+.quote-document dt { color: #4d5c6c; }
+.quote-document dd { margin: 0; overflow-wrap: anywhere; }
+.quote-doc-heading dl { font-size: 12px; flex-shrink: 0; }
+.quote-doc-parties { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.quote-doc-parties section { padding: 10px 12px; border: 1px solid #c8d0db; border-radius: 6px; min-width: 0; }
+.quote-doc-parties h2, .quote-doc-footer h2 { font-size: 12px; margin: 0 0 3px; color: #45566a; }
+.quote-doc-parties strong { display: block; margin-bottom: 5px; overflow-wrap: anywhere; }
+.quote-doc-parties dl { font-size: 12px; line-height: 1.45; }
+.quote-doc-summary { margin-top: 12px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #aebdce; border-radius: 6px; background: #f4f7fb; }
+.quote-doc-summary strong { font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quote-doc-table { margin: 12px 0; }
+.quote-doc-table thead th { background: #edf2f7; color: #24364b; }
+.quote-doc-table tbody th { text-align: left; color: inherit; font-size: inherit; }
+.quote-doc-table :is(td, th) { padding: 7px 5px; }
+.quote-doc-table small { display: block; font-size: .86em; color: #4d5c6c; overflow-wrap: anywhere; }
+.quote-doc-table tbody td:nth-last-child(-n+2), .quote-doc-table tfoot td { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.quote-doc-table tfoot th { text-align: right; }
+.quote-doc-table tfoot td { font-weight: 700; }
+.quote-doc-table .quote-final-total { background: #edf2f7; }
+.quote-doc-night-row ul { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0; margin: 0; font-size: 11px; }
+.quote-doc-footer { display: grid; gap: 6px; text-align: right; font-size: 12px; }
+.quote-doc-footer p { margin: 0; white-space: pre-wrap; }
+.quote-doc-footer section { text-align: left; padding: 8px 10px; border: 1px solid #c8d0db; border-radius: 6px; }
+.quote-doc-cont { font-weight: 700; }
+@media screen and (max-width: 640px) {
+  .quote-form .quote-core-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quote-form .quote-core-fields label:last-child { grid-column: 1 / -1; }
+  .quote-print-slide.quote-document { padding-inline: 6px; }
+  .quote-doc-heading { align-items: start; flex-wrap: wrap; }
+  .quote-doc-parties { grid-template-columns: 1fr; }
+  .quote-doc-table { font-size: 11px; }
+  .quote-doc-table :is(td, th) { padding-inline: 3px; }
+}
+@media print {
+  .quote-document { font-size: 11pt; }
+  .quote-doc-heading, .quote-doc-parties, .quote-doc-summary, .quote-doc-footer, .quote-doc-table tfoot { break-inside: avoid; }
+  .quote-doc-table thead { display: table-header-group; }
+  .quote-doc-table tfoot { display: table-row-group; }
+  .quote-doc-table tr { break-inside: avoid; }
+}

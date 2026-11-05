@@ -140,6 +140,8 @@ export interface HotelSettings {
   cardFeeRate: number | null;
   /** 판매 캘린더: 타입별 평일/주말/기본 1박 (기본값만 · 예약 진실은 night_rates) */
   typeRates: TypeRatesMap;
+  /** 견적 전용 타입별 1실·1박 단가 */
+  quoteTypeRates?: Record<string, number>;
   /** 판매 캘린더: 타입×숙박일 요금 오버라이드 */
   typeRateOverrides: TypeRateOverridesMap;
   /** 판매 캘린더: 타입×숙박일 판매 중지 */
@@ -409,6 +411,9 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     parking: normalizeParking((s as { parking?: unknown }).parking),
     cardFeeRate: normalizeRate((s as { cardFeeRate?: unknown }).cardFeeRate),
     typeRates: normalizeTypeRates((s as { typeRates?: unknown }).typeRates),
+    quoteTypeRates: Object.fromEntries(Object.entries(s.quoteTypeRates ?? {}).filter(
+      ([id, amount]) => id && Number.isInteger(amount) && amount > 0 && amount <= 100_000_000,
+    )),
     typeRateOverrides: normalizeTypeRateOverrides((s as { typeRateOverrides?: unknown }).typeRateOverrides),
     typeStopSell: normalizeTypeStopSell((s as { typeStopSell?: unknown }).typeStopSell),
     typeSeasons: normalizeTypeSeasons((s as { typeSeasons?: unknown }).typeSeasons),

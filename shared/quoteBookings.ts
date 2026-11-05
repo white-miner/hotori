@@ -10,6 +10,7 @@ import { nightRatesFromTotal, occupiedNightDates, type StayNightRates } from "./
 import { isOnsite } from "./payment";
 import { type GroupInfo } from "./settle";
 import { type QuoteDraft, type QuoteLine, QUOTE_COPY } from "./quoteDoc";
+import { missingQuoteTypeRate } from "./quoteRates";
 
 export const QUOTE_BOOKING_MEMO_PREFIX = "[견적]" as const;
 
@@ -99,6 +100,8 @@ export function validateQuoteForBookings(draft: QuoteDraft, s: HotelSettings, bo
     if ((l.roomIds?.length ?? 0) > l.rooms) return "선택한 호실 수가 객실 수보다 많아요.";
     const from = l.checkIn || draft.checkIn;
     if (!from) return "입실 예정일을 입력해 주세요.";
+    const missingRate = missingQuoteTypeRate(l, from);
+    if (missingRate) return `${typeLabel(s.types.find((type) => type.id === l.typeId))} ${missingRate} 요금이 비어 있어요. 타입별 요금을 설정하거나 단가를 입력해 주세요.`;
     const to = addDays(from, nights);
     const free = l.roomIds?.length ? freeRooms(s, bookings, {
       id: l.id, kind: "stay", checkIn: from, nights, startTime: null, endTime: null,
