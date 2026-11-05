@@ -1223,6 +1223,24 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
 
+  const saveQuoteTypeRates = useCallback(async (changes: Record<string, number | null>) => {
+    const { data: current, error: readError } = await supabase.from("hotels")
+      .select("settings,updated_at").eq("id", hotelId).single();
+    if (readError) throw readError;
+    const raw = (current.settings ?? {}) as Partial<HotelSettings>;
+    const quoteTypeRates = { ...normalizeSettings(raw).quoteTypeRates };
+    for (const [typeId, rate] of Object.entries(changes)) {
+      if (rate === null) delete quoteTypeRates[typeId];
+      else quoteTypeRates[typeId] = rate;
+    }
+    const { data: saved, error } = await supabase.from("hotels")
+      .update({ settings: { ...raw, quoteTypeRates } })
+      .eq("id", hotelId).eq("updated_at", current.updated_at).select("settings").maybeSingle();
+    if (error) throw error;
+    if (!saved) throw new Error("다른 화면에서 설정이 갱신됐어요. 다시 저장해 주세요.");
+    setHotel((hotel) => hotel ? { ...hotel, settings: normalizeSettings(saved.settings) } : hotel);
+  }, [hotelId]);
+
   /**
    * 기록 한 줄 남기기 — 실패해도 본 작업은 막지 않아요(조용히 무시).
    * 메모(kind=note)는 쓰기 실패를 알려야 해서 결과를 돌려줘요.
@@ -1277,6 +1295,7 @@ export function useHotelData(hotelId: string) {
     restorePayment,
     deleteBooking,
     saveHotel,
+    saveQuoteTypeRates,
     saveGroup,
     saveGroupSchedule,
     patchGroup,
@@ -2162,6 +2181,7 @@ import {
   type QuoteDraft,
   type QuoteSnapshot,
   normalizeQuoteLines,
+  normalizeQuoteContacts,
   freezeQuoteSnapshot,
   validateQuoteDraft,
   QUOTE_NOTES_MAX,
@@ -2214,9 +2234,11 @@ const QUOTE_COLS =
 function fromQuoteRow(r: QuoteRow): QuoteDoc {
   const lines = normalizeQuoteLines(r.lines);
   const snapRaw = r.snapshot && typeof r.snapshot === "object" ? (r.snapshot as QuoteSnapshot) : null;
-  const snap = snapRaw
+  const contacts = normalizeQuoteContacts(snapRaw?.contacts);
+  const snap = r.status === "issued" && snapRaw
     ? ({
         ...snapRaw,
+        contacts,
         lines: normalizeQuoteLines(snapRaw.lines),
         validUntil: snapRaw.validUntil ?? r.valid_until ?? null,
         taxMode: normalizeQuoteTaxMode(snapRaw.taxMode ?? r.tax_mode),
@@ -2232,6 +2254,7 @@ function fromQuoteRow(r: QuoteRow): QuoteDoc {
     title: r.title ?? "",
     clientName: r.client_name ?? "",
     clientPhone: r.client_phone ?? "",
+    contacts,
     notes: r.notes ?? "",
     validUntil: r.valid_until ?? null,
     taxMode: normalizeQuoteTaxMode(r.tax_mode),
@@ -2251,12 +2274,13 @@ function fromQuoteRow(r: QuoteRow): QuoteDoc {
   };
 }
 
-export async function queryQuoteIssues(hotelId: string): Promise<QuoteDoc[]> {
-  const { data, error } = await supabase
+export async function queryQuoteIssues(hotelId: string, status?: QuoteDoc["status"]): Promise<QuoteDoc[]> {
+  const query = supabase
     .from("quote_issues")
     .select(QUOTE_COLS)
-    .eq("hotel_id", hotelId)
-    .order("created_at", { ascending: false })
+    .eq("hotel_id", hotelId);
+  const { data, error } = await (status ? query.eq("status", status) : query)
+    .order("updated_at", { ascending: false })
     .limit(100);
   if (error) throw error;
   return ((data as QuoteRow[]) ?? []).map(fromQuoteRow);
@@ -2299,6 +2323,7 @@ export function useQuoteIssues(hotelId: string) {
         lines,
         total,
         show_room_nos: !!draft.showRoomNos,
+        snapshot: { contacts: normalizeQuoteContacts(draft.contacts) },
       };
       if (id) {
         const { data, error } = await supabase.from("quote_issues").update(payload).eq("id", id).select(QUOTE_COLS).single();

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { addDays, allRooms, buildingName, dayLabel, typeLabel, usableTypes, won, type HotelSettings } from "../shared/ledger";
 import { emptyQuoteLine, QUOTE_LINES_MAX, quoteLineWithRates, type QuoteLine } from "../shared/quoteDoc";
-import { resolveStayRates } from "../shared/salesCalendar";
+import { missingQuoteTypeRate } from "../shared/quoteRates";
 import { resizeQuoteLine } from "../shared/quoteTemplates";
 import "./QuoteItemsEditor.css";
 
@@ -10,14 +10,13 @@ type Props = {
   start: string;
   lines: QuoteLine[];
   onChange: (lines: QuoteLine[]) => void;
-  notify: (message: string) => void;
 };
 
 function numberValue(value: string, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(Number(value) || 0)));
 }
 
-export default function QuoteItemsEditor({ settings, start, lines, onChange, notify }: Props) {
+export default function QuoteItemsEditor({ settings, start, lines, onChange }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const types = usableTypes(settings.types);
   const rooms = allRooms(settings);
@@ -28,7 +27,7 @@ export default function QuoteItemsEditor({ settings, start, lines, onChange, not
       <strong>객실 내역</strong>
       <button type="button" className="btn line sm" disabled={full || !types.length} onClick={() => {
         const type = types[0]!;
-        onChange([...lines, quoteLineWithRates({ ...emptyQuoteLine(type.id), label: typeLabel(type) }, start, [0])]);
+        onChange([...lines, { ...emptyQuoteLine(type.id), label: typeLabel(type), rateSource: "type" }]);
       }}>+ 항목 추가</button>
     </div>
     {lines.map((line, index) => {
@@ -40,13 +39,15 @@ export default function QuoteItemsEditor({ settings, start, lines, onChange, not
       const varied = rates.some((rate) => rate !== rates[0]);
       const label = (name: string) => `${index + 1}번 ${name}`;
       const patch = (fields: Partial<QuoteLine>) => replace(line.id, [{ ...line, ...fields }]);
-      const setRates = (next: number[]) => replace(line.id, [quoteLineWithRates(line, ci, next)]);
+      const setRates = (next: number[]) => replace(line.id, [quoteLineWithRates({ ...line, rateSource: "manual" }, ci, next)]);
+      const automatic = line.rateSource === "type";
+      const missing = missingQuoteTypeRate(line, start);
       const open = expanded === line.id;
       return <article key={line.id} className="quote-item" aria-label={label("객실 항목")}>
         <div className="quote-item-grid">
           <label>객실 타입<select aria-label={label("객실 타입")} value={line.typeId} onChange={(event) => {
             const type = types.find((item) => item.id === event.target.value);
-            if (type) patch({ typeId: type.id, label: typeLabel(type), roomIds: [] });
+            if (type) patch({ typeId: type.id, label: typeLabel(type), roomIds: [], rateSource: "type" });
           }}>
             {!types.some((type) => type.id === line.typeId) && <option value={line.typeId}>{line.label || "타입 선택"}</option>}
             {types.map((type) => <option key={type.id} value={type.id}>{typeLabel(type)}</option>)}
@@ -73,6 +74,10 @@ export default function QuoteItemsEditor({ settings, start, lines, onChange, not
         </div>
         <div className="quote-item-actions">
           <span>{dayLabel(ci)} → {dayLabel(addDays(ci, n))} · {n}박{line.roomIds?.length ? ` · 호실 ${line.roomIds.length}실` : ""}{line.detail ? ` · ${line.detail}` : ""}</span>
+          <small className={missing ? "quote-rate-missing" : "quote-rate-source"}>
+            {missing ? `${dayLabel(missing)} 요금 미설정` : automatic ? "타입 요금 자동" : "개별 요금"}
+          </small>
+          {!automatic && <button type="button" className="btn line sm" onClick={() => patch({ rateSource: "type" })}>타입 요금 적용</button>}
           <button type="button" className="btn line sm" aria-expanded={open} onClick={() => setExpanded(open ? null : line.id)}>
             {n > 3 ? "날짜별 요금·호실" : "호실·요금 사유"}
           </button>
@@ -80,14 +85,6 @@ export default function QuoteItemsEditor({ settings, start, lines, onChange, not
           <button type="button" className="btn line sm" disabled={lines.length === 1} onClick={() => replace(line.id, [])}>삭제</button>
         </div>
         {open && <div className="quote-item-detail">
-          <button type="button" className="btn line sm" onClick={() => {
-            const configured = resolveStayRates(settings, line.typeId, ci, n);
-            if (!configured.some((rate) => rate.amount > 0)) {
-              notify("이 타입과 기간에 설정된 요금이 없어요. 발급 화면의 ‘객실 타입별 요금 설정’에서 입력할 수 있어요.");
-              return;
-            }
-            setRates(configured.map((rate) => rate.amount));
-          }}>타입 설정 요금 불러오기</button>
           {n > 3 && <div className="quote-item-rates">{dates.map((date, i) => <label key={date}>{dayLabel(date)} 단가
             <input type="text" inputMode="numeric" aria-label={label(`${date} 단가`)} value={rates[i] || ""} placeholder="0"
               onChange={(event) => setRates(rates.map((rate, j) => j === i
