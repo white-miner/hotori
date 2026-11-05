@@ -191,7 +191,7 @@ export default function DamageLetter({
   };
 
   return (
-    <div className="dim damage-dim" role="presentation" onClick={onClose}>
+    <div className="dim damage-dim" role="presentation">
       <div
         className="modal damage-letter"
         role="dialog"

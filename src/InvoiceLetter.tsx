@@ -457,7 +457,7 @@ export default function InvoiceLetter({
   );
 
   return (
-    <div className="dim invoice-dim" role="presentation" onClick={onClose}>
+    <div className="dim invoice-dim" role="presentation">
       <div
         className="modal invoice-letter"
         role="dialog"

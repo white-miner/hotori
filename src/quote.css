@@ -65,6 +65,15 @@
 .quote-doc-footer p { margin: 0; white-space: pre-wrap; }
 .quote-doc-footer section { text-align: left; padding: 8px 10px; border: 1px solid #c8d0db; border-radius: 6px; }
 .quote-doc-cont { font-weight: 700; }
+[data-quote-color="blue"] { --quote-accent: #2762a8; --quote-tint: #eaf2ff; }
+[data-quote-color="green"] { --quote-accent: #24704c; --quote-tint: #e9f7ee; }
+[data-quote-color="purple"] { --quote-accent: #7543a8; --quote-tint: #f4edfb; }
+[data-quote-color="amber"] { --quote-accent: #9b6607; --quote-tint: #fff4df; }
+[data-quote-color="pink"] { --quote-accent: #ad4270; --quote-tint: #fcecf3; }
+.quote-doc-item, .quote-doc-night-row { background: var(--quote-tint, #fff); }
+.quote-doc-item > th:first-child { border-left: 3px solid var(--quote-accent, #8995a3); }
+.quote-doc-room-list { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.quote-doc-room-list > span { padding: 1px 5px; border: 1px solid #8190a1; border-radius: 4px; font-weight: 750; white-space: nowrap; }
 @media screen and (max-width: 640px) {
   .quote-form .quote-core-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quote-form .quote-core-fields label:last-child { grid-column: 1 / -1; }
@@ -80,4 +89,5 @@
   .quote-doc-table thead { display: table-header-group; }
   .quote-doc-table tfoot { display: table-row-group; }
   .quote-doc-table tr { break-inside: avoid; }
+  .quote-doc-item, .quote-doc-night-row { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }

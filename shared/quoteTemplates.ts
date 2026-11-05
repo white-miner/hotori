@@ -15,7 +15,7 @@ export function quoteTemplateFromDraft(name: string, draft: QuoteDraft): QuoteTe
     anchor: draft.checkIn!,
     taxMode: draft.taxMode,
     showRoomNos: draft.showRoomNos,
-    lines: draft.lines.map((line) => ({ ...line, roomIds: [] })),
+    lines: draft.lines.map((line) => ({ ...line, roomIds: [], roomLabels: undefined })),
   };
 }
 
@@ -33,6 +33,7 @@ export function quoteTemplateLines(template: QuoteTemplate, start: string): Quot
     ...rebaseQuoteLine(line, template.anchor, start),
     id: crypto.randomUUID(),
     roomIds: [],
+    roomLabels: undefined,
   }));
 }
 
@@ -61,7 +62,14 @@ export function readQuoteTemplates(raw: string | null): QuoteTemplate[] {
 }
 
 /** Preserve date-specific prices when resizing a quote row. */
-export function resizeQuoteLine(line: QuoteLine, checkIn: string, rooms: number, nights: number): QuoteLine {
-  const rates = Array.from({ length: nights }, (_, index) => line.nightAmounts?.[index]?.amount ?? line.rate);
+export function resizeQuoteLine(line: QuoteLine, checkIn: string, rooms: number, nights: number, typeRate?: number): QuoteLine {
+  const saved = line.nightAmounts ?? [];
+  const byDate = new Map(saved.map((night) => [night.date, night.amount]));
+  const uniform = saved.every((night) => night.amount === saved[0]?.amount);
+  const fallback = uniform ? saved[0]?.amount ?? line.rate : typeRate ?? 0;
+  const rates = Array.from({ length: nights }, (_, index) => {
+    const date = addDays(checkIn, index);
+    return byDate.get(date) ?? fallback;
+  });
   return quoteLineWithRates({ ...line, rooms, roomIds: line.roomIds?.slice(0, rooms) }, checkIn, rates);
 }

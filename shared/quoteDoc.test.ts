@@ -5,11 +5,14 @@ import {
   freezeQuoteSnapshot,
   lineAmount,
   normalizeQuoteContacts,
+  normalizeQuoteLine,
+  quoteLineWithRates,
   quoteLinePrintLabel,
   quotePrintStrings,
   quoteTotal,
   validateQuoteDraft,
 } from "./quoteDoc";
+import { resizeQuoteLine } from "./quoteTemplates";
 
 test("lineAmount / quoteTotal", () => {
   assert.equal(lineAmount(2, 3, 50_000), 300_000);
@@ -108,4 +111,17 @@ test("recipient and supplier address fields round trip with the issued quote sna
   assert.deepEqual(normalizeQuoteContacts(JSON.parse(JSON.stringify(snapshot)).contacts), {
     contact: "담당자", address: "수신 주소", businessAddress: "수신처 사업장", supplierAddress: "공급자 사업장",
   });
+});
+
+test("quote room labels, line color and dated prices survive a save and stay changes", () => {
+  const row = quoteLineWithRates({
+    ...emptyQuoteLine("t1"), color: "purple", roomIds: ["r1"], roomLabels: { r1: "본관 301", stale: "다른 객실" },
+  }, "2026-11-05", [90_000, 100_000, 110_000, 120_000]);
+  const loaded = normalizeQuoteLine(JSON.parse(JSON.stringify(row)))!;
+  assert.equal(loaded.color, "purple");
+  assert.deepEqual(loaded.roomLabels, { r1: "본관 301" });
+  const changed = resizeQuoteLine(loaded, "2026-11-06", 1, 4, 85_000);
+  assert.deepEqual(changed.nightAmounts?.map((cell) => cell.amount), [100_000, 110_000, 120_000, 85_000]);
+  assert.equal(changed.amount, 415_000);
+  assert.equal(normalizeQuoteLine({ ...row, color: "invalid" })?.color, undefined);
 });
