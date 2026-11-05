@@ -23,7 +23,6 @@ import { validateQuoteForBookings } from "../shared/quoteBookings";
 import { formatIssuanceNightDate } from "../shared/issuanceNightDetail";
 import { quoteTemplateFromDraft, quoteTemplateLines, readQuoteTemplates, rebaseQuoteLine, type QuoteTemplate } from "../shared/quoteTemplates";
 import { applyQuoteTypeRates } from "../shared/quoteRates";
-import { chunkIssuanceLines } from "../shared/issuancePages";
 import {
   allRooms,
   addDays,
@@ -35,11 +34,11 @@ import {
   typeLabel,
   usableTypes,
   won,
+  type Booking,
   type HotelSettings,
   type PrintLang,
 } from "../shared/ledger";
 import { askConfirm } from "./ConfirmDialog";
-import IssuancePager, { ISS_PAGER_EN, ISS_PAGER_KO } from "./IssuancePager";
 import QuoteItemsEditor from "./QuoteItemsEditor";
 
 interface Props {
@@ -48,6 +47,7 @@ interface Props {
   today: string;
   templateKey: string;
   initial?: QuoteDoc | null;
+  bookings?: Booking[];
   busy?: boolean;
   onSaveDraft: (draft: QuoteDraft, id?: string) => Promise<QuoteDoc>;
   onIssue: (draft: QuoteDraft, id?: string) => Promise<QuoteDoc>;
@@ -122,6 +122,7 @@ export default function QuoteLetter({
   today,
   templateKey,
   initial,
+  bookings,
   busy,
   onSaveDraft,
   onIssue,
@@ -147,16 +148,16 @@ export default function QuoteLetter({
   const [templateName, setTemplateName] = useState("");
   const [activeTemplate, setActiveTemplate] = useState<string | null>(null);
   const clientInput = useRef<HTMLInputElement>(null);
+  const slide = useRef<HTMLDivElement>(null);
   const [err, setErr] = useState<string | null>(null);
   const [lang, setLang] = useState<PrintLang>("ko");
-  const [page, setPage] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const t = quotePrintStrings(lang);
   const locked = issued || doc?.status === "issued";
   const draft = useMemo(() => locked ? draftState : {
     ...draftState,
     lines: draftState.lines.map((line) => applyQuoteTypeRates(line, draftState.checkIn ?? today, s)),
   }, [draftState, locked, s, today]);
-  const showRoomNos = locked ? !!(doc?.snapshot?.showRoomNos ?? doc?.showRoomNos) : draft.showRoomNos;
 
   const body = useMemo(() => {
     if (doc?.status === "issued" && doc.snapshot) return doc.snapshot;
@@ -236,7 +237,7 @@ export default function QuoteLetter({
       <strong>{won(total)} {ko ? "원" : "KRW"}</strong>
     </div>
   </>;
-  const documentTable = (lines: QuoteLine[], showTotal: boolean) => <table className="quote-tbl quote-doc-table">
+  const documentTable = () => <table className="quote-tbl quote-doc-table">
     <thead><tr>
       <th scope="col">{ko ? "객실 타입" : "Room type"}</th>
       <th scope="col">{ko ? "객실 배정" : "Assignment"}</th>
@@ -246,18 +247,24 @@ export default function QuoteLetter({
       <th scope="col">{t.rate}</th>
       <th scope="col">{t.amount}</th>
     </tr></thead>
-    <tbody>{lines.map((line) => {
+    <tbody>{body.lines.map((line) => {
       const ids = [...new Set(line.roomIds ?? [])].slice(0, line.rooms);
       const assigned = ids.length;
-      const roomNames = ids.map(roomNoOf).filter(Boolean);
+      const roomNames = ids.flatMap((id) => {
+        const name = (locked ? line.roomLabels?.[id] : undefined) || roomNoOf(id) || line.roomLabels?.[id];
+        return name ? [{ id, name }] : [];
+      });
       const varied = line.nightAmounts?.some((cell) => cell.amount !== line.nightAmounts?.[0]?.amount);
       return <Fragment key={line.id}>
-        <tr>
-          <th scope="row">{lineName(line)}{line.detail && <small>{line.detail}</small>}</th>
+        <tr className="quote-doc-item" data-quote-color={line.color}>
+          <th scope="row">{lineName(line)}</th>
           <td>{assigned === 0 ? (ko ? "미배정" : "Room TBD") :
             assigned === line.rooms ? (ko ? "배정 완료" : "Assigned") : (ko ? "일부 배정" : "Partially assigned")}
             {assigned > 0 && <small>{ko ? `${assigned}/${line.rooms}실` : `${assigned}/${line.rooms} rooms`}</small>}
-            {showRoomNos && roomNames.length > 0 && <small>{roomNames.join(" · ")}</small>}
+            {roomNames.length > 0 && <div className="quote-doc-room-list">
+              {roomNames.map(({ id, name }) => <span key={id}>{name}</span>)}
+            </div>}
+            {assigned > roomNames.length && <small>{ko ? "일부 호실 번호 정보 없음" : "Some room numbers unavailable"}</small>}
           </td>
           <td>{stayLabel(line)}</td>
           <td>{line.rooms}</td>
@@ -265,21 +272,36 @@ export default function QuoteLetter({
           <td>{varied ? (ko ? "날짜별" : "By date") : won(line.rate)}</td>
           <td>{won(line.amount)}</td>
         </tr>
-        {varied && <tr className="quote-doc-night-row"><td colSpan={7}>
+        {varied && <tr className="quote-doc-night-row" data-quote-color={line.color}><td colSpan={7}>
           <ul>{line.nightAmounts?.map((cell) => <li key={cell.date}>{formatIssuanceNightDate(cell.date, lang)} <b>{won(cell.amount)}</b></li>)}</ul>
         </td></tr>}
       </Fragment>;
     })}</tbody>
-    {showTotal && <tfoot>{totalRows()}</tfoot>}
+    <tfoot>{totalRows()}</tfoot>
   </table>;
   const documentFooter = () => <div className="quote-doc-footer">
-    {body.notes && <section><h2>{ko ? "견적 조건·안내사항" : "Terms and notes"}</h2><p>{body.notes}</p></section>}
+    {(body.notes || body.lines.some((line) => line.detail)) && <section>
+      <h2>{ko ? "견적서 첨부 메모" : "Attached notes"}</h2>
+      {body.notes && <p>{body.notes}</p>}
+      {body.lines.filter((line) => line.detail).map((line) => <p key={line.id}>{lineName(line)} · {line.detail}</p>)}
+    </section>}
     <p>{t.attest}</p>
     <div>{trade} · {t.representativeShort} {biz.representative || "____________"} <span>{t.seal}</span></div>
   </div>;
   const updateContact = (name: keyof QuoteContacts, value: string) =>
     setDraft((current) => ({ ...current, contacts: { ...current.contacts, [name]: value } }));
-  const draftForSave = () => ({ ...draft, contacts: { ...draft.contacts, supplierAddress: draft.contacts?.supplierAddress || biz.address } });
+  const draftForSave = (): QuoteDraft => ({
+    ...draft,
+    showRoomNos: true,
+    contacts: { ...draft.contacts, supplierAddress: draft.contacts?.supplierAddress || biz.address },
+    lines: draft.lines.map((line) => ({
+      ...line,
+      roomLabels: Object.fromEntries((line.roomIds ?? []).flatMap((id) => {
+        const label = roomNoOf(id) ?? line.roomLabels?.[id];
+        return label ? [[id, label]] : [];
+      })),
+    })),
+  });
 
   const storeTemplates = (next: QuoteTemplate[]) => {
     try {
@@ -321,17 +343,20 @@ export default function QuoteLetter({
     clientInput.current?.focus();
   };
 
-  /** page 0 = compose (or preview-only when locked); then preview line chunks */
-  const lineChunks = useMemo(() => chunkIssuanceLines(body.lines, 5), [body.lines]);
-  const composePages = locked ? 0 : 1;
-  const pageCount = composePages + lineChunks.length;
+  const onCompose = !locked && !previewOpen;
   useEffect(() => {
-    if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
-  }, [page, pageCount]);
-  const onCompose = !locked && page === 0;
-  const previewChunkIdx = locked ? page : page - 1;
-  const previewChunk = previewChunkIdx >= 0 ? lineChunks[previewChunkIdx] ?? [] : [];
-  const isLastPreview = previewChunkIdx >= 0 && previewChunkIdx === lineChunks.length - 1;
+    if (!onCompose && slide.current) slide.current.scrollTop = 0;
+  }, [onCompose]);
+  const requestClose = async () => {
+    if (busy) return;
+    if (!locked && draftState !== savedState.current && !(await askConfirm({
+      title: "작성 중인 견적을 닫을까요?",
+      body: "임시저장하지 않은 변경이 있어요.",
+      confirmLabel: "저장하지 않고 닫기",
+      cancelLabel: "계속 작성",
+    }))) return;
+    onClose();
+  };
 
   const save = async () => {
     const v = validateQuoteDraft(draft);
@@ -396,8 +421,8 @@ export default function QuoteLetter({
   </div>;
 
   return (
-    <div className="dim quote-dim" role="presentation" onClick={onClose}>
-      <div className="modal quote-letter quote-template-letter" role="dialog" aria-labelledby="quote-title" onClick={(e) => e.stopPropagation()}>
+    <div className="dim quote-dim" role="presentation">
+      <div className="modal quote-letter quote-template-letter" role="dialog" aria-modal="true" aria-labelledby="quote-title">
         <div className="mh noprint">
           <h2 id="quote-title">{t.title}</h2>
           {doc?.status === "issued" ? <span className="tag">{QUOTE_COPY.issued}</span> : null}
@@ -431,12 +456,12 @@ export default function QuoteLetter({
               {t.langEn}
             </button>
           </div>
-          <button type="button" className="x" onClick={onClose} aria-label={t.close}>
+          <button type="button" className="x" onClick={() => void requestClose()} disabled={busy} aria-label={t.close}>
             <X size={18} />
           </button>
         </div>
 
-        <div className="quote-slide noprint">
+        <div className="quote-slide noprint" ref={slide}>
           {onCompose ? (
             <div className="quote-form">
               <section className="quote-templates" aria-label="견적 템플릿">
@@ -474,7 +499,7 @@ export default function QuoteLetter({
                 </label>
               </div>
               <details className="quote-extra-fields">
-                <summary>수신처·사업자 정보와 견적 조건</summary>
+                <summary>수신처·사업자 정보</summary>
                 <div className="iss-form">
                   {([
                     ["contact", "수신처 담당자"], ["email", "수신처 이메일"], ["address", "수신처 주소"],
@@ -489,36 +514,31 @@ export default function QuoteLetter({
                   <label>유효기간
                     <input className="inp" type="date" value={draft.validUntil ?? ""} onChange={(e) => setDraft((d) => ({ ...d, validUntil: e.target.value || null }))} />
                   </label>
-                  <label>견적 조건·안내사항
-                    <textarea className="inp" rows={3} maxLength={QUOTE_NOTES_MAX} value={draft.notes} onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
-                  </label>
                 </div>
               </details>
-              <QuoteItemsEditor settings={s} start={draft.checkIn ?? today} lines={draft.lines}
+              <QuoteItemsEditor settings={s} bookings={bookings} start={draft.checkIn ?? today} lines={draft.lines}
                 onChange={(lines) => {
                   editedItems.current = true;
                   setDraft((d) => withQuoteLines(d, lines));
                 }} />
-              <label className="quote-show-rooms">
-                <input type="checkbox" checked={draft.showRoomNos} onChange={(e) => setDraft((d) => ({ ...d, showRoomNos: e.target.checked }))} />
-                <span>
-                  <strong>견적서에 객실번호 표시</strong>
-                  <span className="muted sm"> — 배정 상태는 항상 표시돼요.</span>
-                </span>
-              </label>
+              <details className="quote-extra-fields quote-attached-note">
+                <summary>견적서 첨부 메모{draft.notes.trim() ? " · 입력됨" : ""}</summary>
+                <textarea className="inp" aria-label="견적서 첨부 메모" rows={3} maxLength={QUOTE_NOTES_MAX} value={draft.notes}
+                  onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))} />
+              </details>
             </div>
           ) : (
             <div className="quote-print-slide quote-document">
-              {previewChunkIdx === 0 ? documentHeader() : <p className="quote-doc-cont">{t.title} · {previewChunkIdx + 1}/{lineChunks.length}</p>}
-              {documentTable(previewChunk, isLastPreview)}
-              {isLastPreview && documentFooter()}
+              {documentHeader()}
+              {documentTable()}
+              {documentFooter()}
             </div>
           )}
         </div>
 
         <div className="quote-print iss-print-src quote-document" aria-hidden>
           {documentHeader()}
-          {documentTable(body.lines, true)}
+          {documentTable()}
           {documentFooter()}
         </div>
 
@@ -532,13 +552,12 @@ export default function QuoteLetter({
             </select></label>
             <strong aria-live="polite">{draft.lines.reduce((sum, line) => sum + line.rooms, 0)}실 · {draft.guestCount}명 · 합계 {won(total)}원</strong>
           </div>}
-          {!onCompose && <IssuancePager page={page} pageCount={pageCount} onChange={setPage} labels={lang === "en" ? ISS_PAGER_EN : ISS_PAGER_KO} />}
           {err ? <p className="warn sm">{err}</p> : null}
           <p className="fine">{locked ? QUOTE_COPY.tip : hotelBizHasAny(biz) ? QUOTE_COPY.tip : "설정에 사업자 정보를 넣으면 헤더에 같이 인쇄돼요."}</p>
           <div className="keys acts">
             {!locked ? (
               <>
-                <button type="button" className="btn line sm" onClick={() => setPage(onCompose ? 1 : 0)}>{onCompose ? "미리보기" : "작성으로 돌아가기"}</button>
+                <button type="button" className="btn line sm" onClick={() => setPreviewOpen(onCompose)}>{onCompose ? "미리보기" : "작성으로 돌아가기"}</button>
                 <button type="button" className="btn line sm" disabled={busy} onClick={() => void save()}>
                   {QUOTE_COPY.draft}
                 </button>
@@ -560,7 +579,7 @@ export default function QuoteLetter({
               </button>
             ) : null}
           </div>
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={() => void requestClose()} disabled={busy}>
             {t.close}
           </button>
         </div>

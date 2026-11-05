@@ -480,6 +480,7 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
           today={today || businessDate()}
           initial={quoteOpen === "new" ? null : quoteOpen}
           templateKey={`hotori:quote-templates:v1:${hotelId}:${userId}`}
+          bookings={data.bookings}
           onOpenRateSettings={() => setQuoteRatesOpen(true)}
           onOpenDrafts={() => void openQuoteDrafts()}
           busy={quoteBusy}
@@ -804,7 +805,7 @@ function IssuancePickModal({
   };
 
   return (
-    <div className="dim iss-pick-dim" role="presentation" onClick={onClose}>
+    <div className="dim iss-pick-dim" role="presentation">
       <div
         className={`modal iss-pick-modal${multi ? " multi" : ""}`}
         role="dialog"
@@ -1219,7 +1220,7 @@ function VaultSection({
       )}
 
       {uploadOpen ? (
-        <div className="dim iss-upload-dim" role="presentation" onClick={closeUpload}>
+        <div className="dim iss-upload-dim" role="presentation">
           <div
             className="modal iss-upload-modal"
             role="dialog"
@@ -1319,7 +1320,7 @@ function VaultSection({
       ) : null}
 
       {viewer ? (
-        <div className="dim iss-viewer-dim" role="presentation" onClick={() => setViewer(null)}>
+        <div className="dim iss-viewer-dim" role="presentation">
           <div className="modal iss-viewer" role="dialog" aria-label={viewerTitle} onClick={(e) => e.stopPropagation()}>
             <div className="mh">
               <h2>{viewerTitle}</h2>

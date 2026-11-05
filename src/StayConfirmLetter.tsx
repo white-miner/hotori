@@ -210,7 +210,7 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
   );
 
   return (
-    <div className="dim stay-confirm-dim" role="presentation" onClick={onClose}>
+    <div className="dim stay-confirm-dim" role="presentation">
       <div
         className="modal stay-confirm"
         role="dialog"

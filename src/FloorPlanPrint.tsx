@@ -38,7 +38,7 @@ export default function FloorPlanPrint({ hotelName, s, today, onClose }: Props) 
   const printDoc = () => runPrint(fileTitle);
 
   return (
-    <div className="dim floor-plan-dim" role="presentation" onClick={onClose}>
+    <div className="dim floor-plan-dim" role="presentation">
       <div
         className="modal floor-plan-print-modal"
         role="dialog"

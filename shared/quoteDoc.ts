@@ -16,6 +16,12 @@ export const QUOTE_LINE_LABEL_MAX = 40;
 export const QUOTE_LINES_MAX = 40;
 
 export type QuoteStatus = "draft" | "issued";
+export const QUOTE_ITEM_COLORS = ["neutral", "blue", "green", "purple", "amber", "pink"] as const;
+export type QuoteItemColor = (typeof QUOTE_ITEM_COLORS)[number];
+
+export function normalizeQuoteItemColor(value: unknown): QuoteItemColor | undefined {
+  return QUOTE_ITEM_COLORS.find((color) => color === value);
+}
 export const QUOTE_CONTACT_FIELDS = {
   contact: 60,
   email: 120,
@@ -54,6 +60,7 @@ export type QuoteLine = {
   nights: number;
   pax: number;
   detail?: string;
+  color?: QuoteItemColor;
   /** 타입 요금으로 자동 계산하는 항목. 예전 견적과 직접 입력은 저장된 단가를 사용해요. */
   rateSource?: "type" | "manual";
   /** 1실·1박 단가 */
@@ -62,6 +69,8 @@ export type QuoteLine = {
   amount: number;
   /** 미리 배정한 호실 id. 일부만 지정하면 나머지 실은 호실 미정으로 발급해요. */
   roomIds?: string[];
+  /** 발급 시점 호실 표시명. 객실 이름이 바뀌어도 발급본은 같은 번호를 표시해요. */
+  roomLabels?: Record<string, string>;
   /** 1실 기준 날짜별 단가 (있으면 amount = rooms × Σ) */
   nightAmounts?: IssuanceNightCell[];
 };
@@ -367,8 +376,14 @@ export function normalizeQuoteLine(raw: unknown): QuoteLine | null {
     if (!nightAmounts.length) nightAmounts = undefined;
   }
   const detail = typeof o.detail === "string" ? o.detail.trim().slice(0, 60) : undefined;
+  const color = normalizeQuoteItemColor(o.color);
+  const rawLabels = o.roomLabels && typeof o.roomLabels === "object" ? o.roomLabels as Record<string, unknown> : {};
+  const roomLabels = Object.fromEntries(roomIds.flatMap((roomId) => {
+    const label = rawLabels[roomId];
+    return typeof label === "string" && label.trim() ? [[roomId, label.trim().slice(0, 80)]] : [];
+  }));
   const rateSource = o.rateSource === "type" || o.rateSource === "manual" ? o.rateSource : undefined;
-  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, nightAmounts, detail, rateSource };
+  return { id, checkIn, typeId, label, rooms, nights, pax, rate, amount, roomIds, roomLabels, nightAmounts, detail, rateSource, color };
 }
 
 /** Ensure night detail exists for edit UI; sync amount from cells×rooms when detail present */
