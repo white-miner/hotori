@@ -374,12 +374,17 @@ test("detectProfile: weak/unknown headers → not confident", () => {
   assert.equal(d.profileId, null);
 });
 
-test("inactive agoda never wins auto-detect without allowInactive", () => {
+test("agoda english table with the word agoda can win; yanolja fixture still wins", () => {
   const headers = ["Booking ID", "Guest name", "Room type", "Check-in", "Check-out", "Amount", "Status"];
   const d = detectProfile(headers, "agoda partner");
-  assert.ok(!d.scores.some((s) => s.id === "agoda") || !d.confident || d.profileId !== "agoda");
-  const withInactive = detectProfile(headers, "agoda partner", { allowInactive: true });
-  assert.ok(withInactive.scores.find((s) => s.id === "agoda")!.score > 0);
+  assert.equal(d.confident, true);
+  assert.equal(d.profileId, "agoda");
+  const y = parsePasteTable(HYPOTHESIS_FIXTURES.yanolja)!;
+  const yd = detectProfile(y.headers, HYPOTHESIS_FIXTURES.yanolja);
+  assert.equal(yd.confident, true);
+  assert.equal(yd.profileId, "yanolja");
+  const plain = detectProfile(headers, "partner export");
+  assert.notEqual(plain.profileId, "agoda");
 });
 
 test("yanolja normalize + preview: cancel without match → create-as-cancelled", () => {
@@ -800,9 +805,10 @@ test("12 known + 1 new → 신규 1 · 기존예약 12 · 수정필요 0", () =>
   }
 });
 
-test("seed profiles: active = yanolja+yeogi only (hypothesis fixtures)", () => {
+test("seed profiles: active = yanolja+yeogi+agoda (naver stays inactive until a sample)", () => {
   const active = PLATFORM_PROFILES.filter((p) => p.active).map((p) => p.id).sort();
-  assert.deepEqual(active, ["yanolja", "yeogi"]);
+  assert.deepEqual(active, ["agoda", "yanolja", "yeogi"]);
+  assert.equal(profileById("naver")!.active, false);
 });
 
 test("isKnownNestedChannelLabel: heuristic — never eat guest names", () => {

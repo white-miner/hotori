@@ -22,6 +22,7 @@ import {
   LoaderCircle,
   BookmarkPlus,
   Settings,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -60,6 +61,14 @@ import {
   previewTypeMismatch,
   upsertTypeAlias,
 } from "../shared/smartRegister";
+import {
+  loadPasteTemplates,
+  parseManualLabeledTable,
+  pasteTemplateStorageKey,
+  serializePasteTemplateStore,
+  type PasteTemplate,
+} from "../shared/pasteTemplate";
+import PasteTemplatePanel from "./PasteTemplatePanel";
 import type { HotelData } from "./data";
 import { askConfirm } from "./ConfirmDialog";
 import { Chip, ChipGroup, Inp } from "./primitives";
@@ -119,6 +128,23 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const prevRowsLen = useRef(0);
+  const hotelId = data.hotel?.id ?? "";
+  const userId = data.meId ?? "";
+  const canStoreTemplates = Boolean(pasteTemplateStorageKey(hotelId, userId));
+  const [templates, setTemplates] = useState<PasteTemplate[]>([]);
+  const [templateOpen, setTemplateOpen] = useState(false);
+
+  useEffect(() => {
+    if (!canStoreTemplates) {
+      setTemplates([]);
+      return;
+    }
+    try {
+      setTemplates(loadPasteTemplates((key) => localStorage.getItem(key), hotelId, userId));
+    } catch {
+      setTemplates([]);
+    }
+  }, [canStoreTemplates, hotelId, userId]);
 
   const dismissSummary = useCallback(() => {
     if (summaryTimer.current) {
@@ -161,7 +187,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const rebuild = useCallback(
     (text: string, forcedId: PlatformProfileId | null, forced: boolean) => {
       setSummary(null);
-      const table = parsePasteTable(text, { channelLabels });
+      const table =
+        parsePasteTable(text, { channelLabels, templates }) ??
+        (forced && forcedId ? parseManualLabeledTable(text, forcedId, templates) : null);
       if (!table) {
         setRows([]);
         setParseErr(
@@ -199,13 +227,32 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       setRows(preview);
       setParseErr(null);
     },
-    [s, data.bookings, channelLabels],
+    [s, data.bookings, channelLabels, templates],
   );
+
+  // 직원 id가 늦게 도착하거나 양식을 저장·되돌린 뒤, 이미 붙여넣은 글을 그 양식으로 다시 읽는다.
+  useEffect(() => {
+    if (!paste.trim()) return;
+    rebuild(paste, profileForced ? profileId : null, profileForced);
+  }, [templates]); // paste 입력은 onPasteChange가 바로 읽는다.
 
   const onPasteChange = (v: string) => {
     setPaste(v);
     setProfileForced(false);
     rebuild(v, null, false);
+  };
+
+  const writeTemplates = (next: PasteTemplate[]) => {
+    setTemplates(next);
+    const key = pasteTemplateStorageKey(hotelId, userId);
+    if (!key) return;
+    try {
+      if (!next.length) localStorage.removeItem(key);
+      else localStorage.setItem(key, serializePasteTemplateStore(next));
+      notify("이 브라우저에만 저장했어요");
+    } catch {
+      notify("이 브라우저에 저장하지 못했어요");
+    }
   };
 
   /** Empty paste + preview for next batch (does not upload). */
@@ -673,6 +720,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <p className="sub">파트너센터 예약목록을 붙여넣으면 미배정으로 올려요. 채널 API 없음.</p>
             </div>
             <div className="smart-reg-head-actions">
+              <button
+                type="button"
+                className="btn sm line"
+                onClick={() => setTemplateOpen(true)}
+                disabled={busy || uploadPhase !== "idle"}
+              >
+                <SlidersHorizontal size={14} strokeWidth={2.2} aria-hidden />
+                양식 설정
+              </button>
               <a className="btn sm line" href="#/settings">
                 <Settings size={14} strokeWidth={2.2} aria-hidden />
                 설정
@@ -933,6 +989,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             {r.nightsInclusiveSuspect ? " · 일→박" : ""}
                           </span>
                           {r.statusRaw ? <div className="sub">가져온 상태: {r.statusRaw}</div> : null}
+                          {r.warnings?.map((w) => (
+                            <div key={w} className="sub">{w}</div>
+                          ))}
                         </td>
                         <td>
                           <Inp
@@ -942,6 +1001,24 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             aria-label="이름"
                           />
                           {r.sourceGuestName ? <div className="sub smart-reg-source-name">붙여넣기 이름: {r.sourceGuestName}</div> : null}
+                          {r.guests != null ? (
+                            <label className="sub smart-reg-adults">
+                              성인
+                              <input
+                                className="inp"
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={r.guests}
+                                disabled={busy || r.skip}
+                                aria-label="성인"
+                                onChange={(e) => {
+                                  const n = Number(e.target.value);
+                                  patchRow(r.key, { guests: Number.isInteger(n) && n >= 1 && n <= 99 ? n : null });
+                                }}
+                              />
+                            </label>
+                          ) : null}
                           {r.nestedChannelRaw ? (
                             <div
                               className="sub"
@@ -1018,6 +1095,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             onChange={(e) => patchRow(r.key, { checkIn: e.target.value || null })}
                             aria-label="입실"
                           />
+                          {r.checkInTime ? <div className="sub">입실 {r.checkInTime}</div> : null}
                         </td>
                         <td>
                           <Inp
@@ -1032,6 +1110,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             }}
                             aria-label="박수"
                           />
+                          {r.checkOutTime ? <div className="sub">퇴실 {r.checkOutTime}</div> : null}
                         </td>
                         <td>
                           <Inp
@@ -1047,7 +1126,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             aria-label="판매금"
                           />
                           {!r.priceUnset && r.amount != null ? (
-                            <div className="sub">{won(r.amount)}</div>
+                            <div className="sub">{won(r.amount)}{r.currency ? ` · ${r.currency} · 판매 총액` : ""}</div>
                           ) : (
                             <div className="sub">금액미정</div>
                           )}
@@ -1076,6 +1155,20 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
           </section>
         </div>
       </div>
+
+      {templateOpen ? (
+        <PasteTemplatePanel
+          templates={templates}
+          canSave={canStoreTemplates && !readOnly}
+          onClose={() => setTemplateOpen(false)}
+          onSave={(template) => {
+            const next = templates.filter((t) => t.platformId !== template.platformId);
+            if (Object.keys(template.labels).length) next.push(template);
+            writeTemplates(next);
+          }}
+          onReset={(id) => writeTemplates(templates.filter((t) => t.platformId !== id))}
+        />
+      ) : null}
 
       {uploadPhase !== "idle" ? (
         <div
