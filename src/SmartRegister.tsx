@@ -230,6 +230,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     [s, data.bookings, channelLabels, templates],
   );
 
+  // 직원 id가 늦게 도착하거나 양식을 저장·되돌린 뒤, 이미 붙여넣은 글을 그 양식으로 다시 읽는다.
+  useEffect(() => {
+    if (!paste.trim()) return;
+    rebuild(paste, profileForced ? profileId : null, profileForced);
+  }, [templates]); // paste 입력은 onPasteChange가 바로 읽는다.
+
   const onPasteChange = (v: string) => {
     setPaste(v);
     setProfileForced(false);
