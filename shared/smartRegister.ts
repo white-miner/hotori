@@ -13,6 +13,7 @@ import {
   usableTypes,
 } from "./ledger";
 import { type StayNightRates, occupiedNightDates } from "./nightrates";
+import { agodaPartnerSignature, parseAgodaLabeledTable, parseAdults, parseClock, type PasteTemplate } from "./pasteTemplate";
 import { resolveNightRate } from "./salesCalendar";
 
 /** Canonical paste fields (shared across platforms). */
@@ -25,7 +26,11 @@ export type PasteField =
   | "nights"
   | "amount"
   | "reservationId"
-  | "statusRaw";
+  | "statusRaw"
+  | "adults"
+  | "checkInTime"
+  | "checkOutTime"
+  | "currency";
 
 export type PlatformProfileId = "yanolja" | "yeogi" | "agoda" | "naver";
 
@@ -56,6 +61,10 @@ export const CANONICAL_FIELDS: PasteField[] = [
   "amount",
   "reservationId",
   "statusRaw",
+  "adults",
+  "checkInTime",
+  "checkOutTime",
+  "currency",
 ];
 
 /** Shared / overlapping aliases (hypotheses until live samples). */
@@ -69,6 +78,10 @@ const COMMON: Record<PasteField, string[]> = {
   amount: ["판매가", "결제금액", "판매금액", "amount", "total", "결제액", "판매금", "총금액"],
   reservationId: ["예약번호", "예약 id", "booking id", "confirmation", "예약id", "확인번호"],
   statusRaw: ["상태", "status", "예약상태", "예약 상태"],
+  adults: [],
+  checkInTime: [],
+  checkOutTime: [],
+  currency: [],
 };
 
 function withCommon(extra: Partial<Record<PasteField, string[]>>): Record<PasteField, string[]> {
@@ -79,7 +92,7 @@ function withCommon(extra: Partial<Record<PasteField, string[]>>): Record<PasteF
   return out;
 }
 
-/** Seed profiles. Hypothesis fixtures mark yanolja + yeogi active; agoda/naver inactive until samples. */
+/** Seed profiles. 야놀자·여기어때·아고다는 받은 붙여넣기 형식이 있다. 네이버는 견본 전까지 끈다. */
 export const PLATFORM_PROFILES: PlatformProfile[] = [
   {
     id: "yanolja",
@@ -113,12 +126,17 @@ export const PLATFORM_PROFILES: PlatformProfile[] = [
     hotoriPlatformMatch: ["아고다", "agoda", "아"],
     headerAliases: withCommon({
       guestName: ["guest name", "booker name"],
-      reservationId: ["booking id", "confirmation number"],
+      reservationId: ["booking id", "confirmation number", "예약 번호"],
+      amount: ["기준 판매 요금", "reference sell rate"],
+      adults: ["성인", "adults"],
+      checkInTime: ["입실 시각"],
+      checkOutTime: ["퇴실 시각"],
+      currency: ["통화", "currency"],
     }),
-    detectHints: ["agoda", "아고다"],
-    statusSkip: ["cancelled", "canceled", "no-show", "취소"],
-    version: 1,
-    active: false,
+    detectHints: ["agoda", "아고다", "기준 판매 요금", "확정된 예약", "athena-"],
+    statusSkip: ["cancelled", "canceled", "no-show", "취소된 예약", "예약취소", "고객취소", "취소"],
+    version: 2,
+    active: true,
   },
   {
     id: "naver",
@@ -825,6 +843,8 @@ export function looksLikeYanoljaCardPaste(text: string): boolean {
 export type ParsePasteOpts = {
   /** Hotel platforms[].name/abbr — confident nested-channel detection beyond seed allowlist. */
   channelLabels?: readonly string[] | null;
+  /** 이 호텔·직원 브라우저에 저장된 칸 이름. 없으면 기본 아고다 양식. */
+  templates?: readonly PasteTemplate[] | null;
 };
 
 /** Parse one card block (starts with reservation id) → synthetic table row. */
@@ -1040,6 +1060,10 @@ export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPaste
   const card = parseYanoljaCardPaste(text, opts);
   if (card) return card;
 
+  // 아고다 파트너 상세: 칸 이름 아래 값. 표·야놀자 카드보다 뒤에서만 본다.
+  const labeled = parseAgodaLabeledTable(text, opts?.templates);
+  if (labeled) return labeled;
+
   const aliasNorms = allHeaderAliasNorms();
   let rawLines = text.split("\n").map((l) => l.trimEnd());
   let lines = rawLines.filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
@@ -1075,6 +1099,7 @@ export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPaste
 /** 카드 텍스트에는 HTML 표 밖의 취소 상태·마스킹 이름도 포함된다. 이를 표로 덮어쓰지 않는다. */
 export function smartClipboardText(plain: string, html: string): string {
   if (parseYanoljaCardPaste(plain)) return plain;
+  if (agodaPartnerSignature(plain)) return plain;
   return (/<table[\s>]/i.test(html) ? htmlTableToPlain(html) : null) || plain;
 }
 
@@ -1148,6 +1173,10 @@ export interface NormalizedPasteRow {
   amount: number | null;
   reservationId: string;
   statusRaw: string;
+  adults: number | null;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  currency: string | null;
   /**
    * Paste status matches profile.statusSkip (취소/노쇼/cancelled…).
    * Formerly blind-skip; MVP routes to cancel sync when 예약번호 matches Hotori.
@@ -1238,6 +1267,11 @@ export function normalizeRow(
   const amount = parseAmount(cellAt(row, colMap.amount));
   const reservationId = cellAt(row, colMap.reservationId);
   const statusRaw = cellAt(row, colMap.statusRaw);
+  const adults = parseAdults(cellAt(row, colMap.adults));
+  const checkInTime = parseClock(cellAt(row, colMap.checkInTime));
+  const checkOutTime = parseClock(cellAt(row, colMap.checkOutTime));
+  const currencyRaw = cellAt(row, colMap.currency).trim().toUpperCase();
+  const currency = /^[A-Z]{3}$/.test(currencyRaw) ? currencyRaw : null;
   const cancel = isCancelStatus(statusRaw, profile);
 
   return {
@@ -1250,6 +1284,10 @@ export function normalizeRow(
     amount,
     reservationId,
     statusRaw,
+    adults,
+    checkInTime,
+    checkOutTime,
+    currency,
     isCancelStatus: cancel,
     skipSuggested: cancel,
     nightsInclusiveSuspect,
@@ -1664,6 +1702,13 @@ export interface PreviewRow {
   priceUnset: boolean;
   reservationId: string;
   statusRaw: string;
+  /** 성인 수. 원문에 없으면 없음. 방 수로 바꾸지 않는다. */
+  guests?: number | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  currency?: string | null;
+  /** 비우거나 확인이 필요한 이유. 결제 상태를 만들지 않는다. */
+  warnings?: string[];
   skip: boolean;
   nightsInclusiveSuspect: boolean;
   dup: boolean;
@@ -1795,8 +1840,19 @@ export function buildPreviewRows(
   const colMap = mapColumns(table.headers, profile);
   const list = existing as BookingReservationPick[];
   const sourceLabel = profile.label;
-  return table.rows.map((row, i) => {
+  const built = table.rows.map((row, i) => {
     const n = normalizeRow(row, colMap, profile);
+    const noteIdx = table.headers.findIndex((h) => normHeader(h) === normHeader("안내"));
+    const warnings = (noteIdx >= 0 ? cellAt(row, noteIdx) : "")
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (n.checkInTime && n.checkInTime !== (s.stayTimes?.checkIn ?? "")) {
+      warnings.push("입실 시각이 호텔 기본과 달라요. 빠른 입실 요금은 넣지 않아요");
+    }
+    if (n.checkOutTime && n.checkOutTime !== (s.stayTimes?.checkOut ?? "")) {
+      warnings.push("퇴실 시각이 호텔 기본과 달라요. 늦은 퇴실 요금은 넣지 않아요");
+    }
     const nestedRaw = nestedChannelFromRow(table, row);
     const nestedHit = nestedRaw ? matchPlatformByLabel(nestedRaw, s) : null;
     // Matched nested → that Hotori platform; unknown nested chip only → keep paste-source platform
@@ -1878,6 +1934,11 @@ export function buildPreviewRows(
       priceUnset: n.amount == null,
       reservationId: n.reservationId,
       statusRaw: n.statusRaw,
+      guests: n.adults,
+      checkInTime: n.checkInTime,
+      checkOutTime: n.checkOutTime,
+      currency: n.currency,
+      warnings,
       skip,
       nightsInclusiveSuspect: n.nightsInclusiveSuspect,
       dup,
@@ -1891,6 +1952,20 @@ export function buildPreviewRows(
       nestedChannelUnmatched,
     };
   });
+  const seenReservation = new Set<string>();
+  for (const row of built) {
+    const id = row.reservationId.trim();
+    if (!id || !row.platformId) continue;
+    const key = `${row.platformId}\0${id}`;
+    if (seenReservation.has(key) && !row.pasteCancel && row.rowStatus !== "dup") {
+      row.dup = true;
+      row.skip = true;
+      row.rowStatus = "dup";
+    } else {
+      seenReservation.add(key);
+    }
+  }
+  return built;
 }
 
 export function recomputeRowStatus(row: Omit<PreviewRow, "rowStatus">): PreviewRowStatus {
@@ -1945,6 +2020,7 @@ export function pathADraftFromPreview(
     priceUnset,
     guestName: row.guestName.trim(),
     guestPhone: row.guestPhone.trim() || null,
+    guests: row.guests != null && row.guests > 0 ? row.guests : null,
     typeId: row.typeId!,
     roomId: null,
     segments: null,
@@ -1959,8 +2035,14 @@ export function pathADraftFromPreview(
       row.reservationId,
       row.typeRaw,
       row.nestedChannelRaw || undefined,
-    ) + `\n[가져온 정보] 이름 ${row.sourceGuestName ?? row.guestName} · 상태 ${row.statusRaw || "미표시"}`,
-    guests: null,
+    ) + `\n[가져온 정보] ${[
+      `이름 ${row.sourceGuestName ?? row.guestName}`,
+      `상태 ${row.statusRaw || "미표시"}`,
+      row.checkInTime ? `입실 ${row.checkInTime}` : "",
+      row.checkOutTime ? `퇴실 ${row.checkOutTime}` : "",
+      row.guests ? `성인 ${row.guests}` : "",
+      row.currency ? `통화 ${row.currency}` : "",
+    ].filter(Boolean).join(" · ")}`,
     // 박별 요금: 직원이 가져오기 화면에서 입력한 박만 저장 (총액을 박수로 나눠 채우지 않아요)
     nightRates: status === "active" && !priceUnset ? enteredNightRates(row) : null,
     cancelledAt: null,

@@ -5328,9 +5328,24 @@ body.bulking .toast { bottom: 96px; }
 .type-alias-add { align-items: center; gap: var(--space-2, 8px); flex-wrap: wrap; }
 .type-alias-add .nin.inp { flex: 1 1 180px; min-width: 140px; }
 .type-alias-add select.inp { flex: 0 1 140px; }
+.smart-reg-adults { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; }
+.smart-reg-adults .inp { width: 64px; height: 28px; }
+.paste-template-modal { width: min(560px, 100%); max-height: min(86vh, 840px); overflow: auto; }
+.paste-template-note { margin-top: 0; }
+.paste-template-fields { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.paste-template-fields label,
+.paste-template-sample { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 750; }
+.paste-template-sample { margin-top: 8px; }
+.paste-template-sample .smart-reg-ta { min-height: 120px; }
+.paste-template-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.paste-template-preview { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 0; font-size: 13px; }
+.paste-template-preview div { display: flex; gap: 8px; }
+.paste-template-preview dt { flex: 0 0 84px; color: var(--ink3); font-weight: 700; }
+.paste-template-preview dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 900px) {
   .smart-reg-head-row { gap: var(--space-2, 8px); }
   .smart-reg-ta { min-height: 160px; }
+  .paste-template-modal { width: 100%; }
 }
 
 /* 미배정 정렬 버튼 (현황·배치 운영패널) */
