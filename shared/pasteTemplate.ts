@@ -244,18 +244,36 @@ function isRealDate(y: number, mo: number, d: number): boolean {
 }
 
 /** 날짜 한 줄만 인정. 문장 속의 날짜는 집지 않는다. */
-export function parseStayDate(raw: string): string | null {
+/** 날짜 한 줄. `2026년 11월 7일`, `…일 토요일, 16:00` 만 인정한다. */
+function splitStayStamp(raw: string): { date: string; time: string | null; badTime: boolean } | null {
   const t = raw.replace(/\u00a0/g, " ").trim();
   if (!t) return null;
   const m =
-    t.match(/^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?(?:\s*[（(][^)）]{1,12}[)）])?\s*$/u) ||
-    t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:\s*[（(][^)）]{1,12}[)）])?\s*$/);
+    t.match(
+      /^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?(?:\s*[월화수목금토일]요일)?(?:\s*[,，]\s*(\d{1,2}):(\d{2}))?(?:\s*[（(][^)）]{1,12}[)）])?\s*$/u,
+    ) ||
+    t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:\s*[（(][^)）]{1,12}[)）])?(?:\s+(\d{1,2}):(\d{2}))?\s*$/);
   if (!m) return null;
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
   if (!isRealDate(y, mo, d)) return null;
-  return `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const date = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  if (m[4] == null || m[5] == null) return { date, time: null, badTime: false };
+  const h = Number(m[4]);
+  const min = Number(m[5]);
+  if (!Number.isInteger(h) || !Number.isInteger(min) || h > 23 || min > 59) return { date, time: null, badTime: true };
+  return { date, time: `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`, badTime: false };
+}
+
+export function parseStayDate(raw: string): string | null {
+  return splitStayStamp(raw)?.date ?? null;
+}
+
+export function clockOnStayLine(raw: string): { time: string | null; badTime: boolean } {
+  const stamp = splitStayStamp(raw);
+  if (!stamp) return { time: null, badTime: false };
+  return { time: stamp.time, badTime: stamp.badTime };
 }
 
 export function parseClock(raw: string): string | null {
@@ -360,12 +378,39 @@ function matchLabel(line: string, label: string): { rest: string } | null {
   const ln = normLabel(line);
   if (!ln.startsWith(lb)) return null;
   if (ln !== lb) {
-    const next = ln.charAt(lb.length);
-    if (next !== "(" && next !== "（" && !/[\da-z가-힣]/iu.test(next)) return null;
+    const restNorm = ln.slice(lb.length);
+    const note = restNorm.startsWith("(") || restNorm.startsWith("（");
+    const inlineValue = /\d/u.test(restNorm);
+    if (!note && !inlineValue) return null;
   }
   const rest = stripLabelPrefix(line, label);
   if (rest == null) return null;
   return { rest };
+}
+
+/** 기본 아고다 글자와 같은 칸일 때만 같이 보는 다른 표기. 사용자가 칸 이름을 바꾸면 그 글자만 쓴다. */
+const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
+  reservationId: ["예약 번호", "예약번호"],
+  guestName: ["투숙객 이름", "투숙객"],
+  guestPhone: ["연락처 정보", "연락처"],
+  adults: ["성인"],
+  typeRaw: ["객실 종류 및 혜택"],
+  checkIn: ["체크인"],
+  checkOut: ["체크아웃"],
+  salesTotal: ["기준 판매 요금"],
+};
+
+function labelsFor(template: PasteTemplate): { field: PasteTemplateField; label: string }[] {
+  const rows: { field: PasteTemplateField; label: string }[] = [];
+  for (const field of PASTE_TEMPLATE_FIELDS) {
+    const own = template.labels[field]?.trim() ?? "";
+    const aliases = template.platformId === "agoda" ? (AGODA_LABEL_ALIASES[field] ?? []) : [];
+    const builtin = BUILTIN_AGODA_TEMPLATE.labels[field]?.trim() ?? "";
+    const replaced = !!own && normLabel(own) !== normLabel(builtin) && !aliases.some((a) => normLabel(a) === normLabel(own));
+    const labels = replaced ? [own] : [...new Set([own, ...aliases].filter((x) => x.length > 0))];
+    for (const label of labels) rows.push({ field, label });
+  }
+  return rows.sort((a, b) => normLabel(b.label).length - normLabel(a.label).length);
 }
 
 function splitLines(raw: string): string[] {
@@ -398,6 +443,7 @@ export function agodaPartnerSignature(text: string): boolean {
   const hasRes = has("예약 번호") || has("예약번호");
   if (hasIcon && hasCheck && (hasSell || hasConfirm || hasRes)) return true;
   if (hasSell && hasCheck && hasRes) return true;
+  if (hasConfirm && hasCheck && hasRes) return true;
   return false;
 }
 
@@ -446,10 +492,7 @@ interface Hit {
 }
 
 function findHits(lines: string[], template: PasteTemplate): Hit[] {
-  const entries = PASTE_TEMPLATE_FIELDS.flatMap((field) => {
-    const label = template.labels[field]?.trim();
-    return label ? [{ field, label }] : [];
-  }).sort((a, b) => normLabel(b.label).length - normLabel(a.label).length);
+  const entries = labelsFor(template);
   const hits: Hit[] = [];
   lines.forEach((line, lineIndex) => {
     if (!line.trim() || isIconLine(line) || statusKind(line)) return;
@@ -568,7 +611,20 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     const t = typeRaw.raw.trim();
     if (!t || t.length > 80 || isIconLine(t) || statusKind(t) || parseClock(t) || parseStayDate(t)) {
       out.warnings.push("객실 타입을 읽지 못했어요");
-    } else out.typeRaw = t;
+    } else {
+      out.typeRaw = t;
+      const rooms = t.match(/^(\d{1,2})\s*[xX×]\s+/u);
+      const count = rooms ? Number(rooms[1]) : null;
+      if (count != null && count > 1) out.warnings.push(`객실 ${count}개로 보여요. 한 줄만 두고 나머지는 만들지 않아요`);
+    }
+  }
+
+  const countryIdx = lines.findIndex((line) => normLabel(line) === normLabel("투숙객 거주 국가"));
+  if (countryIdx >= 0) {
+    const country = nextContent(lines, countryIdx + 1, labelLines);
+    if (country && !parseStayDate(country.text) && !parseClock(country.text) && country.text.length <= 40) {
+      out.warnings.push(`거주 국가 ${country.text} · 예약 칸이 없어 이름에 넣지 않아요`);
+    }
   }
 
   const readDate = (
@@ -587,6 +643,9 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
       out.warnings.push(`${label} 날짜를 읽지 못했어요`);
       return { date: null, time: null };
     }
+    const inline = clockOnStayLine(hit.raw);
+    if (inline.badTime) out.warnings.push(`${label} 시각을 읽지 못했어요`);
+    if (inline.time) return { date, time: inline.time };
     const clock = clockAfter(lines, hit.index, labelLines);
     if (clock.invalid) out.warnings.push(`${label} 시각을 읽지 못했어요`);
     return { date, time: clock.time };
