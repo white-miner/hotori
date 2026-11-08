@@ -20,6 +20,7 @@ import {
   parseAgodaLabeledTable,
   parseSharedLabeledTable,
   learnPasteLabel,
+  forgetPasteLabel,
   learnedLabelEntries,
   mentionedPlatformId,
   platformByLearnedLabels,
@@ -1085,4 +1086,17 @@ test("글에 이름이 나오는 호텔 플랫폼이 하나면 그 플랫폼", (
   assert.equal(mentionedPlatformId("아고다 예약", plats), "p3");
   assert.equal(mentionedPlatformId("야놀자 아고다", plats), null);
   assert.equal(mentionedPlatformId("예약 번호 1", plats), null);
+});
+
+test("배운 칸 이름 지우기: 그 칸만 지우고, 남은 칸이 없으면 플랫폼 양식도 지운다", () => {
+  assert.equal(TRANSLATED_SAVED.ok, true);
+  if (!TRANSLATED_SAVED.ok) return;
+  const once = forgetPasteLabel([TRANSLATED_SAVED.template], "p3", "reservationId");
+  assert.equal(once[0]?.labels.reservationId, undefined);
+  assert.equal(once[0]?.rules?.reservationId, undefined);
+  assert.equal(once[0]?.labels.guestName, "손님");
+  assert.equal(validatePasteTemplate(once[0]).ok, true);
+  const single = learnPasteLabel([], "p-x", "guestName", { label: "방문자", occurrence: 0 });
+  assert.equal(single.ok, true);
+  if (single.ok) assert.deepEqual(forgetPasteLabel(single.templates, "p-x", "guestName"), []);
 });

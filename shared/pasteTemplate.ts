@@ -1246,6 +1246,22 @@ export function learnPasteLabel(
   return { ok: true, templates: [...saved.filter((t) => t.platformId !== platformId), v.template], changed: true };
 }
 
+/** 배운 칸 이름 하나를 지운다. 남은 칸 이름이 없으면 그 플랫폼 양식도 지운다. */
+export function forgetPasteLabel(saved: readonly PasteTemplate[], platformId: string, field: PasteTemplateField): PasteTemplate[] {
+  return saved.flatMap((t) => {
+    if (t.platformId !== platformId) return [t];
+    const labels = { ...t.labels };
+    const rules = { ...(t.rules ?? {}) };
+    delete labels[field];
+    delete rules[field];
+    if (!Object.keys(labels).length) return [];
+    const next: PasteTemplate = { ...t, labels };
+    if (Object.keys(rules).length) next.rules = rules;
+    else delete next.rules;
+    return [next];
+  });
+}
+
 const PLATFORM_WORDS: RegExp[] = [
   /아고다|agoda/iu,
   /에어비앤비|airbnb/iu,
@@ -1608,7 +1624,7 @@ export function readFieldValue(text: string, field: PasteTemplateField, label: s
   return "";
 }
 
-/** 양식 설정 목록에 보일 줄. 칸에 맞는 값이면 칸 이름으로 짐작한 줄이어도 보인다. 아는 칸 이름·구역 제목·상태만 뺀다. */
+/** 「원문에서 고르기」 목록에 보일 줄. 칸에 맞는 값이면 칸 이름으로 짐작한 줄이어도 보인다. 아는 칸 이름·구역 제목·상태만 뺀다. */
 export function pickableForField(line: PasteReadLine, field: PasteTemplateField): boolean {
   if (!choiceFitsField(field, line.text)) return false;
   if (line.label !== line.text) return true;

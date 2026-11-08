@@ -68,7 +68,7 @@ export const CANONICAL_FIELDS: PasteField[] = [
 ];
 
 /**
- * 양식 설정이 보여 주는 칸. CANONICAL_FIELDS 전부다.
+ * 칸 고르기가 보여 주는 칸. CANONICAL_FIELDS 전부다.
  * 판매금의 붙여넣기 칸 id는 amount, 양식 저장 키는 salesTotal.
  * preview는 미리보기 표의 열. 체크아웃·인원·시각·통화는 표의 열이 아니어도 인식해서 쓴다.
  * 인원(adults)은 원문의 성인 수이고 예약 guests로 저장된다. 어린이를 더한 인원 칸은 없다.
