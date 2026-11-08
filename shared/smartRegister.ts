@@ -682,8 +682,9 @@ export function looksLikeGuestNameLine(raw: string): boolean {
   if (/^[A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z][A-Za-z.'-]*)+$/.test(s)) return true;
   // Compact Latin / romanized OTA name (CHOISANGYEON) — letters only, no digits
   if (/^[A-Za-z][A-Za-z.'-]{2,39}$/.test(s)) return true;
-  // Pure Hangul 2–4 (김한나) without marketplace / occupancy markers
-  if (/^[\uac00-\ud7a3]{2,4}$/.test(s)) return true;
+  // Pure Hangul person name. 2–4는 김민수, 5–8은 가상손님가. 마스킹 이름과 같은 길이.
+  // 에어비앤비처럼 알려진 채널은 이 함수보다 먼저 채널 목록에서 걸러진다.
+  if (/^[\uac00-\ud7a3]{2,8}$/.test(s)) return true;
   return false;
 }
 

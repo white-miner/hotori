@@ -805,6 +805,46 @@ test("12 known + 1 new → 신규 1 · 기존예약 12 · 수정필요 0", () =>
   }
 });
 
+test("5글자 한글 이름은 야놀자 카드에서 채널로 밀리지 않고 예약자로 남는다", () => {
+  const raw = [
+    "2610151829300184",
+    "가상손님가",
+    "0503-0000-0001",
+    "온돌",
+    "숙박",
+    "/ 1박",
+    "2026.12.01(화) 16:00",
+    "2026.12.02(수) 12:00",
+    "예약완료",
+    "판매가 90,000원",
+  ].join("\n");
+  const card = parseYanoljaCardPaste(raw);
+  assert.ok(card);
+  const row = card!.rows[0]!;
+  assert.equal(row[0], "2610151829300184");
+  assert.equal(row[1], "가상손님가");
+  assert.equal(row[2], "0503-0000-0001");
+  assert.equal(row[3], "온돌");
+  assert.equal(row[9], "");
+  const english = [
+    "2610151829300185",
+    "Ari Stone",
+    "0503-0000-0002",
+    "Deluxe Twin",
+    "숙박",
+    "/ 2박",
+    "2026.12.05(토) 15:00",
+    "2026.12.07(월) 11:00",
+    "예약완료",
+    "판매가 80,000원",
+  ].join("\n");
+  const en = parseYanoljaCardPaste(english);
+  assert.equal(en?.rows[0]?.[1], "Ari Stone");
+  assert.equal(en?.rows[0]?.[2], "0503-0000-0002");
+  assert.equal(en?.rows[0]?.[4], "2026.12.05(토) 15:00");
+  assert.equal(en?.rows[0]?.[5], "2026.12.07(월) 11:00");
+});
+
 test("seed profiles: active = yanolja+yeogi+agoda (naver stays inactive until a sample)", () => {
   const active = PLATFORM_PROFILES.filter((p) => p.active).map((p) => p.id).sort();
   assert.deepEqual(active, ["agoda", "yanolja", "yeogi"]);
@@ -820,6 +860,11 @@ test("isKnownNestedChannelLabel: heuristic — never eat guest names", () => {
   assert.equal(isKnownNestedChannelLabel("이베이_G마켓"), true);
   assert.equal(isKnownNestedChannelLabel("Sumi Lee"), false);
   assert.equal(isKnownNestedChannelLabel("김한나"), false);
+  assert.equal(isKnownNestedChannelLabel("가상손님가"), false);
+  assert.equal(looksLikeGuestNameLine("가상손님가"), true);
+  assert.equal(looksLikeGuestNameLine("김민수"), true);
+  assert.equal(looksLikeGuestNameLine("Ari Stone"), true);
+  assert.equal(isKnownNestedChannelLabel("에어비앤비"), true);
   assert.equal(isKnownNestedChannelLabel("도보"), false);
   assert.equal(isKnownNestedChannelLabel("Twinㅣ트윈"), false);
   assert.equal(isKnownNestedChannelLabel("0507-0418-4303"), false);

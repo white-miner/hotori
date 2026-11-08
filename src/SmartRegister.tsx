@@ -135,6 +135,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const prevRowsLen = useRef(0);
   const templates = s.pasteTemplates;
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [templatePlatformId, setTemplatePlatformId] = useState("");
   const dirtyPlatforms = useRef(new Set<string>());
   type TemplateDraft = { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> };
   const draftFrom = (template: PasteTemplate | undefined): TemplateDraft => {
@@ -1198,6 +1199,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
           onSample={onPasteChange}
           drafts={drafts}
           onEdit={editDraft}
+          platformId={s.platforms.some((p) => p.id === templatePlatformId) ? templatePlatformId : s.platforms[0]?.id ?? ""}
+          onPlatform={setTemplatePlatformId}
           canSave={!readOnly}
           onClose={() => setTemplateOpen(false)}
           onSave={(template) => {
