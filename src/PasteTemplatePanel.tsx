@@ -234,7 +234,6 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
                   return (
                     <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i)}>
                       <b>{line.text}</b>
-                      <span>{line.label === line.text ? "칸 이름" : `이 값의 칸 이름 ${line.label}`}</span>
                     </button>
                   );
                 })}
@@ -244,7 +243,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             )}
           </div>
         </div>
-        <p className="sub">스마트등록이 읽는 항목입니다. 인원은 원문의 성인 수이고 예약 인원으로 저장됩니다. 입실·퇴실 시각은 요금으로 바꾸지 않아요. 줄을 고르면 칸 이름만 기억하고, 이름·예약번호·금액·인원은 양식에 저장하지 않아요. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
+        <p className="sub">값을 누르면 그 값이 왼쪽 칸에 들어갑니다. 그 줄 위 제목만 다음 예약에 기억하고, 이름·예약번호·금액은 저장하지 않아요. 인원은 성인 수입니다. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
         {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft.labels, rules: draft.rules }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}
