@@ -20,7 +20,6 @@ import {
   Eraser,
   Link2,
   LoaderCircle,
-  BookmarkPlus,
   Settings,
   SlidersHorizontal,
   X,
@@ -62,18 +61,29 @@ import {
   recomputeRowStatus,
   previewTypeMismatch,
   upsertTypeAlias,
+  matchTypeIdNested,
 } from "../shared/smartRegister";
 import {
   canUseSavedTemplate,
+  clockOnStayLine,
   keepTemplateDraft,
+  learnPasteLabel,
+  mentionedPlatformId,
+  platformByLearnedLabels,
   parseBestSavedTemplate,
   parseManualLabeledTable,
+  parseReservationToken,
+  parseSalesTotal,
+  parseSharedLabeledTable,
+  parseStayDate,
+  PASTE_FIELD_LABELS,
   templateProfile,
   type PasteFieldRule,
   type PasteTemplate,
   type PasteTemplateField,
 } from "../shared/pasteTemplate";
 import PasteTemplatePanel from "./PasteTemplatePanel";
+import PastePick from "./PastePick";
 import type { HotelData } from "./data";
 import { askConfirm } from "./ConfirmDialog";
 import { Chip, ChipGroup, Inp } from "./primitives";
@@ -138,6 +148,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const templates = useMemo(() => s.pasteTemplates, [templatesKey]);
   const [templateOpen, setTemplateOpen] = useState(false);
+  /** 공용 칸 이름으로 읽었거나 저장 양식으로 읽은 글. 이때는 호텔 플랫폼을 직접 고른다. */
+  const [readKind, setReadKind] = useState<"table" | "saved" | "shared" | null>(null);
+  const [ownPlatformId, setOwnPlatformId] = useState("");
+  /** 미리보기에서 고른 칸 이름을 저장해도 직원이 고친 미리보기를 다시 읽지 않는다. */
+  const quietLearn = useRef(false);
   const [templatePlatformId, setTemplatePlatformId] = useState("");
   const dirtyPlatforms = useRef(new Set<string>());
   type TemplateDraft = { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> };
@@ -224,8 +239,15 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     [s.platforms],
   );
 
+  const platformName = (id: string | null) => s.platforms.find((p) => p.id === id)?.name ?? null;
+  /** 저장 양식·공용 칸 이름으로 읽은 행은 프로필 이름(야놀자)이 아니라 호텔 플랫폼 이름으로 보인다. */
+  const ownRows = (list: PreviewRow[], platId: string | null) => {
+    const name = platformName(platId);
+    return name ? list.map((r) => (r.nestedChannelRaw ? r : { ...r, platformLabel: name })) : list;
+  };
+
   const rebuild = useCallback(
-    (text: string, forcedId: PlatformProfileId | null, forced: boolean) => {
+    (text: string, forcedId: PlatformProfileId | null, forced: boolean, pickPlat?: string) => {
       setSummary(null);
       const card = parseYanoljaCardPaste(text, { channelLabels });
       const savedHit = !card && canUseSavedTemplate(text) ? parseBestSavedTemplate(text, templates) : null;
@@ -234,7 +256,24 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         savedHit?.table ??
         parsePasteTable(text, { channelLabels, templates }) ??
         (forced && forcedId ? parseManualLabeledTable(text, forcedId, templates) : null);
+      const shared = !table ? parseSharedLabeledTable(text, templates) : null;
+      const known = (id: string | null | undefined) => (id && s.platforms.some((p) => p.id === id) ? id : null);
+      if (!table && shared) {
+        const platId =
+          known(pickPlat) ??
+          mentionedPlatformId(text, s.platforms) ??
+          known(platformByLearnedLabels(text, templates)) ??
+          (pickPlat === undefined ? known(ownPlatformId) : null);
+        setReadKind("shared");
+        setDetectWeak(false);
+        setProfileId(null);
+        setOwnPlatformId(platId ?? "");
+        setRows(ownRows(buildPreviewRows(shared, profileById("yanolja")!, s, data.bookings, platId), platId));
+        setParseErr(platId ? null : "어느 플랫폼 예약인지 골라 주세요.");
+        return;
+      }
       if (!table) {
+        setReadKind(null);
         setRows([]);
         setParseErr(
           text.trim()
@@ -247,6 +286,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         }
         return;
       }
+      setReadKind(savedHit ? "saved" : "table");
       const det = detectProfile(table.headers, text);
       let pid = forced && forcedId ? forcedId : det.confident ? det.profileId : forcedId;
       const savedTemplate = savedHit ? templates.find((t) => t.platformId === savedHit.platformId) : undefined;
@@ -270,16 +310,22 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setParseErr("알 수 없는 프로필이에요.");
         return;
       }
-      const platId = savedHit?.platformId ?? matchPlatformId(p, s);
+      const platId = savedHit ? (known(pickPlat) ?? savedHit.platformId) : matchPlatformId(p, s);
+      if (savedHit) setOwnPlatformId(platId ?? "");
       const preview = buildPreviewRows(table, p, s, data.bookings, platId);
-      setRows(preview);
+      setRows(savedHit ? ownRows(preview, platId) : preview);
       setParseErr(null);
     },
-    [s, data.bookings, channelLabels, templates],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [s, data.bookings, channelLabels, templates, ownPlatformId],
   );
 
   // 직원 id가 늦게 도착하거나 양식을 저장·되돌린 뒤, 이미 붙여넣은 글을 그 양식으로 다시 읽는다.
   useEffect(() => {
+    if (quietLearn.current) {
+      quietLearn.current = false;
+      return;
+    }
     if (!paste.trim()) return;
     rebuild(paste, profileForced ? profileId : null, profileForced);
   }, [templates]); // paste 입력은 onPasteChange가 바로 읽는다.
@@ -287,7 +333,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const onPasteChange = (v: string) => {
     setPaste(v);
     setProfileForced(false);
-    rebuild(v, null, false);
+    rebuild(v, null, false, "");
   };
 
   const writeTemplates = async (next: PasteTemplate[]) => {
@@ -307,6 +353,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     setProfileId(null);
     setProfileForced(false);
     setDetectWeak(false);
+    setReadKind(null);
     if (!opts?.keepSummary) setSummary(null);
   }, []);
 
@@ -385,6 +432,66 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       notify(e instanceof Error ? `저장 실패: ${e.message}` : "타입 매칭을 저장하지 못했어요");
     }
   };
+
+  /**
+   * 원문에서 고른 값으로 빈 칸을 채우고, 그 값 위의 칸 이름을 이 플랫폼 양식에 더한다.
+   * 더한 칸 이름은 다른 플랫폼 글을 읽을 때도 공용 칸 이름으로 쓴다.
+   */
+  const pickFromPaste = (r: PreviewRow, field: PasteTemplateField, value: string, rule: PasteFieldRule | null) => {
+    const patch: Partial<PreviewRow> = {};
+    const v = value.trim();
+    if (field === "guestName") patch.guestName = v;
+    else if (field === "guestPhone") patch.guestPhone = v;
+    else if (field === "typeRaw") {
+      patch.typeRaw = v;
+      patch.typeId = matchTypeIdNested(v, s, null, r.platformId ?? platformId) ?? r.typeId;
+    } else if (field === "checkIn") {
+      const date = parseStayDate(v);
+      if (!date) return;
+      patch.checkIn = date;
+      const time = clockOnStayLine(v).time;
+      if (time) patch.checkInTime = time;
+    } else if (field === "nights") {
+      const n = Number(v.match(/\d{1,3}/u)?.[0]);
+      if (!Number.isInteger(n) || n < 1 || n > 366) return;
+      patch.nights = n;
+    } else if (field === "salesTotal") {
+      const money = parseSalesTotal(v);
+      if (money.amount == null || money.foreign || money.ambiguous) {
+        notify("원화 금액 하나만 판매금으로 넣어요");
+        return;
+      }
+      patch.amount = money.amount;
+      patch.priceUnset = false;
+      patch.currency = money.currency;
+    } else if (field === "reservationId") {
+      const id = parseReservationToken(v);
+      if (!id) return;
+      patch.reservationId = id;
+    } else return;
+    patchRow(r.key, patch);
+    const plat = r.platformId ?? platformId;
+    if (readOnly || !rule || !plat) return;
+    const learned = learnPasteLabel(templates, plat, field, rule);
+    if (!learned.ok) {
+      notify(`칸은 채웠어요. 「${rule.label}」 칸 이름은 기억하지 않아요 (${learned.reason})`);
+      return;
+    }
+    if (!learned.changed) return;
+    quietLearn.current = true;
+    data
+      .saveHotel({ settings: { ...s, pasteTemplates: learned.templates } })
+      .then(() => notify(`「${rule.label}」 → ${PASTE_FIELD_LABELS[field]} 칸으로 기억했어요. 다음 예약부터 자동으로 읽어요`))
+      .catch((e) => {
+        quietLearn.current = false;
+        notify(saveFailMessage(e));
+      });
+  };
+
+  const pick = (r: PreviewRow, field: PasteTemplateField) =>
+    readOnly || r.skip ? null : (
+      <PastePick text={paste} field={field} disabled={busy} onPick={(value, rule) => pickFromPaste(r, field, value, rule)} />
+    );
 
   /** 2박 이상 신규 행 아래: 박별 요금 입력 (선택) — 비워 둬도 저장돼요 */
   const nightRow = (r: PreviewRow) => {
@@ -502,10 +609,6 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
   const mount = async () => {
     if (readOnly || busy) return;
-    if (!profile) {
-      notify("설정에 맞는 플랫폼이 없어요. 설정에서 채널을 추가해 주세요.");
-      return;
-    }
     const actionable = rows.filter((r) => !r.skip && (r.rowStatus === "ok" || r.rowStatus === "cancel"));
     if (actionable.some((r) => !r.platformId)) {
       notify("설정에 맞는 플랫폼이 없어요. 설정에서 채널을 추가해 주세요.");
@@ -860,7 +963,25 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                 rows={8}
                 aria-label="붙여넣기"
               />
-              {(detectWeak || !profileId) && paste.trim() ? (
+              {(readKind === "shared" || readKind === "saved") && paste.trim() ? (
+                <div className="smart-reg-chip-block">
+                  <div className="sub">어느 플랫폼 예약인가요?</div>
+                  <ChipGroup scroll>
+                    {s.platforms.map((p) => (
+                      <Chip
+                        key={p.id}
+                        sm
+                        active={ownPlatformId === p.id}
+                        tone={ownPlatformId === p.id ? "info" : undefined}
+                        onClick={() => rebuild(paste, null, false, p.id)}
+                        disabled={busy}
+                      >
+                        {p.name}
+                      </Chip>
+                    ))}
+                  </ChipGroup>
+                </div>
+              ) : (detectWeak || !profileId) && paste.trim() ? (
                 <div className="smart-reg-chip-block">
                   <div className="sub">플랫폼 {detectWeak ? "(자동인식 약함 — 골라 주세요)" : ""}</div>
                   <ChipGroup scroll>
@@ -1040,6 +1161,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             aria-label="이름"
                           />
                           {r.sourceGuestName ? <div className="sub smart-reg-source-name">붙여넣기 이름: {r.sourceGuestName}</div> : null}
+                          {!r.guestName.trim() ? pick(r, "guestName") : null}
                           {r.guests != null ? (
                             <label className="sub smart-reg-adults">
                               성인
@@ -1087,6 +1209,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             onChange={(e) => patchRow(r.key, { guestPhone: e.target.value })}
                             aria-label="전화"
                           />
+                          {!r.guestPhone.trim() ? pick(r, "guestPhone") : null}
                         </td>
                         <td>
                           <select
@@ -1094,7 +1217,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             value={r.typeId ?? ""}
                             disabled={busy || r.skip}
                             aria-label="타입"
-                            onChange={(e) => patchRow(r.key, { typeId: e.target.value || null })}
+                            onChange={(e) => {
+                              const typeId = e.target.value || null;
+                              patchRow(r.key, { typeId });
+                              if (typeId && r.typeRaw.trim()) void saveAliasFromRow({ ...r, typeId });
+                            }}
                           >
                             <option value="">선택</option>
                             {types.map((t) => (
@@ -1113,18 +1240,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                               {!readOnly && onOpenBooking ? <button type="button" className="btn line sm" disabled={busy} onClick={() => { const live = data.bookings.find((b) => b.id === mismatch.id); if (live) onOpenBooking(live); }}>기존 예약 수정</button> : null}
                             </div>;
                           })()}
-                          {!readOnly && r.typeRaw.trim() && r.typeId && (r.platformId ?? platformId) && !r.skip ? (
-                            <button
-                              type="button"
-                              className="smart-reg-save-alias"
-                              disabled={busy}
-                              title="이 OTA 이름을 타입 매칭에 저장"
-                              onClick={() => void saveAliasFromRow(r)}
-                            >
-                              <BookmarkPlus size={12} strokeWidth={2.2} aria-hidden />
-                              이 이름으로 저장
-                            </button>
-                          ) : null}
+                          {!r.typeRaw.trim() ? pick(r, "typeRaw") : null}
                         </td>
                         <td>
                           <Inp
@@ -1135,6 +1251,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             aria-label="입실"
                           />
                           {r.checkInTime ? <div className="sub">입실 {r.checkInTime}</div> : null}
+                          {!r.checkIn ? pick(r, "checkIn") : null}
                         </td>
                         <td>
                           <Inp
@@ -1150,6 +1267,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                             aria-label="박수"
                           />
                           {r.checkOutTime ? <div className="sub">퇴실 {r.checkOutTime}</div> : null}
+                          {r.nights == null ? pick(r, "nights") : null}
                         </td>
                         <td>
                           <Inp
@@ -1169,9 +1287,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                           ) : (
                             <div className="sub">금액미정</div>
                           )}
+                          {r.amount == null ? pick(r, "salesTotal") : null}
                         </td>
                         <td>
                           <span className="smart-reg-rid">{r.reservationId || "—"}</span>
+                          {!r.reservationId.trim() ? pick(r, "reservationId") : null}
                         </td>
                         <td>
                           <input
