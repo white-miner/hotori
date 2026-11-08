@@ -17,7 +17,7 @@ import {
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
-import { SMART_REGISTER_TEMPLATE_COLUMNS, yanoljaGuestSlots, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
+import { SMART_REGISTER_TEMPLATE_COLUMNS, yanoljaCardSlots, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
 import { Chip, ChipGroup } from "./primitives";
 
 interface Props {
@@ -79,17 +79,18 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
     setErr(null);
   };
 
-  const { lines, guestSlots } = useMemo(() => {
+  const { lines, cardSlots } = useMemo(() => {
     const raw = readPasteLines(sample);
-    const slots = yanoljaGuestSlots(sample, raw);
-    if (!slots.length) return { lines: raw, guestSlots: slots };
+    const slots = yanoljaCardSlots(sample, raw);
+    if (!slots.length) return { lines: raw, cardSlots: slots };
     const at = new Map(slots.map((slot) => [slot.lineIndex, slot]));
-    const names = new Set(slots.map((slot) => slot.name));
+    const scanned = new Set(slots.map((slot) => slot.value));
     return {
-      guestSlots: slots,
+      cardSlots: slots,
       lines: raw.map((line, i) => {
-        if (at.has(i)) return { ...line, label: "예약자" };
-        if (names.has(line.label)) return { ...line, label: line.text };
+        const slot = at.get(i);
+        if (slot) return { ...line, label: slot.label };
+        if (scanned.has(line.label)) return { ...line, label: line.text };
         return line;
       }),
     };
@@ -99,8 +100,8 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
     const label = rule?.label ?? draft.labels[id];
     const fromLabel = label ? readFieldValue(sample, id, label, rule?.occurrence ?? 0) : "";
     if (fromLabel) return fromLabel;
-    if (id !== "guestName" || label !== "예약자") return "";
-    return guestSlots.find((slot) => slot.index === (rule?.occurrence ?? 0))?.name ?? "";
+    if (!label) return "";
+    return cardSlots.find((slot) => slot.field === id && slot.label === label && slot.index === (rule?.occurrence ?? 0))?.value ?? "";
   };
   const readValue = readFor(field);
   const platform = platforms.find((p) => p.id === platformId);

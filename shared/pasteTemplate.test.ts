@@ -33,6 +33,7 @@ import {
   enteredNightRates,
   parsePasteTable,
   pathADraftFromPreview,
+  yanoljaCardSlots,
   yanoljaGuestSlots,
   profileById,
   HYPOTHESIS_FIXTURES,
@@ -666,6 +667,44 @@ test("같은 줄의 한글 값과 반복된 숫자는 고른 위치만 다시 �
   assert.equal(second?.occurrence, 1);
   assert.equal(readFieldValue(["성인", "4", "성인", "9"].join("\n"), "adults", "성인", 1), "9");
   assert.equal(ruleForPickedLine(readPasteLines("홍길동"), 0, "guestName"), null);
+});
+
+test("야놀자 카드 스캔이 읽은 줄은 양식 칸에 연결되고 성인·통화·시각은 만들지 않는다", () => {
+  const text = [
+    "2610151829300184",
+    "김민수",
+    "0503-0000-0001",
+    "온돌",
+    "숙박",
+    "/ 2박",
+    "2026.12.01(화) 16:00",
+    "2026.12.03(목) 11:00",
+    "예약완료",
+    "판매가 90,000원",
+  ].join("\n");
+  const lines = readPasteLines(text);
+  const slots = yanoljaCardSlots(text, lines);
+  const byField = Object.fromEntries(slots.map((slot) => [slot.field, slot]));
+  assert.equal(byField.reservationId?.value, "2610151829300184");
+  assert.equal(lines[byField.reservationId!.lineIndex]?.text, "2610151829300184");
+  assert.equal(byField.guestName?.value, "김민수");
+  assert.equal(byField.guestPhone?.value, "0503-0000-0001");
+  assert.equal(byField.typeRaw?.value, "온돌");
+  assert.equal(byField.nights?.value, "2");
+  assert.equal(lines[byField.nights!.lineIndex]?.text, "/ 2박");
+  assert.equal(byField.checkIn?.value, "2026.12.01(화) 16:00");
+  assert.equal(byField.checkOut?.value, "2026.12.03(목) 11:00");
+  assert.equal(byField.statusRaw?.value, "예약완료");
+  assert.equal(byField.salesTotal?.value, "90000");
+  assert.equal(slots.some((slot) => slot.field === ("adults" as never) || slot.field === ("currency" as never) || slot.field === ("checkInTime" as never)), false);
+  const linked = lines.map((line, i) => {
+    const slot = slots.find((item) => item.lineIndex === i);
+    return slot ? { ...line, label: slot.label } : line;
+  });
+  assert.equal(ruleForPickedLine(linked, byField.guestPhone!.lineIndex, "guestPhone")?.label, "연락처");
+  assert.equal(ruleForPickedLine(linked, byField.salesTotal!.lineIndex, "salesTotal")?.label, "판매금액");
+  assert.equal(ruleForPickedLine(linked, byField.checkIn!.lineIndex, "checkIn")?.label, "체크인");
+  assert.equal(ruleForPickedLine(linked, byField.statusRaw!.lineIndex, "statusRaw")?.label, "상태");
 });
 
 test("야놀자 카드의 한글 이름은 칸 이름이 없어도 기존 스캔의 예약자 줄이다", () => {

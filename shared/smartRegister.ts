@@ -1064,35 +1064,94 @@ export function parseYanoljaCardPaste(raw: string, opts?: ParsePasteOpts): Parse
   return { headers: [...YANOLJA_CARD_HEADERS], rows, delimiter: "tab" };
 }
 
+const YANOLJA_SLOT_LABEL = {
+  reservationId: "야놀자예약번호",
+  guestName: "예약자",
+  guestPhone: "연락처",
+  typeRaw: "객실상품",
+  checkIn: "체크인",
+  checkOut: "체크아웃",
+  nights: "박수",
+  salesTotal: "판매금액",
+  statusRaw: "상태",
+} as const;
+
+export type YanoljaCardSlotField = keyof typeof YANOLJA_SLOT_LABEL;
+
+export interface YanoljaCardSlot {
+  lineIndex: number;
+  field: YanoljaCardSlotField;
+  /** 기존 카드 표 헤더. 손님 값이 아니다. */
+  label: string;
+  /** 이번 카드에서 스캔이 읽은 값. */
+  value: string;
+  index: number;
+}
+
 /**
- * 야놀자 카드에서 기존 스캔이 예약자(guestName)로 읽은 줄.
- * 카드에는 이름 위에 칸 이름이 없다. 양식은 그 줄을 고르면 예약자 칸에 연결한다.
+ * 야놀자 카드 스캔이 이미 채운 칸과 그 원문 줄.
+ * 카드에는 칸 이름이 없다. 양식은 이 줄을 고르면 같은 스캔 칸에 연결한다.
+ * 성인·통화·입실 시각은 이 스캔 출력에 없다.
  */
+export function yanoljaCardSlots(raw: string, lines: readonly { text: string }[]): YanoljaCardSlot[] {
+  const card = parseYanoljaCardPaste(raw);
+  if (!card) return [];
+  const used = new Set<number>();
+  const out: YanoljaCardSlot[] = [];
+  const push = (index: number, field: YanoljaCardSlotField, lineIndex: number, value: string) => {
+    const text = value.trim();
+    if (lineIndex < 0 || !text) return;
+    used.add(lineIndex);
+    out.push({ lineIndex, field, label: YANOLJA_SLOT_LABEL[field], value: text, index });
+  };
+  card.rows.forEach((row, index) => {
+    const [idRaw, nameRaw, phoneRaw, typeRaw, checkInRaw, checkOutRaw, nightsRaw, amountRaw, statusRaw] = row;
+    const id = idRaw?.trim() ?? "";
+    if (!id) return;
+    const idAt = lines.findIndex((line, i) => !used.has(i) && line.text.trim() === id);
+    if (idAt < 0) return;
+    const blockEnd = lines.findIndex((line, i) => i > idAt && YANOLJA_CARD_RES_ID.test(line.text.trim()));
+    const end = blockEnd < 0 ? lines.length : blockEnd;
+    const take = (pred: (text: string) => boolean) => {
+      for (let i = idAt; i < end; i++) {
+        if (used.has(i)) continue;
+        if (pred(lines[i]!.text.trim())) return i;
+      }
+      return -1;
+    };
+    push(index, "reservationId", idAt, id);
+    push(index, "guestName", take((text) => text === (nameRaw?.trim() ?? "")), nameRaw ?? "");
+    push(index, "guestPhone", take((text) => text === (phoneRaw?.trim() ?? "")), phoneRaw ?? "");
+    push(index, "typeRaw", take((text) => text === (typeRaw?.trim() ?? "")), typeRaw ?? "");
+    const nights = nightsRaw?.trim() ?? "";
+    if (nights) push(index, "nights", take((text) => new RegExp(`\\/\\s*${nights}\\s*박`).test(text)), nights);
+    push(index, "checkIn", take((text) => text === (checkInRaw?.trim() ?? "")), checkInRaw ?? "");
+    push(index, "checkOut", take((text) => text === (checkOutRaw?.trim() ?? "")), checkOutRaw ?? "");
+    push(index, "statusRaw", take((text) => text === (statusRaw?.trim() ?? "")), statusRaw ?? "");
+    const amount = amountRaw?.trim() ?? "";
+    if (amount) {
+      push(
+        index,
+        "salesTotal",
+        take((text) => {
+          const matched = text.match(/판매가\s*([\d,]+)\s*원/);
+          return !!matched && matched[1]!.replace(/,/g, "") === amount;
+        }),
+        amount,
+      );
+    }
+  });
+  return out;
+}
+
+/** 야놀자 카드에서 기존 스캔이 예약자로 읽은 줄. */
 export function yanoljaGuestSlots(
   raw: string,
   lines: readonly { text: string }[],
 ): { lineIndex: number; name: string; index: number }[] {
-  const card = parseYanoljaCardPaste(raw);
-  if (!card) return [];
-  const used = new Set<number>();
-  const out: { lineIndex: number; name: string; index: number }[] = [];
-  card.rows.forEach((row, index) => {
-    const id = row[0]?.trim() ?? "";
-    const name = row[1]?.trim() ?? "";
-    if (!id || !name) return;
-    const idAt = lines.findIndex((line, i) => !used.has(i) && line.text.trim() === id);
-    if (idAt < 0) return;
-    for (let i = idAt + 1; i < lines.length; i++) {
-      const text = lines[i]!.text.trim();
-      if (YANOLJA_CARD_RES_ID.test(text)) break;
-      if (text === name) {
-        used.add(i);
-        out.push({ lineIndex: i, name, index });
-        return;
-      }
-    }
-  });
-  return out;
+  return yanoljaCardSlots(raw, lines)
+    .filter((slot) => slot.field === "guestName")
+    .map((slot) => ({ lineIndex: slot.lineIndex, name: slot.value, index: slot.index }));
 }
 
 /**
