@@ -258,3 +258,64 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
     root.unmount();
   });
 });
+
+test("한글 이름과 객실명은 위 칸 이름으로 연결되고 다음 글의 값으로 바뀐다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(createElement(Host));
+  });
+  const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!open) throw new Error("양식 설정 버튼 없음");
+  await click(open);
+  const text = [
+    "예약 번호",
+    "HOTORI-UI-TEST-20261108",
+    "투숙객 이름",
+    "테스트손님",
+    "성인",
+    "2",
+    "체크인",
+    "2026년 12월 1일 (16:00)",
+    "체크아웃",
+    "2026년 12월 3일 (11:00)",
+    "기준 판매 요금",
+    "KRW 180,000",
+    "객실 종류 및 혜택",
+    "테스트 객실",
+  ].join("\n");
+  await paste(text);
+  await pick("guestName", "테스트손님");
+  await pick("typeRaw", "테스트 객실");
+  await pick("adults", "2");
+  await pick("salesTotal", "KRW 180,000");
+  await pick("checkIn", "2026년 12월 1일 (16:00)");
+  await pick("checkOut", "2026년 12월 3일 (11:00)");
+  let shown = fieldText();
+  assert.match(shown, /guestName:이름 · 테스트손님/);
+  assert.match(shown, /typeRaw:타입 · 테스트 객실/);
+  assert.match(shown, /adults:인원 · 2/);
+  assert.match(shown, /salesTotal:판매금 · KRW 180000/);
+  assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
+  bridge().failSave.current = false;
+  const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+  if (!save) throw new Error("저장 버튼 없음");
+  await click(save);
+  const stored = bridge().saves.current.at(-1) ?? "";
+  assert.equal(stored.includes("테스트손님"), false);
+  assert.equal(stored.includes("테스트 객실"), false);
+  assert.match(stored, /투숙객 이름/);
+  assert.match(stored, /객실 종류 및 혜택/);
+  const next = text.replace("테스트손님", "다른손님").replace("테스트 객실", "다른 객실").replace("HOTORI-UI-TEST-20261108", "HOTORI-UI-TEST-NEXT").replace("180,000", "90,000").replace("성인\n2", "성인\n5");
+  await paste(next);
+  shown = fieldText();
+  assert.match(shown, /guestName:이름 · 다른손님/);
+  assert.match(shown, /typeRaw:타입 · 다른 객실/);
+  assert.match(shown, /adults:인원 · 5/);
+  assert.match(shown, /salesTotal:판매금 · KRW 90000/);
+  assert.equal(bridge().writes.current, 0);
+  await act(async () => {
+    root.unmount();
+  });
+});

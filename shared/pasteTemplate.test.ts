@@ -567,6 +567,49 @@ test("같은 예약번호의 요약과 상세는 한 건이고 아동은 인원�
   assert.equal(reused.checkInTime, "16:00");
 });
 
+test("등록되지 않은 한글 이름·객실명도 위 줄을 칸 이름으로 연결한다", () => {
+  const text = [
+    "예약 번호",
+    "HOTORI-UI-TEST-20261108",
+    "투숙객 이름",
+    "테스트손님",
+    "성인",
+    "2",
+    "체크인",
+    "2026년 12월 1일 (16:00)",
+    "체크아웃",
+    "2026년 12월 3일 (11:00)",
+    "기준 판매 요금",
+    "KRW 180,000",
+    "객실 종류 및 혜택",
+    "테스트 객실",
+  ].join("\n");
+  const lines = readPasteLines(text);
+  const name = lines.find((line) => line.text === "테스트손님");
+  const room = lines.find((line) => line.text === "테스트 객실");
+  assert.equal(name?.label, "투숙객 이름");
+  assert.equal(room?.label, "객실 종류 및 혜택");
+  const nameRule = ruleForPickedLine(lines, lines.findIndex((line) => line.text === "테스트손님"), "guestName");
+  const roomRule = ruleForPickedLine(lines, lines.findIndex((line) => line.text === "테스트 객실"), "typeRaw");
+  assert.equal(nameRule?.label, "투숙객 이름");
+  assert.equal(roomRule?.label, "객실 종류 및 혜택");
+  assert.equal(readFieldValue(text, "guestName", nameRule!.label, nameRule!.occurrence), "테스트손님");
+  assert.equal(readFieldValue(text, "typeRaw", roomRule!.label, roomRule!.occurrence), "테스트 객실");
+  const renamed = text.replace("투숙객 이름", "예약자 이름").replace("테스트손님", "다른손님").replace("테스트 객실", "다른 객실");
+  assert.equal(readFieldValue(renamed, "guestName", "예약자 이름"), "다른손님");
+  assert.equal(readFieldValue(renamed, "typeRaw", "객실 종류 및 혜택"), "다른 객실");
+  const saved = validatePasteTemplate({
+    platformId: "p-ya",
+    labels: { guestName: "예약자 이름", typeRaw: "객실 종류 및 혜택", adults: "성인", salesTotal: "기준 판매 요금", checkIn: "체크인" },
+  });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  assert.equal(serializePasteTemplateStore([saved.template]).includes("테스트손님"), false);
+  assert.equal(serializePasteTemplateStore([saved.template]).includes("다른손님"), false);
+  const orphan = readPasteLines("테스트손님");
+  assert.equal(ruleForPickedLine(orphan, 0, "guestName"), null);
+});
+
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {
   const src = readFileSync(fileURLToPath(new URL("./pasteTemplate.ts", import.meta.url)), "utf8");
   assert.equal(/\bfetch\s*\(|openai|anthropic|generative|llm/i.test(src), false);
