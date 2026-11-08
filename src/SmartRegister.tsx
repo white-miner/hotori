@@ -62,10 +62,9 @@ import {
   upsertTypeAlias,
 } from "../shared/smartRegister";
 import {
-  loadPasteTemplates,
+  parseBestSavedTemplate,
   parseManualLabeledTable,
-  pasteTemplateStorageKey,
-  serializePasteTemplateStore,
+  templateProfile,
   type PasteTemplate,
 } from "../shared/pasteTemplate";
 import PasteTemplatePanel from "./PasteTemplatePanel";
@@ -128,23 +127,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const prevRowsLen = useRef(0);
-  const hotelId = data.hotel?.id ?? "";
-  const userId = data.meId ?? "";
-  const canStoreTemplates = Boolean(pasteTemplateStorageKey(hotelId, userId));
-  const [templates, setTemplates] = useState<PasteTemplate[]>([]);
+  const templates = s.pasteTemplates;
   const [templateOpen, setTemplateOpen] = useState(false);
-
-  useEffect(() => {
-    if (!canStoreTemplates) {
-      setTemplates([]);
-      return;
-    }
-    try {
-      setTemplates(loadPasteTemplates((key) => localStorage.getItem(key), hotelId, userId));
-    } catch {
-      setTemplates([]);
-    }
-  }, [canStoreTemplates, hotelId, userId]);
 
   const dismissSummary = useCallback(() => {
     if (summaryTimer.current) {
@@ -187,14 +171,16 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const rebuild = useCallback(
     (text: string, forcedId: PlatformProfileId | null, forced: boolean) => {
       setSummary(null);
+      const savedHit = parsePasteTable(text, { channelLabels, templates }) ? null : parseBestSavedTemplate(text, templates);
       const table =
         parsePasteTable(text, { channelLabels, templates }) ??
+        savedHit?.table ??
         (forced && forcedId ? parseManualLabeledTable(text, forcedId, templates) : null);
       if (!table) {
         setRows([]);
         setParseErr(
           text.trim()
-            ? "표(헤더+데이터 행)를 인식하지 못했어요. 목록 표에서 Ctrl+A로 전체 선택 후 복사하거나, 엑셀로보낸 뒤 붙여넣어 보세요."
+            ? "이 글을 아직 몰라요. 양식 설정에서 칸을 집어 주세요."
             : null,
         );
         if (!forced) {
@@ -205,12 +191,16 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       }
       const det = detectProfile(table.headers, text);
       let pid = forced && forcedId ? forcedId : det.confident ? det.profileId : forcedId;
-      const weak = !det.confident;
+      const savedTemplate = savedHit ? templates.find((t) => t.platformId === savedHit.platformId) : undefined;
+      const savedProfile = savedTemplate ? templateProfile(savedTemplate) : null;
+      const weak = savedHit ? false : !det.confident;
       setDetectWeak(weak);
-      if (!forced) setProfileId(pid);
+      if (savedProfile) setProfileId(savedProfile);
+      else if (savedHit) setProfileId(null);
+      else if (!forced) setProfileId(pid);
       else setProfileId(forcedId);
 
-      const useId = forced ? forcedId : pid;
+      const useId = savedHit ? (savedProfile ?? "yanolja") : (forced ? forcedId : pid);
       if (!useId) {
         setRows([]);
         setParseErr(weak ? "플랫폼을 골라 주세요. (형식 자동인식 약함)" : "프로필을 골라 주세요.");
@@ -222,7 +212,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setParseErr("알 수 없는 프로필이에요.");
         return;
       }
-      const platId = matchPlatformId(p, s);
+      const platId = savedHit?.platformId ?? matchPlatformId(p, s);
       const preview = buildPreviewRows(table, p, s, data.bookings, platId);
       setRows(preview);
       setParseErr(null);
@@ -242,16 +232,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     rebuild(v, null, false);
   };
 
-  const writeTemplates = (next: PasteTemplate[]) => {
-    setTemplates(next);
-    const key = pasteTemplateStorageKey(hotelId, userId);
-    if (!key) return;
+  const writeTemplates = async (next: PasteTemplate[]) => {
     try {
-      if (!next.length) localStorage.removeItem(key);
-      else localStorage.setItem(key, serializePasteTemplateStore(next));
-      notify("이 브라우저에만 저장했어요");
-    } catch {
-      notify("이 브라우저에 저장하지 못했어요");
+      await data.saveHotel({ settings: { ...s, pasteTemplates: next } });
+      notify("호텔 계정에 저장했어요");
+    } catch (e) {
+      notify(saveFailMessage(e));
     }
   };
 
@@ -1158,15 +1144,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
       {templateOpen ? (
         <PasteTemplatePanel
+          platforms={s.platforms}
           templates={templates}
-          canSave={canStoreTemplates && !readOnly}
+          sample={paste}
+          onSample={onPasteChange}
+          canSave={!readOnly}
           onClose={() => setTemplateOpen(false)}
           onSave={(template) => {
             const next = templates.filter((t) => t.platformId !== template.platformId);
             if (Object.keys(template.labels).length) next.push(template);
-            writeTemplates(next);
+            void writeTemplates(next);
           }}
-          onReset={(id) => writeTemplates(templates.filter((t) => t.platformId !== id))}
+          onReset={(id) => void writeTemplates(templates.filter((t) => t.platformId !== id))}
         />
       ) : null}
 

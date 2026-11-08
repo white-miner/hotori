@@ -16,6 +16,7 @@ import { type TypeSeasonsMap, normalizeTypeSeasons, normalizeWeekendDays } from 
 import { type RoomHold, normalizeRoomHolds, roomsHeldForStay } from "./roomHold";
 import { type OverbookSub, normalizeOverbookSubs } from "./overbookSub";
 import { type HotelBiz, emptyHotelBiz, normalizeHotelBiz } from "./hotelBiz";
+import { normalizePasteTemplates, type PasteTemplate } from "./pasteTemplate";
 import {
   DEFAULT_HOUR_FEE,
   type DayuseDefaults,
@@ -155,6 +156,10 @@ export interface HotelSettings {
    * See docs/smart-register-type-alias-plan.md
    */
   typeAliases: TypeAlias[];
+  /**
+   * 스마트등록 붙여넣기 양식. 플랫폼별 칸 이름만 둔다. 손님 글은 넣지 않는다.
+   */
+  pasteTemplates: PasteTemplate[];
   /**
    * 객실 임시마감(홀드): 호실 × 숙박일 구간. 게스트 예약 아님.
    * See docs/room-temporary-hold-plan.md
@@ -357,6 +362,7 @@ export function emptySettings(): HotelSettings {
     weekendDays: [5, 6],
     typeStopSell: {},
     typeAliases: [],
+    pasteTemplates: [],
     roomHolds: [],
     overbookSubs: [],
     hotelBiz: emptyHotelBiz(),
@@ -419,6 +425,7 @@ export function normalizeSettings(raw: unknown): HotelSettings {
     typeSeasons: normalizeTypeSeasons((s as { typeSeasons?: unknown }).typeSeasons),
     weekendDays: normalizeWeekendDays((s as { weekendDays?: unknown }).weekendDays),
     typeAliases: normalizeTypeAliases((s as { typeAliases?: unknown }).typeAliases),
+    pasteTemplates: normalizePasteTemplates((s as { pasteTemplates?: unknown }).pasteTemplates),
     roomHolds: normalizeRoomHolds((s as { roomHolds?: unknown }).roomHolds),
     overbookSubs: normalizeOverbookSubs((s as { overbookSubs?: unknown }).overbookSubs),
     hotelBiz: normalizeHotelBiz((s as { hotelBiz?: unknown }).hotelBiz),

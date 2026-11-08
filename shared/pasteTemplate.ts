@@ -7,7 +7,13 @@
  * - "기준 판매 요금(세금 및 수수료 포함)"은 판매 총액(Reference Sell Rate)이다.
  *   숙소가 받는 정산(Base Rate)이나 수납 기록이 아니다.
  */
-import { daysBetween } from "./ledger";
+function nightsBetween(a: string, b: string): number {
+  const p = (s: string) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((p(b) - p(a)) / 86400000);
+}
 
 export const PASTE_PLATFORM_IDS = ["yanolja", "yeogi", "agoda", "naver"] as const;
 export type PastePlatformId = (typeof PASTE_PLATFORM_IDS)[number];
@@ -36,7 +42,10 @@ export const PASTE_FIELD_LABELS: Record<PasteTemplateField, string> = {
 };
 
 export interface PasteTemplate {
-  platformId: PastePlatformId;
+  /** 호텔에 등록된 플랫폼 id. 예전 저장은 agoda·yanolja 같은 기본 프로필 id일 수 있다. */
+  platformId: string;
+  /** 아고다처럼 기본 인식이 있는 플랫폼. 없으면 저장한 칸 이름만 쓴다. */
+  profileId?: PastePlatformId | null;
   version: 1;
   labels: Partial<Record<PasteTemplateField, string>>;
 }
@@ -127,6 +136,14 @@ function isPlatformId(v: string): v is PastePlatformId {
   return (PASTE_PLATFORM_IDS as readonly string[]).includes(v);
 }
 
+const PLATFORM_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+
+export function templateProfile(template: PasteTemplate): PastePlatformId | null {
+  if (template.profileId && isPlatformId(template.profileId)) return template.profileId;
+  if (isPlatformId(template.platformId)) return template.platformId;
+  return null;
+}
+
 function isField(v: string): v is PasteTemplateField {
   return (PASTE_TEMPLATE_FIELDS as readonly string[]).includes(v);
 }
@@ -156,8 +173,15 @@ export function validatePasteTemplate(
     return { ok: false, reason: "양식 형식이 아니에요" };
   }
   const o = input as Record<string, unknown>;
-  if (typeof o.platformId !== "string" || !isPlatformId(o.platformId)) {
+  if (typeof o.platformId !== "string" || !PLATFORM_ID_RE.test(o.platformId)) {
     return { ok: false, reason: "플랫폼을 골라 주세요" };
+  }
+  let profileId: PastePlatformId | null = null;
+  if (o.profileId != null && o.profileId !== "") {
+    if (typeof o.profileId !== "string" || !isPlatformId(o.profileId)) {
+      return { ok: false, reason: "플랫폼을 골라 주세요" };
+    }
+    profileId = o.profileId;
   }
   if (o.labels != null && (typeof o.labels !== "object" || Array.isArray(o.labels))) {
     return { ok: false, reason: "칸 이름이 잘못됐어요" };
@@ -184,7 +208,13 @@ export function validatePasteTemplate(
     seen.set(n, field);
     labels[field] = label;
   }
-  return { ok: true, template: { platformId: o.platformId, version: 1, labels } };
+  const template: PasteTemplate = { platformId: o.platformId, version: 1, labels };
+  if (profileId) template.profileId = profileId;
+  return { ok: true, template };
+}
+
+export function normalizePasteTemplates(raw: unknown): PasteTemplate[] {
+  return readPasteTemplateStore(JSON.stringify(Array.isArray(raw) ? raw : []));
 }
 
 export function readPasteTemplateStore(raw: string | null | undefined): PasteTemplate[] {
@@ -202,7 +232,7 @@ export function readPasteTemplateStore(raw: string | null | undefined): PasteTem
       ? (data as { templates: unknown[] }).templates
       : null;
   if (!list) return [];
-  const byPlatform = new Map<PastePlatformId, PasteTemplate>();
+  const byPlatform = new Map<string, PasteTemplate>();
   for (const item of list) {
     const v = validatePasteTemplate(item);
     if (!v.ok) continue;
@@ -404,7 +434,7 @@ function labelsFor(template: PasteTemplate): { field: PasteTemplateField; label:
   const rows: { field: PasteTemplateField; label: string }[] = [];
   for (const field of PASTE_TEMPLATE_FIELDS) {
     const own = template.labels[field]?.trim() ?? "";
-    const aliases = template.platformId === "agoda" ? (AGODA_LABEL_ALIASES[field] ?? []) : [];
+    const aliases = templateProfile(template) === "agoda" ? (AGODA_LABEL_ALIASES[field] ?? []) : [];
     const builtin = BUILTIN_AGODA_TEMPLATE.labels[field]?.trim() ?? "";
     const replaced = !!own && normLabel(own) !== normLabel(builtin) && !aliases.some((a) => normLabel(a) === normLabel(own));
     const labels = replaced ? [own] : [...new Set([own, ...aliases].filter((x) => x.length > 0))];
@@ -658,7 +688,7 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
   out.checkInTime = cin.time;
   out.checkOutTime = cout.time;
   if (out.checkIn && out.checkOut) {
-    const nights = daysBetween(out.checkIn, out.checkOut);
+    const nights = nightsBetween(out.checkIn, out.checkOut);
     if (nights >= 1 && nights <= 366) out.nights = nights;
     else out.warnings.push("체크아웃이 체크인보다 이르거나 너무 멀어 박수를 비웠어요");
   }
@@ -756,7 +786,7 @@ export function parseAgodaLabeledTable(
   saved?: readonly PasteTemplate[] | null,
 ): LabeledTable | null {
   if (!agodaPartnerSignature(raw)) return null;
-  const custom = saved?.find((t) => t.platformId === "agoda") ?? null;
+  const custom = saved?.find((t) => templateProfile(t) === "agoda") ?? null;
   let rows = extractLabeledPaste(raw, custom ?? BUILTIN_AGODA_TEMPLATE);
   const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
   if (custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
@@ -766,16 +796,120 @@ export function parseAgodaLabeledTable(
 /** 표 인식이 실패하고 직원이 플랫폼을 직접 골랐을 때만. 다른 플랫폼의 표를 바꾸지 않는다. */
 export function parseManualLabeledTable(
   raw: string,
-  platformId: PastePlatformId,
+  platformId: string,
   saved?: readonly PasteTemplate[] | null,
 ): LabeledTable | null {
   if (!raw.trim() || hasStrongTable(raw)) return null;
-  if (agodaPartnerSignature(raw) && platformId !== "agoda") return null;
   const custom = saved?.find((t) => t.platformId === platformId) ?? null;
-  const template = custom ?? (platformId === "agoda" ? BUILTIN_AGODA_TEMPLATE : null);
+  const agoda = platformId === "agoda" || (custom != null && templateProfile(custom) === "agoda");
+  if (agodaPartnerSignature(raw) && !agoda) return null;
+  const template = custom ?? (agoda ? BUILTIN_AGODA_TEMPLATE : null);
   if (!template) return null;
   let rows = extractLabeledPaste(raw, template);
   const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
-  if (platformId === "agoda" && custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
+  if (agoda && custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
   return toTable(rows);
+}
+
+const SECTION_LINES = new Set(
+  ["예약정보", "결제및요금", "정산(upc)", "정산upc", "셀프서비스", "smartflex", "예약로그", "객실및투숙인원"].map(normLabel),
+);
+
+function isSectionLine(line: string): boolean {
+  return SECTION_LINES.has(normLabel(line));
+}
+
+function isLabelish(line: string): boolean {
+  const t = line.trim();
+  if (!t || t.length > 40 || isIconLine(t) || isSectionLine(t) || statusKind(t)) return false;
+  if (splitStayStamp(t) || parseClock(t) || parseReservationToken(t) || parseAdults(t)) return false;
+  if (/[A-Za-z]/u.test(t) && /\s/u.test(t)) return false;
+  const money = parseSalesTotal(t);
+  if (money.amount != null || money.foreign || /^\d{1,2}\s*[xX×]\s+\S/u.test(t)) return false;
+  return true;
+}
+
+export interface PasteValueChoice {
+  label: string;
+  value: string;
+}
+
+/** 붙여넣은 글에서 '칸 이름 → 값'만 고른다. 손님 글 전체를 양식으로 저장하지 않기 위한 목록. */
+export function listPasteChoices(text: string): PasteValueChoice[] {
+  const lines = splitLines(text).map((l) => l.trim()).filter((l) => l && !isIconLine(l) && !isSectionLine(l));
+  const out: PasteValueChoice[] = [];
+  const seen = new Set<string>();
+  const push = (label: string, value: string) => {
+    const key = `${normLabel(label)}\0${value}`;
+    if (!label.trim() || seen.has(key)) return;
+    seen.add(key);
+    out.push({ label: label.replace(/\s*[：:]\s*$/u, "").trim(), value });
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const adult = line.match(/^(성인)\s*(\d{1,2}\s*명)$/u);
+    if (adult) {
+      push(adult[1]!, adult[2]!.replace(/\s+/g, ""));
+      continue;
+    }
+    if (!isLabelish(line)) continue;
+    const next = lines[i + 1];
+    if (!next || isLabelish(next) || statusKind(next)) continue;
+    const stamp = splitStayStamp(next);
+    let value = next.trim();
+    if (stamp && !stamp.time) {
+      const after = lines[i + 2];
+      const clock = after ? parseClock(after) : null;
+      if (clock) value = `${value} ${clock}`;
+    }
+    push(line, value);
+  }
+  return out;
+}
+
+export function choiceFitsField(field: PasteTemplateField, value: string): boolean {
+  if (statusKind(value)) return false;
+  if (field === "reservationId") return parseReservationToken(value) != null;
+  if (field === "guestName") {
+    const t = value.trim();
+    return t.length >= 2 && t.length <= 80 && !splitStayStamp(t) && !parseClock(t) && !parseReservationToken(t) && parseSalesTotal(t).amount == null && !/^\d/u.test(t);
+  }
+  if (field === "guestPhone") return /\d/.test(value) && !splitStayStamp(value) && value.trim().length <= 40;
+  if (field === "adults") return parseAdults(value) != null;
+  if (field === "checkIn" || field === "checkOut") return parseStayDate(value) != null;
+  if (field === "salesTotal") {
+    const money = parseSalesTotal(value);
+    return (money.amount != null || money.foreign) && !money.ambiguous;
+  }
+  if (field === "typeRaw") {
+    const t = value.trim();
+    return t.length >= 2 && t.length <= 80 && !splitStayStamp(t) && parseSalesTotal(t).amount == null && !parseReservationToken(t);
+  }
+  return false;
+}
+
+export function parseBestSavedTemplate(
+  text: string,
+  saved?: readonly PasteTemplate[] | null,
+): { table: LabeledTable; platformId: string } | null {
+  if (!text.trim() || hasStrongTable(text) || agodaPartnerSignature(text)) return null;
+  let best: { template: PasteTemplate; score: number } | null = null;
+  let second = 0;
+  for (const template of saved ?? []) {
+    const lines = splitLines(text);
+    const fields = new Set<PasteTemplateField>();
+    for (const { field, label } of labelsFor(template)) {
+      if (lines.some((line) => matchLabel(line, label))) fields.add(field);
+    }
+    const usefulHit = fields.has("reservationId") || fields.has("checkIn") || fields.has("checkOut");
+    const score = usefulHit ? fields.size : 0;
+    if (!best || score > best.score) {
+      second = best?.score ?? 0;
+      best = { template, score };
+    } else if (score > second) second = score;
+  }
+  if (!best || best.score < 2 || best.score - second < 1) return null;
+  const table = parseManualLabeledTable(text, best.template.platformId, saved);
+  if (!table) return null;
+  return { table, platformId: best.template.platformId };
 }
