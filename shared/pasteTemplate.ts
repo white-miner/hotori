@@ -185,13 +185,30 @@ function isField(v: string): v is PasteTemplateField {
 export function statusKind(line: string): "confirmed" | "cancelled" | null {
   const n = normLabel(line);
   if (!n) return null;
-  if (n === "확정된예약" || n === "confirmed" || n === "bookingconfirmed") return "confirmed";
+  if (
+    n === "확정된예약" ||
+    n === "확정" ||
+    n === "확정됨" ||
+    n === "예약확정" ||
+    n === "확인된예약" ||
+    n === "예약확인됨" ||
+    n === "confirmed" ||
+    n === "bookingconfirmed" ||
+    n === "confirmedbooking"
+  ) {
+    return "confirmed";
+  }
   if (
     n === "취소된예약" ||
     n === "예약취소" ||
     n === "고객취소" ||
+    n === "취소됨" ||
     n === "cancelled" ||
     n === "canceled" ||
+    n === "cancelledbooking" ||
+    n === "canceledbooking" ||
+    n === "bookingcancelled" ||
+    n === "bookingcanceled" ||
     n === "noshow" ||
     n === "no-show"
   ) {
@@ -320,28 +337,65 @@ function isRealDate(y: number, mo: number, d: number): boolean {
 }
 
 /** 날짜로 시작하는 줄. 요일·쉼표·괄호 시각은 같은 날짜로 본다. 문장 속 날짜는 집지 않는다. */
+const MONTHS: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4, may: 5, jun: 6, june: 6,
+  jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11,
+  dec: 12, december: 12,
+};
+const WEEKDAY_EN = /\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day|nesday|rsday|urday|sday)?\b\.?/giu;
+
+/** 날짜 앞부분. 한국어(2026년 11월 7일), 숫자(2026-11-07), 영어(Nov 7, 2026 / 7 November 2026). */
+function leadingDate(t: string): { y: number; mo: number; d: number; len: number } | null {
+  const ko = t.match(/^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?/u) || t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/u);
+  if (ko) return { y: Number(ko[1]), mo: Number(ko[2]), d: Number(ko[3]), len: ko[0].length };
+  const lead = t.match(/^(?:(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\.?,?\s+)?/iu)![0];
+  const s = t.slice(lead.length);
+  const md = s.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/u);
+  if (md && MONTHS[md[1]!.toLowerCase()]) return { y: Number(md[3]), mo: MONTHS[md[1]!.toLowerCase()]!, d: Number(md[2]), len: lead.length + md[0].length };
+  const dm = s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s-]+([A-Za-z]{3,9})\.?,?[\s-]+(\d{4})/u);
+  if (dm && MONTHS[dm[2]!.toLowerCase()]) return { y: Number(dm[3]), mo: MONTHS[dm[2]!.toLowerCase()]!, d: Number(dm[1]), len: lead.length + dm[0].length };
+  return null;
+}
+
+/** `16:00`, `4:00 PM`, `오후 4:00`을 24시간 `HH:MM`으로. 범위를 벗어나면 null. */
+function clockOf(h: number, min: number, ampm: string | undefined): string | null {
+  if (!Number.isInteger(h) || !Number.isInteger(min) || min > 59) return null;
+  const mer = ampm?.toLowerCase().replace(/\./g, "");
+  if (mer) {
+    if (h < 1 || h > 12) return null;
+    if (mer === "pm" || mer === "오후") h = h === 12 ? 12 : h + 12;
+    else if (h === 12) h = 0;
+  }
+  if (h > 23) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+const CLOCK_RE = /(오전|오후)?\s*(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?/giu;
+
 function splitStayStamp(raw: string): { date: string; time: string | null; badTime: boolean } | null {
   const t = raw.replace(/\u00a0/g, " ").trim();
   if (!t) return null;
-  const m = t.match(/^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?/u) || t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/u);
+  const m = leadingDate(t);
   if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
+  const { y, mo, d } = m;
   if (!isRealDate(y, mo, d)) return null;
   const date = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  let rest = t.slice(m[0].length);
-  rest = rest.replace(/[월화수목금토일]요일/gu, " ").replace(/[（(]\s*[월화수목금토일]\s*[)）]/gu, " ");
-  const clocks = [...rest.matchAll(/(\d{1,2}):(\d{2})/g)];
+  let rest = t.slice(m.len);
+  rest = rest
+    .replace(/[월화수목금토일]요일/gu, " ")
+    .replace(/[（(]\s*[월화수목금토일]\s*[)）]/gu, " ")
+    .replace(WEEKDAY_EN, " ")
+    .replace(/\bat\b/giu, " ");
+  const clocks = [...rest.matchAll(CLOCK_RE)];
   let time: string | null = null;
   let badTime = false;
   if (clocks.length > 1) badTime = true;
   else if (clocks.length === 1) {
-    const h = Number(clocks[0]![1]);
-    const min = Number(clocks[0]![2]);
-    if (!Number.isInteger(h) || !Number.isInteger(min) || h > 23 || min > 59) badTime = true;
-    else time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-    rest = rest.replace(clocks[0]![0], " ");
+    const c = clocks[0]!;
+    const ampm = c[1] ?? c[4];
+    time = clockOf(Number(c[2]), Number(c[3]), ampm);
+    if (!time) badTime = true;
+    rest = rest.replace(c[0], " ");
   }
   if (rest.replace(/[()（）,，.\s]/gu, "")) return null;
   return { date, time: badTime ? null : time, badTime };
@@ -359,17 +413,17 @@ export function clockOnStayLine(raw: string): { time: string | null; badTime: bo
 
 export function parseClock(raw: string): string | null {
   const t = raw.replace(/\u00a0/g, " ").trim();
-  const m = t.match(/^[（(]?\s*(\d{1,2}):(\d{2})\s*[)）]?\s*$/);
+  const m = t.match(/^[（(]?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})\s*(a\.?m\.?|p\.?m\.?)?\s*[)）]?\s*$/iu);
   if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isInteger(h) || !Number.isInteger(min) || h > 23 || min > 59) return null;
-  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  return clockOf(Number(m[2]), Number(m[3]), m[1] ?? m[4]);
 }
 
 export function parseAdults(raw: string): number | null {
   const t = raw.replace(/\u00a0/g, " ").trim();
-  const m = t.match(/^(?:성인\s*)?(\d{1,2})\s*명?$/u);
+  const m =
+    t.match(/^(?:성인|어른)?\s*(\d{1,2})\s*명?$/u) ||
+    t.match(/^(\d{1,2})\s*(?:adults?|성인|어른)$/iu) ||
+    t.match(/^adults?\s*(\d{1,2})$/iu);
   if (!m) return null;
   const n = Number(m[1]);
   if (!Number.isInteger(n) || n < 1 || n > 99) return null;
@@ -384,7 +438,12 @@ export function parseSalesTotal(raw: string): {
   ambiguous: boolean;
   foreign: boolean;
 } {
-  const t = raw.replace(/\u00a0/g, " ").trim();
+  const t = raw
+    .replace(/\u00a0/g, " ")
+    .trim()
+    .replace(/^(₩|KRW|USD|EUR|JPY|CNY|GBP|THB)(?=\d)/iu, "$1 ")
+    .replace(/(\d)(원|KRW|USD|EUR|JPY|CNY|GBP|THB)$/iu, "$1 $2")
+    .replace(/(\d{1,3}(?:,\d{3})+|\d+)\.0{1,2}(?=\s|$)/gu, "$1");
   if (!t) return { amount: null, currency: null, ambiguous: false, foreign: false };
   const parts = t.split(/\s+/).filter(Boolean);
   let currency: string | null = null;
@@ -472,20 +531,72 @@ function matchLabel(line: string, label: string): { rest: string } | null {
 }
 
 /** 기본 아고다 글자와 같은 칸일 때만 같이 보는 다른 표기. 사용자가 칸 이름을 바꾸면 그 글자만 쓴다. */
+/**
+ * 같은 칸의 여러 표기. 아고다 한국어 화면, 영어 화면, 영어 화면을 크롬이 번역한 글자(예: 점검, 체류 기간)를 함께 둔다.
+ * 직원이 고른 칸 이름이 다음 글에 없으면 이 표기로 같은 칸을 찾는다.
+ */
 const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
-  reservationId: ["예약 번호", "예약번호"],
-  guestName: ["투숙객 이름", "투숙객"],
-  guestPhone: ["연락처 정보", "연락처", "전화"],
-  adults: ["성인"],
-  statusRaw: ["상태", "예약상태"],
+  reservationId: [
+    "예약 번호",
+    "예약번호",
+    "예약 ID",
+    "예약 아이디",
+    "예약 코드",
+    "Booking ID",
+    "Booking number",
+    "Booking no",
+    "Booking no.",
+    "Reservation ID",
+    "Reservation number",
+  ],
+  guestName: [
+    "투숙객 이름",
+    "투숙객",
+    "손님 이름",
+    "손님",
+    "고객 이름",
+    "고객",
+    "대표 투숙객",
+    "Guest name",
+    "Guest",
+    "Customer name",
+    "Customer",
+    "Lead guest",
+  ],
+  guestPhone: ["연락처 정보", "연락처", "전화", "전화번호", "Contact information", "Contact details", "Contact info", "Phone", "Phone number"],
+  adults: ["성인", "어른", "Adults", "Adult"],
+  statusRaw: ["상태", "예약상태", "Status", "Booking status"],
   checkInTime: ["입실 시각"],
   checkOutTime: ["퇴실 시각"],
-  currency: ["통화"],
-  nights: ["박수", "숙박일수", "숙박 기간"],
-  typeRaw: ["객실 종류 및 혜택"],
-  checkIn: ["체크인"],
-  checkOut: ["체크아웃"],
-  salesTotal: ["기준 판매 요금"],
+  currency: ["통화", "Currency"],
+  nights: ["박수", "숙박일수", "숙박 일수", "숙박 기간", "체류 기간", "체류 일수", "투숙 기간", "Length of stay", "Nights", "Number of nights"],
+  typeRaw: [
+    "객실 종류 및 혜택",
+    "객실 유형 및 혜택",
+    "객실 종류",
+    "객실 유형",
+    "객실 타입",
+    "Room type and benefits",
+    "Room type & benefits",
+    "Room types and benefits",
+    "Room type",
+  ],
+  checkIn: ["체크인", "체크 인", "체크인 날짜", "Check-in", "Check in", "Checkin", "Check-in date", "Arrival", "Arrival date"],
+  checkOut: ["체크아웃", "체크 아웃", "체크아웃 날짜", "점검", "Check-out", "Check out", "Checkout", "Check-out date", "Departure", "Departure date"],
+  salesTotal: [
+    "기준 판매 요금",
+    "참조 판매 포함",
+    "참조 판매",
+    "참고 판매 포함",
+    "참고 판매",
+    "기준 판매가",
+    "Reference sell inclusive",
+    "Reference sell incl",
+    "Reference sell",
+    "Ref. sell inclusive",
+    "Ref sell inclusive",
+    "Sell inclusive",
+  ],
 };
 
 function labelsFor(template: PasteTemplate): { field: PasteTemplateField; label: string }[] {
@@ -523,12 +634,11 @@ export function agodaPartnerSignature(text: string): boolean {
   if (!text.trim() || hasStrongTable(text)) return false;
   const lines = splitLines(text);
   const hasIcon = lines.some((l) => isIconLine(l));
-  const norms = lines.map((l) => normLabel(l));
-  const has = (label: string) => norms.some((n) => n.startsWith(normLabel(label)));
-  const hasSell = has("기준 판매 요금");
-  const hasConfirm = norms.some((n) => n === normLabel("확정된 예약"));
-  const hasCheck = has("체크인") || has("체크아웃");
-  const hasRes = has("예약 번호") || has("예약번호");
+  const has = (field: PasteTemplateField) => (AGODA_LABEL_ALIASES[field] ?? []).some((label) => lines.some((l) => matchLabel(l, label)));
+  const hasSell = has("salesTotal");
+  const hasConfirm = lines.some((l) => statusKind(l) === "confirmed");
+  const hasCheck = has("checkIn") || has("checkOut");
+  const hasRes = has("reservationId");
   if (hasIcon && hasCheck && (hasSell || hasConfirm || hasRes)) return true;
   if (hasSell && hasCheck && hasRes) return true;
   if (hasConfirm && hasCheck && hasRes) return true;
@@ -723,7 +833,7 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     if (n == null) out.warnings.push("인원을 읽지 못했어요");
     else out.adults = n;
   } else {
-    const adultsLine = lines.find((line) => parseAdults(line) != null && /성인|인원/u.test(line));
+    const adultsLine = lines.find((line) => parseAdults(line) != null && /성인|어른|인원|adult/iu.test(line));
     if (adultsLine) {
       const n = parseAdults(adultsLine);
       if (n != null) out.adults = n;
@@ -954,17 +1064,56 @@ function agodaTemplateFor(lines: string[], custom: PasteTemplate): PasteTemplate
   return { ...custom, profileId: "agoda", labels, rules };
 }
 
+const EXTRACT_VALUE_KEYS = [
+  "reservationId",
+  "guestName",
+  "guestPhone",
+  "adults",
+  "typeRaw",
+  "checkIn",
+  "checkOut",
+  "checkInTime",
+  "checkOutTime",
+  "nights",
+  "salesTotal",
+  "currency",
+  "statusRaw",
+  "statusKind",
+] as const;
+
+/**
+ * 저장 양식으로 읽은 값이 먼저다. 비거나 못 읽은 칸만 기본 아고다 표기(한국어·영어·번역)로 채운다.
+ * 경고는 두 방법이 모두 같은 문제를 말할 때만 남긴다.
+ */
+function readAgoda(raw: string, found: PasteTemplate | null): LabeledExtract[] {
+  const base = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
+  if (!found) return base;
+  const own = extractLabeledPaste(raw, agodaTemplateFor(splitLines(raw), found));
+  if (own.length !== base.length) {
+    const missed = own.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
+    return missed ? base : own;
+  }
+  return own.map((mine, i) => {
+    const fallback = base[i]!;
+    const out: LabeledExtract = { ...mine, warnings: [] };
+    const filled = out as unknown as Record<string, unknown>;
+    const spare = fallback as unknown as Record<string, unknown>;
+    for (const key of EXTRACT_VALUE_KEYS) {
+      if (filled[key] == null || filled[key] === "") filled[key] = spare[key];
+    }
+    if (out.salesTotal != null && mine.salesTotal == null) out.currency = fallback.currency;
+    out.warnings = mine.warnings.filter((w) => fallback.warnings.includes(w));
+    return out;
+  });
+}
+
 export function parseAgodaLabeledTable(
   raw: string,
   saved?: readonly PasteTemplate[] | null,
 ): LabeledTable | null {
   if (!agodaPartnerSignature(raw)) return null;
   const found = saved?.find((t) => templateProfile(t) === "agoda") ?? null;
-  const custom = found ? agodaTemplateFor(splitLines(raw), found) : null;
-  let rows = extractLabeledPaste(raw, custom ?? BUILTIN_AGODA_TEMPLATE);
-  const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
-  if (custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
-  return toTable(rows);
+  return toTable(readAgoda(raw, found));
 }
 
 /** 표 인식이 실패하고 직원이 플랫폼을 직접 골랐을 때만. 다른 플랫폼의 표를 바꾸지 않는다. */
@@ -977,12 +1126,9 @@ export function parseManualLabeledTable(
   const custom = saved?.find((t) => t.platformId === platformId) ?? null;
   const agoda = platformId === "agoda" || (custom != null && templateProfile(custom) === "agoda");
   if (agodaPartnerSignature(raw) && !agoda) return null;
-  const template = custom ? (agoda ? agodaTemplateFor(splitLines(raw), custom) : custom) : agoda ? BUILTIN_AGODA_TEMPLATE : null;
-  if (!template) return null;
-  let rows = extractLabeledPaste(raw, template);
-  const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
-  if (agoda && custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
-  return toTable(rows);
+  if (agoda) return toTable(readAgoda(raw, custom));
+  if (!custom) return null;
+  return toTable(extractLabeledPaste(raw, custom));
 }
 
 const SECTION_LINES = new Set(
@@ -997,6 +1143,34 @@ const SECTION_LINES = new Set(
     "객실및투숙인원",
     "투숙객세부사항및날짜정보",
     "요청사항및참고사항",
+    "투숙객정보및날짜",
+    "손님정보및날짜",
+    "결제및요율",
+    "지불및요금",
+    "셀프서비스",
+    "객실및점유",
+    "객실및투숙객",
+    "요청및메모",
+    "요청및참고사항",
+    "Booking information",
+    "Booking info",
+    "Booking details",
+    "Payment and rates",
+    "Payments and rates",
+    "Payment & rates",
+    "Settlement (UPC)",
+    "Settlement",
+    "Self service",
+    "Self-service",
+    "Guest details and dates",
+    "Guest details & dates",
+    "Guest information and dates",
+    "Booking log",
+    "Rooms and occupancy",
+    "Room and occupancy",
+    "Rooms & occupancy",
+    "Requests and notes",
+    "Requests & notes",
   ].map(normLabel),
 );
 
@@ -1009,20 +1183,48 @@ const KNOWN_HEADINGS = new Set(
   [
     ...Object.values(AGODA_LABEL_ALIASES).flat(),
     "투숙객 거주 국가",
+    "거주 국가",
+    "고객 거주 국가",
+    "손님의 거주 국가",
     "아동",
+    "어린이",
     "간이침대",
+    "엑스트라 베드",
+    "추가 침대",
     "특별 요청 사항",
+    "특별 요청",
     "최종 변경",
+    "마지막 수정",
+    "마지막 변경",
+    "Country of residence",
+    "Guest country of residence",
+    "Customer's country of residence",
+    "Children",
+    "Child",
+    "Extra bed",
+    "Extra beds",
+    "Special requests",
+    "Special request",
+    "Last modified",
+    "Last updated",
   ].map(normLabel),
 );
 
 function isKnownHeading(line: string): boolean {
-  return KNOWN_HEADINGS.has(normLabel(cleanHeader(line))) || /^예약\s*생성일/u.test(line.trim());
+  const head = cleanHeader(line);
+  const bare = head.replace(/\s*[（(][^()（）]*[)）]\s*$/u, "");
+  return (
+    KNOWN_HEADINGS.has(normLabel(head)) ||
+    (bare !== head && KNOWN_HEADINGS.has(normLabel(bare))) ||
+    /^(예약\s*생성일|예약\s*날짜|예약일|booking\s*date|booked\s*on|created\s*on)/iu.test(line.trim())
+  );
 }
 
 function isLabelish(line: string): boolean {
   const t = line.trim();
-  if (!t || t.length > 40 || isIconLine(t) || isSectionLine(t) || statusKind(t)) return false;
+  if (!t || isIconLine(t) || isSectionLine(t) || statusKind(t)) return false;
+  if (isKnownHeading(t)) return true;
+  if (t.length > 40) return false;
   if (splitStayStamp(t) || parseClock(t) || parseReservationToken(t) || parseAdults(t)) return false;
   if (/^\d{1,3}\s*박$/u.test(t)) return false;
   if (/^(KRW|USD|EUR|JPY|CNY|GBP|THB)$/i.test(t)) return false;
@@ -1044,6 +1246,9 @@ export interface PasteReadLine {
   inline?: boolean;
 }
 
+/** `성인 2명`, `2 Adults`처럼 칸 이름과 인원이 한 줄에 있는 줄. */
+const ADULT_LINE = /^(?:(?:성인|어른)\s*\d{1,2}\s*명?|\d{1,2}\s*(?:adults?|명)|adults?\s*\d{1,2})$/iu;
+
 function headerFlags(lines: string[]): boolean[] {
   const flags = lines.map(() => false);
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -1062,7 +1267,7 @@ function headerFlags(lines: string[]): boolean[] {
   for (let i = lines.length - 1; i >= 0; i--) {
     if (!first[i]) continue;
     const next = lines[i + 1] ?? "";
-    if (!/^성인\s*\d/u.test(next.trim())) continue;
+    if (!ADULT_LINE.test(next.trim())) continue;
     const prev = i > 0 ? lines[i - 1]! : "";
     if (prev && isLabelish(prev) && !statusKind(prev) && (!first[i - 1] || isKnownHeading(prev))) {
       flags[i] = false;
@@ -1096,8 +1301,7 @@ export function readPasteLines(text: string): PasteReadLine[] {
   const headers = headerFlags(lines);
   return spans.map((span, i) => {
     const line = span.text;
-    const adult = line.match(/^(성인)\s*\d{1,2}\s*명$/u);
-    if (adult) return { text: line, label: adult[1]!, valueStart: span.start, valueEnd: span.end, inline: true };
+    if (ADULT_LINE.test(line)) return { text: line, label: /adult/iu.test(line) ? "Adults" : "성인", valueStart: span.start, valueEnd: span.end, inline: true };
     const colon = line.match(/^(.{2,40}?)\s*[：:]\s*(\S.*)$/u);
     const timeColon = !!colon && /\d\s*$/u.test(colon[1]!) && /^\d/u.test(colon[2]!);
     if (colon && !timeColon && isLabelish(colon[1]!)) {
@@ -1187,7 +1391,10 @@ export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: 
   const same = values
     .filter((item) => choiceFitsField(field, item.text))
     .every((item) => canonRaw(field, item.text) === canonRaw(field, line.text));
-  return { label, occurrence: same ? 0 : occurrence };
+  // `기준 판매 요금(세금 및 수수료 포함)`처럼 뒤 괄호는 설명이다. 읽을 때 괄호가 붙어 있어도 같은 칸으로 본다.
+  const bare = label.replace(/\s*[（(][^()（）]*[)）]\s*$/u, "");
+  const saved = normLabel(bare).length >= 2 ? bare : label;
+  return { label: saved, occurrence: same ? 0 : occurrence };
 }
 
 export function readFieldValue(text: string, field: PasteTemplateField, label: string, occurrence = 0): string {
@@ -1214,6 +1421,14 @@ export function readFieldValue(text: string, field: PasteTemplateField, label: s
   if (field === "checkOut") return [row.checkOut, row.checkOutTime].filter(Boolean).join(" ");
   if (field === "salesTotal") return row.salesTotal == null ? "" : `${row.currency ?? ""} ${row.salesTotal}`.trim();
   return "";
+}
+
+/** 양식 설정 목록에 보일 줄. 칸에 맞는 값이면 칸 이름으로 짐작한 줄이어도 보인다. 아는 칸 이름·구역 제목·상태만 뺀다. */
+export function pickableForField(line: PasteReadLine, field: PasteTemplateField): boolean {
+  if (!choiceFitsField(field, line.text)) return false;
+  if (line.label !== line.text) return true;
+  const t = line.text.trim();
+  return !isKnownHeading(t) && !isSectionLine(t) && !statusKind(t) && !isIconLine(t);
 }
 
 export function choiceFitsField(field: PasteTemplateField, value: string): boolean {
