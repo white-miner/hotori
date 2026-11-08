@@ -12,6 +12,7 @@ import {
   choiceFitsField,
   readFieldValue,
   lineIndexForSelection,
+  pickableForField,
   readPasteLines,
   ruleForPickedLine,
   templateProfile,
@@ -241,7 +242,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
-                  if (line.label === line.text || !choiceFitsField(field, line.text)) return null;
+                  if (!pickableForField(line, field)) return null;
                   const selected = pickedLine[field] === i || (pickedLine[field] == null && draft.labels[field] === line.label && (draft.rules[field]?.occurrence ?? 0) === 0 && choiceFitsField(field, line.text));
                   return (
                     <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i)}>

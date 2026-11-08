@@ -18,6 +18,7 @@ import {
   readPasteLines,
   ruleForPickedLine,
   parseAgodaLabeledTable,
+  pickableForField,
   parseBestSavedTemplate,
   parseManualLabeledTable,
   pasteTemplateStorageKey,
@@ -38,7 +39,7 @@ import {
   profileById,
   HYPOTHESIS_FIXTURES,
 } from "./smartRegister.ts";
-import { AGODA_FULL_A, AGODA_FULL_B, agodaFullText } from "./testFixtures/agodaPartnerFull.ts";
+import { AGODA_FULL_A, AGODA_FULL_B, agodaFullText, agodaScreenText, type AgodaScreenLanguage } from "./testFixtures/agodaPartnerFull.ts";
 
 /** 구조만 같고 이름·예약번호는 가상이다. */
 const AGODA_SHAPE = [
@@ -839,4 +840,148 @@ test("아고다 화면 전체 복사: 고른 값으로 양식을 저장하면 �
   assert.equal(next.row.guests, 1);
   assert.equal(next.row.rowStatus, "ok");
   assert.deepEqual(next.row.warnings ?? [], []);
+});
+
+/** 운영 호텔에 남아 있던, 영어 화면을 크롬 번역으로 보고 저장한 아고다 양식(칸 이름만). */
+const TRANSLATED_SAVED = validatePasteTemplate({
+  platformId: "p3",
+  profileId: "agoda",
+  labels: {
+    adults: "성인",
+    nights: "체류 기간",
+    checkIn: "체크인",
+    typeRaw: "객실 유형 및 혜택",
+    checkOut: "점검",
+    guestName: "손님",
+    salesTotal: "참조 판매 포함",
+    checkInTime: "체크인",
+    checkOutTime: "점검",
+    reservationId: "투숙객 정보 및 날짜",
+  },
+  rules: {
+    adults: { label: "성인", occurrence: 0 },
+    nights: { label: "체류 기간", occurrence: 0 },
+    checkIn: { label: "체크인", occurrence: 0 },
+    typeRaw: { label: "객실 유형 및 혜택", occurrence: 0 },
+    checkOut: { label: "점검", occurrence: 0 },
+    guestName: { label: "손님", occurrence: 0 },
+    salesTotal: { label: "참조 판매 포함", occurrence: 0 },
+    checkInTime: { label: "체크인", occurrence: 1 },
+    checkOutTime: { label: "점검", occurrence: 1 },
+    reservationId: { label: "투숙객 정보 및 날짜", occurrence: 0 },
+  },
+});
+
+const LANGS: AgodaScreenLanguage[] = ["ko", "en", "ko-translated"];
+const langSettings = normalizeSettings({
+  platforms: [{ id: "p3", name: "아고다", abbr: "아" }],
+  types: [
+    { id: "std", name: "스탠다드" },
+    { id: "dlx", name: "디럭스" },
+  ],
+  typeAliases: [
+    { id: "ta1", platformId: "p3", platformTypeName: "1 X Standard Styler (1000000999)", typeId: "std" },
+    { id: "ta2", platformId: "p3", platformTypeName: "1 X Deluxe Double (2000000999)", typeId: "dlx" },
+  ],
+  stayTimes: { checkIn: "16:00", checkOut: "12:00" },
+});
+
+function agodaRow(text: string, templates: Parameters<typeof parsePasteTable>[1] = {}) {
+  const table = parsePasteTable(text, templates);
+  assert.ok(table, "표를 못 읽음");
+  const det = detectProfile(table!.headers, text);
+  assert.equal(det.profileId, "agoda");
+  return buildPreviewRows(table!, profileById("agoda")!, langSettings, [], "p3")[0]!;
+}
+
+function assertReads(row: ReturnType<typeof agodaRow>, want: typeof AGODA_FULL_A, label: string) {
+  const nights = Number(want.nights);
+  const amount = Number(want.money.replace(/\D/g, ""));
+  assert.equal(row.reservationId, want.id, `${label} 예약번호`);
+  assert.equal(row.guestName, want.name, `${label} 이름`);
+  assert.ok(row.typeId, `${label} 타입`);
+  assert.equal(row.checkIn, want === AGODA_FULL_A ? "2026-11-07" : "2026-12-01", `${label} 입실`);
+  assert.equal(row.checkInTime, "16:00", `${label} 입실 시각`);
+  assert.equal(row.checkOutTime, "12:00", `${label} 퇴실 시각`);
+  assert.equal(row.nights, nights, `${label} 박수`);
+  assert.equal(row.amount, amount, `${label} 판매금`);
+  assert.equal(row.guests, Number(want.adults), `${label} 성인`);
+  assert.equal(row.guestPhone, "", `${label} 전화`);
+  assert.equal(row.rowStatus, "ok", `${label} 상태`);
+  assert.deepEqual(row.warnings ?? [], [], `${label} 경고`);
+}
+
+test("아고다 한국어·영어·크롬 번역 화면을 양식 없이 같은 값으로 읽는다", () => {
+  for (const lang of LANGS) {
+    assertReads(agodaRow(agodaScreenText(AGODA_FULL_A, lang)), AGODA_FULL_A, lang);
+    assertReads(agodaRow(agodaScreenText(AGODA_FULL_B, lang)), AGODA_FULL_B, `${lang} B`);
+  }
+});
+
+test("번역 화면으로 저장된 운영 양식이 있어도 세 화면 모두 읽는다", () => {
+  assert.equal(TRANSLATED_SAVED.ok, true);
+  if (!TRANSLATED_SAVED.ok) return;
+  for (const lang of LANGS) {
+    assertReads(agodaRow(agodaScreenText(AGODA_FULL_A, lang), { templates: [TRANSLATED_SAVED.template] }), AGODA_FULL_A, lang);
+  }
+});
+
+const PICKS: { field: Parameters<typeof ruleForPickedLine>[2]; value: (s: typeof AGODA_FULL_A, lang: AgodaScreenLanguage) => RegExp }[] = [
+  { field: "reservationId", value: (s) => new RegExp(`^${s.id}$`) },
+  { field: "guestName", value: (s) => new RegExp(`^${s.name}$`) },
+  { field: "typeRaw", value: () => /^1 X /u },
+  { field: "checkIn", value: (_s, lang) => (lang === "en" ? /^Saturday, November 7, 2026/u : /^2026년 11월 7일 토요일/u) },
+  { field: "nights", value: (s) => new RegExp(`^${s.nights}$`) },
+  { field: "salesTotal", value: (s) => new RegExp(`^${s.money}$`) },
+];
+
+test("아고다 세 화면 모두: 원하는 값이 목록에 보이고, 누르면 그 값이 칸에 읽힌다", () => {
+  for (const lang of LANGS) {
+    const text = agodaScreenText(AGODA_FULL_A, lang);
+    const lines = readPasteLines(text);
+    for (const { field, value } of PICKS) {
+      const at = lines.findIndex((l, i) => value(AGODA_FULL_A, lang).test(l.text) && (field !== "nights" || /숙박|체류|length/iu.test(lines[i]!.label)));
+      assert.notEqual(at, -1, `${lang} ${field} 줄 없음`);
+      assert.equal(pickableForField(lines[at]!, field), true, `${lang} ${field} 목록에 안 보임`);
+      const rule = ruleForPickedLine(lines, at, field);
+      assert.ok(rule, `${lang} ${field} 칸 이름 없음`);
+      assert.notEqual(readFieldValue(text, field, rule!.label, rule!.occurrence), "", `${lang} ${field} 읽힘 없음`);
+    }
+  }
+});
+
+test("한 화면 언어로 저장한 양식으로 다른 언어 화면의 다음 예약도 읽는다", () => {
+  for (const from of LANGS) {
+    const text = agodaScreenText(AGODA_FULL_A, from);
+    const lines = readPasteLines(text);
+    const labels: Record<string, string> = {};
+    const rules: Record<string, { label: string; occurrence: number }> = {};
+    for (const { field, value } of PICKS) {
+      const at = lines.findIndex((l, i) => value(AGODA_FULL_A, from).test(l.text) && (field !== "nights" || /숙박|체류|length/iu.test(lines[i]!.label)));
+      const rule = ruleForPickedLine(lines, at, field)!;
+      labels[field] = rule.label;
+      rules[field] = rule;
+    }
+    const saved = validatePasteTemplate({ platformId: "p3", profileId: "agoda", labels, rules });
+    assert.equal(saved.ok, true, from);
+    if (!saved.ok) continue;
+    assert.equal(serializePasteTemplateStore([saved.template]).includes(AGODA_FULL_A.id), false);
+    for (const to of LANGS) {
+      assertReads(agodaRow(agodaScreenText(AGODA_FULL_B, to), { templates: [saved.template] }), AGODA_FULL_B, `${from}→${to}`);
+    }
+  }
+});
+
+test("영어·번역 날짜, 오전/오후 시각, 영어 인원, ₩ 금액을 읽는다", () => {
+  assert.equal(choiceFitsField("checkIn", "Saturday, November 7, 2026 4:00 PM"), true);
+  assert.equal(choiceFitsField("checkIn", "Nov 7, 2026"), true);
+  assert.equal(choiceFitsField("checkIn", "7 November 2026"), true);
+  assert.equal(choiceFitsField("checkIn", "2026년 11월 7일 토요일 오후 4:00"), true);
+  assert.equal(readFieldValue("Check-in\nSat, Nov 7, 2026 at 4:00 PM", "checkIn", "Check-in"), "2026-11-07 16:00");
+  assert.equal(readFieldValue("체크인\n2026년 11월 7일 토요일 오후 12:00", "checkIn", "체크인"), "2026-11-07 12:00");
+  assert.equal(readFieldValue("체크인\n2026년 11월 7일 토요일 오전 12:30", "checkIn", "체크인"), "2026-11-07 00:30");
+  assert.equal(readFieldValue("Adults\n2 Adults", "adults", "Adults"), "2");
+  assert.equal(readFieldValue("판매\n₩210,000", "salesTotal", "판매"), "KRW 210000");
+  assert.equal(readFieldValue("판매\nKRW 210,000.00", "salesTotal", "판매"), "KRW 210000");
+  assert.equal(choiceFitsField("checkIn", "Booking date 13:00"), false);
 });

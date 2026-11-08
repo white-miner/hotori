@@ -140,3 +140,209 @@ export function agodaFullText(s: AgodaFullSample): string {
     "AdditionalNotes:Room on the lower floor",
   ].join("\n");
 }
+
+export type AgodaScreenLanguage = "ko" | "en" | "ko-translated";
+
+const EN_MONTH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const EN_DAY: Record<string, string> = { 월요일: "Monday", 화요일: "Tuesday", 수요일: "Wednesday", 목요일: "Thursday", 금요일: "Friday", 토요일: "Saturday", 일요일: "Sunday" };
+
+function koDateParts(ko: string): { y: number; m: number; d: number } {
+  const m = ko.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/u)!;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+}
+
+function enDate(ko: string): string {
+  const { y, m, d } = koDateParts(ko);
+  return `${EN_MONTH[m - 1]!.slice(0, 3)} ${d}, ${y}`;
+}
+
+function enStamp(ko: string, day: string, clock: string): string {
+  const { y, m, d } = koDateParts(ko);
+  const [hh, mm] = clock.split(":").map(Number) as [number, number];
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${EN_DAY[day]}, ${EN_MONTH[m - 1]} ${d}, ${y} ${h12}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
+}
+
+function enRoom(room: string): string {
+  return room.replace("스탠다드 스타일러", "Standard Styler").replace("디럭스 더블", "Deluxe Double");
+}
+
+/**
+ * 같은 예약을 영어 화면으로 복사한 글, 그 영어 화면을 크롬이 한국어로 번역해 복사한 글.
+ * 번역 글자는 운영 호텔에 저장돼 있던 양식의 칸 이름(손님·점검·체류 기간·객실 유형 및 혜택·참조 판매 포함·투숙객 정보 및 날짜)을 따른다.
+ */
+export function agodaScreenText(s: AgodaFullSample, lang: AgodaScreenLanguage): string {
+  if (lang === "ko") return agodaFullText(s);
+  if (lang === "en") {
+    return [
+      "Booking information",
+      "Booking ID:",
+      "",
+      s.id,
+      "",
+      "Confirmed booking",
+      "",
+      "athena-symbol-user",
+      "Guest",
+      s.name,
+      "",
+      `${s.adults} Adults`,
+      "athena-calendar-calendar",
+      "Check-in",
+      enDate(s.checkIn),
+      "",
+      "(4:00 PM)",
+      "athena-calendar-calendar",
+      "Check out",
+      enDate(s.checkOut),
+      "",
+      "(12:00 PM)",
+      "athena-promotion-money",
+      "Reference sell inclusive (incl. taxes & fees)",
+      s.money,
+      "",
+      "Booking information",
+      "Payment and rates",
+      "Settlement (UPC)",
+      "Self service",
+      "SmartFlex",
+      "",
+      "Guest details and dates",
+      "",
+      "Booking ID",
+      s.id,
+      "",
+      "Confirmed booking",
+      "",
+      "Guest name",
+      s.name,
+      "",
+      "Country of residence",
+      "South Korea",
+      "",
+      "Contact information",
+      "Check-in",
+      enStamp(s.checkIn, s.checkInDay, "16:00"),
+      "",
+      "Check out",
+      enStamp(s.checkOut, s.checkOutDay, "12:00"),
+      "",
+      "Booking log",
+      "",
+      "Booking date (Bangkok, UTC+7)",
+      enStamp(s.checkIn, s.checkInDay, "00:52"),
+      "",
+      "Last modified:",
+      enStamp(s.checkIn, s.checkInDay, "00:53"),
+      "",
+      "Rooms and occupancy",
+      "",
+      "Room type and benefits",
+      enRoom(s.room),
+      "",
+      "Free Wi-Fi, Drinking water",
+      "",
+      "Length of stay",
+      s.nights,
+      "",
+      "Adults",
+      s.adults,
+      "",
+      "Children",
+      "0",
+      "",
+      "Extra bed",
+      "0",
+      "",
+      "Requests and notes",
+      "",
+      "Special requests",
+      "AdditionalNotes:Room on the lower floor",
+    ].join("\n");
+  }
+  return [
+    "예약 정보",
+    "예약 ID:",
+    "",
+    s.id,
+    "",
+    "확인된 예약",
+    "",
+    "athena-symbol-user",
+    "손님",
+    s.name,
+    "",
+    `성인 ${s.adults}명`,
+    "athena-calendar-calendar",
+    "체크인",
+    s.checkIn,
+    "",
+    "(오후 4:00)",
+    "athena-calendar-calendar",
+    "점검",
+    s.checkOut,
+    "",
+    "(오후 12:00)",
+    "athena-promotion-money",
+    "참조 판매 포함(세금 및 수수료 포함)",
+    s.money,
+    "",
+    "예약 정보",
+    "결제 및 요금",
+    "정산(UPC)",
+    "셀프 서비스",
+    "SmartFlex",
+    "",
+    "투숙객 정보 및 날짜",
+    "",
+    "예약 ID",
+    s.id,
+    "",
+    "확인된 예약",
+    "",
+    "손님 이름",
+    s.name,
+    "",
+    "거주 국가",
+    "대한민국",
+    "",
+    "연락처 정보",
+    "체크인",
+    `${s.checkIn} ${s.checkInDay} 오후 4:00`,
+    "",
+    "점검",
+    `${s.checkOut} ${s.checkOutDay} 오후 12:00`,
+    "",
+    "예약 로그",
+    "",
+    "예약 날짜(방콕, UTC+7)",
+    `${s.checkIn} ${s.checkInDay} 오전 12:52`,
+    "",
+    "마지막 수정:",
+    `${s.checkIn} ${s.checkInDay} 오전 12:53`,
+    "",
+    "객실 및 점유",
+    "",
+    "객실 유형 및 혜택",
+    s.room,
+    "",
+    "무료 Wi-Fi, 식수",
+    "",
+    "체류 기간",
+    s.nights,
+    "",
+    "성인",
+    s.adults,
+    "",
+    "어린이",
+    "0",
+    "",
+    "엑스트라 베드",
+    "0",
+    "",
+    "요청 및 메모",
+    "",
+    "특별 요청",
+    "AdditionalNotes:Room on the lower floor",
+  ].join("\n");
+}
