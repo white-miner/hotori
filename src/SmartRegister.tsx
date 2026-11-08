@@ -21,7 +21,7 @@ import {
   Link2,
   LoaderCircle,
   Settings,
-  SlidersHorizontal,
+  BookOpen,
   X,
 } from "lucide-react";
 import {
@@ -66,7 +66,7 @@ import {
 import {
   canUseSavedTemplate,
   clockOnStayLine,
-  keepTemplateDraft,
+  forgetPasteLabel,
   learnPasteLabel,
   mentionedPlatformId,
   platformByLearnedLabels,
@@ -76,13 +76,14 @@ import {
   parseSalesTotal,
   parseSharedLabeledTable,
   parseStayDate,
+  parseClock,
   PASTE_FIELD_LABELS,
   templateProfile,
   type PasteFieldRule,
   type PasteTemplate,
   type PasteTemplateField,
 } from "../shared/pasteTemplate";
-import PasteTemplatePanel from "./PasteTemplatePanel";
+import LearnedLabelsPanel from "./LearnedLabelsPanel";
 import PastePick from "./PastePick";
 import type { HotelData } from "./data";
 import { askConfirm } from "./ConfirmDialog";
@@ -147,59 +148,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const templatesKey = JSON.stringify(s.pasteTemplates ?? []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const templates = useMemo(() => s.pasteTemplates, [templatesKey]);
-  const [templateOpen, setTemplateOpen] = useState(false);
+  const [learnedOpen, setLearnedOpen] = useState(false);
   /** 공용 칸 이름으로 읽었거나 저장 양식으로 읽은 글. 이때는 호텔 플랫폼을 직접 고른다. */
   const [readKind, setReadKind] = useState<"table" | "saved" | "shared" | null>(null);
   const [ownPlatformId, setOwnPlatformId] = useState("");
   /** 미리보기에서 고른 칸 이름을 저장해도 직원이 고친 미리보기를 다시 읽지 않는다. */
   const quietLearn = useRef(false);
-  const [templatePlatformId, setTemplatePlatformId] = useState("");
-  const dirtyPlatforms = useRef(new Set<string>());
-  type TemplateDraft = { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> };
-  const draftFrom = (template: PasteTemplate | undefined): TemplateDraft => {
-    const labels = { ...(template?.labels ?? {}) };
-    const rules: NonNullable<PasteTemplate["rules"]> = { ...(template?.rules ?? {}) };
-    for (const field of Object.keys(labels) as PasteTemplateField[]) {
-      const label = labels[field];
-      if (label && !rules[field]) rules[field] = { label, occurrence: 0 };
-    }
-    return { labels, rules };
-  };
-  const [drafts, setDrafts] = useState<Record<string, TemplateDraft>>(() =>
-    Object.fromEntries(s.pasteTemplates.map((t) => [t.platformId, draftFrom(t)])),
-  );
-
-  useEffect(() => {
-    setDrafts((prev) => {
-      const ids = new Set([...Object.keys(prev), ...templates.map((t) => t.platformId)]);
-      let changed = false;
-      const next = { ...prev };
-      for (const id of ids) {
-        const incoming = templates.find((t) => t.platformId === id);
-        const kept = keepTemplateDraft(prev[id]?.labels, incoming?.labels, dirtyPlatforms.current.has(id));
-        const source = JSON.stringify(kept) === JSON.stringify(prev[id]?.labels ?? {}) && prev[id] ? prev[id] : draftFrom(incoming ? { ...incoming, labels: kept } : undefined);
-        if (JSON.stringify(prev[id] ?? null) !== JSON.stringify(source)) {
-          next[id] = source;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [templates]);
-
-  const editDraft = (platformId: string, field: PasteTemplateField, rule: PasteFieldRule) => {
-    dirtyPlatforms.current.add(platformId);
-    setDrafts((prev) => {
-      const cur = prev[platformId] ?? draftFrom(undefined);
-      return {
-        ...prev,
-        [platformId]: {
-          labels: { ...cur.labels, [field]: rule.label },
-          rules: { ...cur.rules, [field]: rule },
-        },
-      };
-    });
-  };
 
   const dismissSummary = useCallback(() => {
     if (summaryTimer.current) {
@@ -277,7 +231,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setRows([]);
         setParseErr(
           text.trim()
-            ? "이 글을 아직 몰라요. 양식 설정에서 칸을 집어 주세요."
+            ? "이 글을 아직 몰라요. 아래에서 플랫폼과 칸을 골라 주세요."
             : null,
         );
         if (!forced) {
@@ -333,6 +287,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const onPasteChange = (v: string) => {
     setPaste(v);
     setProfileForced(false);
+    setOwnPlatformId("");
     rebuild(v, null, false, "");
   };
 
@@ -451,6 +406,21 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       patch.checkIn = date;
       const time = clockOnStayLine(v).time;
       if (time) patch.checkInTime = time;
+    } else if (field === "checkOut") {
+      const date = parseStayDate(v);
+      if (!date || !r.checkIn) return;
+      const n = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${r.checkIn}T00:00:00Z`)) / 86_400_000);
+      if (n < 1 || n > 366) {
+        notify("퇴실일이 입실일보다 늦어야 해요");
+        return;
+      }
+      patch.nights = n;
+      const time = clockOnStayLine(v).time;
+      if (time) patch.checkOutTime = time;
+    } else if (field === "checkInTime" || field === "checkOutTime") {
+      const time = parseClock(v) ?? clockOnStayLine(v).time;
+      if (!time) return;
+      patch[field] = time;
     } else if (field === "nights") {
       const n = Number(v.match(/\d{1,3}/u)?.[0]);
       if (!Number.isInteger(n) || n < 1 || n > 366) return;
@@ -488,10 +458,33 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       });
   };
 
-  const pick = (r: PreviewRow, field: PasteTemplateField) =>
+  const pick = (r: PreviewRow, field: PasteTemplateField, title?: string) =>
     readOnly || r.skip ? null : (
-      <PastePick text={paste} field={field} disabled={busy} onPick={(value, rule) => pickFromPaste(r, field, value, rule)} />
+      <PastePick text={paste} field={field} title={title} disabled={busy} onPick={(value, rule) => pickFromPaste(r, field, value, rule)} />
     );
+  /** 칸 이름 다음 값으로 읽은 글(아고다·저장 양식·공용 칸 이름). 표에는 시각 줄이 없어 고르기를 보이지 않는다. */
+  const labeledRead = readKind === "shared" || readKind === "saved" || profileId === "agoda";
+
+  /** 아무것도 못 읽은 글: 플랫폼을 고르고 원문 값을 고르면 칸 이름만 저장하고 다시 읽는다. */
+  const teach = (field: PasteTemplateField, rule: PasteFieldRule | null) => {
+    if (readOnly || !ownPlatformId) return;
+    if (!rule) {
+      notify("칸 이름이 없는 값이라 기억할 수 없어요. 칸 이름 바로 아래나 옆의 값을 골라 주세요");
+      return;
+    }
+    const learned = learnPasteLabel(templates, ownPlatformId, field, rule);
+    if (!learned.ok) {
+      notify(learned.reason);
+      return;
+    }
+    if (!learned.changed) return;
+    data
+      .saveHotel({ settings: { ...s, pasteTemplates: learned.templates } })
+      .then(() => notify(`「${rule.label}」 → ${PASTE_FIELD_LABELS[field]} 칸으로 기억했어요`))
+      .catch((e) => notify(saveFailMessage(e)));
+  };
+  const TEACH_FIELDS: PasteTemplateField[] = ["reservationId", "guestName", "checkIn", "checkOut", "nights", "salesTotal", "typeRaw", "guestPhone"];
+  const teachTemplate = templates.find((t) => t.platformId === ownPlatformId);
 
   /** 2박 이상 신규 행 아래: 박별 요금 입력 (선택) — 비워 둬도 저장돼요 */
   const nightRow = (r: PreviewRow) => {
@@ -870,11 +863,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <button
                 type="button"
                 className="btn sm line"
-                onClick={() => setTemplateOpen(true)}
+                onClick={() => setLearnedOpen(true)}
                 disabled={busy || uploadPhase !== "idle"}
               >
-                <SlidersHorizontal size={14} strokeWidth={2.2} aria-hidden />
-                양식 설정
+                <BookOpen size={14} strokeWidth={2.2} aria-hidden />
+                배운 칸 이름
               </button>
               <a className="btn sm line" href="#/settings">
                 <Settings size={14} strokeWidth={2.2} aria-hidden />
@@ -980,6 +973,47 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                       </Chip>
                     ))}
                   </ChipGroup>
+                </div>
+              ) : !rows.length && paste.trim() && !readOnly ? (
+                <div className="smart-reg-teach" aria-label="칸 고르기">
+                  <div className="sub">어느 플랫폼 예약인가요?</div>
+                  <ChipGroup scroll>
+                    {s.platforms.map((p) => (
+                      <Chip
+                        key={p.id}
+                        sm
+                        active={ownPlatformId === p.id}
+                        tone={ownPlatformId === p.id ? "info" : undefined}
+                        onClick={() => setOwnPlatformId(p.id)}
+                        disabled={busy}
+                      >
+                        {p.name}
+                      </Chip>
+                    ))}
+                  </ChipGroup>
+                  <div className="sub">
+                    원문에서 예약번호·입실일 등을 골라 주세요. 칸 이름만 기억하고, 충분히 고르면 미리보기가 나와요.
+                  </div>
+                  <div className="smart-reg-teach-fields">
+                    {TEACH_FIELDS.map((field) => {
+                      const learnedLabel = teachTemplate?.rules?.[field]?.label ?? teachTemplate?.labels[field];
+                      return (
+                        <div key={field} className="smart-reg-teach-field" data-teach={field}>
+                          <span className="smart-reg-teach-name">
+                            {PASTE_FIELD_LABELS[field]}
+                            {learnedLabel ? <span className="sub"> ← {learnedLabel}</span> : null}
+                          </span>
+                          <PastePick
+                            text={paste}
+                            field={field}
+                            disabled={busy || !ownPlatformId}
+                            title={ownPlatformId ? "원문에서 고르기" : "플랫폼부터 골라 주세요"}
+                            onPick={(_value, rule) => teach(field, rule)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (detectWeak || !profileId) && paste.trim() ? (
                 <div className="smart-reg-chip-block">
@@ -1252,6 +1286,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                           />
                           {r.checkInTime ? <div className="sub">입실 {r.checkInTime}</div> : null}
                           {!r.checkIn ? pick(r, "checkIn") : null}
+                          {!r.checkInTime && labeledRead ? pick(r, "checkInTime", "입실 시각 고르기") : null}
                         </td>
                         <td>
                           <Inp
@@ -1268,6 +1303,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                           />
                           {r.checkOutTime ? <div className="sub">퇴실 {r.checkOutTime}</div> : null}
                           {r.nights == null ? pick(r, "nights") : null}
+                          {r.nights == null && r.checkIn ? pick(r, "checkOut", "퇴실일 고르기") : null}
+                          {!r.checkOutTime && labeledRead ? pick(r, "checkOutTime", "퇴실 시각 고르기") : null}
                         </td>
                         <td>
                           <Inp
@@ -1315,33 +1352,13 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         </div>
       </div>
 
-      {templateOpen ? (
-        <PasteTemplatePanel
+      {learnedOpen ? (
+        <LearnedLabelsPanel
           platforms={s.platforms}
-          sample={paste}
-          onSample={onPasteChange}
-          drafts={drafts}
-          onEdit={editDraft}
-          platformId={
-            s.platforms.some((p) => p.id === templatePlatformId)
-              ? templatePlatformId
-              : platformId && s.platforms.some((p) => p.id === platformId)
-                ? platformId
-                : s.platforms[0]?.id ?? ""
-          }
-          onPlatform={setTemplatePlatformId}
-          canSave={!readOnly}
-          onClose={() => setTemplateOpen(false)}
-          onSave={(template) => {
-            const next = templates.filter((t) => t.platformId !== template.platformId);
-            if (Object.keys(template.labels).length) next.push(template);
-            void writeTemplates(next);
-          }}
-          onReset={(id) => {
-            dirtyPlatforms.current.delete(id);
-            setDrafts((prev) => ({ ...prev, [id]: draftFrom(undefined) }));
-            void writeTemplates(templates.filter((t) => t.platformId !== id));
-          }}
+          templates={templates}
+          canEdit={!readOnly}
+          onClose={() => setLearnedOpen(false)}
+          onForget={(id, field) => void writeTemplates(forgetPasteLabel(templates, id, field))}
         />
       ) : null}
 

@@ -13,11 +13,13 @@ interface Props {
   text: string;
   field: PasteTemplateField;
   disabled?: boolean;
+  /** 버튼 글자. 기본은 `원문에서 고르기`. */
+  title?: string;
   onPick: (value: string, rule: PasteFieldRule | null) => void;
 }
 
 /** 미리보기 빈 칸 아래: 붙여넣은 글에서 이 칸에 맞는 값만 보여 주고, 누르면 채운다. */
-export default function PastePick({ text, field, disabled, onPick }: Props) {
+export default function PastePick({ text, field, disabled, title = "원문에서 고르기", onPick }: Props) {
   const [open, setOpen] = useState(false);
   const choices = useMemo(() => {
     if (!open) return [];
@@ -43,7 +45,7 @@ export default function PastePick({ text, field, disabled, onPick }: Props) {
         onClick={() => setOpen((o) => !o)}
       >
         <MousePointerClick size={12} strokeWidth={2.2} aria-hidden />
-        원문에서 고르기
+        {title}
       </button>
       {open ? (
         <div className="smart-reg-pick-list" role="listbox" aria-label={`${PASTE_FIELD_LABELS[field]} 값 고르기`}>

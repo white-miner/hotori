@@ -5362,6 +5362,17 @@ body.bulking .toast { bottom: 96px; }
 }
 .smart-reg-pick-item:hover { border-color: var(--badge-info, #2f6fed); }
 .smart-reg-pick-label { font-size: 11px; color: var(--ink2, #6b7280); }
+.smart-reg-teach { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.smart-reg-teach-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; }
+.smart-reg-teach-field { display: flex; flex-direction: column; gap: 2px; }
+.smart-reg-teach-name { font-size: 13px; font-weight: 650; }
+.learned-labels-modal { width: min(520px, 100%); max-height: min(86vh, 760px); overflow: auto; }
+.learned-labels-note { margin-top: 0; }
+.learned-labels-group { margin-top: 12px; }
+.learned-labels-group h3 { margin: 0 0 6px; font-size: 14px; }
+.learned-labels-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line, #e3e6ea); }
+.learned-labels-field { flex: 0 0 72px; font-size: 13px; color: var(--ink2, #6b7280); }
+.learned-labels-label { flex: 1; min-width: 0; font-weight: 650; overflow-wrap: anywhere; }
 .type-alias-settings { display: flex; flex-direction: column; gap: var(--space-2, 8px); }
 .type-alias-row { align-items: center; gap: var(--space-2, 8px); }
 .type-alias-ota { flex: 1; min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
