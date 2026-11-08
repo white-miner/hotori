@@ -79,6 +79,7 @@ type Api = {
 
 let hostPlatformName = "아고다";
 let hostPlatforms: { id: string; name: string; abbr: string }[] | null = null;
+let hostTemplates: unknown[] = [];
 
 function Host() {
   const platformName = hostPlatformName;
@@ -88,6 +89,7 @@ function Host() {
       platforms: hostPlatforms ?? [{ id: platformId, name: platformName, abbr: platformName.slice(0, 1) }],
       types: [{ id: "std", name: "스탠다드" }, { id: "ondol", name: "온돌" }, { id: "dlx", name: "디럭스" }],
       stayTimes: { checkIn: "16:00", checkOut: "12:00" },
+      pasteTemplates: hostTemplates,
     }),
   );
   const failSave = useRef(true);
@@ -851,6 +853,104 @@ test("박별 요금을 입력하는 중에 호텔 설정이 다시 불러와져�
     assert.equal((document.querySelector("textarea") as HTMLTextAreaElement | null)?.value.includes("Mina Park"), true);
     assert.equal(bridge().writes.current, 0);
   } finally {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});
+
+/** 브라우저 자동 번역 화면으로 등록돼 운영 호텔에 남아 있던 아고다 양식(칸 이름만, 손님 값 없음). */
+const TRANSLATED_AGODA_TEMPLATE = {
+  platformId: "p3",
+  profileId: "agoda",
+  version: 1,
+  labels: {
+    adults: "성인",
+    nights: "체류 기간",
+    checkIn: "체크인",
+    typeRaw: "객실 유형 및 혜택",
+    checkOut: "점검",
+    guestName: "손님",
+    salesTotal: "참조 판매 포함",
+    checkInTime: "체크인",
+    checkOutTime: "점검",
+    reservationId: "투숙객 정보 및 날짜",
+  },
+  rules: {
+    adults: { label: "성인", occurrence: 0 },
+    nights: { label: "체류 기간", occurrence: 0 },
+    checkIn: { label: "체크인", occurrence: 0 },
+    typeRaw: { label: "객실 유형 및 혜택", occurrence: 0 },
+    checkOut: { label: "점검", occurrence: 0 },
+    guestName: { label: "손님", occurrence: 0 },
+    salesTotal: { label: "참조 판매 포함", occurrence: 0 },
+    checkInTime: { label: "체크인", occurrence: 1 },
+    checkOutTime: { label: "점검", occurrence: 1 },
+    reservationId: { label: "투숙객 정보 및 날짜", occurrence: 0 },
+  },
+};
+
+test("예전에 번역 화면으로 저장한 아고다 양식이 있어도 한국어 화면 글의 예약번호를 읽고, 직접 고르면 들어간다", async () => {
+  const { AGODA_FULL_A, AGODA_FULL_B, agodaFullText } = await import("../shared/testFixtures/agodaPartnerFull.ts");
+  hostPlatforms = [
+    { id: "p1", name: "야놀자", abbr: "야" },
+    { id: "p3", name: "아고다", abbr: "아" },
+    { id: "p4", name: "에어비앤비", abbr: "에" },
+    { id: "p5", name: "현장·전화", abbr: "현" },
+  ];
+  hostTemplates = [TRANSLATED_AGODA_TEMPLATE];
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  const value = (label: string) => (document.querySelector(`[aria-label="${label}"]`) as HTMLInputElement | null)?.value;
+  const outsideText = () => {
+    const copy = document.body.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("textarea").forEach((el) => el.remove());
+    return copy.textContent ?? "";
+  };
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    await paste(agodaFullText(AGODA_FULL_A));
+    assert.equal(outsideText().includes("1000000001"), true, "미리보기 예약번호");
+    assert.equal(value("이름"), "Mina Park");
+    assert.equal(value("입실"), "2026-11-07");
+    assert.equal(value("박수"), "2");
+    assert.equal(value("판매금"), "210000");
+
+    const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+    if (!open) throw new Error("양식 설정 없음");
+    await click(open);
+    const dialog = document.querySelector('[aria-labelledby="paste-template-title"]')!;
+    const chipOn = () => [...dialog.querySelectorAll("button.chip.on")].map((el) => el.textContent?.trim());
+    assert.deepEqual(chipOn(), ["아고다"]);
+    const area = document.querySelector(".paste-template-sample textarea") as HTMLTextAreaElement;
+    if (!area.value.trim()) await paste(agodaFullText(AGODA_FULL_A));
+    await pick("reservationId", "1000000001");
+    assert.match(fieldText(), /reservationId:예약번호 · 1000000001/);
+    await pick("guestName", "Mina Park", 1);
+    assert.match(fieldText(), /guestName:이름 · Mina Park/);
+    bridge().failSave.current = false;
+    const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+    if (!save) throw new Error("저장 없음");
+    await click(save);
+    const stored = bridge().saves.current.at(-1) ?? "";
+    assert.match(stored, /"reservationId":\{"label":"예약 번호"/);
+    assert.equal(stored.includes("1000000001"), false);
+    const close = document.querySelector('[aria-label="닫기"]');
+    if (close) await click(close);
+    const main = document.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")?.set?.call(main, agodaFullText(AGODA_FULL_B));
+      main.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    });
+    assert.equal(outsideText().includes("2000000002"), true, "다음 예약번호");
+    assert.equal(value("이름"), "Ari Stone");
+    assert.equal(bridge().writes.current, 0);
+  } finally {
+    hostPlatforms = null;
+    hostTemplates = [];
     await act(async () => {
       root.unmount();
     });

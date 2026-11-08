@@ -1202,7 +1202,13 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
           onSample={onPasteChange}
           drafts={drafts}
           onEdit={editDraft}
-          platformId={s.platforms.some((p) => p.id === templatePlatformId) ? templatePlatformId : s.platforms[0]?.id ?? ""}
+          platformId={
+            s.platforms.some((p) => p.id === templatePlatformId)
+              ? templatePlatformId
+              : platformId && s.platforms.some((p) => p.id === platformId)
+                ? platformId
+                : s.platforms[0]?.id ?? ""
+          }
           onPlatform={setTemplatePlatformId}
           canSave={!readOnly}
           onClose={() => setTemplateOpen(false)}
