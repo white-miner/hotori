@@ -6,6 +6,8 @@ import { normalizeSettings, type Booking } from "./ledger.ts";
 import {
   BUILTIN_AGODA_TEMPLATE,
   agodaPartnerSignature,
+  PASTE_FIELD_LABELS,
+  PASTE_TEMPLATE_FIELDS,
   choiceFitsField,
   extractLabeledPaste,
   listPasteChoices,
@@ -21,6 +23,8 @@ import {
   validatePasteTemplate,
 } from "./pasteTemplate.ts";
 import {
+  CANONICAL_FIELDS,
+  SMART_REGISTER_TEMPLATE_COLUMNS,
   buildPreviewRows,
   detectProfile,
   enteredNightRates,
@@ -416,6 +420,56 @@ test("값을 고르면 칸 이름만 남고, 다음 예약의 다른 손님도 �
   assert.equal(row.amount, null);
   assert.equal(normalizeSettings({ pasteTemplates: [{ labels: { guestName: "투숙객" } }] }).pasteTemplates.length, 0);
   assert.equal(normalizeSettings({ pasteTemplates: [saved.template] }).pasteTemplates[0]?.labels.guestName, "투숙객");
+});
+
+test("양식 설정 항목은 기존 스마트등록 붙여넣기 칸과 일대일이다", () => {
+  const originalPasteFields = ["guestName", "guestPhone", "typeRaw", "checkIn", "checkOut", "nights", "amount", "reservationId", "statusRaw"];
+  assert.deepEqual(
+    SMART_REGISTER_TEMPLATE_COLUMNS.map((col) => col.id),
+    ["statusRaw", "guestName", "guestPhone", "typeRaw", "checkIn", "checkOut", "nights", "amount", "reservationId"],
+  );
+  assert.deepEqual(
+    SMART_REGISTER_TEMPLATE_COLUMNS.map((col) => [col.id === "amount" ? "salesTotal" : col.id, col.label]),
+    PASTE_TEMPLATE_FIELDS.map((id) => [id, PASTE_FIELD_LABELS[id]]),
+  );
+  assert.deepEqual(
+    SMART_REGISTER_TEMPLATE_COLUMNS.filter((col) => col.preview).map((col) => col.label),
+    ["상태", "이름", "전화", "타입", "입실", "박수", "판매금", "예약번호"],
+  );
+  for (const id of originalPasteFields) assert.ok(CANONICAL_FIELDS.includes(id as typeof CANONICAL_FIELDS[number]));
+  for (const extra of ["adults", "checkInTime", "checkOutTime", "currency", "company"]) {
+    assert.equal(SMART_REGISTER_TEMPLATE_COLUMNS.some((col) => col.id === extra), false);
+    assert.equal((PASTE_TEMPLATE_FIELDS as readonly string[]).includes(extra), false);
+  }
+  const statusLabel = validatePasteTemplate({ platformId: "agoda", labels: { statusRaw: "확정된 예약" } });
+  assert.equal(statusLabel.ok, true);
+  assert.equal(readFieldValue(AGODA_SHAPE, "statusRaw", "확정된 예약"), "확정된 예약");
+  assert.equal(choiceFitsField("statusRaw", "확정된 예약"), true);
+  const nightsText = ["박수", "2", "체크인", "2026년 11월 7일", "체크아웃", "2026년 11월 9일"].join("\n");
+  assert.equal(readFieldValue(nightsText, "nights", "박수"), "2");
+  const saved = validatePasteTemplate({
+    platformId: "p-book",
+    profileId: "agoda",
+    labels: { guestName: "투숙객", checkIn: "체크인", salesTotal: "기준 판매 요금", statusRaw: "확정된 예약", reservationId: "예약 번호" },
+  });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  const stored = serializePasteTemplateStore([saved.template]);
+  assert.equal(stored.includes("Mina Park"), false);
+  assert.equal(stored.includes("1000000001"), false);
+  assert.equal(stored.includes("210"), false);
+  const again = readPasteTemplateStore(stored)[0]!;
+  assert.equal(again.labels.guestName, "투숙객");
+  assert.equal(again.labels.checkIn, "체크인");
+  assert.equal(again.labels.salesTotal, "기준 판매 요금");
+  assert.equal(again.labels.statusRaw, "확정된 예약");
+  assert.equal(readFieldValue(AGODA_SHAPE, "guestName", again.labels.guestName!), "Mina Park");
+  assert.equal(readFieldValue(AGODA_SHAPE, "checkIn", again.labels.checkIn!), "2026-11-07 16:00");
+  const second = ["예약 번호", "2000000002", "확정된 예약", "투숙객", "Ari Stone", "체크인", "2026년 12월 1일", "16:00", "체크아웃", "2026년 12월 3일", "12:00"].join("\n");
+  assert.equal(readFieldValue(second, "guestName", again.labels.guestName!), "Ari Stone");
+  assert.equal(readFieldValue(second, "reservationId", again.labels.reservationId!), "2000000002");
+  assert.equal(readFieldValue(second, "checkIn", again.labels.checkIn!), "2026-12-01 16:00");
+  assert.equal(readFieldValue(second, "statusRaw", again.labels.statusRaw!), "확정된 예약");
 });
 
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {

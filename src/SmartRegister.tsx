@@ -56,6 +56,7 @@ import {
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
   previewRowStatusLabel,
+  SMART_REGISTER_TEMPLATE_COLUMNS,
   profileById,
   recomputeRowStatus,
   previewTypeMismatch,
@@ -924,14 +925,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <table className="smart-reg-table">
                 <thead>
                   <tr>
-                    <th>상태</th>
-                    <th>이름</th>
-                    <th>전화</th>
-                    <th>타입</th>
-                    <th>입실</th>
-                    <th>박수</th>
-                    <th>판매금</th>
-                    <th>예약번호</th>
+                    {SMART_REGISTER_TEMPLATE_COLUMNS.filter((col) => col.preview).map((col) => (
+                      <th key={col.id}>{col.label}</th>
+                    ))}
                     <th>건너뛰기</th>
                   </tr>
                 </thead>

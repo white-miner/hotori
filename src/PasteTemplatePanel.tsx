@@ -2,21 +2,19 @@
  * 스마트등록 양식 설정.
  * 붙여넣은 글에서 값을 고르면, 그 값 위의 칸 이름만 호텔 계정에 저장한다.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Platform } from "../shared/ledger";
 import {
-  PASTE_FIELD_LABELS,
-  PASTE_TEMPLATE_FIELDS,
   type PasteTemplate,
   type PasteTemplateField,
-  UNMAPPED_BOOKING_FIELDS,
   choiceFitsField,
   readFieldValue,
   readPasteLines,
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
+import { SMART_REGISTER_TEMPLATE_COLUMNS, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
 import { Chip, ChipGroup } from "./primitives";
 
 interface Props {
@@ -28,6 +26,10 @@ interface Props {
   onSave: (template: PasteTemplate) => void;
   onReset: (platformId: string) => void;
   onClose: () => void;
+}
+
+function templateFieldOf(id: SmartRegisterTemplateColumnId): PasteTemplateField {
+  return id === "amount" ? "salesTotal" : id;
 }
 
 function profileForName(name: string): PasteTemplate["profileId"] {
@@ -44,11 +46,18 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
   const [field, setField] = useState<PasteTemplateField>("guestName");
   const [draft, setDraft] = useState<PasteTemplate["labels"]>(() => templates.find((t) => t.platformId === platforms[0]?.id)?.labels ?? {});
   const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
+  const [dirty, setDirty] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (dirty) return;
+    setDraft(templates.find((t) => t.platformId === platformId)?.labels ?? {});
+  }, [templates, platformId, dirty]);
 
   const pickPlatform = (id: string) => {
     setPlatformId(id);
     setField("guestName");
+    setDirty(false);
     setDraft(templates.find((t) => t.platformId === id)?.labels ?? {});
     setPickedLine({});
     setErr(null);
@@ -67,6 +76,7 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
         return;
       }
     }
+    setDirty(true);
     setDraft((d) => ({ ...d, [field]: label }));
     setErr(null);
   };
@@ -128,11 +138,12 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
           <div>
             <p className="sub">앱 칸</p>
             <div className="paste-template-fields" role="listbox" aria-label="앱 칸">
-              {PASTE_TEMPLATE_FIELDS.map((id) => {
+              {SMART_REGISTER_TEMPLATE_COLUMNS.map((col) => {
+                const id = templateFieldOf(col.id);
                 const shown = readFor(id);
                 return (
-                  <button key={id} type="button" className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)}>
-                    {PASTE_FIELD_LABELS[id]}
+                  <button key={col.id} type="button" className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)}>
+                    {col.label}
                     {shown ? <small> · {shown}</small> : draft[id] ? <small> · {draft[id]}</small> : null}
                   </button>
                 );
@@ -140,7 +151,7 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             </div>
           </div>
           <div>
-            <p className="sub">{PASTE_FIELD_LABELS[field]} · 붙여넣은 글 {lines.length}줄{readValue ? ` · 읽힘 ${readValue}` : ""}</p>
+            <p className="sub">{SMART_REGISTER_TEMPLATE_COLUMNS.find((col) => templateFieldOf(col.id) === field)?.label} · 붙여넣은 글 {lines.length}줄{readValue ? ` · 읽힘 ${readValue}` : ""}</p>
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
@@ -158,12 +169,7 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             )}
           </div>
         </div>
-        <div className="paste-template-unmapped">
-          {UNMAPPED_BOOKING_FIELDS.map((item) => (
-            <p key={item.name} className="sub"><b>{item.name}</b> · {item.reason}</p>
-          ))}
-        </div>
-        <p className="sub">줄을 고르면 그 칸 이름만 기억합니다. 이름·예약번호·금액은 양식에 저장하지 않아요.</p>
+        <p className="sub">스마트등록 미리보기의 항목입니다. 줄을 고르면 그 칸 이름만 기억하고, 이름·예약번호·금액은 양식에 저장하지 않아요. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
         {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}

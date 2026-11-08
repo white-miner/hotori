@@ -20,7 +20,6 @@ import { resolveNightRate } from "./salesCalendar";
 export type PasteField =
   | "guestName"
   | "guestPhone"
-  | "company"
   | "typeRaw"
   | "checkIn"
   | "checkOut"
@@ -55,7 +54,6 @@ export interface PlatformProfile {
 export const CANONICAL_FIELDS: PasteField[] = [
   "guestName",
   "guestPhone",
-  "company",
   "typeRaw",
   "checkIn",
   "checkOut",
@@ -69,11 +67,29 @@ export const CANONICAL_FIELDS: PasteField[] = [
   "currency",
 ];
 
+/**
+ * 양식 설정이 보여 주는 칸. c0be8f43의 붙여넣기 칸과 미리보기 열 이름이다.
+ * 판매금의 붙여넣기 칸 id는 amount이고, 양식 저장 키는 salesTotal이다.
+ * 체크아웃은 미리보기 열이 아니라 박수를 만드는 칸이다.
+ * 성인·입실 시각·퇴실 시각·통화는 이 목록이 아니다.
+ */
+export const SMART_REGISTER_TEMPLATE_COLUMNS = [
+  { id: "statusRaw", label: "상태", preview: true },
+  { id: "guestName", label: "이름", preview: true },
+  { id: "guestPhone", label: "전화", preview: true },
+  { id: "typeRaw", label: "타입", preview: true },
+  { id: "checkIn", label: "입실", preview: true },
+  { id: "checkOut", label: "체크아웃", preview: false },
+  { id: "nights", label: "박수", preview: true },
+  { id: "amount", label: "판매금", preview: true },
+  { id: "reservationId", label: "예약번호", preview: true },
+] as const;
+export type SmartRegisterTemplateColumnId = (typeof SMART_REGISTER_TEMPLATE_COLUMNS)[number]["id"];
+
 /** Shared / overlapping aliases (hypotheses until live samples). */
 const COMMON: Record<PasteField, string[]> = {
   guestName: ["예약자", "게스트", "투숙객", "guest name", "booker", "고객명", "예약자명"],
   guestPhone: ["연락처", "휴대폰", "전화번호", "phone", "휴대전화", "휴대폰번호"],
-  company: ["회사명", "회사"],
   typeRaw: ["객실타입", "상품명", "룸타입", "room type", "객실명", "객실 타입", "상품"],
   checkIn: ["체크인", "입실", "check-in", "checkin", "이용일", "입실일", "체크인일"],
   checkOut: ["체크아웃", "퇴실", "check-out", "checkout", "퇴실일", "체크아웃일"],
@@ -1169,7 +1185,6 @@ export function mapColumns(headers: string[], profile: PlatformProfile): Partial
 export interface NormalizedPasteRow {
   guestName: string;
   guestPhone: string;
-  company: string;
   typeRaw: string;
   checkIn: string | null;
   checkOut: string | null;
@@ -1251,7 +1266,6 @@ export function normalizeRow(
 ): NormalizedPasteRow {
   const guestName = cellAt(row, colMap.guestName);
   const guestPhone = cellAt(row, colMap.guestPhone);
-  const company = cellAt(row, colMap.company);
   const typeRaw = cellAt(row, colMap.typeRaw);
   const checkIn = parseLooseDate(cellAt(row, colMap.checkIn));
   const checkOut = parseLooseDate(cellAt(row, colMap.checkOut));
@@ -1282,7 +1296,6 @@ export function normalizeRow(
   return {
     guestName,
     guestPhone,
-    company,
     typeRaw,
     checkIn,
     checkOut,
@@ -1700,7 +1713,6 @@ export interface PreviewRow {
   /** 직원이 미리보기에서 이름을 수정해도 붙여넣기에서 읽은 이름은 별도로 보존한다. */
   sourceGuestName?: string;
   guestPhone: string;
-  company?: string;
   typeRaw: string;
   typeId: string | null;
   checkIn: string | null;
@@ -1933,7 +1945,6 @@ export function buildPreviewRows(
       guestName: n.guestName,
       sourceGuestName: n.guestName,
       guestPhone: n.guestPhone,
-      company: n.company,
       typeRaw: n.typeRaw,
       typeId,
       checkIn: n.checkIn,
@@ -2028,7 +2039,6 @@ export function pathADraftFromPreview(
     priceUnset,
     guestName: row.guestName.trim(),
     guestPhone: row.guestPhone.trim() || null,
-    company: row.company?.trim() || null,
     guests: row.guests != null && row.guests > 0 ? row.guests : null,
     typeId: row.typeId!,
     roomId: null,
