@@ -85,7 +85,7 @@ function Host() {
   const [s, setS] = useState(() =>
     normalizeSettings({
       platforms: [{ id: platformId, name: platformName, abbr: platformName.slice(0, 1) }],
-      types: [{ id: "std", name: "스탠다드" }, { id: "ondol", name: "온돌" }],
+      types: [{ id: "std", name: "스탠다드" }, { id: "ondol", name: "온돌" }, { id: "dlx", name: "디럭스" }],
       stayTimes: { checkIn: "16:00", checkOut: "12:00" },
     }),
   );
@@ -421,7 +421,7 @@ test("야놀자 카드의 한글 이름을 이름 칸에 지정하면 다음 카
   });
   hostPlatformName = "아고다";
   const card = (name: string, id: string, when: string) =>
-    [id, name, "0503-0000-0001", "온돌", "숙박", "/ 1박", when, "2026.12.02(수) 12:00", "예약완료", "판매가 90,000원"].join("\n");
+    [id, name, "0503-0000-0001", "온돌", "숙박", "/ 1박", when, "2026.12.10(목) 11:00", "예약완료", "판매가 90,000원"].join("\n");
   const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
   if (!open) throw new Error("양식 설정 버튼 없음");
   await click(open);
@@ -516,6 +516,110 @@ test("아고다 요약과 상세에 같은 칸 이름이 반복돼도 양식을 
   assert.match(fieldText(), /adults:인원 · 4/);
   const name = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
   assert.equal(name?.value, "Ari Stone");
+  assert.equal(bridge().writes.current, 0);
+  await act(async () => {
+    root.unmount();
+  });
+});
+
+test("야놀자 카드 스캔이 읽은 칸은 양식에서 지정하고 다음 카드 값으로 바뀐다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  hostPlatformName = "야놀자";
+  await act(async () => {
+    root.render(createElement(Host));
+  });
+  hostPlatformName = "아고다";
+  const card = (opts: { id: string; name: string; phone: string; type: string; nights: string; checkIn: string; checkOut: string; status: string; amount: string }) =>
+    [opts.id, opts.name, opts.phone, opts.type, "숙박", `/ ${opts.nights}박`, opts.checkIn, opts.checkOut, opts.status, `판매가 ${opts.amount}원`].join("\n");
+  const first = card({
+    id: "2610151829300184",
+    name: "김민수",
+    phone: "0503-0000-0001",
+    type: "온돌",
+    nights: "2",
+    checkIn: "2026.12.01(화) 16:00",
+    checkOut: "2026.12.03(목) 11:00",
+    status: "예약완료",
+    amount: "90,000",
+  });
+  const second = card({
+    id: "2610152133600141",
+    name: "이수진",
+    phone: "0503-0000-0002",
+    type: "디럭스",
+    nights: "3",
+    checkIn: "2026.12.05(토) 15:00",
+    checkOut: "2026.12.08(화) 11:00",
+    status: "예약취소",
+    amount: "80,000",
+  });
+  const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!open) throw new Error("양식 설정 없음");
+  await click(open);
+  await paste(first);
+  await pick("reservationId", "2610151829300184");
+  await pick("guestName", "김민수");
+  await pick("guestPhone", "0503-0000-0001");
+  await pick("typeRaw", "온돌");
+  await pick("nights", "/ 2박");
+  await pick("checkIn", "2026.12.01(화) 16:00");
+  await pick("checkOut", "2026.12.03(목) 11:00");
+  await pick("statusRaw", "예약완료");
+  await pick("salesTotal", "판매가 90,000원");
+  assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
+  const shown = fieldText();
+  assert.match(shown, /reservationId:예약번호 · 2610151829300184/);
+  assert.match(shown, /guestName:이름 · 김민수/);
+  assert.match(shown, /guestPhone:전화 · 0503-0000-0001/);
+  assert.match(shown, /typeRaw:타입 · 온돌/);
+  assert.match(shown, /nights:박수 · 2/);
+  assert.match(shown, /checkIn:입실 · 2026\.12\.01/);
+  assert.match(shown, /checkOut:체크아웃 · 2026\.12\.03/);
+  assert.match(shown, /statusRaw:상태 · 예약완료/);
+  assert.match(shown, /salesTotal:판매금 · 90000/);
+  assert.equal(/adults:인원 · \d/.test(shown), false);
+  assert.equal(/currency:통화 · [A-Z]{3}/.test(shown), false);
+  assert.equal(/checkInTime:입실 시각 · \d/.test(shown), false);
+  bridge().failSave.current = false;
+  const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+  if (!save) throw new Error("저장 없음");
+  await click(save);
+  const stored = bridge().saves.current.at(-1) ?? "";
+  for (const secret of ["김민수", "0503-0000-0001", "2610151829300184", "90000", "90,000"]) {
+    assert.equal(stored.includes(secret), false, secret);
+  }
+  const close = document.querySelector('[aria-label="닫기"]');
+  if (!close) throw new Error("닫기 없음");
+  await click(close);
+  const reopen = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!reopen) throw new Error("다시 열기 없음");
+  await click(reopen);
+  await paste(second);
+  const next = fieldText();
+  assert.match(next, /reservationId:예약번호 · 2610152133600141/);
+  assert.match(next, /guestName:이름 · 이수진/);
+  assert.match(next, /guestPhone:전화 · 0503-0000-0002/);
+  assert.match(next, /typeRaw:타입 · 디럭스/);
+  assert.match(next, /nights:박수 · 3/);
+  assert.match(next, /checkIn:입실 · 2026\.12\.05/);
+  assert.match(next, /checkOut:체크아웃 · 2026\.12\.08/);
+  assert.match(next, /statusRaw:상태 · 예약취소/);
+  assert.match(next, /salesTotal:판매금 · 80000/);
+  const previewName = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
+  const previewPhone = document.querySelector('[aria-label="전화"]') as HTMLInputElement | null;
+  const previewIn = document.querySelector('[aria-label="입실"]') as HTMLInputElement | null;
+  const previewNights = document.querySelector('[aria-label="박수"]') as HTMLInputElement | null;
+  const previewAmount = document.querySelector('[aria-label="판매금"]') as HTMLInputElement | null;
+  assert.equal(previewName?.value, "이수진");
+  assert.equal(previewPhone?.value, "0503-0000-0002");
+  assert.equal(previewIn?.value, "2026-12-05");
+  assert.equal(previewNights?.value, "3");
+  assert.equal(previewAmount?.value, "80000");
+  assert.equal(document.body.textContent?.includes("2610152133600141"), true);
+  const nightInputs = [...document.querySelectorAll('[aria-label$="1박 요금"]')] as HTMLInputElement[];
+  assert.equal(nightInputs.every((input) => input.value === ""), true);
   assert.equal(bridge().writes.current, 0);
   await act(async () => {
     root.unmount();
