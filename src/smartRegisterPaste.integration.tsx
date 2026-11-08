@@ -24,6 +24,7 @@ const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 const { normalizeSettings } = await import("../shared/ledger.ts");
 const { default: SmartRegister } = await import("./SmartRegister.tsx");
+const { ConfirmHost } = await import("./ConfirmDialog.tsx");
 
 const FIRST = [
   "예약 번호",
@@ -75,6 +76,8 @@ type Api = {
   failSave: { current: boolean };
   saves: { current: string[] };
   writes: { current: number };
+  notes: { current: string[] };
+  settings: () => unknown;
 };
 
 let hostPlatformName = "아고다";
@@ -95,6 +98,7 @@ function Host() {
   const failSave = useRef(true);
   const saves = useRef<string[]>([]);
   const writes = useRef(0);
+  const notes = useRef<string[]>([]);
   const api: Api = {
     refresh() {
       setS((cur) => normalizeSettings({ ...cur, pasteTemplates: cur.pasteTemplates.map((t) => ({ ...t, labels: { ...t.labels } })) }));
@@ -105,9 +109,11 @@ function Host() {
     failSave,
     saves,
     writes,
+    notes,
+    settings: () => s,
   };
   (dom.window as unknown as { __hotori: Api }).__hotori = api;
-  return createElement(SmartRegister, {
+  const page = createElement(SmartRegister, {
     data: {
       bookings: [],
       async saveHotel(input: { settings?: { pasteTemplates?: unknown } }) {
@@ -124,9 +130,10 @@ function Host() {
     today: "2026-11-08",
     tabs: null,
     banner: null,
-    notify: () => {},
+    notify: (m: string) => notes.current.push(m),
     onOpenBooking: () => {},
   } as never);
+  return createElement("div", null, page, createElement(ConfirmHost));
 }
 
 function bridge() {
@@ -1029,3 +1036,90 @@ for (const [from, to] of [
     }
   });
 }
+
+async function previewPick(field: string, text: string) {
+  const box = document.querySelector(`[data-pick="${field}"]`);
+  if (!box) throw new Error(`원문에서 고르기 없음 ${field}`);
+  await click(box.querySelector("button")!);
+  const item = [...box.querySelectorAll(".smart-reg-pick-item")].find((el) => el.textContent?.includes(text));
+  if (!item) throw new Error(`${field} 후보 없음 ${text} :: ${[...box.querySelectorAll(".smart-reg-pick-item")].map((el) => el.textContent).join(" | ")}`);
+  await click(item);
+}
+
+function chip(text: string) {
+  const el = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === text);
+  if (!el) throw new Error(`칩 없음 ${text}`);
+  return el;
+}
+
+test("처음 보는 플랫폼: 미리보기에서 원문 값을 한 번 고르면 다음 예약부터 칸 이름으로 읽고 업로드도 막히지 않는다", async () => {
+  const { UNKNOWN_LABELS_A, UNKNOWN_LABELS_B } = await import("../shared/testFixtures/otherPlatforms.ts");
+  hostPlatforms = [
+    { id: "p3", name: "아고다", abbr: "아" },
+    { id: "p-x", name: "동네예약", abbr: "동" },
+  ];
+  hostTemplates = [TRANSLATED_AGODA_TEMPLATE];
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  const value = (label: string) => (document.querySelector(`[aria-label="${label}"]`) as HTMLInputElement | null)?.value;
+  const rid = () => document.querySelector(".smart-reg-rid")?.textContent;
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    bridge().failSave.current = false;
+    await paste(UNKNOWN_LABELS_A);
+    assert.equal(value("입실"), "2026-11-07", "공용 칸 이름으로 입실");
+    assert.equal(value("판매금"), "210000");
+    assert.equal(value("이름"), "");
+    assert.ok(document.body.textContent?.includes("어느 플랫폼 예약인가요?"));
+    await click(chip("동네예약"));
+
+    await previewPick("guestName", "Mina Park");
+    await previewPick("reservationId", "ZX1000000001");
+    assert.equal(value("이름"), "Mina Park");
+    assert.equal(rid(), "ZX1000000001");
+    assert.equal(value("입실"), "2026-11-07", "고른 뒤에도 다른 칸은 그대로");
+
+    const stored = bridge().saves.current.at(-1) ?? "";
+    assert.match(stored, /"platformId":"p-x"/);
+    assert.match(stored, /방문자/);
+    assert.match(stored, /주문 코드/);
+    assert.equal(stored.includes("Mina Park"), false);
+    assert.equal(stored.includes("ZX1000000001"), false);
+    assert.equal(stored.includes("p3") && !stored.includes("손님"), false, "아고다 양식은 그대로");
+
+    const upload = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("확인 업로드"))!;
+    assert.equal((upload as HTMLButtonElement).disabled, false);
+    await act(async () => {
+      const sel = document.querySelector('[aria-label="타입"]') as HTMLSelectElement;
+      Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, "value")?.set?.call(sel, "std");
+      sel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    });
+    await click(upload);
+    assert.equal(bridge().notes.current.some((m) => m.includes("설정에 맞는 플랫폼이 없어요")), false, bridge().notes.current.join("\n"));
+    assert.ok(document.querySelector(".modal"), "업로드 확인창이 열린다");
+    const cancel = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "취소")!;
+    await click(cancel);
+
+    const main = document.querySelector("textarea") as HTMLTextAreaElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")?.set?.call(main, UNKNOWN_LABELS_B);
+      main.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    });
+    assert.equal(value("이름"), "Ari Stone", "다음 예약 이름");
+    assert.equal(rid(), "ZX2000000002", "다음 예약번호");
+    assert.equal(value("입실"), "2026-12-01");
+    assert.equal(value("박수"), "3");
+    const active = [...document.querySelectorAll(".smart-reg-chip-block button.on")].map((b) => b.textContent?.trim());
+    assert.deepEqual(active, ["동네예약"], "배운 칸 이름으로 플랫폼을 다시 고르지 않는다");
+    assert.equal(bridge().writes.current, 0);
+  } finally {
+    hostPlatforms = null;
+    hostTemplates = [];
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});

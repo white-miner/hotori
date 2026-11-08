@@ -1371,3 +1371,20 @@ test("미리보기 이름을 수정해도 가져온 이름을 메모에 보존�
  const p=maskedPreview(),d=pathADraftFromPreview({...p,guestName:"직원확인명",pasteCancel:false,rowStatus:"ok"},{platformId:"p-ya",platformLabel:"야놀자",id:"cx",nowIso:"2026-10-31T00:00:00Z"});
  assert.equal(d.guestName,"직원확인명"); assert.equal(d.status,"cancelled"); assert.match(d.memo!,/이름 김\*지/);
 });
+
+test("아고다 `1 X 이름 (코드)`는 다른 플랫폼 매칭의 같은 객실 이름으로 타입을 찾는다", async () => {
+  const { roomNameCore, matchTypeIdNested } = await import("./smartRegister.ts");
+  assert.equal(roomNameCore("1 X 스탠다드 스타일러 (1000000999)"), "스탠다드 스타일러");
+  const s = normalizeSettings({
+    platforms: [{ id: "p1", name: "야놀자" }, { id: "p3", name: "아고다" }],
+    types: [{ id: "std", name: "스탠다드" }, { id: "sty", name: "스탠다드 2PC" }, { id: "dlx", name: "스탠다드 디럭스" }],
+    typeAliases: [{ id: "a1", platformId: "p1", platformTypeName: "Standardㅣ스탠다드 스타일러", typeId: "sty" }],
+  });
+  assert.equal(matchTypeIdNested("1 X 스탠다드 스타일러 (1000000999)", s, null, "p3"), "sty");
+  const twoWays = normalizeSettings({
+    ...s,
+    typeAliases: [...s.typeAliases, { id: "a2", platformId: "p6", platformTypeName: "스탠다드 스타일러", typeId: "dlx" }],
+  });
+  assert.equal(matchTypeIdNested("1 X 스탠다드 스타일러 (1000000999)", twoWays, null, "p3"), null, "두 타입으로 갈리면 직원이 고른다");
+  assert.equal(matchTypeIdNested("1 X 스탠다드 디럭스 (1000000777)", s, null, "p3"), "dlx", "호텔 타입 이름과 같으면 그 타입");
+});

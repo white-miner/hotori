@@ -599,7 +599,76 @@ const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
   ],
 };
 
-function labelsFor(template: PasteTemplate): { field: PasteTemplateField; label: string }[] {
+/**
+ * 모든 플랫폼이 같이 쓰는 칸 이름. 아고다 표기에 국내·해외 예약 화면에서 흔한 표기를 더한다.
+ * 받은 돈·정산 글자(결제금액, 정산, payout)는 판매금으로 읽지 않는다.
+ */
+const SHARED_LABEL_EXTRAS: Partial<Record<PasteTemplateField, string[]>> = {
+  reservationId: ["예약코드", "확인 번호", "확인번호", "예약 확인 번호", "Confirmation number", "Confirmation code", "Confirmation no", "Reservation code", "Booking reference", "Booking code"],
+  guestName: ["게스트", "게스트 이름", "예약자", "예약자명", "예약자 이름", "투숙자", "투숙자명", "이용자", "이용자명", "Booker", "Booked by", "Guest's name"],
+  guestPhone: ["휴대폰", "휴대폰 번호", "휴대전화", "연락처 번호", "Mobile", "Mobile number", "Telephone", "Tel"],
+  checkIn: ["입실", "입실일", "입실 날짜", "입실일시", "체크인일", "체크인 일시", "이용일"],
+  checkOut: ["퇴실", "퇴실일", "퇴실 날짜", "퇴실일시", "체크아웃일", "체크아웃 일시"],
+  nights: ["숙박일", "숙박"],
+  typeRaw: ["객실", "객실명", "객실 이름", "객실타입", "상품명", "룸타입", "룸 타입", "Room", "Room name", "Unit", "Listing"],
+  salesTotal: ["판매가", "판매금액", "판매 금액", "총 판매가", "총 판매 금액", "총 금액", "총금액", "예약 금액", "예약금액", "객실 요금", "Total price", "Total amount", "Total sell"],
+  statusRaw: ["예약 상태"],
+};
+
+/** 한 칸 이름 = 한 칸. 같은 글자가 여러 칸에 있으면 앞의 것만 둔다. */
+function sharedEntries(learned: readonly PasteLabelEntry[]): PasteLabelEntry[] {
+  const seen = new Set<string>();
+  const out: PasteLabelEntry[] = [];
+  const add = (field: PasteTemplateField, label: string) => {
+    const key = normLabel(label);
+    if (key.length < 2 || seen.has(key)) return;
+    seen.add(key);
+    out.push({ field, label });
+  };
+  for (const e of learned) add(e.field, e.label);
+  for (const field of PASTE_TEMPLATE_FIELDS) {
+    for (const label of AGODA_LABEL_ALIASES[field] ?? []) add(field, label);
+    for (const label of SHARED_LABEL_EXTRAS[field] ?? []) add(field, label);
+  }
+  return out;
+}
+
+export interface PasteLabelEntry {
+  field: PasteTemplateField;
+  label: string;
+}
+
+/**
+ * 직원이 어느 플랫폼에서든 고른 칸 이름. 위치(순번)는 그 플랫폼 양식에만 쓰고, 여기서는 칸 이름만 모은다.
+ * 구역 제목(예: 투숙객 정보 및 날짜)은 값의 칸 이름이 아니므로 뺀다.
+ */
+export function learnedLabelEntries(saved: readonly PasteTemplate[] | null | undefined): PasteLabelEntry[] {
+  const out: PasteLabelEntry[] = [];
+  for (const template of saved ?? []) {
+    for (const field of PASTE_TEMPLATE_FIELDS) {
+      const label = (template.rules?.[field]?.label ?? template.labels[field] ?? "").trim();
+      if (!label || isSectionLine(label) || isPaymentLabel(label) || statusKind(label)) continue;
+      out.push({ field, label });
+    }
+  }
+  return out;
+}
+
+/** extra: 공용 칸 이름. spaced: `예약자명 홍길동`처럼 칸 이름 뒤 띄어쓰기 값도 읽는다(공용 판독만). */
+type ReadTemplate = PasteTemplate & { extra?: readonly PasteLabelEntry[]; spaced?: boolean };
+
+const MONEY_FLOW = /결제|정산|입금|수납|지급|수수료|수령|payout|commission|paid/iu;
+
+function spacedMatch(line: string, label: string, field: PasteTemplateField): { rest: string } | null {
+  const t = line.replace(/\u00a0/g, " ").trim();
+  if (normLabel(label).length < 3 || isSectionLine(t) || isKnownHeading(t) || MONEY_FLOW.test(t)) return null;
+  if (t.slice(0, label.length).toLowerCase() !== label.toLowerCase()) return null;
+  if (!/^\s+\S/u.test(t.slice(label.length))) return null;
+  const rest = t.slice(label.length).trim();
+  return choiceFitsField(field, rest) ? { rest } : null;
+}
+
+function labelsFor(template: ReadTemplate): { field: PasteTemplateField; label: string }[] {
   const rows: { field: PasteTemplateField; label: string }[] = [];
   for (const field of PASTE_TEMPLATE_FIELDS) {
     const own = template.labels[field]?.trim() ?? "";
@@ -608,6 +677,12 @@ function labelsFor(template: PasteTemplate): { field: PasteTemplateField; label:
     const replaced = !!own && normLabel(own) !== normLabel(builtin) && !aliases.some((a) => normLabel(a) === normLabel(own));
     const labels = replaced ? [own] : [...new Set([own, ...aliases].filter((x) => x.length > 0))];
     for (const label of labels) rows.push({ field, label });
+  }
+  const taken = new Set(rows.map((r) => normLabel(r.label)));
+  for (const e of template.extra ?? []) {
+    if (taken.has(normLabel(e.label))) continue;
+    taken.add(normLabel(e.label));
+    rows.push(e);
   }
   return rows.sort((a, b) => normLabel(b.label).length - normLabel(a.label).length);
 }
@@ -690,13 +765,15 @@ interface Hit {
   rest: string;
 }
 
-function findHits(lines: string[], template: PasteTemplate): Hit[] {
+function findHits(lines: string[], template: ReadTemplate): Hit[] {
   const entries = labelsFor(template);
   const hits: Hit[] = [];
   lines.forEach((line, lineIndex) => {
     if (!line.trim() || isIconLine(line) || statusKind(line)) return;
     for (const e of entries) {
-      const m = matchLabel(line, e.label);
+      let m = matchLabel(line, e.label);
+      if (template.spaced && m?.rest.trim() && !choiceFitsField(e.field, m.rest.trim())) m = null;
+      m ??= template.spaced ? spacedMatch(line, e.label, e.field) : null;
       if (!m) continue;
       hits.push({ field: e.field, label: e.label, lineIndex, rest: m.rest });
       return;
@@ -1085,10 +1162,13 @@ const EXTRACT_VALUE_KEYS = [
  * 저장 양식으로 읽은 값이 먼저다. 비거나 못 읽은 칸만 기본 아고다 표기(한국어·영어·번역)로 채운다.
  * 경고는 두 방법이 모두 같은 문제를 말할 때만 남긴다.
  */
-function readAgoda(raw: string, found: PasteTemplate | null): LabeledExtract[] {
-  const base = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
+function readAgoda(raw: string, found: PasteTemplate | null, saved?: readonly PasteTemplate[] | null): LabeledExtract[] {
+  const base = extractLabeledPaste(raw, { ...BUILTIN_AGODA_TEMPLATE, extra: learnedLabelEntries(saved) } as ReadTemplate);
   if (!found) return base;
-  const own = extractLabeledPaste(raw, agodaTemplateFor(splitLines(raw), found));
+  return mergeReads(extractLabeledPaste(raw, agodaTemplateFor(splitLines(raw), found)), base);
+}
+
+function mergeReads(own: LabeledExtract[], base: LabeledExtract[]): LabeledExtract[] {
   if (own.length !== base.length) {
     const missed = own.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
     return missed ? base : own;
@@ -1113,7 +1193,112 @@ export function parseAgodaLabeledTable(
 ): LabeledTable | null {
   if (!agodaPartnerSignature(raw)) return null;
   const found = saved?.find((t) => templateProfile(t) === "agoda") ?? null;
-  return toTable(readAgoda(raw, found));
+  return toTable(readAgoda(raw, found, saved));
+}
+
+function sharedTemplate(lines: string[], saved?: readonly PasteTemplate[] | null): ReadTemplate {
+  const extra = sharedEntries(learnedLabelEntries(saved));
+  const idLabel = extra.find((e) => e.field === "reservationId" && lines.some((l) => matchLabel(l, e.label)))?.label;
+  return { platformId: "shared", version: 1, labels: idLabel ? { reservationId: idLabel } : {}, extra, spaced: true };
+}
+
+function readShared(raw: string, saved?: readonly PasteTemplate[] | null): LabeledExtract[] {
+  return extractLabeledPaste(raw, sharedTemplate(splitLines(raw), saved));
+}
+
+/**
+ * 어느 플랫폼이든 `칸 이름` 다음 값을 공용 칸 이름 사전(한국어·영어·번역어 + 직원이 고른 칸 이름)으로 읽는다.
+ * 예약번호나 입실일이 있고 핵심 칸이 셋 이상일 때만 예약으로 본다. 표·야놀자 카드·아고다 판독 뒤에만 쓴다.
+ */
+export function parseSharedLabeledTable(raw: string, saved?: readonly PasteTemplate[] | null): LabeledTable | null {
+  if (!canUseSavedTemplate(raw)) return null;
+  const rows = readShared(raw, saved).filter((r) => {
+    if (!r.reservationId && !r.checkIn) return false;
+    const core = [r.reservationId, r.guestName, r.checkIn, r.checkOut, r.typeRaw, r.nights, r.salesTotal].filter((v) => v != null && v !== "");
+    return core.length >= 3;
+  });
+  return rows.length ? toTable(rows) : null;
+}
+
+/**
+ * 직원이 미리보기에서 원문 값을 골라 칸을 채우면 그 칸 이름을 그 플랫폼 양식에 더한다.
+ * 저장된 칸 이름은 다른 플랫폼 글을 읽을 때도 공용 칸 이름으로 쓴다.
+ */
+export function learnPasteLabel(
+  saved: readonly PasteTemplate[],
+  platformId: string,
+  field: PasteTemplateField,
+  rule: PasteFieldRule,
+): { ok: true; templates: PasteTemplate[]; changed: boolean } | { ok: false; reason: string } {
+  if (MONEY_FLOW.test(rule.label.replace(/\s*[（(][^()（）]*[)）]\s*$/u, ""))) {
+    return { ok: false, reason: "받은 돈·정산 글자는 칸 이름으로 쓸 수 없어요" };
+  }
+  const cur = saved.find((t) => t.platformId === platformId);
+  if (cur && cur.labels[field] === rule.label && (cur.rules?.[field]?.occurrence ?? 0) === rule.occurrence) {
+    return { ok: true, templates: [...saved], changed: false };
+  }
+  const v = validatePasteTemplate({
+    ...(cur ?? { platformId, version: 1 }),
+    labels: { ...(cur?.labels ?? {}), [field]: rule.label },
+    rules: { ...(cur?.rules ?? {}), [field]: rule },
+  });
+  if (!v.ok) return v;
+  return { ok: true, templates: [...saved.filter((t) => t.platformId !== platformId), v.template], changed: true };
+}
+
+const PLATFORM_WORDS: RegExp[] = [
+  /아고다|agoda/iu,
+  /에어비앤비|airbnb/iu,
+  /부킹닷컴|booking\.com/iu,
+  /익스피디아|expedia/iu,
+  /트립닷컴|trip\.com|ctrip/iu,
+  /야놀자|yanolja/iu,
+  /여기어때|yeogi|goodchoice/iu,
+  /네이버|naver/iu,
+  /호텔스닷컴|hotels\.com/iu,
+  /꿀스테이/iu,
+];
+
+/**
+ * 공용 사전에 없는, 한 플랫폼에서만 배운 칸 이름이 글에 있으면 그 플랫폼이다.
+ * 여러 플랫폼이 같은 수로 맞으면 정하지 않는다.
+ */
+export function platformByLearnedLabels(text: string, saved: readonly PasteTemplate[] | null | undefined): string | null {
+  const common = new Set(sharedEntries([]).map((e) => normLabel(e.label)));
+  const lines = splitLines(text);
+  let best: { id: string; score: number } | null = null;
+  let tie = false;
+  for (const template of saved ?? []) {
+    const own = new Set(
+      learnedLabelEntries([template])
+        .map((e) => e.label)
+        .filter((label) => !common.has(normLabel(label)) && lines.some((l) => matchLabel(l, label))),
+    );
+    if (!own.size) continue;
+    if (!best || own.size > best.score) {
+      best = { id: template.platformId, score: own.size };
+      tie = false;
+    } else if (own.size === best.score) tie = true;
+  }
+  return best && !tie ? best.id : null;
+}
+
+/** 글에 이름이 나오는 호텔 플랫폼이 하나뿐이면 그 플랫폼. 둘 이상이거나 없으면 직원이 고른다. */
+export function mentionedPlatformId(text: string, platforms: readonly { id: string; name?: string | null }[]): string | null {
+  const hits = new Set<string>();
+  const low = text.toLowerCase();
+  for (const p of platforms) {
+    const name = (p.name ?? "").trim();
+    if (name.length < 2) continue;
+    if (low.includes(name.toLowerCase())) {
+      hits.add(p.id);
+      continue;
+    }
+    for (const word of PLATFORM_WORDS) {
+      if (word.test(name) && word.test(text)) hits.add(p.id);
+    }
+  }
+  return hits.size === 1 ? [...hits][0]! : null;
 }
 
 /** 표 인식이 실패하고 직원이 플랫폼을 직접 골랐을 때만. 다른 플랫폼의 표를 바꾸지 않는다. */
@@ -1126,9 +1311,9 @@ export function parseManualLabeledTable(
   const custom = saved?.find((t) => t.platformId === platformId) ?? null;
   const agoda = platformId === "agoda" || (custom != null && templateProfile(custom) === "agoda");
   if (agodaPartnerSignature(raw) && !agoda) return null;
-  if (agoda) return toTable(readAgoda(raw, custom));
+  if (agoda) return toTable(readAgoda(raw, custom, saved));
   if (!custom) return null;
-  return toTable(extractLabeledPaste(raw, custom));
+  return toTable(mergeReads(extractLabeledPaste(raw, custom), readShared(raw, saved)));
 }
 
 const SECTION_LINES = new Set(

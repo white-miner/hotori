@@ -1635,6 +1635,36 @@ export function lookupTypeAliasAnyPlatform(
   return best?.typeId ?? null;
 }
 
+/** `1 X 스탠다드 스타일러 (1000000999)` → `스탠다드 스타일러`. 방 수와 객실 코드는 타입 이름이 아니다. */
+export function roomNameCore(raw: string): string {
+  return typeRawForAliasMatch(raw)
+    .replace(/^\d{1,2}\s*[xX×]\s+/u, "")
+    .replace(/\s*\(\s*\d+\s*\)\s*$/u, "")
+    .trim();
+}
+
+/**
+ * 플랫폼마다 객실 이름 앞뒤가 다르다(아고다 `1 X 이름 (코드)`, 야놀자 `English|한글`).
+ * 가운데 이름이 다른 플랫폼 매칭이나 호텔 타입 이름과 글자 그대로 같고, 그 타입이 하나뿐일 때만 쓴다.
+ * 같은 이름이 두 타입으로 갈리면 `split`이고, 비슷한 이름으로 짐작하지 않는다.
+ */
+function typeIdBySameRoomName(raw: string, s: HotelSettings, types: readonly { id: string }[], otherPlatforms: boolean): string | "split" | null {
+  const key = normTypeName(roomNameCore(raw));
+  if (!key) return null;
+  const usable = new Set(types.map((t) => t.id));
+  const hits = new Set<string>();
+  for (const a of otherPlatforms ? (s.typeAliases ?? []) : []) {
+    if (!usable.has(a.typeId)) continue;
+    const names = [a.platformTypeName, typeRawForAliasMatch(a.platformTypeName), typeRawBilingualTail(a.platformTypeName), roomNameCore(a.platformTypeName)];
+    if (names.some((n) => n && normTypeName(n) === key)) hits.add(a.typeId);
+  }
+  for (const t of usableTypes(s.types)) {
+    if (usable.has(t.id) && normTypeName(typeLabel(t)) === key) hits.add(t.id);
+  }
+  if (hits.size > 1) return "split";
+  return hits.size === 1 ? [...hits][0]! : null;
+}
+
 /**
  * Resolve OTA type string → hotel typeId.
  * Order: **1) hotel type alias (platform)** → **2) fuzzy heuristics**.
@@ -1668,6 +1698,10 @@ export function matchTypeId(
     const anyHit = lookupTypeAliasAnyPlatform(s.typeAliases, raw, usableIds);
     if (anyHit) return anyHit;
   }
+
+  const sameRoom = typeIdBySameRoomName(raw, s, types, !!opts?.anyPlatformAlias);
+  if (sameRoom === "split") return null;
+  if (sameRoom) return sameRoom;
 
   const candidates = [normTypeName(raw), normTypeName(typeRawForAliasMatch(raw)), normTypeName(typeRawBilingualTail(raw))].filter(
     (k, i, arr) => !!k && arr.indexOf(k) === i,

@@ -18,6 +18,11 @@ import {
   readPasteLines,
   ruleForPickedLine,
   parseAgodaLabeledTable,
+  parseSharedLabeledTable,
+  learnPasteLabel,
+  learnedLabelEntries,
+  mentionedPlatformId,
+  platformByLearnedLabels,
   pickableForField,
   parseBestSavedTemplate,
   parseManualLabeledTable,
@@ -984,4 +989,100 @@ test("영어·번역 날짜, 오전/오후 시각, 영어 인원, ₩ 금액을 
   assert.equal(readFieldValue("판매\n₩210,000", "salesTotal", "판매"), "KRW 210000");
   assert.equal(readFieldValue("판매\nKRW 210,000.00", "salesTotal", "판매"), "KRW 210000");
   assert.equal(choiceFitsField("checkIn", "Booking date 13:00"), false);
+});
+
+import { AIRBNB_KO, BOOKING_EN, DOMESTIC_KO, UNKNOWN_LABELS_A, UNKNOWN_LABELS_B } from "./testFixtures/otherPlatforms.ts";
+
+function sharedRow(text: string, saved?: Parameters<typeof parseSharedLabeledTable>[1]) {
+  const table = parseSharedLabeledTable(text, saved);
+  assert.ok(table, "공용 판독 실패");
+  return Object.fromEntries(table!.headers.map((h, i) => [h, table!.rows[0]![i]])) as Record<string, string>;
+}
+
+test("공용 칸 이름: 에어비앤비·Booking.com·국내 사이트 화면을 플랫폼 양식 없이 읽는다", () => {
+  const air = sharedRow(AIRBNB_KO);
+  assert.equal(air["예약번호"], "HMABCD1234");
+  assert.equal(air["투숙객"], "Mina Park");
+  assert.equal(air["객실타입"], "오션뷰 더블");
+  assert.equal(air["체크인"], "2026-11-07");
+  assert.equal(air["입실 시각"], "16:00");
+  assert.equal(air["퇴실 시각"], "11:00");
+  assert.equal(air["박수"], "2");
+  assert.equal(air["판매금액"], "", "게스트 결제 금액·호스트 수령액은 판매금이 아니다");
+  assert.equal(air["안내"], "");
+
+  const bk = sharedRow(BOOKING_EN);
+  assert.equal(bk["예약번호"], "4000000004");
+  assert.equal(bk["투숙객"], "Ari Stone");
+  assert.equal(bk["객실타입"], "Deluxe Double Room");
+  assert.equal(bk["체크인"], "2026-12-01");
+  assert.equal(bk["박수"], "3");
+  assert.equal(bk["판매금액"], "330000", "Total price만 판매금, Commission은 아니다");
+
+  const kr = sharedRow(DOMESTIC_KO);
+  assert.equal(kr["예약번호"], "2026110700001");
+  assert.equal(kr["투숙객"], "Ara Min Lee");
+  assert.equal(kr["연락처"], "050-1234-5678");
+  assert.equal(kr["객실타입"], "스탠다드 더블");
+  assert.equal(kr["입실 시각"], "15:00");
+  assert.equal(kr["판매금액"], "180000");
+});
+
+test("공용 판독은 표·짧은 글·칸 이름 없는 글을 예약으로 만들지 않는다", () => {
+  assert.equal(parseSharedLabeledTable("예약번호\t이름\t체크인\t체크아웃\n1\t2\t3\t4"), null);
+  assert.equal(parseSharedLabeledTable("체크인\n2026-11-07"), null);
+  assert.equal(parseSharedLabeledTable("안녕하세요\n내일 갈게요"), null);
+});
+
+test("처음 보는 칸 이름은 한 번 고르면 플랫폼 상관없이 다음 예약에서 읽는다", () => {
+  const before = sharedRow(UNKNOWN_LABELS_B);
+  assert.equal(before["예약번호"], "");
+  assert.equal(before["투숙객"], "");
+
+  const lines = readPasteLines(UNKNOWN_LABELS_A);
+  let templates = [] as Parameters<typeof learnPasteLabel>[0];
+  for (const [field, text] of [["reservationId", "ZX1000000001"], ["guestName", "Mina Park"]] as const) {
+    const at = lines.findIndex((l) => l.text === text);
+    assert.equal(pickableForField(lines[at]!, field), true);
+    const rule = ruleForPickedLine(lines, at, field)!;
+    const learned = learnPasteLabel(templates, "p-x", field, rule);
+    assert.equal(learned.ok, true);
+    if (learned.ok) templates = learned.templates;
+  }
+  assert.deepEqual(templates[0]?.labels, { reservationId: "주문 코드", guestName: "방문자" });
+  const stored = serializePasteTemplateStore(templates);
+  assert.equal(stored.includes("ZX1000000001") || stored.includes("Mina Park"), false);
+
+  const after = sharedRow(UNKNOWN_LABELS_B, templates);
+  assert.equal(after["예약번호"], "ZX2000000002");
+  assert.equal(after["투숙객"], "Ari Stone");
+  assert.equal(after["체크인"], "2026-12-01");
+  assert.equal(after["판매금액"], "330000");
+  assert.equal(platformByLearnedLabels(UNKNOWN_LABELS_B, templates), "p-x");
+
+  const again = learnPasteLabel(templates, "p-x", "guestName", { label: "방문자", occurrence: 0 });
+  assert.equal(again.ok && again.changed, false, "같은 칸 이름은 다시 저장하지 않는다");
+});
+
+test("받은 돈·구역 제목·상태 글자는 공용 칸 이름으로 배우지 않는다", () => {
+  assert.equal(learnPasteLabel([], "p-x", "salesTotal", { label: "게스트 결제 금액", occurrence: 0 }).ok, false);
+  assert.equal(TRANSLATED_SAVED.ok, true);
+  if (!TRANSLATED_SAVED.ok) return;
+  const learned = learnedLabelEntries([TRANSLATED_SAVED.template]);
+  assert.equal(learned.some((e) => e.label === "투숙객 정보 및 날짜"), false);
+  assert.equal(platformByLearnedLabels(DOMESTIC_KO, [TRANSLATED_SAVED.template]), null, "아고다 공용 표기만 있는 양식은 플랫폼을 정하지 않는다");
+  const kr = sharedRow(DOMESTIC_KO, [TRANSLATED_SAVED.template]);
+  assert.equal(kr["예약번호"], "2026110700001");
+});
+
+test("글에 이름이 나오는 호텔 플랫폼이 하나면 그 플랫폼", () => {
+  const plats = [
+    { id: "p1", name: "야놀자" },
+    { id: "p3", name: "아고다" },
+    { id: "p-air", name: "에어비앤비" },
+  ];
+  assert.equal(mentionedPlatformId("Airbnb 예약 확정", plats), "p-air");
+  assert.equal(mentionedPlatformId("아고다 예약", plats), "p3");
+  assert.equal(mentionedPlatformId("야놀자 아고다", plats), null);
+  assert.equal(mentionedPlatformId("예약 번호 1", plats), null);
 });
