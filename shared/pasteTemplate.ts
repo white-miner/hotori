@@ -222,7 +222,6 @@ export function validatePasteTemplate(
   }
   const src = (o.labels ?? {}) as Record<string, unknown>;
   const labels: PasteTemplate["labels"] = {};
-  const seen = new Map<string, PasteTemplateField>();
   for (const field of PASTE_TEMPLATE_FIELDS) {
     const raw = src[field];
     if (raw == null || raw === "") continue;
@@ -234,11 +233,6 @@ export function validatePasteTemplate(
     if (field !== "statusRaw" && statusKind(label)) return { ok: false, reason: "예약 상태 글자는 칸 이름으로 쓸 수 없어요" };
     const n = normLabel(label);
     if (n.length < 2) return { ok: false, reason: "칸 이름은 두 글자 이상이어야 해요" };
-    const prev = seen.get(n);
-    const sharedTime = (a: PasteTemplateField, b: PasteTemplateField) =>
-      (a === "checkIn" && b === "checkInTime") || (a === "checkInTime" && b === "checkIn") || (a === "checkOut" && b === "checkOutTime") || (a === "checkOutTime" && b === "checkOut");
-    if (prev && !sharedTime(prev, field)) return { ok: false, reason: "같은 글자가 두 칸에 있어요" };
-    seen.set(n, field);
     labels[field] = label;
   }
   const rules: PasteTemplate["rules"] = {};

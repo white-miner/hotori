@@ -142,15 +142,16 @@ function fieldButton(id: string) {
   return el;
 }
 
-function lineButton(text: string) {
-  const el = [...document.querySelectorAll(".paste-template-values button")].find((node) => node.querySelector("b")?.textContent === text);
-  if (!el) throw new Error(`없는 줄 ${text} :: ${[...document.querySelectorAll(".paste-template-values b")].map((n) => n.textContent).join(" | ")}`);
+function lineButton(text: string, which = 0) {
+  const found = [...document.querySelectorAll(".paste-template-values button")].filter((node) => node.querySelector("b")?.textContent === text);
+  const el = found[which];
+  if (!el) throw new Error(`없는 줄 ${text} #${which} :: ${[...document.querySelectorAll(".paste-template-values b")].map((n) => n.textContent).join(" | ")}`);
   return el;
 }
 
-async function pick(id: string, line: string) {
+async function pick(id: string, line: string, which = 0) {
   await click(fieldButton(id));
-  await click(lineButton(line));
+  await click(lineButton(line, which));
 }
 
 function fieldText() {
@@ -439,6 +440,82 @@ test("야놀자 카드의 한글 이름을 이름 칸에 지정하면 다음 카
   assert.match(fieldText(), /guestName:이름 · 이수진/);
   const previewName = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
   assert.equal(previewName?.value, "이수진");
+  assert.equal(bridge().writes.current, 0);
+  await act(async () => {
+    root.unmount();
+  });
+});
+
+test("아고다 요약과 상세에 같은 칸 이름이 반복돼도 양식을 저장한다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(createElement(Host));
+  });
+  const agoda = (name: string, id: string, adults: string, nights: string, checkIn: string, checkOut: string, money: string) =>
+    [
+      "예약 번호:",
+      id,
+      "확정된 예약",
+      "투숙객",
+      name,
+      `성인 ${adults}명`,
+      "체크인",
+      checkIn,
+      "(16:00)",
+      "체크아웃",
+      checkOut,
+      "(12:00)",
+      "기준 판매 요금(세금 및 수수료 포함)",
+      money,
+      "투숙객 세부 사항 및 날짜 정보",
+      "예약 번호",
+      id,
+      "투숙객 이름",
+      name,
+      "체크인",
+      `${checkIn} 토요일, 16:00`,
+      "체크아웃",
+      `${checkOut} 월요일, 12:00`,
+      "객실 종류 및 혜택",
+      "1 X 스탠다드",
+      "숙박 기간",
+      nights,
+      "성인",
+      adults,
+    ].join("\n");
+  const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!open) throw new Error("양식 설정 없음");
+  await click(open);
+  await paste(agoda("Mina Park", "1000000001", "2", "2", "2026년 11월 7일", "2026년 11월 9일", "KRW 210,000"));
+  await pick("reservationId", "1000000001", 0);
+  await pick("guestName", "Mina Park", 0);
+  await pick("adults", "성인 2명");
+  await pick("nights", "2", 1);
+  await pick("typeRaw", "1 X 스탠다드");
+  await pick("checkIn", "2026년 11월 7일");
+  await pick("checkOut", "2026년 11월 9일");
+  await pick("checkInTime", "(16:00)");
+  await pick("salesTotal", "KRW 210,000");
+  assert.equal(document.body.textContent?.includes("같은 글자가 두 칸에 있어요"), false);
+  assert.match(fieldText(), /guestName:이름 · Mina Park/);
+  assert.match(fieldText(), /adults:인원 · 2/);
+  assert.match(fieldText(), /nights:박수 · 2/);
+  bridge().failSave.current = false;
+  const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+  if (!save) throw new Error("저장 없음");
+  await click(save);
+  assert.equal(document.body.textContent?.includes("같은 글자가 두 칸에 있어요"), false);
+  const stored = bridge().saves.current.at(-1) ?? "";
+  assert.equal(stored.includes("Mina Park"), false);
+  assert.equal(stored.includes("1000000001"), false);
+  assert.match(stored, /성인/);
+  await paste(agoda("Ari Stone", "2000000002", "4", "3", "2026년 12월 1일", "2026년 12월 4일", "KRW 180,000"));
+  assert.match(fieldText(), /guestName:이름 · Ari Stone/);
+  assert.match(fieldText(), /adults:인원 · 4/);
+  const name = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
+  assert.equal(name?.value, "Ari Stone");
   assert.equal(bridge().writes.current, 0);
   await act(async () => {
     root.unmount();
