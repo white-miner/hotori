@@ -77,11 +77,15 @@ type Api = {
   writes: { current: number };
 };
 
+let hostPlatformName = "아고다";
+
 function Host() {
+  const platformName = hostPlatformName;
+  const platformId = platformName === "야놀자" ? "p-ya" : "p-ag";
   const [s, setS] = useState(() =>
     normalizeSettings({
-      platforms: [{ id: "p-ag", name: "아고다", abbr: "아" }],
-      types: [{ id: "std", name: "스탠다드" }],
+      platforms: [{ id: platformId, name: platformName, abbr: platformName.slice(0, 1) }],
+      types: [{ id: "std", name: "스탠다드" }, { id: "ondol", name: "온돌" }],
       stayTimes: { checkIn: "16:00", checkOut: "12:00" },
     }),
   );
@@ -400,6 +404,41 @@ test("같은 줄의 일부 선택과 반복된 2는 고른 칸만 연결하고 �
   assert.match(shown, /checkIn:입실 · 2027-03-09/);
   assert.match(shown, /salesTotal:판매금 · KRW 70000/);
   assert.match(shown, /adults:인원 · 4/);
+  assert.equal(bridge().writes.current, 0);
+  await act(async () => {
+    root.unmount();
+  });
+});
+
+test("야놀자 카드의 한글 이름을 이름 칸에 지정하면 다음 카드의 다른 이름으로 바뀐다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  hostPlatformName = "야놀자";
+  await act(async () => {
+    root.render(createElement(Host));
+  });
+  hostPlatformName = "아고다";
+  const card = (name: string, id: string, when: string) =>
+    [id, name, "0503-0000-0001", "온돌", "숙박", "/ 1박", when, "2026.12.02(수) 12:00", "예약완료", "판매가 90,000원"].join("\n");
+  const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!open) throw new Error("양식 설정 버튼 없음");
+  await click(open);
+  await paste(card("김민수", "2610151829300184", "2026.12.01(화) 16:00"));
+  await click(lineButton("김민수"));
+  assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
+  assert.match(fieldText(), /guestName:이름 · 김민수/);
+  bridge().failSave.current = false;
+  const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+  if (!save) throw new Error("저장 없음");
+  await click(save);
+  const stored = bridge().saves.current.at(-1) ?? "";
+  assert.equal(stored.includes("김민수"), false);
+  assert.match(stored, /예약자/);
+  await paste(card("이수진", "2610152133600141", "2026.12.05(토) 16:00"));
+  assert.match(fieldText(), /guestName:이름 · 이수진/);
+  const previewName = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
+  assert.equal(previewName?.value, "이수진");
   assert.equal(bridge().writes.current, 0);
   await act(async () => {
     root.unmount();
