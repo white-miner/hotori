@@ -1007,18 +1007,37 @@ export interface PasteReadLine {
   label: string;
 }
 
+function headerFlags(lines: string[]): boolean[] {
+  const flags = lines.map(() => false);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!isLabelish(lines[i]!)) continue;
+    const next = lines[i + 1];
+    if (!next) continue;
+    flags[i] = !isLabelish(next) || !flags[i + 1]!;
+  }
+  return flags;
+}
+
+function cleanHeader(line: string): string {
+  return line.replace(/\s*[：:]\s*$/u, "").trim();
+}
+
 /** 붙여넣은 글을 줄로 읽는다. 아이콘·빈 줄만 빼고, 나머지는 전부 보여 준다. */
 export function readPasteLines(text: string): PasteReadLine[] {
   const lines = splitLines(text).map((l) => l.trim()).filter((l) => l && !isIconLine(l));
+  const headers = headerFlags(lines);
   return lines.map((line, i) => {
     const adult = line.match(/^(성인)\s*\d{1,2}\s*명$/u);
     if (adult) return { text: line, label: adult[1]! };
-    if (statusKind(line) || isLabelish(line)) return { text: line, label: line.replace(/\s*[：:]\s*$/u, "").trim() };
+    const colon = line.match(/^(.{2,40}?)\s*[：:]\s*(\S.*)$/u);
+    const timeColon = !!colon && /\d\s*$/u.test(colon[1]!) && /^\d/u.test(colon[2]!);
+    if (colon && !timeColon && isLabelish(colon[1]!) && !isLabelish(colon[2]!)) return { text: colon[2]!.trim(), label: cleanHeader(colon[1]!) };
+    if (statusKind(line) || headers[i]) return { text: line, label: cleanHeader(line) };
     for (let j = i - 1; j >= 0; j--) {
-      if (!isLabelish(lines[j]!)) continue;
-      return { text: line, label: lines[j]!.replace(/\s*[：:]\s*$/u, "").trim() };
+      if (!headers[j]) continue;
+      return { text: line, label: cleanHeader(lines[j]!) };
     }
-    return { text: line, label: line.replace(/\s*[：:]\s*$/u, "").trim() };
+    return { text: line, label: cleanHeader(line) };
   });
 }
 
@@ -1034,7 +1053,7 @@ export function listPasteChoices(text: string): PasteValueChoice[] {
   const seen = new Set<string>();
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    if (isLabelish(line.text) && !/^(성인)\s*\d/u.test(line.text)) continue;
+    if (line.label === line.text && isLabelish(line.text) && !statusKind(line.text) && !/^(성인)\s*\d/u.test(line.text)) continue;
     const stamp = splitStayStamp(line.text);
     let value = line.text;
     if (stamp && !stamp.time) {
@@ -1055,8 +1074,12 @@ export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: 
   const line = lines[index];
   if (!line) return null;
   if (statusKind(line.text)) return { label: line.text.trim(), occurrence: 0 };
-  const label = line.label.trim();
-  if (!label || label === line.text) return null;
+  let label = line.label.trim();
+  if (!label || label === line.text) {
+    const prev = index > 0 ? lines[index - 1] : null;
+    if (!prev || prev.label !== prev.text || !isLabelish(prev.text) || statusKind(prev.text) || isSectionLine(prev.text)) return null;
+    label = cleanHeader(prev.text);
+  }
   const values = lines.filter((item) => item.label.trim() === label && item.text !== item.label);
   const at = values.indexOf(line);
   const occurrence = at < 0 ? 0 : at;
