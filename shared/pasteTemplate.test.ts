@@ -6,9 +6,12 @@ import { normalizeSettings, type Booking } from "./ledger.ts";
 import {
   BUILTIN_AGODA_TEMPLATE,
   agodaPartnerSignature,
+  choiceFitsField,
   extractLabeledPaste,
+  listPasteChoices,
   loadPasteTemplates,
   parseAgodaLabeledTable,
+  parseBestSavedTemplate,
   parseManualLabeledTable,
   pasteTemplateStorageKey,
   readPasteTemplateStore,
@@ -235,6 +238,74 @@ test("저장된 양식은 그 플랫폼에만 쓰이고, 비면 기본 양식으
   assert.equal(parseManualLabeledTable(AGODA_SHAPE, "yanolja", [yanoljaLabels.template]), null);
 });
 
+test("아고다 상세 글: 같은 줄의 요일·시각, 객실 한 줄, 금액·인원·연락처는 비운다", () => {
+  const text = [
+    "예약 번호",
+    "1000000001",
+    "",
+    "확정된 예약",
+    "",
+    "투숙객 이름",
+    "Mina Park",
+    "",
+    "투숙객 거주 국가",
+    "대한민국",
+    "",
+    "연락처 정보",
+    "체크인",
+    "2026년 11월 7일 토요일, 16:00",
+    "",
+    "체크아웃",
+    "2026년 11월 9일 월요일, 12:00",
+    "",
+    "예약 로그",
+    "",
+    "예약 생성일(방콕, UTC+7)",
+    "2026년 11월 7일 토요일, 00:52",
+    "",
+    "최종 변경:",
+    "2026년 11월 7일 토요일, 00:53",
+    "",
+    "객실 및 투숙 인원",
+    "",
+    "객실 종류 및 혜택",
+    "1 X 스탠다드 스타일러 (1000000999)",
+    "",
+    "무료 Wi-Fi, 식수/생수",
+  ].join("\n");
+  const { det, row, rows } = previewOf(text);
+  assert.equal(det.profileId, "agoda");
+  assert.equal(det.confident, true);
+  assert.equal(rows.length, 1);
+  assert.equal(row.reservationId, "1000000001");
+  assert.equal(row.guestName, "Mina Park");
+  assert.equal(row.guests ?? null, null);
+  assert.equal(row.guestPhone, "");
+  assert.equal(row.checkIn, "2026-11-07");
+  assert.equal(row.checkInTime, "16:00");
+  assert.equal(row.checkOutTime, "12:00");
+  assert.equal(row.nights, 2);
+  assert.equal(row.amount, null);
+  assert.equal(row.priceUnset, true);
+  assert.equal(row.pasteCancel, false);
+  assert.equal(row.statusRaw, "확정된 예약");
+  assert.equal(row.typeRaw, "1 X 스탠다드 스타일러 (1000000999)");
+  assert.notEqual(row.checkInTime, "00:52");
+  assert.match(row.warnings?.join("\n") ?? "", /결제로 넣지 않아요/);
+  assert.match(row.warnings?.join("\n") ?? "", /거주 국가 대한민국/);
+  assert.doesNotMatch(row.warnings?.join("\n") ?? "", /박마다 나누지/);
+  const draft = pathADraftFromPreview(
+    { ...row, typeId: row.typeId ?? "std" },
+    { platformId: "p-ag", platformLabel: "아고다", id: "b-detail", nowIso: "2026-11-01T00:00:00.000Z" },
+  );
+  assert.equal(draft.price, 0);
+  assert.equal(draft.priceUnset, true);
+  assert.equal(draft.guests ?? null, null);
+  assert.equal(draft.payments, undefined);
+  assert.equal(draft.nightRates, null);
+  assert.equal(draft.arrived, false);
+});
+
 test("양식 저장은 칸 이름만 담고 손님 글·결제 글자·깨진 저장은 거절한다", () => {
   const payment = validatePasteTemplate({ platformId: "agoda", labels: { salesTotal: "결제금액" } });
   assert.equal(payment.ok, false);
@@ -304,6 +375,39 @@ test("이미 있는 예약번호는 새로 만들지 않고, 확정은 취소·�
   assert.equal(rows[0]!.skip, true);
   assert.equal(parseAgodaLabeledTable(HYPOTHESIS_FIXTURES.yanolja), null);
   assert.equal(parseAgodaLabeledTable(HYPOTHESIS_FIXTURES.yeogi), null);
+});
+
+test("값을 고르면 칸 이름만 남고, 다음 예약의 다른 손님도 그 양식으로 읽는다", () => {
+  const choices = listPasteChoices(AGODA_SHAPE);
+  const guest = choices.find((c) => c.value === "Mina Park");
+  const checkIn = choices.find((c) => c.value.includes("2026년 11월 7일") && c.value.includes("16:00"));
+  const money = choices.find((c) => c.value.includes("210,000"));
+  assert.equal(guest?.label, "투숙객");
+  assert.equal(checkIn?.label, "체크인");
+  assert.equal(money?.label, "기준 판매 요금(세금 및 수수료 포함)");
+  assert.equal(choiceFitsField("salesTotal", "확정된 예약"), false);
+  assert.equal(choiceFitsField("salesTotal", "KRW 210,000"), true);
+
+  const saved = validatePasteTemplate({
+    platformId: "p-book",
+    labels: { reservationId: "예약 번호", guestName: "투숙객", checkIn: "체크인", checkOut: "체크아웃" },
+  });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  const stored = serializePasteTemplateStore([saved.template]);
+  assert.equal(stored.includes("Mina Park"), false);
+  assert.equal(stored.includes("1000000001"), false);
+  const custom = ["예약 번호", "2000000002", "투숙객", "Ari Stone", "체크인", "2026년 11월 7일", "체크아웃", "2026년 11월 9일"].join("\n");
+  const hit = parseBestSavedTemplate(custom, [saved.template]);
+  assert.equal(hit?.platformId, "p-book");
+  const row = buildPreviewRows(hit!.table, profileById("yanolja")!, settings, [], hit!.platformId)[0]!;
+  assert.equal(row.guestName, "Ari Stone");
+  assert.equal(row.reservationId, "2000000002");
+  assert.equal(row.checkIn, "2026-11-07");
+  assert.equal(row.nights, 2);
+  assert.equal(row.amount, null);
+  assert.equal(normalizeSettings({ pasteTemplates: [{ labels: { guestName: "투숙객" } }] }).pasteTemplates.length, 0);
+  assert.equal(normalizeSettings({ pasteTemplates: [saved.template] }).pasteTemplates[0]?.labels.guestName, "투숙객");
 });
 
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {

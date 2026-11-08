@@ -5332,8 +5332,14 @@ body.bulking .toast { bottom: 96px; }
 .smart-reg-adults .inp { width: 64px; height: 28px; }
 .paste-template-modal { width: min(560px, 100%); max-height: min(86vh, 840px); overflow: auto; }
 .paste-template-note { margin-top: 0; }
-.paste-template-fields { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
-.paste-template-fields label,
+.paste-template-pick { display: grid; grid-template-columns: minmax(140px, 200px) 1fr; gap: 12px; margin-top: 12px; }
+.paste-template-fields,
+.paste-template-values { display: flex; flex-direction: column; gap: 6px; }
+.paste-template-fields .btn,
+.paste-template-values .btn { justify-content: flex-start; text-align: left; height: auto; min-height: 32px; white-space: normal; }
+.paste-template-values .btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.paste-template-values .btn b { font-weight: 750; }
+.paste-template-values .btn span { font-weight: 500; color: var(--ink2); }
 .paste-template-sample { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 750; }
 .paste-template-sample { margin-top: 8px; }
 .paste-template-sample .smart-reg-ta { min-height: 120px; }
@@ -5346,6 +5352,7 @@ body.bulking .toast { bottom: 96px; }
   .smart-reg-head-row { gap: var(--space-2, 8px); }
   .smart-reg-ta { min-height: 160px; }
   .paste-template-modal { width: 100%; }
+  .paste-template-pick { grid-template-columns: 1fr; }
 }
 
 /* 미배정 정렬 버튼 (현황·배치 운영패널) */
