@@ -10,6 +10,8 @@ const sample = [
   "확정된 예약",
   "투숙객",
   "Mina Park",
+  "성인",
+  "2명",
   "연락처",
   "010-0000-0000",
   "객실 종류 및 혜택",
@@ -29,7 +31,8 @@ test("양식 설정 화면은 기존 스마트등록 칸만 보여 준다", () =
   const html = renderToStaticMarkup(
     <PasteTemplatePanel
       platforms={[{ id: "p1", name: "아고다", abbr: "아", onsite: false }]}
-      templates={[{ platformId: "p1", profileId: "agoda", version: 1, labels: { guestName: "투숙객", checkIn: "체크인" } }]}
+      drafts={{ p1: { guestName: "투숙객", adults: "성인", checkIn: "체크인" } }}
+      onEdit={() => {}}
       sample={sample}
       onSample={() => {}}
       canSave
@@ -45,8 +48,9 @@ test("양식 설정 화면은 기존 스마트등록 칸만 보여 준다", () =
     assert.ok(text.includes(col.label), col.label);
   }
   assert.match(text, /이름[\s\S]*Mina Park/);
+  assert.match(text, /인원[\s\S]*2/);
   assert.match(text, /입실[\s\S]*2026-11-07 16:00/);
-  for (const gone of ["회사명", "인원", "호실", "빠른 입실", "늦은 퇴실"]) {
+  for (const gone of ["회사명", "호실", "빠른 입실", "늦은 퇴실"]) {
     assert.equal(text.includes(gone), false, gone);
   }
   assert.equal(saved, false);
