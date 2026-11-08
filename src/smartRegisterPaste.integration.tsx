@@ -78,13 +78,14 @@ type Api = {
 };
 
 let hostPlatformName = "아고다";
+let hostPlatforms: { id: string; name: string; abbr: string }[] | null = null;
 
 function Host() {
   const platformName = hostPlatformName;
   const platformId = platformName === "야놀자" ? "p-ya" : "p-ag";
   const [s, setS] = useState(() =>
     normalizeSettings({
-      platforms: [{ id: platformId, name: platformName, abbr: platformName.slice(0, 1) }],
+      platforms: hostPlatforms ?? [{ id: platformId, name: platformName, abbr: platformName.slice(0, 1) }],
       types: [{ id: "std", name: "스탠다드" }, { id: "ondol", name: "온돌" }, { id: "dlx", name: "디럭스" }],
       stayTimes: { checkIn: "16:00", checkOut: "12:00" },
     }),
@@ -624,4 +625,124 @@ test("야놀자 카드 스캔이 읽은 칸은 양식에서 지정하고 다음 
   await act(async () => {
     root.unmount();
   });
+});
+
+test("5글자 한글 이름은 야놀자 카드에서 전화로 밀리지 않고 이름 칸에 붙는다", async () => {
+  hostPlatformName = "야놀자";
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    const text = [
+      "2610151829300184",
+      "가상손님가",
+      "0503-0000-0001",
+      "온돌",
+      "숙박",
+      "/ 1박",
+      "2026.12.01(화) 16:00",
+      "2026.12.02(수) 12:00",
+      "예약완료",
+      "판매가 90,000원",
+    ].join("\n");
+    const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+    if (!open) throw new Error("양식 설정 없음");
+    await click(open);
+    await paste(text);
+    await click(lineButton("가상손님가"));
+    assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
+    assert.match(fieldText(), /guestName:이름 · 가상손님가/);
+    const previewName = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
+    assert.equal(previewName?.value, "가상손님가");
+    const previewPhone = document.querySelector('[aria-label="전화"]') as HTMLInputElement | null;
+    assert.equal(previewPhone?.value, "0503-0000-0001");
+    assert.equal(bridge().writes.current, 0);
+    assert.equal(bridge().saves.current.length, 0);
+  } finally {
+    hostPlatformName = "아고다";
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});
+
+test("저장하지 않고 양식 창을 닫아도 보고 있던 플랫폼의 지정이 남는다", async () => {
+  hostPlatforms = [
+    { id: "p-ya", name: "야놀자", abbr: "야" },
+    { id: "p-ag", name: "아고다", abbr: "아" },
+  ];
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    const text = [
+      "예약 번호",
+      "2000000002",
+      "투숙객 이름",
+      "Ari Stone",
+      "성인",
+      "4",
+      "객실 종류 및 혜택",
+      "Deluxe Twin",
+      "체크인",
+      "2026년 12월 1일 15:00",
+      "체크아웃",
+      "2026년 12월 3일 11:00",
+      "기준 판매 요금(세금 및 수수료 포함)",
+      "KRW 180,000",
+    ].join("\n");
+    const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+    if (!open) throw new Error("양식 설정 없음");
+    await click(open);
+    const agoda = [...document.querySelectorAll("button.chip")].find((el) => el.textContent?.trim() === "아고다");
+    if (!agoda) throw new Error("아고다 칩 없음");
+    await click(agoda);
+    await paste(text);
+    await pick("guestName", "Ari Stone");
+    await pick("typeRaw", "Deluxe Twin");
+    await pick("adults", "4");
+    await pick("checkIn", "2026년 12월 1일 15:00");
+    await pick("checkOut", "2026년 12월 3일 11:00");
+    await pick("salesTotal", "KRW 180,000");
+    assert.match(fieldText(), /guestName:이름 · Ari Stone/);
+    assert.match(fieldText(), /typeRaw:타입 · Deluxe Twin/);
+    assert.match(fieldText(), /adults:인원 · 4/);
+    assert.match(fieldText(), /checkIn:입실 · 2026-12-01 15:00/);
+    assert.match(fieldText(), /checkOut:체크아웃 · 2026-12-03 11:00/);
+    assert.match(fieldText(), /salesTotal:판매금 · KRW 180000/);
+    const close = document.querySelector('[aria-label="닫기"]');
+    if (!close) throw new Error("닫기 없음");
+    await click(close);
+    assert.equal(document.querySelector("[data-field]"), null);
+    const reopen = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+    if (!reopen) throw new Error("다시 열기 없음");
+    await click(reopen);
+    const dialog = document.querySelector('[aria-labelledby="paste-template-title"]');
+    if (!dialog) throw new Error("양식 창 없음");
+    const selected = [...dialog.querySelectorAll("button.chip.on")].map((el) => el.textContent?.trim());
+    assert.deepEqual(selected, ["아고다"]);
+    const again = fieldText();
+    assert.match(again, /guestName:이름 · Ari Stone/);
+    assert.match(again, /typeRaw:타입 · Deluxe Twin/);
+    assert.match(again, /adults:인원 · 4/);
+    assert.match(again, /checkIn:입실 · 2026-12-01 15:00/);
+    assert.match(again, /checkOut:체크아웃 · 2026-12-03 11:00/);
+    assert.match(again, /salesTotal:판매금 · KRW 180000/);
+    const area = document.querySelector(".paste-template-sample textarea") as HTMLTextAreaElement | null;
+    assert.equal(area?.value.includes("Ari Stone"), true);
+    assert.equal(area?.value.includes("Deluxe Twin"), true);
+    assert.equal(bridge().saves.current.length, 0);
+    assert.equal(bridge().writes.current, 0);
+  } finally {
+    hostPlatforms = null;
+    await act(async () => {
+      root.unmount();
+    });
+  }
 });

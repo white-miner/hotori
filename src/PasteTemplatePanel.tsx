@@ -26,6 +26,9 @@ interface Props {
   onSample: (text: string) => void;
   drafts: Readonly<Record<string, { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> }>>;
   onEdit: (platformId: string, field: PasteTemplateField, rule: PasteFieldRule) => void;
+  /** 닫았다 다시 열어도 보고 있던 플랫폼을 유지한다. */
+  platformId?: string;
+  onPlatform?: (platformId: string) => void;
   canSave: boolean;
   onSave: (template: PasteTemplate) => void;
   onReset: (platformId: string) => void;
@@ -45,8 +48,9 @@ function profileForName(name: string): PasteTemplate["profileId"] {
   return null;
 }
 
-export default function PasteTemplatePanel({ platforms, sample, onSample, drafts, onEdit, canSave, onSave, onReset, onClose }: Props) {
-  const [platformId, setPlatformId] = useState(platforms[0]?.id ?? "");
+export default function PasteTemplatePanel({ platforms, sample, onSample, drafts, onEdit, platformId: platformIdProp, onPlatform, canSave, onSave, onReset, onClose }: Props) {
+  const [ownPlatformId, setOwnPlatformId] = useState(platforms[0]?.id ?? "");
+  const platformId = platforms.some((p) => p.id === platformIdProp) ? platformIdProp! : ownPlatformId;
   const [field, setField] = useState<PasteTemplateField>("guestName");
   const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
   const [err, setErr] = useState<string | null>(null);
@@ -73,7 +77,8 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
   const draft = drafts[platformId] ?? { labels: {}, rules: {} };
 
   const pickPlatform = (id: string) => {
-    setPlatformId(id);
+    onPlatform?.(id);
+    setOwnPlatformId(id);
     setField("guestName");
     setPickedLine({});
     setErr(null);
