@@ -1177,8 +1177,15 @@ export function detectProfile(headers: string[], bodyText = "", opts?: { allowIn
 export function mapColumns(headers: string[], profile: PlatformProfile): Partial<Record<PasteField, number>> {
   const map: Partial<Record<PasteField, number>> = {};
   const used = new Set<number>();
+  const labeledOutput: Partial<Record<PasteField, string[]>> = {
+    adults: ["성인"],
+    checkInTime: ["입실 시각"],
+    checkOutTime: ["퇴실 시각"],
+    currency: ["통화"],
+  };
   for (const f of CANONICAL_FIELDS) {
-    const idx = headers.findIndex((h, i) => !used.has(i) && aliasHit(h, profile.headerAliases[f]));
+    const aliases = [...profile.headerAliases[f], ...(labeledOutput[f] ?? [])];
+    const idx = headers.findIndex((h, i) => !used.has(i) && aliasHit(h, aliases));
     if (idx >= 0) {
       map[f] = idx;
       used.add(idx);

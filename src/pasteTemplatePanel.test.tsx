@@ -31,7 +31,7 @@ test("양식 설정 화면은 기존 스마트등록 칸만 보여 준다", () =
   const html = renderToStaticMarkup(
     <PasteTemplatePanel
       platforms={[{ id: "p1", name: "아고다", abbr: "아", onsite: false }]}
-      drafts={{ p1: { guestName: "투숙객", adults: "성인", checkIn: "체크인" } }}
+      drafts={{ p1: { labels: { guestName: "투숙객", adults: "성인", checkIn: "체크인" }, rules: { guestName: { label: "투숙객", occurrence: 0 }, adults: { label: "성인", occurrence: 0 }, checkIn: { label: "체크인", occurrence: 0 } } } }}
       onEdit={() => {}}
       sample={sample}
       onSample={() => {}}
