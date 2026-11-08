@@ -1013,6 +1013,19 @@ function headerFlags(lines: string[]): boolean[] {
     if (!next) continue;
     flags[i] = !isLabelish(next) || !flags[i + 1]!;
   }
+  // 이름 다음에 `성인 2명`처럼 자기 제목을 가진 줄이 오면, 이름을 항목으로 뒤집지 않는다.
+  // 바로 위 제목이 항목이고, 고른 줄이 값이다.
+  const first = flags.slice();
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!first[i]) continue;
+    const next = lines[i + 1] ?? "";
+    if (!/^성인\s*\d/u.test(next.trim())) continue;
+    const prev = i > 0 ? lines[i - 1]! : "";
+    if (prev && isLabelish(prev) && !statusKind(prev) && !first[i - 1]) {
+      flags[i] = false;
+      flags[i - 1] = true;
+    }
+  }
   return flags;
 }
 
@@ -1108,9 +1121,16 @@ export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: 
   if (statusKind(line.text)) return { label: line.text.trim(), occurrence: 0 };
   let label = line.label.trim();
   if (!label || label === line.text) {
-    const prev = index > 0 ? lines[index - 1] : null;
-    if (!prev || prev.label !== prev.text || !isLabelish(prev.text) || statusKind(prev.text) || isSectionLine(prev.text)) return null;
-    label = cleanHeader(prev.text);
+    label = "";
+    for (let j = index - 1; j >= 0; j--) {
+      const text = lines[j]!.text.trim();
+      if (!text || statusKind(text) || isSectionLine(text)) continue;
+      if (isLabelish(text)) {
+        label = cleanHeader(text);
+        break;
+      }
+    }
+    if (!label) return null;
   }
   const values = lines.filter((item) => item.label.trim() === label && item.text !== item.label);
   const at = values.indexOf(line);

@@ -611,6 +611,14 @@ test("등록되지 않은 한글 이름·객실명도 위 줄을 칸 이름으�
   assert.equal(serializePasteTemplateStore([saved.template]).includes("다른손님"), false);
   const orphan = readPasteLines("테스트손님");
   assert.equal(ruleForPickedLine(orphan, 0, "guestName"), null);
+  const underAdult = ["투숙객", "김민수", "성인 2명", "체크인", "2026년 12월 1일"].join("\n");
+  const adultLines = readPasteLines(underAdult);
+  const picked = adultLines.find((line) => line.text === "김민수");
+  assert.equal(picked?.label, "투숙객");
+  assert.notEqual(picked?.label, picked?.text);
+  const adultRule = ruleForPickedLine(adultLines, adultLines.findIndex((line) => line.text === "김민수"), "guestName");
+  assert.equal(adultRule?.label, "투숙객");
+  assert.equal(readFieldValue(underAdult, "guestName", adultRule!.label, adultRule!.occurrence), "김민수");
 });
 
 test("같은 줄의 한글 값과 반복된 숫자는 고른 위치만 다시 읽는다", () => {

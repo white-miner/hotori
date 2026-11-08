@@ -265,6 +265,31 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   });
 });
 
+test("이름 칸에서 한글 이름 줄을 누르면 그 이름이 들어간다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+    if (!open) throw new Error("양식 설정 없음");
+    await click(open);
+    await paste(["투숙객", "김민수", "성인 2명", "체크인", "2026년 12월 1일", "체크아웃", "2026년 12월 3일"].join("\n"));
+    await pick("guestName", "김민수");
+    assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
+    assert.equal(document.body.textContent?.includes("이 값의 칸 이름"), false);
+    assert.match(fieldText(), /guestName:이름 · 김민수/);
+    assert.equal(bridge().saves.current.length, 0);
+    assert.equal(bridge().writes.current, 0);
+  } finally {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});
+
 test("한글 이름과 객실명은 위 칸 이름으로 연결되고 다음 글의 값으로 바뀐다", async () => {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("root 없음");
