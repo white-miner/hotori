@@ -18,6 +18,17 @@ import {
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
 import { SMART_REGISTER_TEMPLATE_COLUMNS, yanoljaCardSlots, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
+
+/** 텍스트에서 고를 고객 정보. 상태·시각·통화·인원·체크아웃은 여기 두지 않는다. */
+const CUSTOMER_PICK_FIELDS: PasteTemplateField[] = [
+  "guestName",
+  "guestPhone",
+  "typeRaw",
+  "checkIn",
+  "nights",
+  "salesTotal",
+  "reservationId",
+];
 import { Chip, ChipGroup } from "./primitives";
 
 interface Props {
@@ -202,7 +213,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
           <div>
             <p className="sub">앱 칸</p>
             <div className="paste-template-fields" role="listbox" aria-label="앱 칸">
-              {SMART_REGISTER_TEMPLATE_COLUMNS.map((col) => {
+              {SMART_REGISTER_TEMPLATE_COLUMNS.filter((col) => CUSTOMER_PICK_FIELDS.includes(templateFieldOf(col.id))).map((col) => {
                 const id = templateFieldOf(col.id);
                 const shown = readFor(id);
                 return (
@@ -230,6 +241,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
+                  if (line.label === line.text || !choiceFitsField(field, line.text)) return null;
                   const selected = pickedLine[field] === i || (pickedLine[field] == null && draft.labels[field] === line.label && (draft.rules[field]?.occurrence ?? 0) === 0 && choiceFitsField(field, line.text));
                   return (
                     <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i)}>
@@ -243,7 +255,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             )}
           </div>
         </div>
-        <p className="sub">값을 누르면 그 값이 왼쪽 칸에 들어갑니다. 그 줄 위 제목만 다음 예약에 기억하고, 이름·예약번호·금액은 저장하지 않아요. 인원은 성인 수입니다. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
+        <p className="sub">붙여넣은 글에서 이름, 전화, 타입, 입실, 박수, 판매금, 예약번호만 골라 넣습니다. 고른 값이 칸에 들어가고, 그 위 제목으로 다음 예약의 새 값을 읽습니다.</p>
         {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft.labels, rules: draft.rules }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}

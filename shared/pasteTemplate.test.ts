@@ -742,6 +742,22 @@ test("야놀자 카드의 한글 이름은 칸 이름이 없어도 기존 스캔
   assert.equal(serializePasteTemplateStore([saved.template]).includes("김민수"), false);
 });
 
+test("고른 값 하나만 있으면 다른 위치와 없는 두번째 값으로 경고하지 않는다", () => {
+  const text = ["체크인", "2026년 11월 7일", "체크인", "2026년 11월 9일 토요일, 16:00", "판매가 KRW 90,000", "판매가 KRW 10,000"].join("\n");
+  const rows = extractLabeledPaste(text, {
+    platformId: "p-ag",
+    version: 1,
+    labels: { checkIn: "체크인", salesTotal: "판매가" },
+    rules: { checkIn: { label: "체크인", occurrence: 0 }, salesTotal: { label: "판매가", occurrence: 0 } },
+  });
+  const warn = rows[0]?.warnings.join("\n") ?? "";
+  assert.equal(warn.includes("번째 값이 없어요"), false);
+  assert.equal(warn.includes("다른 위치 값이 달라"), false);
+  assert.equal(warn.includes("하나로 정할 수 없어요"), false);
+  assert.equal(rows[0]?.checkIn, "2026-11-07");
+  assert.equal(rows[0]?.salesTotal, 90000);
+});
+
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {
   const src = readFileSync(fileURLToPath(new URL("./pasteTemplate.ts", import.meta.url)), "utf8");
   assert.equal(/\bfetch\s*\(|openai|anthropic|generative|llm/i.test(src), false);

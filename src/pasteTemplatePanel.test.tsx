@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SMART_REGISTER_TEMPLATE_COLUMNS } from "../shared/smartRegister";
 import PasteTemplatePanel from "./PasteTemplatePanel";
 
 const sample = [
@@ -43,12 +42,14 @@ test("양식 설정 화면은 기존 스마트등록 칸만 보여 준다", () =
       onClose={() => {}}
     />,
   );
-  const text = html.replace(/<[^>]+>/g, "\n");
-  for (const col of SMART_REGISTER_TEMPLATE_COLUMNS) {
-    assert.ok(text.includes(col.label), col.label);
+  for (const id of ["guestName", "guestPhone", "typeRaw", "checkIn", "nights", "salesTotal", "reservationId"]) {
+    assert.match(html, new RegExp(`data-field="${id}"`));
   }
+  for (const id of ["adults", "statusRaw", "checkOut", "checkInTime", "checkOutTime", "currency"]) {
+    assert.equal(html.includes(`data-field="${id}"`), false, id);
+  }
+  const text = html.replace(/<[^>]+>/g, "\n");
   assert.match(text, /이름[\s\S]*Mina Park/);
-  assert.match(text, /인원[\s\S]*2/);
   assert.match(text, /입실[\s\S]*2026-11-07 16:00/);
   for (const gone of ["회사명", "호실", "빠른 입실", "늦은 퇴실"]) {
     assert.equal(text.includes(gone), false, gone);
