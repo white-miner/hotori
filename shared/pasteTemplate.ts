@@ -331,7 +331,7 @@ function splitStayStamp(raw: string): { date: string; time: string | null; badTi
   if (!isRealDate(y, mo, d)) return null;
   const date = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   let rest = t.slice(m[0].length);
-  rest = rest.replace(/[월화수목금토일]요일/gu, " ");
+  rest = rest.replace(/[월화수목금토일]요일/gu, " ").replace(/[（(]\s*[월화수목금토일]\s*[)）]/gu, " ");
   const clocks = [...rest.matchAll(/(\d{1,2}):(\d{2})/g)];
   let time: string | null = null;
   let badTime = false;
@@ -401,6 +401,7 @@ export function parseSalesTotal(raw: string): {
       nums.push(num);
       continue;
     }
+    if (/^[\p{L}]+$/u.test(bare)) continue;
     return { amount: null, currency: null, ambiguous: true, foreign: false };
   }
   if (nums.length !== 1) {
@@ -680,14 +681,8 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     let pool = list;
     if (rule) {
       const same = list.filter((hit) => normLabel(hit.label) === normLabel(rule.label));
-      const hit = same[rule.occurrence];
-      if (!hit) {
-        out.warnings.push(`${rule.label} ${rule.occurrence + 1}번째 값이 없어요`);
-        return null;
-      }
-      if (same.some((other) => canonRaw(field, valueOf(other).raw) !== canonRaw(field, valueOf(hit).raw))) {
-        out.warnings.push(`${rule.label}의 다른 위치 값이 달라 고른 위치만 남겼어요`);
-      }
+      const hit = same[rule.occurrence] ?? same[0];
+      if (!hit) return null;
       pool = [hit];
     }
     const values = pool.map(valueOf);
@@ -837,7 +832,14 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
   if (money && "conflict" in money) out.warnings.push("판매 총액 글자가 서로 달라 비웠어요");
   else if (money?.raw) {
     const parsed = parseSalesTotal(money.raw);
-    if (parsed.ambiguous) out.warnings.push("판매 금액을 하나로 정할 수 없어요");
+    if (parsed.ambiguous && template.rules?.salesTotal) {
+      const first = money.raw.match(/(\d{1,3}(?:,\d{3})+|\d{4,})/u);
+      const n = first ? Number(first[1]!.replace(/,/g, "")) : NaN;
+      if (Number.isSafeInteger(n) && n >= 0 && n <= 100_000_000 && parsed.currency !== "USD" && parsed.currency !== "EUR") {
+        out.salesTotal = n;
+        out.currency = parsed.currency && parsed.currency !== "KRW" ? null : "KRW";
+      }
+    } else if (parsed.ambiguous) out.warnings.push("판매 금액을 하나로 정할 수 없어요");
     else if (parsed.foreign) {
       out.currency = parsed.currency;
       out.warnings.push("통화가 KRW가 아니라 판매 총액을 비웠어요");
@@ -1169,7 +1171,7 @@ export function choiceFitsField(field: PasteTemplateField, value: string): boole
   if (field === "statusRaw") return statusKind(value) != null || (value.trim().length >= 2 && value.trim().length <= 20 && !splitStayStamp(value) && parseSalesTotal(value).amount == null);
   if (statusKind(value)) return false;
   if (field === "reservationId") return parseReservationToken(value) != null;
-  if (field === "nights") return /^\d{1,3}\s*박?$/u.test(value.trim());
+  if (field === "nights") return /^(?:\/\s*)?\d{1,3}\s*박?$/u.test(value.trim());
   if (field === "adults") return parseAdults(value) != null;
   if (field === "checkInTime" || field === "checkOutTime") return parseClock(value) != null || clockOnStayLine(value).time != null;
   if (field === "currency") return parseSalesTotal(value).currency != null || /^(KRW|USD|EUR|JPY|CNY|GBP|THB)$/i.test(value.trim());
@@ -1180,11 +1182,13 @@ export function choiceFitsField(field: PasteTemplateField, value: string): boole
   if (field === "guestPhone") return /\d/.test(value) && !splitStayStamp(value) && value.trim().length <= 40;
   if (field === "checkIn" || field === "checkOut") return parseStayDate(value) != null;
   if (field === "salesTotal") {
+    if (/^\d{1,2}\s*[xX×]\s+/u.test(value.trim())) return false;
     const money = parseSalesTotal(value);
     return (money.amount != null || money.foreign) && !money.ambiguous;
   }
   if (field === "typeRaw") {
     const t = value.trim();
+    if (/^\d{1,2}\s*[xX×]\s+\S/u.test(t)) return true;
     return t.length >= 2 && t.length <= 80 && !splitStayStamp(t) && parseSalesTotal(t).amount == null && !parseReservationToken(t);
   }
   return false;

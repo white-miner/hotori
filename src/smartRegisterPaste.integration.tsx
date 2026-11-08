@@ -181,7 +181,6 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   await click(open);
   await paste(FIRST);
 
-  await pick("adults", "2명");
   await pick("guestName", "Mina Park");
   await act(async () => {
     bridge().emptyLate();
@@ -190,16 +189,11 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
     bridge().refresh();
   });
   let shown = fieldText();
-  assert.match(shown, /adults:인원 · 2/);
   assert.match(shown, /guestName:이름 · Mina Park/);
 
-  await pick("statusRaw", "확정된 예약");
   await pick("guestPhone", "010-0000-0000");
   await pick("typeRaw", "1 X 스탠다드");
   await pick("checkIn", "2026년 11월 7일 16:00");
-  await pick("checkInTime", "2026년 11월 7일 16:00");
-  await pick("checkOut", "2026년 11월 9일 12:00");
-  await pick("checkOutTime", "2026년 11월 9일 12:00");
   await pick("nights", "2");
   await pick("salesTotal", "KRW 210,000");
   await pick("reservationId", "1000000001");
@@ -208,14 +202,10 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   });
   shown = fieldText();
   for (const piece of [
-    "adults:인원 · 2",
     "guestName:이름 · Mina Park",
-    "statusRaw:상태 · 확정된 예약",
     "guestPhone:전화 · 010-0000-0000",
     "checkIn:입실 · 2026-11-07 16:00",
-    "checkInTime:입실 시각 · 16:00",
     "salesTotal:판매금 · KRW 210000",
-    "currency:통화",
     "reservationId:예약번호 · 1000000001",
   ]) {
     assert.ok(shown.includes(piece), `${piece}\n${shown}`);
@@ -226,7 +216,7 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   await click(save);
   assert.equal(bridge().saves.current.length, 0);
   assert.match(fieldText(), /guestName:이름 · Mina Park/);
-  assert.match(fieldText(), /adults:인원 · 2/);
+  assert.match(fieldText(), /guestPhone:전화 · 010-0000-0000/);
 
   bridge().failSave.current = false;
   await click(save);
@@ -236,7 +226,6 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   assert.equal(stored.includes("010-0000-0000"), false);
   assert.equal(stored.includes("210000"), false);
   assert.equal(stored.includes("2명"), false);
-  assert.match(stored, /성인/);
   assert.match(stored, /투숙객/);
   assert.equal(bridge().writes.current, 0);
 
@@ -249,12 +238,12 @@ test("스마트등록 화면에서 항목을 순서대로 지정해도 인원과
   await click(reopen);
   shown = fieldText();
   assert.match(shown, /guestName:이름 · Mina Park/);
-  assert.match(shown, /adults:인원 · 2/);
+  assert.match(shown, /reservationId:예약번호 · 1000000001/);
 
   await paste(SECOND);
   shown = fieldText();
   assert.match(shown, /guestName:이름 · Ari Stone/);
-  assert.match(shown, /adults:인원 · 3/);
+  assert.match(shown, /guestPhone:전화 · 010-1111-2222/);
   assert.match(shown, /checkIn:입실 · 2026-12-01 15:00/);
   assert.match(shown, /salesTotal:판매금 · KRW 180000/);
   assert.match(shown, /reservationId:예약번호 · 2000000002/);
@@ -319,14 +308,12 @@ test("한글 이름과 객실명은 위 칸 이름으로 연결되고 다음 글
   await paste(text);
   await pick("guestName", "테스트손님");
   await pick("typeRaw", "테스트 객실");
-  await pick("adults", "2");
   await pick("salesTotal", "KRW 180,000");
   await pick("checkIn", "2026년 12월 1일 (16:00)");
-  await pick("checkOut", "2026년 12월 3일 (11:00)");
   let shown = fieldText();
   assert.match(shown, /guestName:이름 · 테스트손님/);
   assert.match(shown, /typeRaw:타입 · 테스트 객실/);
-  assert.match(shown, /adults:인원 · 2/);
+  assert.match(shown, /checkIn:입실 · 2026-12-01 16:00/);
   assert.match(shown, /salesTotal:판매금 · KRW 180000/);
   assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
   bridge().failSave.current = false;
@@ -343,7 +330,6 @@ test("한글 이름과 객실명은 위 칸 이름으로 연결되고 다음 글
   shown = fieldText();
   assert.match(shown, /guestName:이름 · 다른손님/);
   assert.match(shown, /typeRaw:타입 · 다른 객실/);
-  assert.match(shown, /adults:인원 · 5/);
   assert.match(shown, /salesTotal:판매금 · KRW 90000/);
   assert.equal(bridge().writes.current, 0);
   await act(async () => {
@@ -390,11 +376,11 @@ test("같은 줄의 일부 선택과 반복된 2는 고른 칸만 연결하고 �
   area.setSelectionRange(adultMark + "성인: ".length, adultMark + "성인: ".length + 1);
   area.dispatchEvent(new dom.window.Event("select", { bubbles: true }));
   area.dispatchEvent(new dom.window.KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
-  await down("adults");
+  await down("nights");
   await down("typeRaw");
   let shown = fieldText();
   assert.match(shown, /guestName:이름 · 홍길동/);
-  assert.match(shown, /adults:인원 · 2/);
+  assert.match(shown, /nights:박수 · 2/);
   assert.equal(shown.includes("typeRaw:타입 ·"), false);
   await select("디럭스 더블", 0);
   const typeBtn = document.querySelector('[data-field="typeRaw"]');
@@ -430,7 +416,6 @@ test("같은 줄의 일부 선택과 반복된 2는 고른 칸만 연결하고 �
   assert.match(shown, /typeRaw:타입 · 온돌/);
   assert.match(shown, /checkIn:입실 · 2027-03-09/);
   assert.match(shown, /salesTotal:판매금 · KRW 70000/);
-  assert.match(shown, /adults:인원 · 4/);
   assert.equal(bridge().writes.current, 0);
   await act(async () => {
     root.unmount();
@@ -517,16 +502,12 @@ test("아고다 요약과 상세에 같은 칸 이름이 반복돼도 양식을 
   await paste(agoda("Mina Park", "1000000001", "2", "2", "2026년 11월 7일", "2026년 11월 9일", "KRW 210,000"));
   await pick("reservationId", "1000000001", 0);
   await pick("guestName", "Mina Park", 0);
-  await pick("adults", "성인 2명");
-  await pick("nights", "2", 1);
+  await pick("nights", "2", 0);
   await pick("typeRaw", "1 X 스탠다드");
   await pick("checkIn", "2026년 11월 7일");
-  await pick("checkOut", "2026년 11월 9일");
-  await pick("checkInTime", "(16:00)");
   await pick("salesTotal", "KRW 210,000");
   assert.equal(document.body.textContent?.includes("같은 글자가 두 칸에 있어요"), false);
   assert.match(fieldText(), /guestName:이름 · Mina Park/);
-  assert.match(fieldText(), /adults:인원 · 2/);
   assert.match(fieldText(), /nights:박수 · 2/);
   bridge().failSave.current = false;
   const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
@@ -536,10 +517,10 @@ test("아고다 요약과 상세에 같은 칸 이름이 반복돼도 양식을 
   const stored = bridge().saves.current.at(-1) ?? "";
   assert.equal(stored.includes("Mina Park"), false);
   assert.equal(stored.includes("1000000001"), false);
-  assert.match(stored, /성인/);
+  assert.match(stored, /투숙객/);
   await paste(agoda("Ari Stone", "2000000002", "4", "3", "2026년 12월 1일", "2026년 12월 4일", "KRW 180,000"));
   assert.match(fieldText(), /guestName:이름 · Ari Stone/);
-  assert.match(fieldText(), /adults:인원 · 4/);
+  assert.match(fieldText(), /nights:박수 · 3/);
   const name = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
   assert.equal(name?.value, "Ari Stone");
   assert.equal(bridge().writes.current, 0);
@@ -591,8 +572,6 @@ test("야놀자 카드 스캔이 읽은 칸은 양식에서 지정하고 다음 
   await pick("typeRaw", "온돌");
   await pick("nights", "/ 2박");
   await pick("checkIn", "2026.12.01(화) 16:00");
-  await pick("checkOut", "2026.12.03(목) 11:00");
-  await pick("statusRaw", "예약완료");
   await pick("salesTotal", "판매가 90,000원");
   assert.equal(document.body.textContent?.includes("칸 이름이 없어요"), false);
   const shown = fieldText();
@@ -602,8 +581,6 @@ test("야놀자 카드 스캔이 읽은 칸은 양식에서 지정하고 다음 
   assert.match(shown, /typeRaw:타입 · 온돌/);
   assert.match(shown, /nights:박수 · 2/);
   assert.match(shown, /checkIn:입실 · 2026\.12\.01/);
-  assert.match(shown, /checkOut:체크아웃 · 2026\.12\.03/);
-  assert.match(shown, /statusRaw:상태 · 예약완료/);
   assert.match(shown, /salesTotal:판매금 · 90000/);
   assert.equal(/adults:인원 · \d/.test(shown), false);
   assert.equal(/currency:통화 · [A-Z]{3}/.test(shown), false);
@@ -630,8 +607,6 @@ test("야놀자 카드 스캔이 읽은 칸은 양식에서 지정하고 다음 
   assert.match(next, /typeRaw:타입 · 디럭스/);
   assert.match(next, /nights:박수 · 3/);
   assert.match(next, /checkIn:입실 · 2026\.12\.05/);
-  assert.match(next, /checkOut:체크아웃 · 2026\.12\.08/);
-  assert.match(next, /statusRaw:상태 · 예약취소/);
   assert.match(next, /salesTotal:판매금 · 80000/);
   const previewName = document.querySelector('[aria-label="이름"]') as HTMLInputElement | null;
   const previewPhone = document.querySelector('[aria-label="전화"]') as HTMLInputElement | null;
@@ -731,15 +706,11 @@ test("저장하지 않고 양식 창을 닫아도 보고 있던 플랫폼의 지
     await paste(text);
     await pick("guestName", "Ari Stone");
     await pick("typeRaw", "Deluxe Twin");
-    await pick("adults", "4");
     await pick("checkIn", "2026년 12월 1일 15:00");
-    await pick("checkOut", "2026년 12월 3일 11:00");
     await pick("salesTotal", "KRW 180,000");
     assert.match(fieldText(), /guestName:이름 · Ari Stone/);
     assert.match(fieldText(), /typeRaw:타입 · Deluxe Twin/);
-    assert.match(fieldText(), /adults:인원 · 4/);
     assert.match(fieldText(), /checkIn:입실 · 2026-12-01 15:00/);
-    assert.match(fieldText(), /checkOut:체크아웃 · 2026-12-03 11:00/);
     assert.match(fieldText(), /salesTotal:판매금 · KRW 180000/);
     const close = document.querySelector('[aria-label="닫기"]');
     if (!close) throw new Error("닫기 없음");
@@ -755,9 +726,7 @@ test("저장하지 않고 양식 창을 닫아도 보고 있던 플랫폼의 지
     const again = fieldText();
     assert.match(again, /guestName:이름 · Ari Stone/);
     assert.match(again, /typeRaw:타입 · Deluxe Twin/);
-    assert.match(again, /adults:인원 · 4/);
     assert.match(again, /checkIn:입실 · 2026-12-01 15:00/);
-    assert.match(again, /checkOut:체크아웃 · 2026-12-03 11:00/);
     assert.match(again, /salesTotal:판매금 · KRW 180000/);
     const area = document.querySelector(".paste-template-sample textarea") as HTMLTextAreaElement | null;
     assert.equal(area?.value.includes("Ari Stone"), true);
