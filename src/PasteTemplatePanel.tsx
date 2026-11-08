@@ -17,7 +17,7 @@ import {
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
-import { SMART_REGISTER_TEMPLATE_COLUMNS, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
+import { SMART_REGISTER_TEMPLATE_COLUMNS, yanoljaGuestSlots, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
 import { Chip, ChipGroup } from "./primitives";
 
 interface Props {
@@ -79,11 +79,28 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
     setErr(null);
   };
 
-  const lines = useMemo(() => readPasteLines(sample), [sample]);
+  const { lines, guestSlots } = useMemo(() => {
+    const raw = readPasteLines(sample);
+    const slots = yanoljaGuestSlots(sample, raw);
+    if (!slots.length) return { lines: raw, guestSlots: slots };
+    const at = new Map(slots.map((slot) => [slot.lineIndex, slot]));
+    const names = new Set(slots.map((slot) => slot.name));
+    return {
+      guestSlots: slots,
+      lines: raw.map((line, i) => {
+        if (at.has(i)) return { ...line, label: "예약자" };
+        if (names.has(line.label)) return { ...line, label: line.text };
+        return line;
+      }),
+    };
+  }, [sample]);
   const readFor = (id: PasteTemplateField) => {
     const rule = draft.rules[id];
     const label = rule?.label ?? draft.labels[id];
-    return label ? readFieldValue(sample, id, label, rule?.occurrence ?? 0) : "";
+    const fromLabel = label ? readFieldValue(sample, id, label, rule?.occurrence ?? 0) : "";
+    if (fromLabel) return fromLabel;
+    if (id !== "guestName" || label !== "예약자") return "";
+    return guestSlots.find((slot) => slot.index === (rule?.occurrence ?? 0))?.name ?? "";
   };
   const readValue = readFor(field);
   const platform = platforms.find((p) => p.id === platformId);

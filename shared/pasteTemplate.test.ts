@@ -33,6 +33,7 @@ import {
   enteredNightRates,
   parsePasteTable,
   pathADraftFromPreview,
+  yanoljaGuestSlots,
   profileById,
   HYPOTHESIS_FIXTURES,
 } from "./smartRegister.ts";
@@ -665,6 +666,33 @@ test("같은 줄의 한글 값과 반복된 숫자는 고른 위치만 다시 �
   assert.equal(second?.occurrence, 1);
   assert.equal(readFieldValue(["성인", "4", "성인", "9"].join("\n"), "adults", "성인", 1), "9");
   assert.equal(ruleForPickedLine(readPasteLines("홍길동"), 0, "guestName"), null);
+});
+
+test("야놀자 카드의 한글 이름은 칸 이름이 없어도 기존 스캔의 예약자 줄이다", () => {
+  const text = [
+    "2610151829300184",
+    "김민수",
+    "0503-0000-0001",
+    "온돌",
+    "숙박",
+    "/ 1박",
+    "2026.12.01(화) 16:00",
+    "2026.12.02(수) 12:00",
+    "예약완료",
+    "판매가 90,000원",
+  ].join("\n");
+  const lines = readPasteLines(text);
+  const slots = yanoljaGuestSlots(text, lines);
+  assert.equal(slots.length, 1);
+  assert.equal(slots[0]?.name, "김민수");
+  assert.equal(lines[slots[0]!.lineIndex]?.text, "김민수");
+  assert.equal(ruleForPickedLine(lines, slots[0]!.lineIndex, "guestName"), null);
+  const linked = lines.map((line, i) => (i === slots[0]!.lineIndex ? { ...line, label: "예약자" } : line));
+  assert.deepEqual(ruleForPickedLine(linked, slots[0]!.lineIndex, "guestName"), { label: "예약자", occurrence: 0 });
+  const saved = validatePasteTemplate({ platformId: "p-ya", labels: { guestName: "예약자" }, rules: { guestName: { label: "예약자", occurrence: 0 } } });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  assert.equal(serializePasteTemplateStore([saved.template]).includes("김민수"), false);
 });
 
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {

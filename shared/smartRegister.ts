@@ -1065,6 +1065,37 @@ export function parseYanoljaCardPaste(raw: string, opts?: ParsePasteOpts): Parse
 }
 
 /**
+ * 야놀자 카드에서 기존 스캔이 예약자(guestName)로 읽은 줄.
+ * 카드에는 이름 위에 칸 이름이 없다. 양식은 그 줄을 고르면 예약자 칸에 연결한다.
+ */
+export function yanoljaGuestSlots(
+  raw: string,
+  lines: readonly { text: string }[],
+): { lineIndex: number; name: string; index: number }[] {
+  const card = parseYanoljaCardPaste(raw);
+  if (!card) return [];
+  const used = new Set<number>();
+  const out: { lineIndex: number; name: string; index: number }[] = [];
+  card.rows.forEach((row, index) => {
+    const id = row[0]?.trim() ?? "";
+    const name = row[1]?.trim() ?? "";
+    if (!id || !name) return;
+    const idAt = lines.findIndex((line, i) => !used.has(i) && line.text.trim() === id);
+    if (idAt < 0) return;
+    for (let i = idAt + 1; i < lines.length; i++) {
+      const text = lines[i]!.text.trim();
+      if (YANOLJA_CARD_RES_ID.test(text)) break;
+      if (text === name) {
+        used.add(i);
+        out.push({ lineIndex: i, name, index });
+        return;
+      }
+    }
+  });
+  return out;
+}
+
+/**
  * Split clipboard text into header + body rows.
  * Intake pipeline: prefer HTML table → **야놀자 card stack** → normalize lines →
  * vertical/collapsed reassembly → tab/pipe/comma/2+ spaces → single-space
