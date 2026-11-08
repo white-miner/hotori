@@ -10,6 +10,8 @@ import {
   extractLabeledPaste,
   listPasteChoices,
   loadPasteTemplates,
+  readFieldValue,
+  readPasteLines,
   parseAgodaLabeledTable,
   parseBestSavedTemplate,
   parseManualLabeledTable,
@@ -387,6 +389,12 @@ test("값을 고르면 칸 이름만 남고, 다음 예약의 다른 손님도 �
   assert.equal(money?.label, "기준 판매 요금(세금 및 수수료 포함)");
   assert.equal(choiceFitsField("salesTotal", "확정된 예약"), false);
   assert.equal(choiceFitsField("salesTotal", "KRW 210,000"), true);
+  assert.equal(choiceFitsField("checkIn", "2026년 11월 7일 16:00"), true);
+  const lines = readPasteLines(AGODA_SHAPE);
+  assert.ok(lines.some((l) => l.text === "Mina Park" && l.label === "투숙객"));
+  assert.equal(readFieldValue(AGODA_SHAPE, "checkIn", "체크인"), "2026-11-07 16:00");
+  assert.equal(readFieldValue(AGODA_SHAPE, "guestName", "투숙객"), "Mina Park");
+  assert.equal(readFieldValue(AGODA_SHAPE, "salesTotal", "기준 판매 요금"), "KRW 210000");
 
   const saved = validatePasteTemplate({
     platformId: "p-book",

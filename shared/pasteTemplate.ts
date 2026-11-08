@@ -280,7 +280,7 @@ function splitStayStamp(raw: string): { date: string; time: string | null; badTi
   if (!t) return null;
   const m =
     t.match(
-      /^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?(?:\s*[월화수목금토일]요일)?(?:\s*[,，]\s*(\d{1,2}):(\d{2}))?(?:\s*[（(][^)）]{1,12}[)）])?\s*$/u,
+      /^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?(?:\s*[월화수목금토일]요일)?(?:\s*[,，]?\s*(\d{1,2}):(\d{2}))?(?:\s*[（(][^)）]{1,12}[)）])?\s*$/u,
     ) ||
     t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:\s*[（(][^)）]{1,12}[)）])?(?:\s+(\d{1,2}):(\d{2}))?\s*$/);
   if (!m) return null;
@@ -829,6 +829,28 @@ function isLabelish(line: string): boolean {
   return true;
 }
 
+export interface PasteReadLine {
+  /** 붙여넣은 줄 그대로 */
+  text: string;
+  /** 이 줄을 고르면 저장할 칸 이름. 값이면 위 줄, 칸 이름이면 그 줄. */
+  label: string;
+}
+
+/** 붙여넣은 글을 줄로 읽는다. 아이콘·빈 줄만 빼고, 나머지는 전부 보여 준다. */
+export function readPasteLines(text: string): PasteReadLine[] {
+  const lines = splitLines(text).map((l) => l.trim()).filter((l) => l && !isIconLine(l));
+  return lines.map((line, i) => {
+    const adult = line.match(/^(성인)\s*\d{1,2}\s*명$/u);
+    if (adult) return { text: line, label: adult[1]! };
+    if (statusKind(line) || isLabelish(line)) return { text: line, label: line.replace(/\s*[：:]\s*$/u, "").trim() };
+    for (let j = i - 1; j >= 0; j--) {
+      if (!isLabelish(lines[j]!)) continue;
+      return { text: line, label: lines[j]!.replace(/\s*[：:]\s*$/u, "").trim() };
+    }
+    return { text: line, label: line.replace(/\s*[：:]\s*$/u, "").trim() };
+  });
+}
+
 export interface PasteValueChoice {
   label: string;
   value: string;
@@ -836,35 +858,41 @@ export interface PasteValueChoice {
 
 /** 붙여넣은 글에서 '칸 이름 → 값'만 고른다. 손님 글 전체를 양식으로 저장하지 않기 위한 목록. */
 export function listPasteChoices(text: string): PasteValueChoice[] {
-  const lines = splitLines(text).map((l) => l.trim()).filter((l) => l && !isIconLine(l) && !isSectionLine(l));
+  const lines = readPasteLines(text).filter((l) => !isSectionLine(l.text));
   const out: PasteValueChoice[] = [];
   const seen = new Set<string>();
-  const push = (label: string, value: string) => {
-    const key = `${normLabel(label)}\0${value}`;
-    if (!label.trim() || seen.has(key)) return;
-    seen.add(key);
-    out.push({ label: label.replace(/\s*[：:]\s*$/u, "").trim(), value });
-  };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const adult = line.match(/^(성인)\s*(\d{1,2}\s*명)$/u);
-    if (adult) {
-      push(adult[1]!, adult[2]!.replace(/\s+/g, ""));
-      continue;
-    }
-    if (!isLabelish(line)) continue;
-    const next = lines[i + 1];
-    if (!next || isLabelish(next) || statusKind(next)) continue;
-    const stamp = splitStayStamp(next);
-    let value = next.trim();
+    if (isLabelish(line.text) && !/^(성인)\s*\d/u.test(line.text)) continue;
+    const stamp = splitStayStamp(line.text);
+    let value = line.text;
     if (stamp && !stamp.time) {
-      const after = lines[i + 2];
-      const clock = after ? parseClock(after) : null;
+      const next = lines[i + 1];
+      const clock = next ? parseClock(next.text) : null;
       if (clock) value = `${value} ${clock}`;
     }
-    push(line, value);
+    const key = `${normLabel(line.label)}\0${value}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: line.label, value });
   }
   return out;
+}
+
+export function readFieldValue(text: string, field: PasteTemplateField, label: string): string {
+  if (!label.trim()) return "";
+  const template: PasteTemplate = { platformId: "p-read", version: 1, labels: { [field]: label } };
+  const row = extractLabeledPaste(text, template)[0];
+  if (!row) return "";
+  if (field === "reservationId") return row.reservationId ?? "";
+  if (field === "guestName") return row.guestName ?? "";
+  if (field === "guestPhone") return row.guestPhone ?? "";
+  if (field === "adults") return row.adults == null ? "" : String(row.adults);
+  if (field === "typeRaw") return row.typeRaw ?? "";
+  if (field === "checkIn") return [row.checkIn, row.checkInTime].filter(Boolean).join(" ");
+  if (field === "checkOut") return [row.checkOut, row.checkOutTime].filter(Boolean).join(" ");
+  if (field === "salesTotal") return row.salesTotal == null ? "" : `${row.currency ?? ""} ${row.salesTotal}`.trim();
+  return "";
 }
 
 export function choiceFitsField(field: PasteTemplateField, value: string): boolean {
