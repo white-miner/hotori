@@ -820,3 +820,39 @@ test("아고다 화면 전체 복사로 양식을 등록하면 다음 예약도 
     });
   }
 });
+
+test("박별 요금을 입력하는 중에 호텔 설정이 다시 불러와져도 입력한 값이 남는다", async () => {
+  const { AGODA_FULL_A, agodaFullText } = await import("../shared/testFixtures/agodaPartnerFull.ts");
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    await paste(agodaFullText(AGODA_FULL_A));
+    const nights = () => [...document.querySelectorAll('[aria-label$="1박 요금"]')] as HTMLInputElement[];
+    const type = async (el: HTMLInputElement, v: string) =>
+      act(async () => {
+        Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value")?.set?.call(el, v);
+        el.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+      });
+    assert.equal(nights().length, 2);
+    await type(nights()[0]!, "100000");
+    await act(async () => {
+      bridge().refresh();
+    });
+    await type(nights()[1]!, "110000");
+    await act(async () => {
+      bridge().refresh();
+    });
+    assert.deepEqual(nights().map((el) => el.value), ["100000", "110000"]);
+    assert.equal((document.querySelector('[aria-label="이름"]') as HTMLInputElement | null)?.value, "Mina Park");
+    assert.equal((document.querySelector("textarea") as HTMLTextAreaElement | null)?.value.includes("Mina Park"), true);
+    assert.equal(bridge().writes.current, 0);
+  } finally {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});

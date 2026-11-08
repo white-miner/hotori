@@ -133,7 +133,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const summaryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const prevRowsLen = useRef(0);
-  const templates = s.pasteTemplates;
+  // 호텔 설정은 10초마다·창 포커스마다 새 객체로 다시 불러온다. 내용이 같으면 미리보기를 다시 읽지 않는다.
+  const templatesKey = JSON.stringify(s.pasteTemplates ?? []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const templates = useMemo(() => s.pasteTemplates, [templatesKey]);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templatePlatformId, setTemplatePlatformId] = useState("");
   const dirtyPlatforms = useRef(new Set<string>());
