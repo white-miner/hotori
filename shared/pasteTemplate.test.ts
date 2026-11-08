@@ -38,6 +38,7 @@ import {
   profileById,
   HYPOTHESIS_FIXTURES,
 } from "./smartRegister.ts";
+import { AGODA_FULL_A, AGODA_FULL_B, agodaFullText } from "./testFixtures/agodaPartnerFull.ts";
 
 /** 구조만 같고 이름·예약번호는 가상이다. */
 const AGODA_SHAPE = [
@@ -111,8 +112,7 @@ test("아고다 붙여넣기 형식: 예약번호·성인·시각·판매총액�
   assert.equal(row.rowStatus, "need_fix");
   assert.equal(row.nightAmounts, undefined);
   assert.equal(enteredNightRates(row), null);
-  assert.match(row.warnings?.join("\n") ?? "", /결제로 넣지 않아요/);
-  assert.match(row.warnings?.join("\n") ?? "", /박마다 나누지 않아요/);
+  assert.doesNotMatch(row.warnings?.join("\n") ?? "", /결제로 넣지 않아요|박마다 나누지 않아요/);
 
   const draft = pathADraftFromPreview(
     { ...row, typeId: "std", rowStatus: "ok" },
@@ -302,9 +302,7 @@ test("아고다 상세 글: 같은 줄의 요일·시각, 객실 한 줄, 금액
   assert.equal(row.statusRaw, "확정된 예약");
   assert.equal(row.typeRaw, "1 X 스탠다드 스타일러 (1000000999)");
   assert.notEqual(row.checkInTime, "00:52");
-  assert.match(row.warnings?.join("\n") ?? "", /결제로 넣지 않아요/);
-  assert.match(row.warnings?.join("\n") ?? "", /거주 국가 대한민국/);
-  assert.doesNotMatch(row.warnings?.join("\n") ?? "", /박마다 나누지/);
+  assert.doesNotMatch(row.warnings?.join("\n") ?? "", /결제로 넣지 않아요|거주 국가|박마다 나누지/);
   const draft = pathADraftFromPreview(
     { ...row, typeId: row.typeId ?? "std" },
     { platformId: "p-ag", platformLabel: "아고다", id: "b-detail", nowIso: "2026-11-01T00:00:00.000Z" },
@@ -762,4 +760,83 @@ test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () 
   const src = readFileSync(fileURLToPath(new URL("./pasteTemplate.ts", import.meta.url)), "utf8");
   assert.equal(/\bfetch\s*\(|openai|anthropic|generative|llm/i.test(src), false);
   assert.equal(/\beval\s*\(|new Function\s*\(/.test(src), false);
+});
+
+test("아고다 화면 전체 복사: 요약·상세가 같은 날을 달리 적어도 읽고, 경고 없이 바로 쓸 수 있다", () => {
+  const { det, row, rows } = previewOf(agodaFullText(AGODA_FULL_A));
+  assert.equal(det.profileId, "agoda");
+  assert.equal(rows.length, 1);
+  assert.equal(row.reservationId, "1000000001");
+  assert.equal(row.guestName, "Mina Park");
+  assert.equal(row.guestPhone, "");
+  assert.equal(row.typeId, "std");
+  assert.equal(row.checkIn, "2026-11-07");
+  assert.equal(row.checkInTime, "16:00");
+  assert.equal(row.nights, 2);
+  assert.equal(row.amount, 210000);
+  assert.equal(row.guests, 2);
+  assert.equal(row.rowStatus, "ok");
+  assert.deepEqual(row.warnings ?? [], []);
+});
+
+test("아고다 화면 전체 복사: 칸 이름·구역 제목·값을 나눠 읽는다", () => {
+  const lines = readPasteLines(agodaFullText(AGODA_FULL_A));
+  const labelOf = (text: string, nth = 0) => lines.filter((l) => l.text === text)[nth]?.label;
+  for (const section of ["결제 및 요금", "SmartFlex", "투숙객 세부 사항 및 날짜 정보", "예약 로그", "요청 사항 및 참고 사항"]) {
+    assert.equal(labelOf(section), section);
+  }
+  assert.equal(labelOf("대한민국"), "투숙객 거주 국가");
+  assert.equal(labelOf("연락처 정보"), "연락처 정보");
+  assert.equal(labelOf("2026년 11월 7일 토요일, 00:52"), "예약 생성일(방콕, UTC+7)");
+  assert.equal(labelOf("1000000001", 0), "예약 번호");
+  assert.equal(labelOf("1000000001", 1), "예약 번호");
+  assert.equal(labelOf("Mina Park", 0), "투숙객");
+  assert.equal(labelOf("Mina Park", 1), "투숙객 이름");
+  assert.equal(lines.some((l) => l.text === "예약 번호:"), false);
+});
+
+test("아고다 화면 전체 복사: 고른 값으로 양식을 저장하면 다음 예약은 새 값으로 읽는다", () => {
+  const first = agodaFullText(AGODA_FULL_A);
+  const lines = readPasteLines(first);
+  const at = (text: string, label?: string) => lines.findIndex((l) => l.text === text && (!label || l.label === label));
+  const picks = {
+    guestName: at("Mina Park", "투숙객 이름"),
+    typeRaw: at(AGODA_FULL_A.room),
+    checkIn: at("2026년 11월 7일 토요일, 16:00"),
+    nights: at("2", "숙박 기간"),
+    salesTotal: at("KRW 210,000"),
+    reservationId: at("1000000001"),
+  } as const;
+  const labels: Record<string, string> = {};
+  const rules: Record<string, { label: string; occurrence: number }> = {};
+  for (const [field, index] of Object.entries(picks)) {
+    assert.notEqual(index, -1, field);
+    const rule = ruleForPickedLine(lines, index, field as keyof typeof picks);
+    assert.ok(rule, field);
+    labels[field] = rule!.label;
+    rules[field] = rule!;
+  }
+  assert.deepEqual(rules.guestName, { label: "투숙객 이름", occurrence: 0 });
+  assert.deepEqual(rules.checkIn, { label: "체크인", occurrence: 0 });
+  assert.equal(readFieldValue(first, "guestName", rules.guestName!.label, rules.guestName!.occurrence), "Mina Park");
+  assert.equal(readFieldValue(first, "checkIn", rules.checkIn!.label, rules.checkIn!.occurrence), "2026-11-07 16:00");
+  assert.equal(readFieldValue(first, "nights", rules.nights!.label, rules.nights!.occurrence), "2");
+
+  const saved = validatePasteTemplate({ platformId: "p-ag", profileId: "agoda", labels, rules });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  const stored = serializePasteTemplateStore([saved.template]);
+  for (const secret of ["Mina Park", "1000000001", "210,000", "1000000999"]) assert.equal(stored.includes(secret), false, secret);
+
+  const next = previewOf(agodaFullText(AGODA_FULL_B), { templates: [saved.template] });
+  assert.equal(next.rows.length, 1);
+  assert.equal(next.row.reservationId, "2000000002");
+  assert.equal(next.row.guestName, "Ari Stone");
+  assert.equal(next.row.typeId, "dlx");
+  assert.equal(next.row.checkIn, "2026-12-01");
+  assert.equal(next.row.nights, 3);
+  assert.equal(next.row.amount, 330000);
+  assert.equal(next.row.guests, 1);
+  assert.equal(next.row.rowStatus, "ok");
+  assert.deepEqual(next.row.warnings ?? [], []);
 });
