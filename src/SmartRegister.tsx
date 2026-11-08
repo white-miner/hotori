@@ -53,6 +53,7 @@ import {
   previewNightDates,
   suggestedNightAmounts,
   parsePasteTable,
+  parseYanoljaCardPaste,
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
   previewRowStatusLabel,
@@ -63,10 +64,12 @@ import {
   upsertTypeAlias,
 } from "../shared/smartRegister";
 import {
+  canUseSavedTemplate,
   keepTemplateDraft,
   parseBestSavedTemplate,
   parseManualLabeledTable,
   templateProfile,
+  type PasteFieldRule,
   type PasteTemplate,
   type PasteTemplateField,
 } from "../shared/pasteTemplate";
@@ -133,8 +136,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const templates = s.pasteTemplates;
   const [templateOpen, setTemplateOpen] = useState(false);
   const dirtyPlatforms = useRef(new Set<string>());
-  const [drafts, setDrafts] = useState<Record<string, PasteTemplate["labels"]>>(() =>
-    Object.fromEntries(s.pasteTemplates.map((t) => [t.platformId, t.labels])),
+  type TemplateDraft = { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> };
+  const draftFrom = (template: PasteTemplate | undefined): TemplateDraft => {
+    const labels = { ...(template?.labels ?? {}) };
+    const rules: NonNullable<PasteTemplate["rules"]> = { ...(template?.rules ?? {}) };
+    for (const field of Object.keys(labels) as PasteTemplateField[]) {
+      const label = labels[field];
+      if (label && !rules[field]) rules[field] = { label, occurrence: 0 };
+    }
+    return { labels, rules };
+  };
+  const [drafts, setDrafts] = useState<Record<string, TemplateDraft>>(() =>
+    Object.fromEntries(s.pasteTemplates.map((t) => [t.platformId, draftFrom(t)])),
   );
 
   useEffect(() => {
@@ -143,9 +156,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       let changed = false;
       const next = { ...prev };
       for (const id of ids) {
-        const kept = keepTemplateDraft(prev[id], templates.find((t) => t.platformId === id)?.labels, dirtyPlatforms.current.has(id));
-        if (JSON.stringify(prev[id] ?? {}) !== JSON.stringify(kept)) {
-          next[id] = kept;
+        const incoming = templates.find((t) => t.platformId === id);
+        const kept = keepTemplateDraft(prev[id]?.labels, incoming?.labels, dirtyPlatforms.current.has(id));
+        const source = JSON.stringify(kept) === JSON.stringify(prev[id]?.labels ?? {}) && prev[id] ? prev[id] : draftFrom(incoming ? { ...incoming, labels: kept } : undefined);
+        if (JSON.stringify(prev[id] ?? null) !== JSON.stringify(source)) {
+          next[id] = source;
           changed = true;
         }
       }
@@ -153,9 +168,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     });
   }, [templates]);
 
-  const editDraft = (platformId: string, field: PasteTemplateField, label: string) => {
+  const editDraft = (platformId: string, field: PasteTemplateField, rule: PasteFieldRule) => {
     dirtyPlatforms.current.add(platformId);
-    setDrafts((prev) => ({ ...prev, [platformId]: { ...prev[platformId], [field]: label } }));
+    setDrafts((prev) => {
+      const cur = prev[platformId] ?? draftFrom(undefined);
+      return {
+        ...prev,
+        [platformId]: {
+          labels: { ...cur.labels, [field]: rule.label },
+          rules: { ...cur.rules, [field]: rule },
+        },
+      };
+    });
   };
 
   const dismissSummary = useCallback(() => {
@@ -199,10 +223,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const rebuild = useCallback(
     (text: string, forcedId: PlatformProfileId | null, forced: boolean) => {
       setSummary(null);
-      const savedHit = parsePasteTable(text, { channelLabels, templates }) ? null : parseBestSavedTemplate(text, templates);
+      const card = parseYanoljaCardPaste(text, { channelLabels });
+      const savedHit = !card && canUseSavedTemplate(text) ? parseBestSavedTemplate(text, templates) : null;
       const table =
-        parsePasteTable(text, { channelLabels, templates }) ??
+        card ??
         savedHit?.table ??
+        parsePasteTable(text, { channelLabels, templates }) ??
         (forced && forcedId ? parseManualLabeledTable(text, forcedId, templates) : null);
       if (!table) {
         setRows([]);
@@ -1181,7 +1207,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
           }}
           onReset={(id) => {
             dirtyPlatforms.current.delete(id);
-            setDrafts((prev) => ({ ...prev, [id]: {} }));
+            setDrafts((prev) => ({ ...prev, [id]: draftFrom(undefined) }));
             void writeTemplates(templates.filter((t) => t.platformId !== id));
           }}
         />

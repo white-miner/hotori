@@ -66,13 +66,23 @@ export function keepTemplateDraft(
   return next;
 }
 
+/** 어느 칸 이름의 몇 번째 값인지. 손님 값 자체는 넣지 않는다. */
+export interface PasteFieldRule {
+  label: string;
+  /** 같은 칸 이름이 여러 번일 때 0부터. 그 값들이 같으면 0이다. */
+  occurrence: number;
+}
+
 export interface PasteTemplate {
   /** 호텔에 등록된 플랫폼 id. 예전 저장은 agoda·yanolja 같은 기본 프로필 id일 수 있다. */
   platformId: string;
   /** 아고다처럼 기본 인식이 있는 플랫폼. 없으면 저장한 칸 이름만 쓴다. */
   profileId?: PastePlatformId | null;
   version: 1;
+  /** 예전 양식. 칸 이름만 있고 위치는 첫 값이다. */
   labels: Partial<Record<PasteTemplateField, string>>;
+  /** 칸 이름과 위치. 없으면 labels의 첫 값으로 읽는다. */
+  rules?: Partial<Record<PasteTemplateField, PasteFieldRule>>;
 }
 
 export const PASTE_TEMPLATE_VERSION = 1;
@@ -231,7 +241,26 @@ export function validatePasteTemplate(
     seen.set(n, field);
     labels[field] = label;
   }
+  const rules: PasteTemplate["rules"] = {};
+  const rawRules = o.rules;
+  if (rawRules != null && (typeof rawRules !== "object" || Array.isArray(rawRules))) {
+    return { ok: false, reason: "칸 위치가 잘못됐어요" };
+  }
+  const ruleSrc = (rawRules ?? {}) as Record<string, unknown>;
+  for (const field of PASTE_TEMPLATE_FIELDS) {
+    const item = ruleSrc[field];
+    if (item == null) continue;
+    if (!item || typeof item !== "object" || Array.isArray(item)) return { ok: false, reason: "칸 위치가 잘못됐어요" };
+    const label = typeof (item as { label?: unknown }).label === "string" ? (item as { label: string }).label.trim() : "";
+    const occurrence = (item as { occurrence?: unknown }).occurrence;
+    if (!label || label !== labels[field]) continue;
+    if (typeof occurrence !== "number" || !Number.isInteger(occurrence) || occurrence < 0 || occurrence > 20) {
+      return { ok: false, reason: "칸 위치가 잘못됐어요" };
+    }
+    rules[field] = { label, occurrence };
+  }
   const template: PasteTemplate = { platformId: o.platformId, version: 1, labels };
+  if (Object.keys(rules).length) template.rules = rules;
   if (profileId) template.profileId = profileId;
   return { ok: true, template };
 }
@@ -296,27 +325,32 @@ function isRealDate(y: number, mo: number, d: number): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
-/** 날짜 한 줄만 인정. 문장 속의 날짜는 집지 않는다. */
-/** 날짜 한 줄. `2026년 11월 7일`, `…일 토요일, 16:00` 만 인정한다. */
+/** 날짜로 시작하는 줄. 요일·쉼표·괄호 시각은 같은 날짜로 본다. 문장 속 날짜는 집지 않는다. */
 function splitStayStamp(raw: string): { date: string; time: string | null; badTime: boolean } | null {
   const t = raw.replace(/\u00a0/g, " ").trim();
   if (!t) return null;
-  const m =
-    t.match(
-      /^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?(?:\s*[월화수목금토일]요일)?(?:\s*[,，]?\s*(\d{1,2}):(\d{2}))?(?:\s*[（(][^)）]{1,12}[)）])?\s*$/u,
-    ) ||
-    t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?:\s*[（(][^)）]{1,12}[)）])?(?:\s+(\d{1,2}):(\d{2}))?\s*$/);
+  const m = t.match(/^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일?/u) || t.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})/u);
   if (!m) return null;
   const y = Number(m[1]);
   const mo = Number(m[2]);
   const d = Number(m[3]);
   if (!isRealDate(y, mo, d)) return null;
   const date = `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  if (m[4] == null || m[5] == null) return { date, time: null, badTime: false };
-  const h = Number(m[4]);
-  const min = Number(m[5]);
-  if (!Number.isInteger(h) || !Number.isInteger(min) || h > 23 || min > 59) return { date, time: null, badTime: true };
-  return { date, time: `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`, badTime: false };
+  let rest = t.slice(m[0].length);
+  rest = rest.replace(/[월화수목금토일]요일/gu, " ");
+  const clocks = [...rest.matchAll(/(\d{1,2}):(\d{2})/g)];
+  let time: string | null = null;
+  let badTime = false;
+  if (clocks.length > 1) badTime = true;
+  else if (clocks.length === 1) {
+    const h = Number(clocks[0]![1]);
+    const min = Number(clocks[0]![2]);
+    if (!Number.isInteger(h) || !Number.isInteger(min) || h > 23 || min > 59) badTime = true;
+    else time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    rest = rest.replace(clocks[0]![0], " ");
+  }
+  if (rest.replace(/[()（）,，.\s]/gu, "")) return null;
+  return { date, time: badTime ? null : time, badTime };
 }
 
 export function parseStayDate(raw: string): string | null {
@@ -451,7 +485,7 @@ const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
   checkInTime: ["입실 시각"],
   checkOutTime: ["퇴실 시각"],
   currency: ["통화"],
-  nights: ["박수", "숙박일수"],
+  nights: ["박수", "숙박일수", "숙박 기간"],
   typeRaw: ["객실 종류 및 혜택"],
   checkIn: ["체크인"],
   checkOut: ["체크아웃"],
@@ -545,6 +579,7 @@ function emptyExtract(): LabeledExtract {
 
 interface Hit {
   field: PasteTemplateField;
+  label: string;
   lineIndex: number;
   rest: string;
 }
@@ -557,11 +592,33 @@ function findHits(lines: string[], template: PasteTemplate): Hit[] {
     for (const e of entries) {
       const m = matchLabel(line, e.label);
       if (!m) continue;
-      hits.push({ field: e.field, lineIndex, rest: m.rest });
+      hits.push({ field: e.field, label: e.label, lineIndex, rest: m.rest });
       return;
     }
   });
   return hits;
+}
+
+function canonRaw(field: PasteTemplateField, raw: string): string {
+  if (field === "checkIn" || field === "checkOut") {
+    const stamp = splitStayStamp(raw);
+    return stamp ? `${stamp.date}|${stamp.time ?? ""}` : raw.trim();
+  }
+  if (field === "checkInTime" || field === "checkOutTime") return parseClock(raw) ?? clockOnStayLine(raw).time ?? raw.trim();
+  if (field === "adults") {
+    const n = parseAdults(raw);
+    return n == null ? raw.trim() : String(n);
+  }
+  if (field === "salesTotal") {
+    const money = parseSalesTotal(raw);
+    return money.amount == null ? raw.trim() : `${money.currency ?? ""}|${money.amount}`;
+  }
+  if (field === "reservationId") return parseReservationToken(raw) ?? raw.trim();
+  if (field === "nights") {
+    const m = raw.match(/(\d{1,3})/u);
+    return m ? String(Number(m[1])) : raw.trim();
+  }
+  return raw.replace(/\s+/g, " ").trim();
 }
 
 function nextContent(lines: string[], start: number, labelLines: Set<number>): { index: number; text: string } | null {
@@ -616,16 +673,31 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     byField.set(hit.field, list);
   }
 
+  const valueOf = (hit: Hit): { raw: string; index: number } => {
+    if (hit.rest.trim()) return { raw: hit.rest.trim(), index: hit.lineIndex };
+    const next = nextContent(lines, hit.lineIndex + 1, labelLines);
+    return next ? { raw: next.text, index: next.index } : { raw: "", index: hit.lineIndex };
+  };
   const take = (field: PasteTemplateField): { raw: string; index: number } | { conflict: true } | null => {
     const list = byField.get(field);
     if (!list?.length) return null;
-    const values = list.map((hit) => {
-      if (hit.rest.trim()) return { raw: hit.rest.trim(), index: hit.lineIndex };
-      const next = nextContent(lines, hit.lineIndex + 1, labelLines);
-      return next ? { raw: next.text, index: next.index } : { raw: "", index: hit.lineIndex };
-    });
+    const rule = template.rules?.[field];
+    let pool = list;
+    if (rule) {
+      const same = list.filter((hit) => normLabel(hit.label) === normLabel(rule.label));
+      const hit = same[rule.occurrence];
+      if (!hit) {
+        out.warnings.push(`${rule.label} ${rule.occurrence + 1}번째 값이 없어요`);
+        return null;
+      }
+      if (same.some((other) => canonRaw(field, valueOf(other).raw) !== canonRaw(field, valueOf(hit).raw))) {
+        out.warnings.push(`${rule.label}의 다른 위치 값이 달라 고른 위치만 남겼어요`);
+      }
+      pool = [hit];
+    }
+    const values = pool.map(valueOf);
     const first = values[0]!;
-    if (values.some((v) => v.raw !== first.raw)) return { conflict: true };
+    if (values.some((v) => canonRaw(field, v.raw) !== canonRaw(field, first.raw))) return { conflict: true };
     if (!first.raw) return { raw: "", index: first.index };
     return first;
   };
@@ -758,8 +830,12 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
   if (outClock) out.checkOutTime = outClock;
   if (out.checkIn && out.checkOut) {
     const nights = nightsBetween(out.checkIn, out.checkOut);
-    if (nights >= 1 && nights <= 366) out.nights = nights;
-    else out.warnings.push("체크아웃이 체크인보다 이르거나 너무 멀어 박수를 비웠어요");
+    if (nights >= 1 && nights <= 366) {
+      if (out.nights != null && out.nights !== nights) {
+        out.warnings.push("숙박 기간과 날짜 차이가 달라요. 박수는 날짜 차이로 보이니 확인하세요");
+      }
+      out.nights = nights;
+    } else out.warnings.push("체크아웃이 체크인보다 이르거나 너무 멀어 박수를 비웠어요");
   }
 
   const money = take("salesTotal");
@@ -804,12 +880,20 @@ function useful(ex: LabeledExtract): boolean {
 }
 
 function blocksFor(lines: string[], template: PasteTemplate): string[][] {
-  const label = template.labels.reservationId?.trim();
+  const label = template.rules?.reservationId?.label?.trim() || template.labels.reservationId?.trim();
   if (!label) return [lines];
-  const idxs = lines.flatMap((line, i) => (line.trim() && matchLabel(line, label) ? [i] : []));
-  if (idxs.length <= 1) return [lines];
-  const blocks = idxs.map((from, k) => lines.slice(from, idxs[k + 1] ?? lines.length));
-  if (blocks.every((b) => extractBlock(b, template).reservationId)) return blocks;
+  const marks: { index: number; token: string }[] = [];
+  lines.forEach((line, index) => {
+    if (!line.trim() || !matchLabel(line, label)) return;
+    const rest = matchLabel(line, label)?.rest.trim() ?? "";
+    const raw = rest || lines.slice(index + 1).find((next) => next.trim() && !isIconLine(next))?.trim() || "";
+    const token = parseReservationToken(raw) ?? raw;
+    if (token) marks.push({ index, token });
+  });
+  const tokens = new Set(marks.map((mark) => mark.token));
+  if (tokens.size <= 1) return [lines];
+  const blocks = marks.map((mark, k) => lines.slice(mark.index, marks[k + 1]?.index ?? lines.length));
+  if (blocks.every((block) => extractBlock(block, template).reservationId)) return blocks;
   return [lines];
 }
 
@@ -831,6 +915,7 @@ const LABELED_HEADERS = [
   "객실타입",
   "체크인",
   "체크아웃",
+  "박수",
   "판매금액",
   "예약상태",
   "성인",
@@ -853,6 +938,7 @@ function toTable(rows: LabeledExtract[]): LabeledTable | null {
       ex.typeRaw ?? "",
       ex.checkIn ?? "",
       ex.checkOut ?? "",
+      ex.nights == null ? "" : String(ex.nights),
       ex.salesTotal == null ? "" : String(ex.salesTotal),
       ex.statusRaw ?? "",
       ex.adults == null ? "" : String(ex.adults),
@@ -964,9 +1050,28 @@ export function listPasteChoices(text: string): PasteValueChoice[] {
   return out;
 }
 
-export function readFieldValue(text: string, field: PasteTemplateField, label: string): string {
+/** 고른 줄의 칸 이름과 위치. 칸 이름이 없는 값이면 null이다. */
+export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: PasteTemplateField): PasteFieldRule | null {
+  const line = lines[index];
+  if (!line) return null;
+  if (statusKind(line.text)) return { label: line.text.trim(), occurrence: 0 };
+  const label = line.label.trim();
+  if (!label || label === line.text) return null;
+  const values = lines.filter((item) => item.label.trim() === label && item.text !== item.label);
+  const at = values.indexOf(line);
+  const occurrence = at < 0 ? 0 : at;
+  const same = values.every((item) => canonRaw(field, item.text) === canonRaw(field, line.text));
+  return { label, occurrence: same ? 0 : occurrence };
+}
+
+export function readFieldValue(text: string, field: PasteTemplateField, label: string, occurrence = 0): string {
   if (!label.trim()) return "";
-  const template: PasteTemplate = { platformId: "p-read", version: 1, labels: { [field]: label } };
+  const template: PasteTemplate = {
+    platformId: "p-read",
+    version: 1,
+    labels: { [field]: label },
+    rules: { [field]: { label, occurrence } },
+  };
   const row = extractLabeledPaste(text, template)[0];
   if (!row) return "";
   if (field === "reservationId") return row.reservationId ?? "";
@@ -1010,11 +1115,16 @@ export function choiceFitsField(field: PasteTemplateField, value: string): boole
   return false;
 }
 
+/** 표·카드가 아닌 세로 글이면 저장한 양식을 일반 표 해석보다 먼저 본다. */
+export function canUseSavedTemplate(text: string): boolean {
+  return !!text.trim() && !hasStrongTable(text);
+}
+
 export function parseBestSavedTemplate(
   text: string,
   saved?: readonly PasteTemplate[] | null,
 ): { table: LabeledTable; platformId: string } | null {
-  if (!text.trim() || hasStrongTable(text) || agodaPartnerSignature(text)) return null;
+  if (!canUseSavedTemplate(text) || agodaPartnerSignature(text)) return null;
   let best: { template: PasteTemplate; score: number } | null = null;
   let second = 0;
   for (const template of saved ?? []) {

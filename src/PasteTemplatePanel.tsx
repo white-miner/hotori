@@ -6,11 +6,13 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Platform } from "../shared/ledger";
 import {
+  type PasteFieldRule,
   type PasteTemplate,
   type PasteTemplateField,
   choiceFitsField,
   readFieldValue,
   readPasteLines,
+  ruleForPickedLine,
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
@@ -21,8 +23,8 @@ interface Props {
   platforms: Platform[];
   sample: string;
   onSample: (text: string) => void;
-  drafts: Readonly<Record<string, PasteTemplate["labels"]>>;
-  onEdit: (platformId: string, field: PasteTemplateField, label: string) => void;
+  drafts: Readonly<Record<string, { labels: PasteTemplate["labels"]; rules: NonNullable<PasteTemplate["rules"]> }>>;
+  onEdit: (platformId: string, field: PasteTemplateField, rule: PasteFieldRule) => void;
   canSave: boolean;
   onSave: (template: PasteTemplate) => void;
   onReset: (platformId: string) => void;
@@ -47,7 +49,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
   const [field, setField] = useState<PasteTemplateField>("guestName");
   const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
   const [err, setErr] = useState<string | null>(null);
-  const draft = drafts[platformId] ?? {};
+  const draft = drafts[platformId] ?? { labels: {}, rules: {} };
 
   const pickPlatform = (id: string) => {
     setPlatformId(id);
@@ -57,25 +59,34 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
   };
 
   const lines = useMemo(() => readPasteLines(sample), [sample]);
-  const readFor = (id: PasteTemplateField) => (draft[id] ? readFieldValue(sample, id, draft[id]!) : "");
+  const readFor = (id: PasteTemplateField) => {
+    const rule = draft.rules[id];
+    const label = rule?.label ?? draft.labels[id];
+    return label ? readFieldValue(sample, id, label, rule?.occurrence ?? 0) : "";
+  };
   const readValue = readFor(field);
   const platform = platforms.find((p) => p.id === platformId);
 
-  const pickValue = (label: string) => {
+  const pickValue = (rule: PasteFieldRule) => {
     if (field === "salesTotal") {
-      const v = validatePasteTemplate({ platformId: platformId || "x", labels: { salesTotal: label } });
+      const v = validatePasteTemplate({ platformId: platformId || "x", labels: { salesTotal: rule.label }, rules: { salesTotal: rule } });
       if (!v.ok) {
         setErr(v.reason);
         return;
       }
     }
-    if (platformId) onEdit(platformId, field, label);
+    if (platformId) onEdit(platformId, field, rule);
     setErr(null);
   };
 
-  const pickLine = (index: number, label: string) => {
+  const pickLine = (index: number) => {
+    const rule = ruleForPickedLine(lines, index, field);
+    if (!rule) {
+      setErr("이 줄은 칸 이름이 없어 다음 예약에 다시 쓸 수 없어요. 값 위의 칸 이름이 있는 줄을 고르세요.");
+      return;
+    }
     setPickedLine((prev) => ({ ...prev, [field]: index }));
-    pickValue(label);
+    pickValue(rule);
   };
 
   const save = () => {
@@ -84,7 +95,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
       return;
     }
     const profileId = profileForName(platform.name);
-    const v = validatePasteTemplate({ platformId: platform.id, profileId, labels: draft });
+    const v = validatePasteTemplate({ platformId: platform.id, profileId, labels: draft.labels, rules: draft.rules });
     if (!v.ok) {
       setErr(v.reason);
       return;
@@ -136,7 +147,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
                 return (
                   <button key={col.id} type="button" data-field={id} className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)} title={col.id === "adults" ? "원문의 성인 수. 예약 인원으로 저장됩니다" : undefined}>
                     {col.label}
-                    {shown ? <small> · {shown}</small> : draft[id] ? <small> · {draft[id]}</small> : null}
+                    {shown ? <small> · {shown}</small> : draft.labels[id] ? <small> · {draft.labels[id]}{draft.rules[id]?.occurrence ? ` · ${draft.rules[id]!.occurrence + 1}번째` : ""}</small> : null}
                   </button>
                 );
               })}
@@ -147,9 +158,9 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
-                  const selected = pickedLine[field] === i || (pickedLine[field] == null && draft[field] === line.label && choiceFitsField(field, line.text));
+                  const selected = pickedLine[field] === i || (pickedLine[field] == null && draft.labels[field] === line.label && (draft.rules[field]?.occurrence ?? 0) === 0 && choiceFitsField(field, line.text));
                   return (
-                    <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i, line.label)}>
+                    <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i)}>
                       <b>{line.text}</b>
                       <span>{line.label === line.text ? "칸 이름" : `이 값의 칸 이름 ${line.label}`}</span>
                     </button>
@@ -162,7 +173,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
           </div>
         </div>
         <p className="sub">스마트등록이 읽는 항목입니다. 인원은 원문의 성인 수이고 예약 인원으로 저장됩니다. 입실·퇴실 시각은 요금으로 바꾸지 않아요. 줄을 고르면 칸 이름만 기억하고, 이름·예약번호·금액·인원은 양식에 저장하지 않아요. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
-        {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft }) === "agoda" ? (
+        {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft.labels, rules: draft.rules }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}
         <div className="paste-template-acts">

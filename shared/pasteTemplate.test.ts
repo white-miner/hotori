@@ -15,6 +15,7 @@ import {
   loadPasteTemplates,
   readFieldValue,
   readPasteLines,
+  ruleForPickedLine,
   parseAgodaLabeledTable,
   parseBestSavedTemplate,
   parseManualLabeledTable,
@@ -478,6 +479,92 @@ test("양식 설정 항목은 스마트등록이 읽는 칸 전부와 일대일�
   assert.equal(readFieldValue(second, "reservationId", again.labels.reservationId!), "2000000002");
   assert.equal(readFieldValue(second, "checkIn", again.labels.checkIn!), "2026-12-01 16:00");
   assert.equal(readFieldValue(second, "statusRaw", again.labels.statusRaw!), "확정된 예약");
+});
+
+test("같은 예약번호의 요약과 상세는 한 건이고 아동은 인원에 더하지 않는다", () => {
+  const text = [
+    "예약 번호",
+    "1000000001",
+    "확정된 예약",
+    "투숙객",
+    "Mina Park",
+    "성인 2명",
+    "체크인",
+    "2026년 11월 7일 (16:00)",
+    "체크아웃",
+    "2026년 11월 9일 (12:00)",
+    "기준 판매 요금(세금 및 수수료 포함)",
+    "KRW 210,000",
+    "예약 번호",
+    "1000000001",
+    "투숙객 이름",
+    "Mina Park",
+    "연락처 정보",
+    "보기",
+    "체크인",
+    "2026년 11월 7일 토요일, 16:00",
+    "체크아웃",
+    "2026년 11월 9일 월요일, 12:00",
+    "객실 종류 및 혜택",
+    "1 X 스탠다드 (1000000999)",
+    "숙박 기간",
+    "2",
+    "성인",
+    "2",
+    "아동",
+    "0",
+    "간이침대",
+    "0",
+  ].join("\n");
+  const { row, rows } = previewOf(text);
+  assert.equal(rows.length, 1);
+  assert.equal(row.guestName, "Mina Park");
+  assert.equal(row.reservationId, "1000000001");
+  assert.equal(row.guests, 2);
+  assert.equal(row.amount, 210000);
+  assert.equal(row.typeRaw, "1 X 스탠다드 (1000000999)");
+  assert.equal(row.checkIn, "2026-11-07");
+  assert.equal(row.checkInTime, "16:00");
+  assert.equal(row.nights, 2);
+  assert.equal(row.guestPhone, "");
+  assert.match(row.warnings?.join("\n") ?? "", /연락처를 읽지 못했어요/);
+  const draft = pathADraftFromPreview(
+    { ...row, typeId: "std", rowStatus: "ok" },
+    { platformId: "p-ag", platformLabel: "아고다", id: "b", nowIso: "2026-11-08T00:00:00.000Z" },
+  );
+  assert.equal(draft.guests, 2);
+  assert.equal(draft.payments, undefined);
+  assert.equal(draft.guestPhone, null);
+  const two = text.replace("예약 번호\n1000000001\n투숙객 이름", "예약 번호\n2000000002\n투숙객 이름").replace("Mina Park\n연락처", "Ari Stone\n연락처");
+  const split = previewOf(two);
+  assert.equal(split.rows.length, 2);
+  assert.equal(split.rows[0]?.reservationId, "1000000001");
+  assert.equal(split.rows[1]?.reservationId, "2000000002");
+  assert.equal(split.rows[1]?.guestName, "Ari Stone");
+  const clash = text.replace("KRW 210,000", "KRW 210,000\n기준 판매 요금\nKRW 180,000");
+  const money = previewOf(clash).row;
+  assert.equal(money.amount, null);
+  assert.match(money.warnings?.join("\n") ?? "", /판매 총액 글자가 서로 달라/);
+  const bare = readPasteLines("Mina Park\n2026-11-07");
+  assert.equal(ruleForPickedLine(bare, 0, "guestName"), null);
+  const saved = validatePasteTemplate({
+    platformId: "p-book",
+    labels: { guestName: "예약자", adults: "성인", checkIn: "입실일", reservationId: "예약번호", salesTotal: "판매금" },
+    rules: { adults: { label: "성인", occurrence: 0 } },
+  });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  const stored = serializePasteTemplateStore([saved.template]);
+  assert.equal(stored.includes("Mina Park"), false);
+  const custom = ["예약번호", "3000000003", "예약자", "Mina Park", "성인", "2명", "입실일", "2026년 11월 7일 (16:00)", "판매금", "KRW 210,000"].join("\n");
+  const again = custom.replace("Mina Park", "Ari Stone").replace("3000000003", "3000000004").replace("2명", "4명").replace("210,000", "180,000");
+  const hit = parseBestSavedTemplate(again, [saved.template]);
+  assert.equal(hit?.platformId, "p-book");
+  const reused = buildPreviewRows(hit!.table, profileById("yanolja")!, settings, [], "p-book")[0]!;
+  assert.equal(reused.guestName, "Ari Stone");
+  assert.equal(reused.guests, 4);
+  assert.equal(reused.amount, 180000);
+  assert.equal(reused.checkInTime, "16:00");
 });
 
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {
