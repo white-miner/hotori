@@ -22,6 +22,7 @@ export const PASTE_TEMPLATE_FIELDS = [
   "reservationId",
   "guestName",
   "guestPhone",
+  "company",
   "adults",
   "typeRaw",
   "checkIn",
@@ -30,16 +31,26 @@ export const PASTE_TEMPLATE_FIELDS = [
 ] as const;
 export type PasteTemplateField = (typeof PASTE_TEMPLATE_FIELDS)[number];
 
+/** 예약 생성 화면(Entry)에 보이고 저장되는 이름. */
 export const PASTE_FIELD_LABELS: Record<PasteTemplateField, string> = {
   reservationId: "예약번호",
-  guestName: "투숙객",
+  guestName: "이름",
   guestPhone: "연락처",
-  adults: "성인",
+  company: "회사명",
+  adults: "인원",
   typeRaw: "객실 타입",
-  checkIn: "체크인",
-  checkOut: "체크아웃",
-  salesTotal: "판매 총액",
+  checkIn: "입실",
+  checkOut: "퇴실",
+  salesTotal: "판매금",
 };
+
+/** 예약 화면에 있지만 붙여넣기 양식으로 저장하면 안 되는 칸. */
+export const UNMAPPED_BOOKING_FIELDS: { name: string; reason: string }[] = [
+  { name: "호실", reason: "플랫폼 상품번호는 호텔 호실이 아닙니다. 호실은 비워 두고 현황에서 지정합니다." },
+  { name: "빠른 입실", reason: "붙여넣은 시각을 시간 추가 요금으로 바꾸지 않습니다. 시각은 가져오기 메모에만 남습니다." },
+  { name: "늦은 퇴실", reason: "붙여넣은 시각을 시간 추가 요금으로 바꾸지 않습니다. 시각은 가져오기 메모에만 남습니다." },
+  { name: "결제", reason: "확정된 예약과 판매금은 수납이 아닙니다. 결제 기록은 만들지 않습니다." },
+];
 
 export interface PasteTemplate {
   /** 호텔에 등록된 플랫폼 id. 예전 저장은 agoda·yanolja 같은 기본 프로필 id일 수 있다. */
@@ -423,7 +434,8 @@ const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
   reservationId: ["예약 번호", "예약번호"],
   guestName: ["투숙객 이름", "투숙객"],
   guestPhone: ["연락처 정보", "연락처"],
-  adults: ["성인"],
+  company: ["회사명"],
+  adults: ["성인", "인원"],
   typeRaw: ["객실 종류 및 혜택"],
   checkIn: ["체크인"],
   checkOut: ["체크아웃"],
@@ -481,6 +493,7 @@ export interface LabeledExtract {
   reservationId: string | null;
   guestName: string | null;
   guestPhone: string | null;
+  company: string | null;
   adults: number | null;
   typeRaw: string | null;
   checkIn: string | null;
@@ -500,6 +513,7 @@ function emptyExtract(): LabeledExtract {
     reservationId: null,
     guestName: null,
     guestPhone: null,
+    company: null,
     adults: null,
     typeRaw: null,
     checkIn: null,
@@ -627,6 +641,14 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     else out.warnings.push("연락처를 읽지 못했어요");
   }
 
+  const company = take("company");
+  if (company && "conflict" in company) out.warnings.push("회사명 글자가 서로 달라 비웠어요");
+  else if (company?.raw) {
+    const t = company.raw.trim();
+    if (t && t.length <= 60 && !parseStayDate(t) && !parseClock(t) && parseSalesTotal(t).amount == null) out.company = t;
+    else out.warnings.push("회사명을 읽지 못했어요");
+  }
+
   const adults = take("adults");
   if (adults && "conflict" in adults) out.warnings.push("성인 수가 서로 달라 비웠어요");
   else if (adults?.raw) {
@@ -745,6 +767,7 @@ const LABELED_HEADERS = [
   "예약번호",
   "투숙객",
   "연락처",
+  "회사명",
   "객실타입",
   "체크인",
   "체크아웃",
@@ -767,6 +790,7 @@ function toTable(rows: LabeledExtract[]): LabeledTable | null {
       ex.reservationId ?? "",
       ex.guestName ?? "",
       ex.guestPhone ?? "",
+      ex.company ?? "",
       ex.typeRaw ?? "",
       ex.checkIn ?? "",
       ex.checkOut ?? "",
@@ -887,6 +911,7 @@ export function readFieldValue(text: string, field: PasteTemplateField, label: s
   if (field === "reservationId") return row.reservationId ?? "";
   if (field === "guestName") return row.guestName ?? "";
   if (field === "guestPhone") return row.guestPhone ?? "";
+  if (field === "company") return row.company ?? "";
   if (field === "adults") return row.adults == null ? "" : String(row.adults);
   if (field === "typeRaw") return row.typeRaw ?? "";
   if (field === "checkIn") return [row.checkIn, row.checkInTime].filter(Boolean).join(" ");
@@ -903,6 +928,10 @@ export function choiceFitsField(field: PasteTemplateField, value: string): boole
     return t.length >= 2 && t.length <= 80 && !splitStayStamp(t) && !parseClock(t) && !parseReservationToken(t) && parseSalesTotal(t).amount == null && !/^\d/u.test(t);
   }
   if (field === "guestPhone") return /\d/.test(value) && !splitStayStamp(value) && value.trim().length <= 40;
+  if (field === "company") {
+    const t = value.trim();
+    return t.length >= 2 && t.length <= 60 && !splitStayStamp(t) && parseSalesTotal(t).amount == null && !parseReservationToken(t);
+  }
   if (field === "adults") return parseAdults(value) != null;
   if (field === "checkIn" || field === "checkOut") return parseStayDate(value) != null;
   if (field === "salesTotal") {

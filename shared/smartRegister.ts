@@ -20,6 +20,7 @@ import { resolveNightRate } from "./salesCalendar";
 export type PasteField =
   | "guestName"
   | "guestPhone"
+  | "company"
   | "typeRaw"
   | "checkIn"
   | "checkOut"
@@ -54,6 +55,7 @@ export interface PlatformProfile {
 export const CANONICAL_FIELDS: PasteField[] = [
   "guestName",
   "guestPhone",
+  "company",
   "typeRaw",
   "checkIn",
   "checkOut",
@@ -71,6 +73,7 @@ export const CANONICAL_FIELDS: PasteField[] = [
 const COMMON: Record<PasteField, string[]> = {
   guestName: ["예약자", "게스트", "투숙객", "guest name", "booker", "고객명", "예약자명"],
   guestPhone: ["연락처", "휴대폰", "전화번호", "phone", "휴대전화", "휴대폰번호"],
+  company: ["회사명", "회사"],
   typeRaw: ["객실타입", "상품명", "룸타입", "room type", "객실명", "객실 타입", "상품"],
   checkIn: ["체크인", "입실", "check-in", "checkin", "이용일", "입실일", "체크인일"],
   checkOut: ["체크아웃", "퇴실", "check-out", "checkout", "퇴실일", "체크아웃일"],
@@ -1166,6 +1169,7 @@ export function mapColumns(headers: string[], profile: PlatformProfile): Partial
 export interface NormalizedPasteRow {
   guestName: string;
   guestPhone: string;
+  company: string;
   typeRaw: string;
   checkIn: string | null;
   checkOut: string | null;
@@ -1247,6 +1251,7 @@ export function normalizeRow(
 ): NormalizedPasteRow {
   const guestName = cellAt(row, colMap.guestName);
   const guestPhone = cellAt(row, colMap.guestPhone);
+  const company = cellAt(row, colMap.company);
   const typeRaw = cellAt(row, colMap.typeRaw);
   const checkIn = parseLooseDate(cellAt(row, colMap.checkIn));
   const checkOut = parseLooseDate(cellAt(row, colMap.checkOut));
@@ -1277,6 +1282,7 @@ export function normalizeRow(
   return {
     guestName,
     guestPhone,
+    company,
     typeRaw,
     checkIn,
     checkOut,
@@ -1694,6 +1700,7 @@ export interface PreviewRow {
   /** 직원이 미리보기에서 이름을 수정해도 붙여넣기에서 읽은 이름은 별도로 보존한다. */
   sourceGuestName?: string;
   guestPhone: string;
+  company?: string;
   typeRaw: string;
   typeId: string | null;
   checkIn: string | null;
@@ -1926,6 +1933,7 @@ export function buildPreviewRows(
       guestName: n.guestName,
       sourceGuestName: n.guestName,
       guestPhone: n.guestPhone,
+      company: n.company,
       typeRaw: n.typeRaw,
       typeId,
       checkIn: n.checkIn,
@@ -2020,6 +2028,7 @@ export function pathADraftFromPreview(
     priceUnset,
     guestName: row.guestName.trim(),
     guestPhone: row.guestPhone.trim() || null,
+    company: row.company?.trim() || null,
     guests: row.guests != null && row.guests > 0 ? row.guests : null,
     typeId: row.typeId!,
     roomId: null,

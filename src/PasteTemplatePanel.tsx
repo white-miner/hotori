@@ -2,7 +2,7 @@
  * 스마트등록 양식 설정.
  * 붙여넣은 글에서 값을 고르면, 그 값 위의 칸 이름만 호텔 계정에 저장한다.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Platform } from "../shared/ledger";
 import {
@@ -10,6 +10,7 @@ import {
   PASTE_TEMPLATE_FIELDS,
   type PasteTemplate,
   type PasteTemplateField,
+  UNMAPPED_BOOKING_FIELDS,
   choiceFitsField,
   readFieldValue,
   readPasteLines,
@@ -41,23 +42,22 @@ function profileForName(name: string): PasteTemplate["profileId"] {
 export default function PasteTemplatePanel({ platforms, templates, sample, onSample, canSave, onSave, onReset, onClose }: Props) {
   const [platformId, setPlatformId] = useState(platforms[0]?.id ?? "");
   const [field, setField] = useState<PasteTemplateField>("guestName");
-  const [draft, setDraft] = useState<PasteTemplate["labels"]>({});
+  const [draft, setDraft] = useState<PasteTemplate["labels"]>(() => templates.find((t) => t.platformId === platforms[0]?.id)?.labels ?? {});
+  const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    const saved = templates.find((t) => t.platformId === platformId);
-    setDraft(saved?.labels ?? {});
-    setErr(null);
-  }, [platformId, templates]);
-
-  const lines = useMemo(() => readPasteLines(sample), [sample]);
-  const readValue = draft[field] ? readFieldValue(sample, field, draft[field]!) : "";
-  const platform = platforms.find((p) => p.id === platformId);
 
   const pickPlatform = (id: string) => {
     setPlatformId(id);
     setField("guestName");
+    setDraft(templates.find((t) => t.platformId === id)?.labels ?? {});
+    setPickedLine({});
+    setErr(null);
   };
+
+  const lines = useMemo(() => readPasteLines(sample), [sample]);
+  const readFor = (id: PasteTemplateField) => (draft[id] ? readFieldValue(sample, id, draft[id]!) : "");
+  const readValue = readFor(field);
+  const platform = platforms.find((p) => p.id === platformId);
 
   const pickValue = (label: string) => {
     if (field === "salesTotal") {
@@ -69,6 +69,11 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
     }
     setDraft((d) => ({ ...d, [field]: label }));
     setErr(null);
+  };
+
+  const pickLine = (index: number, label: string) => {
+    setPickedLine((prev) => ({ ...prev, [field]: index }));
+    pickValue(label);
   };
 
   const save = () => {
@@ -123,12 +128,15 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
           <div>
             <p className="sub">앱 칸</p>
             <div className="paste-template-fields" role="listbox" aria-label="앱 칸">
-              {PASTE_TEMPLATE_FIELDS.map((id) => (
-                <button key={id} type="button" className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)}>
-                  {PASTE_FIELD_LABELS[id]}
-                  {draft[id] ? <small> · {draft[id]}</small> : null}
-                </button>
-              ))}
+              {PASTE_TEMPLATE_FIELDS.map((id) => {
+                const shown = readFor(id);
+                return (
+                  <button key={id} type="button" className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)}>
+                    {PASTE_FIELD_LABELS[id]}
+                    {shown ? <small> · {shown}</small> : draft[id] ? <small> · {draft[id]}</small> : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div>
@@ -136,11 +144,11 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
-                  const fits = choiceFitsField(field, line.text) || (!!draft[field] && draft[field] === line.label && !!readValue);
+                  const selected = pickedLine[field] === i || (pickedLine[field] == null && draft[field] === line.label && choiceFitsField(field, line.text));
                   return (
-                    <button key={`${i}\0${line.text}`} type="button" className={draft[field] === line.label && fits ? "btn sm dark" : "btn sm line"} onClick={() => pickValue(line.label)}>
+                    <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i, line.label)}>
                       <b>{line.text}</b>
-                      <span>{line.label === line.text ? "칸 이름" : `칸 이름 ${line.label}`}</span>
+                      <span>{line.label === line.text ? "칸 이름" : `이 값의 칸 이름 ${line.label}`}</span>
                     </button>
                   );
                 })}
@@ -150,7 +158,12 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             )}
           </div>
         </div>
-        <p className="sub">값을 고르면 그 위의 칸 이름만 기억합니다. 다음 예약의 다른 이름·번호도 같은 자리에서 읽어요.</p>
+        <div className="paste-template-unmapped">
+          {UNMAPPED_BOOKING_FIELDS.map((item) => (
+            <p key={item.name} className="sub"><b>{item.name}</b> · {item.reason}</p>
+          ))}
+        </div>
+        <p className="sub">줄을 고르면 그 칸 이름만 기억합니다. 이름·예약번호·금액은 양식에 저장하지 않아요.</p>
         {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}
