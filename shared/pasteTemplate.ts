@@ -935,12 +935,32 @@ function toTable(rows: LabeledExtract[]): LabeledTable | null {
   };
 }
 
+/**
+ * 저장한 칸 이름이 이 글에 없으면 그 칸만 기본 아고다 칸 이름으로 읽는다.
+ * 번역된 화면으로 저장한 양식(예: `손님`, `점검`)이 한국어 화면 글의 값을 비우지 않게 한다.
+ */
+function agodaTemplateFor(lines: string[], custom: PasteTemplate): PasteTemplate {
+  const labels: PasteTemplate["labels"] = {};
+  const rules: NonNullable<PasteTemplate["rules"]> = {};
+  for (const field of PASTE_TEMPLATE_FIELDS) {
+    const label = custom.rules?.[field]?.label ?? custom.labels[field];
+    if (label && lines.some((line) => matchLabel(line, label))) {
+      labels[field] = custom.labels[field] ?? label;
+      if (custom.rules?.[field]) rules[field] = custom.rules[field];
+    } else if (BUILTIN_AGODA_TEMPLATE.labels[field]) {
+      labels[field] = BUILTIN_AGODA_TEMPLATE.labels[field];
+    }
+  }
+  return { ...custom, profileId: "agoda", labels, rules };
+}
+
 export function parseAgodaLabeledTable(
   raw: string,
   saved?: readonly PasteTemplate[] | null,
 ): LabeledTable | null {
   if (!agodaPartnerSignature(raw)) return null;
-  const custom = saved?.find((t) => templateProfile(t) === "agoda") ?? null;
+  const found = saved?.find((t) => templateProfile(t) === "agoda") ?? null;
+  const custom = found ? agodaTemplateFor(splitLines(raw), found) : null;
   let rows = extractLabeledPaste(raw, custom ?? BUILTIN_AGODA_TEMPLATE);
   const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
   if (custom && missed) rows = extractLabeledPaste(raw, BUILTIN_AGODA_TEMPLATE);
@@ -957,7 +977,7 @@ export function parseManualLabeledTable(
   const custom = saved?.find((t) => t.platformId === platformId) ?? null;
   const agoda = platformId === "agoda" || (custom != null && templateProfile(custom) === "agoda");
   if (agodaPartnerSignature(raw) && !agoda) return null;
-  const template = custom ?? (agoda ? BUILTIN_AGODA_TEMPLATE : null);
+  const template = custom ? (agoda ? agodaTemplateFor(splitLines(raw), custom) : custom) : agoda ? BUILTIN_AGODA_TEMPLATE : null;
   if (!template) return null;
   let rows = extractLabeledPaste(raw, template);
   const missed = rows.every((r) => !r.reservationId && !r.checkIn && !r.checkOut);
