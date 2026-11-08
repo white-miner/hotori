@@ -597,8 +597,8 @@ function findHits(lines: string[], template: PasteTemplate): Hit[] {
 
 function canonRaw(field: PasteTemplateField, raw: string): string {
   if (field === "checkIn" || field === "checkOut") {
-    const stamp = splitStayStamp(raw);
-    return stamp ? `${stamp.date}|${stamp.time ?? ""}` : raw.trim();
+    // 요약은 `2026년 11월 7일` + `(16:00)`, 상세는 `…토요일, 16:00`처럼 같은 날을 달리 적는다.
+    return parseStayDate(raw) ?? raw.trim();
   }
   if (field === "checkInTime" || field === "checkOutTime") return parseClock(raw) ?? clockOnStayLine(raw).time ?? raw.trim();
   if (field === "adults") {
@@ -656,7 +656,6 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
   } else if (confirmLines.length) {
     out.statusKind = "confirmed";
     out.statusRaw = confirmLines[0]!;
-    out.warnings.push("확정된 예약은 예약 상태예요. 결제로 넣지 않아요");
   } else if (cancelLines.length) {
     out.statusKind = "cancelled";
     out.statusRaw = cancelLines[0]!;
@@ -742,14 +741,6 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
       const rooms = t.match(/^(\d{1,2})\s*[xX×]\s+/u);
       const count = rooms ? Number(rooms[1]) : null;
       if (count != null && count > 1) out.warnings.push(`객실 ${count}개로 보여요. 한 줄만 두고 나머지는 만들지 않아요`);
-    }
-  }
-
-  const countryIdx = lines.findIndex((line) => normLabel(line) === normLabel("투숙객 거주 국가"));
-  if (countryIdx >= 0) {
-    const country = nextContent(lines, countryIdx + 1, labelLines);
-    if (country && !parseStayDate(country.text) && !parseClock(country.text) && country.text.length <= 40) {
-      out.warnings.push(`거주 국가 ${country.text} · 예약 칸이 없어 이름에 넣지 않아요`);
     }
   }
 
@@ -865,9 +856,6 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     } else out.currency = code;
   }
 
-  if (out.salesTotal != null && out.nights != null && out.nights >= 2) {
-    out.warnings.push("판매 총액만 올렸어요. 박마다 나누지 않아요");
-  }
   if (!out.typeRaw) out.warnings.push("객실 타입·호실·방 수는 원문에 없어요");
   return out;
 }
@@ -978,11 +966,38 @@ export function parseManualLabeledTable(
 }
 
 const SECTION_LINES = new Set(
-  ["예약정보", "결제및요금", "정산(upc)", "정산upc", "셀프서비스", "smartflex", "예약로그", "객실및투숙인원"].map(normLabel),
+  [
+    "예약정보",
+    "결제및요금",
+    "정산(upc)",
+    "정산upc",
+    "셀프서비스",
+    "smartflex",
+    "예약로그",
+    "객실및투숙인원",
+    "투숙객세부사항및날짜정보",
+    "요청사항및참고사항",
+  ].map(normLabel),
 );
 
 function isSectionLine(line: string): boolean {
   return SECTION_LINES.has(normLabel(line));
+}
+
+/** 값과 모양이 같아도(예: `대한민국` 다음 `연락처 정보`) 항상 칸 이름인 줄. */
+const KNOWN_HEADINGS = new Set(
+  [
+    ...Object.values(AGODA_LABEL_ALIASES).flat(),
+    "투숙객 거주 국가",
+    "아동",
+    "간이침대",
+    "특별 요청 사항",
+    "최종 변경",
+  ].map(normLabel),
+);
+
+function isKnownHeading(line: string): boolean {
+  return KNOWN_HEADINGS.has(normLabel(cleanHeader(line))) || /^예약\s*생성일/u.test(line.trim());
 }
 
 function isLabelish(line: string): boolean {
@@ -1005,11 +1020,17 @@ export interface PasteReadLine {
   /** 원문에서 이 값이 시작하는 위치. 부분 선택에 쓴다. */
   valueStart: number;
   valueEnd: number;
+  /** `칸 이름: 값`처럼 한 줄에 둘 다 있다. */
+  inline?: boolean;
 }
 
 function headerFlags(lines: string[]): boolean[] {
   const flags = lines.map(() => false);
   for (let i = lines.length - 1; i >= 0; i--) {
+    if (isKnownHeading(lines[i]!)) {
+      flags[i] = true;
+      continue;
+    }
     if (!isLabelish(lines[i]!)) continue;
     const next = lines[i + 1];
     if (!next) continue;
@@ -1023,7 +1044,7 @@ function headerFlags(lines: string[]): boolean[] {
     const next = lines[i + 1] ?? "";
     if (!/^성인\s*\d/u.test(next.trim())) continue;
     const prev = i > 0 ? lines[i - 1]! : "";
-    if (prev && isLabelish(prev) && !statusKind(prev) && !first[i - 1]) {
+    if (prev && isLabelish(prev) && !statusKind(prev) && (!first[i - 1] || isKnownHeading(prev))) {
       flags[i] = false;
       flags[i - 1] = true;
     }
@@ -1056,16 +1077,18 @@ export function readPasteLines(text: string): PasteReadLine[] {
   return spans.map((span, i) => {
     const line = span.text;
     const adult = line.match(/^(성인)\s*\d{1,2}\s*명$/u);
-    if (adult) return { text: line, label: adult[1]!, valueStart: span.start, valueEnd: span.end };
+    if (adult) return { text: line, label: adult[1]!, valueStart: span.start, valueEnd: span.end, inline: true };
     const colon = line.match(/^(.{2,40}?)\s*[：:]\s*(\S.*)$/u);
     const timeColon = !!colon && /\d\s*$/u.test(colon[1]!) && /^\d/u.test(colon[2]!);
     if (colon && !timeColon && isLabelish(colon[1]!)) {
       const value = colon[2]!.trim();
       const at = line.lastIndexOf(value);
-      return { text: value, label: cleanHeader(colon[1]!), valueStart: span.start + Math.max(0, at), valueEnd: span.start + Math.max(0, at) + value.length };
+      return { text: value, label: cleanHeader(colon[1]!), valueStart: span.start + Math.max(0, at), valueEnd: span.start + Math.max(0, at) + value.length, inline: true };
     }
-    if (statusKind(line) || headers[i]) return { text: line, label: cleanHeader(line), valueStart: span.start, valueEnd: span.end };
+    if (statusKind(line) || isSectionLine(line)) return { text: line, label: line, valueStart: span.start, valueEnd: span.end };
+    if (headers[i]) return { text: cleanHeader(line), label: cleanHeader(line), valueStart: span.start, valueEnd: span.end };
     for (let j = i - 1; j >= 0; j--) {
+      if (isSectionLine(lines[j]!)) break;
       if (!headers[j]) continue;
       return { text: line, label: cleanHeader(lines[j]!), valueStart: span.start, valueEnd: span.end };
     }
@@ -1126,7 +1149,8 @@ export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: 
     label = "";
     for (let j = index - 1; j >= 0; j--) {
       const text = lines[j]!.text.trim();
-      if (!text || statusKind(text) || isSectionLine(text)) continue;
+      if (isSectionLine(text)) break;
+      if (!text || statusKind(text)) continue;
       if (isLabelish(text)) {
         label = cleanHeader(text);
         break;
@@ -1135,9 +1159,14 @@ export function ruleForPickedLine(lines: PasteReadLine[], index: number, field: 
     if (!label) return null;
   }
   const values = lines.filter((item) => item.label.trim() === label && item.text !== item.label);
-  const at = values.indexOf(line);
-  const occurrence = at < 0 ? 0 : at;
-  const same = values.every((item) => canonRaw(field, item.text) === canonRaw(field, line.text));
+  // 저장하는 순번은 같은 칸 이름이 몇 번째로 나온 곳인지다. 값이 여러 줄이어도 칸 이름 하나로 센다.
+  const headingsUpTo = lines
+    .slice(0, index + 1)
+    .filter((item) => item.label.trim() === label && (item.inline || item.text.trim() === label)).length;
+  const occurrence = Math.max(0, headingsUpTo - 1);
+  const same = values
+    .filter((item) => choiceFitsField(field, item.text))
+    .every((item) => canonRaw(field, item.text) === canonRaw(field, line.text));
   return { label, occurrence: same ? 0 : occurrence };
 }
 
