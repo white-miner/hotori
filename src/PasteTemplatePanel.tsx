@@ -2,12 +2,10 @@
  * 스마트등록 양식 설정.
  * 붙여넣은 글에서 값을 고르면, 그 값 위의 칸 이름만 호텔 계정에 저장한다.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import type { Platform } from "../shared/ledger";
 import {
-  PASTE_FIELD_LABELS,
-  PASTE_TEMPLATE_FIELDS,
   type PasteTemplate,
   type PasteTemplateField,
   choiceFitsField,
@@ -16,17 +14,23 @@ import {
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
+import { SMART_REGISTER_TEMPLATE_COLUMNS, type SmartRegisterTemplateColumnId } from "../shared/smartRegister";
 import { Chip, ChipGroup } from "./primitives";
 
 interface Props {
   platforms: Platform[];
-  templates: readonly PasteTemplate[];
   sample: string;
   onSample: (text: string) => void;
+  drafts: Readonly<Record<string, PasteTemplate["labels"]>>;
+  onEdit: (platformId: string, field: PasteTemplateField, label: string) => void;
   canSave: boolean;
   onSave: (template: PasteTemplate) => void;
   onReset: (platformId: string) => void;
   onClose: () => void;
+}
+
+function templateFieldOf(id: SmartRegisterTemplateColumnId): PasteTemplateField {
+  return id === "amount" ? "salesTotal" : id;
 }
 
 function profileForName(name: string): PasteTemplate["profileId"] {
@@ -38,26 +42,24 @@ function profileForName(name: string): PasteTemplate["profileId"] {
   return null;
 }
 
-export default function PasteTemplatePanel({ platforms, templates, sample, onSample, canSave, onSave, onReset, onClose }: Props) {
+export default function PasteTemplatePanel({ platforms, sample, onSample, drafts, onEdit, canSave, onSave, onReset, onClose }: Props) {
   const [platformId, setPlatformId] = useState(platforms[0]?.id ?? "");
   const [field, setField] = useState<PasteTemplateField>("guestName");
-  const [draft, setDraft] = useState<PasteTemplate["labels"]>({});
+  const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    const saved = templates.find((t) => t.platformId === platformId);
-    setDraft(saved?.labels ?? {});
-    setErr(null);
-  }, [platformId, templates]);
-
-  const lines = useMemo(() => readPasteLines(sample), [sample]);
-  const readValue = draft[field] ? readFieldValue(sample, field, draft[field]!) : "";
-  const platform = platforms.find((p) => p.id === platformId);
+  const draft = drafts[platformId] ?? {};
 
   const pickPlatform = (id: string) => {
     setPlatformId(id);
     setField("guestName");
+    setPickedLine({});
+    setErr(null);
   };
+
+  const lines = useMemo(() => readPasteLines(sample), [sample]);
+  const readFor = (id: PasteTemplateField) => (draft[id] ? readFieldValue(sample, id, draft[id]!) : "");
+  const readValue = readFor(field);
+  const platform = platforms.find((p) => p.id === platformId);
 
   const pickValue = (label: string) => {
     if (field === "salesTotal") {
@@ -67,8 +69,13 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
         return;
       }
     }
-    setDraft((d) => ({ ...d, [field]: label }));
+    if (platformId) onEdit(platformId, field, label);
     setErr(null);
+  };
+
+  const pickLine = (index: number, label: string) => {
+    setPickedLine((prev) => ({ ...prev, [field]: index }));
+    pickValue(label);
   };
 
   const save = () => {
@@ -123,24 +130,28 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
           <div>
             <p className="sub">앱 칸</p>
             <div className="paste-template-fields" role="listbox" aria-label="앱 칸">
-              {PASTE_TEMPLATE_FIELDS.map((id) => (
-                <button key={id} type="button" className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)}>
-                  {PASTE_FIELD_LABELS[id]}
-                  {draft[id] ? <small> · {draft[id]}</small> : null}
-                </button>
-              ))}
+              {SMART_REGISTER_TEMPLATE_COLUMNS.map((col) => {
+                const id = templateFieldOf(col.id);
+                const shown = readFor(id);
+                return (
+                  <button key={col.id} type="button" data-field={id} className={field === id ? "btn sm dark" : "btn sm line"} onClick={() => setField(id)} title={col.id === "adults" ? "원문의 성인 수. 예약 인원으로 저장됩니다" : undefined}>
+                    {col.label}
+                    {shown ? <small> · {shown}</small> : draft[id] ? <small> · {draft[id]}</small> : null}
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div>
-            <p className="sub">{PASTE_FIELD_LABELS[field]} · 붙여넣은 글 {lines.length}줄{readValue ? ` · 읽힘 ${readValue}` : ""}</p>
+            <p className="sub">{SMART_REGISTER_TEMPLATE_COLUMNS.find((col) => templateFieldOf(col.id) === field)?.label} · 붙여넣은 글 {lines.length}줄{readValue ? ` · 읽힘 ${readValue}` : ""}</p>
             {lines.length ? (
               <div className="paste-template-values">
                 {lines.map((line, i) => {
-                  const fits = choiceFitsField(field, line.text) || (!!draft[field] && draft[field] === line.label && !!readValue);
+                  const selected = pickedLine[field] === i || (pickedLine[field] == null && draft[field] === line.label && choiceFitsField(field, line.text));
                   return (
-                    <button key={`${i}\0${line.text}`} type="button" className={draft[field] === line.label && fits ? "btn sm dark" : "btn sm line"} onClick={() => pickValue(line.label)}>
+                    <button key={`${i}\0${line.text}`} type="button" className={selected ? "btn sm dark" : "btn sm line"} onClick={() => pickLine(i, line.label)}>
                       <b>{line.text}</b>
-                      <span>{line.label === line.text ? "칸 이름" : `칸 이름 ${line.label}`}</span>
+                      <span>{line.label === line.text ? "칸 이름" : `이 값의 칸 이름 ${line.label}`}</span>
                     </button>
                   );
                 })}
@@ -150,7 +161,7 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             )}
           </div>
         </div>
-        <p className="sub">값을 고르면 그 위의 칸 이름만 기억합니다. 다음 예약의 다른 이름·번호도 같은 자리에서 읽어요.</p>
+        <p className="sub">스마트등록이 읽는 항목입니다. 인원은 원문의 성인 수이고 예약 인원으로 저장됩니다. 입실·퇴실 시각은 요금으로 바꾸지 않아요. 줄을 고르면 칸 이름만 기억하고, 이름·예약번호·금액·인원은 양식에 저장하지 않아요. 확정된 예약은 결제가 아니고 판매금은 수납이 아닙니다.</p>
         {platform && templateProfile({ platformId: platform.id, profileId: profileForName(platform.name), version: 1, labels: draft }) === "agoda" ? (
           <p className="sub">아고다는 기본 글자도 함께 읽어요. 비운 칸은 기본 글자를 씁니다.</p>
         ) : null}

@@ -67,6 +67,30 @@ export const CANONICAL_FIELDS: PasteField[] = [
   "currency",
 ];
 
+/**
+ * 양식 설정이 보여 주는 칸. CANONICAL_FIELDS 전부다.
+ * 판매금의 붙여넣기 칸 id는 amount, 양식 저장 키는 salesTotal.
+ * preview는 미리보기 표의 열. 체크아웃·인원·시각·통화는 표의 열이 아니어도 인식해서 쓴다.
+ * 인원(adults)은 원문의 성인 수이고 예약 guests로 저장된다. 어린이를 더한 인원 칸은 없다.
+ * 입실·퇴실 시각은 메모와 안내만 하고 빠른 입실·늦은 퇴실 요금으로 바꾸지 않는다.
+ */
+export const SMART_REGISTER_TEMPLATE_COLUMNS = [
+  { id: "statusRaw", label: "상태", preview: true },
+  { id: "guestName", label: "이름", preview: true },
+  { id: "guestPhone", label: "전화", preview: true },
+  { id: "adults", label: "인원", preview: false },
+  { id: "typeRaw", label: "타입", preview: true },
+  { id: "checkIn", label: "입실", preview: true },
+  { id: "checkInTime", label: "입실 시각", preview: false },
+  { id: "checkOut", label: "체크아웃", preview: false },
+  { id: "checkOutTime", label: "퇴실 시각", preview: false },
+  { id: "nights", label: "박수", preview: true },
+  { id: "amount", label: "판매금", preview: true },
+  { id: "currency", label: "통화", preview: false },
+  { id: "reservationId", label: "예약번호", preview: true },
+] as const;
+export type SmartRegisterTemplateColumnId = (typeof SMART_REGISTER_TEMPLATE_COLUMNS)[number]["id"];
+
 /** Shared / overlapping aliases (hypotheses until live samples). */
 const COMMON: Record<PasteField, string[]> = {
   guestName: ["예약자", "게스트", "투숙객", "guest name", "booker", "고객명", "예약자명"],

@@ -18,28 +18,53 @@ function nightsBetween(a: string, b: string): number {
 export const PASTE_PLATFORM_IDS = ["yanolja", "yeogi", "agoda", "naver"] as const;
 export type PastePlatformId = (typeof PASTE_PLATFORM_IDS)[number];
 
+/** 스마트등록이 인식해서 미리보기·업로드에 쓰는 칸. amount의 저장 키는 salesTotal. */
 export const PASTE_TEMPLATE_FIELDS = [
-  "reservationId",
+  "statusRaw",
   "guestName",
   "guestPhone",
   "adults",
   "typeRaw",
   "checkIn",
+  "checkInTime",
   "checkOut",
+  "checkOutTime",
+  "nights",
   "salesTotal",
+  "currency",
+  "reservationId",
 ] as const;
 export type PasteTemplateField = (typeof PASTE_TEMPLATE_FIELDS)[number];
 
+/** 양식 버튼에 보이는 이름. 인원은 성인 수이고 예약 인원으로 저장된다. */
 export const PASTE_FIELD_LABELS: Record<PasteTemplateField, string> = {
-  reservationId: "예약번호",
-  guestName: "투숙객",
-  guestPhone: "연락처",
-  adults: "성인",
-  typeRaw: "객실 타입",
-  checkIn: "체크인",
+  statusRaw: "상태",
+  guestName: "이름",
+  guestPhone: "전화",
+  adults: "인원",
+  typeRaw: "타입",
+  checkIn: "입실",
+  checkInTime: "입실 시각",
   checkOut: "체크아웃",
-  salesTotal: "판매 총액",
+  checkOutTime: "퇴실 시각",
+  nights: "박수",
+  salesTotal: "판매금",
+  currency: "통화",
+  reservationId: "예약번호",
 };
+
+/** 편집 중인 양식은 늦게 도착한 빈 설정이 덮지 못한다. 편집 중이 아니면 저장된 칸 이름을 받는다. */
+export function keepTemplateDraft(
+  local: PasteTemplate["labels"] | undefined,
+  incoming: PasteTemplate["labels"] | undefined,
+  editing: boolean,
+): PasteTemplate["labels"] {
+  const here = local ?? {};
+  const next = incoming ?? {};
+  if (editing) return here;
+  if (Object.keys(here).length > 0 && Object.keys(next).length === 0) return here;
+  return next;
+}
 
 export interface PasteTemplate {
   /** 호텔에 등록된 플랫폼 id. 예전 저장은 agoda·yanolja 같은 기본 프로필 id일 수 있다. */
@@ -62,7 +87,6 @@ export const BUILTIN_AGODA_TEMPLATE: PasteTemplate = {
   labels: {
     reservationId: "예약 번호",
     guestName: "투숙객",
-    adults: "성인",
     checkIn: "체크인",
     checkOut: "체크아웃",
     salesTotal: "기준 판매 요금",
@@ -187,9 +211,6 @@ export function validatePasteTemplate(
     return { ok: false, reason: "칸 이름이 잘못됐어요" };
   }
   const src = (o.labels ?? {}) as Record<string, unknown>;
-  for (const key of Object.keys(src)) {
-    if (!isField(key)) return { ok: false, reason: "알 수 없는 칸이 있어요" };
-  }
   const labels: PasteTemplate["labels"] = {};
   const seen = new Map<string, PasteTemplateField>();
   for (const field of PASTE_TEMPLATE_FIELDS) {
@@ -200,11 +221,13 @@ export function validatePasteTemplate(
     if (!label) continue;
     if (label.length > PASTE_LABEL_MAX) return { ok: false, reason: "칸 이름이 너무 길어요" };
     if (isPaymentLabel(label)) return { ok: false, reason: "받은 돈·정산 글자는 칸 이름으로 쓸 수 없어요" };
-    if (statusKind(label)) return { ok: false, reason: "예약 상태 글자는 칸 이름으로 쓸 수 없어요" };
+    if (field !== "statusRaw" && statusKind(label)) return { ok: false, reason: "예약 상태 글자는 칸 이름으로 쓸 수 없어요" };
     const n = normLabel(label);
     if (n.length < 2) return { ok: false, reason: "칸 이름은 두 글자 이상이어야 해요" };
     const prev = seen.get(n);
-    if (prev) return { ok: false, reason: "같은 글자가 두 칸에 있어요" };
+    const sharedTime = (a: PasteTemplateField, b: PasteTemplateField) =>
+      (a === "checkIn" && b === "checkInTime") || (a === "checkInTime" && b === "checkIn") || (a === "checkOut" && b === "checkOutTime") || (a === "checkOutTime" && b === "checkOut");
+    if (prev && !sharedTime(prev, field)) return { ok: false, reason: "같은 글자가 두 칸에 있어요" };
     seen.set(n, field);
     labels[field] = label;
   }
@@ -422,8 +445,13 @@ function matchLabel(line: string, label: string): { rest: string } | null {
 const AGODA_LABEL_ALIASES: Partial<Record<PasteTemplateField, string[]>> = {
   reservationId: ["예약 번호", "예약번호"],
   guestName: ["투숙객 이름", "투숙객"],
-  guestPhone: ["연락처 정보", "연락처"],
+  guestPhone: ["연락처 정보", "연락처", "전화"],
   adults: ["성인"],
+  statusRaw: ["상태", "예약상태"],
+  checkInTime: ["입실 시각"],
+  checkOutTime: ["퇴실 시각"],
+  currency: ["통화"],
+  nights: ["박수", "숙박일수"],
   typeRaw: ["객실 종류 및 혜택"],
   checkIn: ["체크인"],
   checkOut: ["체크아웃"],
@@ -627,12 +655,18 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     else out.warnings.push("연락처를 읽지 못했어요");
   }
 
-  const adults = take("adults");
-  if (adults && "conflict" in adults) out.warnings.push("성인 수가 서로 달라 비웠어요");
-  else if (adults?.raw) {
-    const n = parseAdults(adults.raw);
-    if (n == null) out.warnings.push("성인 수를 읽지 못했어요");
+  const adultsPick = take("adults");
+  if (adultsPick && "conflict" in adultsPick) out.warnings.push("인원 글자가 서로 달라 비웠어요");
+  else if (adultsPick?.raw) {
+    const n = parseAdults(adultsPick.raw);
+    if (n == null) out.warnings.push("인원을 읽지 못했어요");
     else out.adults = n;
+  } else {
+    const adultsLine = lines.find((line) => parseAdults(line) != null && /성인|인원/u.test(line));
+    if (adultsLine) {
+      const n = parseAdults(adultsLine);
+      if (n != null) out.adults = n;
+    }
   }
 
   const typeRaw = take("typeRaw");
@@ -655,6 +689,22 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
     if (country && !parseStayDate(country.text) && !parseClock(country.text) && country.text.length <= 40) {
       out.warnings.push(`거주 국가 ${country.text} · 예약 칸이 없어 이름에 넣지 않아요`);
     }
+  }
+
+  const statusPick = take("statusRaw");
+  if (statusPick && "conflict" in statusPick) out.warnings.push("상태 글자가 서로 달라 비웠어요");
+  else if (statusPick?.raw && !out.statusRaw) {
+    out.statusRaw = statusPick.raw.trim();
+    out.statusKind = statusKind(statusPick.raw);
+  }
+
+  const nightsPick = take("nights");
+  if (nightsPick && "conflict" in nightsPick) out.warnings.push("박수 글자가 서로 달라 비웠어요");
+  else if (nightsPick?.raw && out.nights == null) {
+    const m = nightsPick.raw.match(/(\d{1,3})\s*박?/u);
+    const n = m ? Number(m[1]) : NaN;
+    if (Number.isInteger(n) && n >= 1 && n <= 366) out.nights = n;
+    else out.warnings.push("박수를 읽지 못했어요");
   }
 
   const readDate = (
@@ -687,6 +737,25 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
   out.checkOut = cout.date;
   out.checkInTime = cin.time;
   out.checkOutTime = cout.time;
+  const readClock = (field: "checkInTime" | "checkOutTime", label: string): string | null => {
+    const hit = take(field);
+    if (!hit) return null;
+    if ("conflict" in hit) {
+      out.warnings.push(`${label}이 서로 달라 비웠어요`);
+      return null;
+    }
+    if (!hit.raw) return null;
+    const inline = parseClock(hit.raw) ?? clockOnStayLine(hit.raw).time;
+    if (inline) return inline;
+    const after = clockAfter(lines, hit.index, labelLines);
+    if (after.time) return after.time;
+    out.warnings.push(`${label}을 읽지 못했어요`);
+    return null;
+  };
+  const inClock = readClock("checkInTime", "입실 시각");
+  const outClock = readClock("checkOutTime", "퇴실 시각");
+  if (inClock) out.checkInTime = inClock;
+  if (outClock) out.checkOutTime = outClock;
   if (out.checkIn && out.checkOut) {
     const nights = nightsBetween(out.checkIn, out.checkOut);
     if (nights >= 1 && nights <= 366) out.nights = nights;
@@ -707,6 +776,20 @@ function extractBlock(lines: string[], template: PasteTemplate): LabeledExtract 
       out.salesTotal = parsed.amount;
       out.currency = parsed.currency;
     }
+  }
+
+  const currencyPick = take("currency");
+  if (currencyPick && "conflict" in currencyPick) out.warnings.push("통화 글자가 서로 달라 비웠어요");
+  else if (currencyPick?.raw) {
+    const fromMoney = parseSalesTotal(currencyPick.raw).currency;
+    const bare = currencyPick.raw.trim().toUpperCase();
+    const code = fromMoney ?? (/^[A-Z]{3}$/.test(bare) ? bare : null);
+    if (!code) out.warnings.push("통화를 읽지 못했어요");
+    else if (out.currency && out.currency !== code) {
+      out.warnings.push("통화가 서로 달라 판매 총액을 비웠어요");
+      out.salesTotal = null;
+      out.currency = null;
+    } else out.currency = code;
   }
 
   if (out.salesTotal != null && out.nights != null && out.nights >= 2) {
@@ -823,6 +906,8 @@ function isLabelish(line: string): boolean {
   const t = line.trim();
   if (!t || t.length > 40 || isIconLine(t) || isSectionLine(t) || statusKind(t)) return false;
   if (splitStayStamp(t) || parseClock(t) || parseReservationToken(t) || parseAdults(t)) return false;
+  if (/^\d{1,3}\s*박$/u.test(t)) return false;
+  if (/^(KRW|USD|EUR|JPY|CNY|GBP|THB)$/i.test(t)) return false;
   if (/[A-Za-z]/u.test(t) && /\s/u.test(t)) return false;
   const money = parseSalesTotal(t);
   if (money.amount != null || money.foreign || /^\d{1,2}\s*[xX×]\s+\S/u.test(t)) return false;
@@ -888,6 +973,11 @@ export function readFieldValue(text: string, field: PasteTemplateField, label: s
   if (field === "guestName") return row.guestName ?? "";
   if (field === "guestPhone") return row.guestPhone ?? "";
   if (field === "adults") return row.adults == null ? "" : String(row.adults);
+  if (field === "statusRaw") return row.statusRaw ?? "";
+  if (field === "nights") return row.nights == null ? "" : String(row.nights);
+  if (field === "checkInTime") return row.checkInTime ?? "";
+  if (field === "checkOutTime") return row.checkOutTime ?? "";
+  if (field === "currency") return row.currency ?? "";
   if (field === "typeRaw") return row.typeRaw ?? "";
   if (field === "checkIn") return [row.checkIn, row.checkInTime].filter(Boolean).join(" ");
   if (field === "checkOut") return [row.checkOut, row.checkOutTime].filter(Boolean).join(" ");
@@ -896,14 +986,18 @@ export function readFieldValue(text: string, field: PasteTemplateField, label: s
 }
 
 export function choiceFitsField(field: PasteTemplateField, value: string): boolean {
+  if (field === "statusRaw") return statusKind(value) != null || (value.trim().length >= 2 && value.trim().length <= 20 && !splitStayStamp(value) && parseSalesTotal(value).amount == null);
   if (statusKind(value)) return false;
   if (field === "reservationId") return parseReservationToken(value) != null;
+  if (field === "nights") return /^\d{1,3}\s*박?$/u.test(value.trim());
+  if (field === "adults") return parseAdults(value) != null;
+  if (field === "checkInTime" || field === "checkOutTime") return parseClock(value) != null || clockOnStayLine(value).time != null;
+  if (field === "currency") return parseSalesTotal(value).currency != null || /^(KRW|USD|EUR|JPY|CNY|GBP|THB)$/i.test(value.trim());
   if (field === "guestName") {
     const t = value.trim();
     return t.length >= 2 && t.length <= 80 && !splitStayStamp(t) && !parseClock(t) && !parseReservationToken(t) && parseSalesTotal(t).amount == null && !/^\d/u.test(t);
   }
   if (field === "guestPhone") return /\d/.test(value) && !splitStayStamp(value) && value.trim().length <= 40;
-  if (field === "adults") return parseAdults(value) != null;
   if (field === "checkIn" || field === "checkOut") return parseStayDate(value) != null;
   if (field === "salesTotal") {
     const money = parseSalesTotal(value);

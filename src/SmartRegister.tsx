@@ -56,16 +56,19 @@ import {
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
   previewRowStatusLabel,
+  SMART_REGISTER_TEMPLATE_COLUMNS,
   profileById,
   recomputeRowStatus,
   previewTypeMismatch,
   upsertTypeAlias,
 } from "../shared/smartRegister";
 import {
+  keepTemplateDraft,
   parseBestSavedTemplate,
   parseManualLabeledTable,
   templateProfile,
   type PasteTemplate,
+  type PasteTemplateField,
 } from "../shared/pasteTemplate";
 import PasteTemplatePanel from "./PasteTemplatePanel";
 import type { HotelData } from "./data";
@@ -129,6 +132,31 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const prevRowsLen = useRef(0);
   const templates = s.pasteTemplates;
   const [templateOpen, setTemplateOpen] = useState(false);
+  const dirtyPlatforms = useRef(new Set<string>());
+  const [drafts, setDrafts] = useState<Record<string, PasteTemplate["labels"]>>(() =>
+    Object.fromEntries(s.pasteTemplates.map((t) => [t.platformId, t.labels])),
+  );
+
+  useEffect(() => {
+    setDrafts((prev) => {
+      const ids = new Set([...Object.keys(prev), ...templates.map((t) => t.platformId)]);
+      let changed = false;
+      const next = { ...prev };
+      for (const id of ids) {
+        const kept = keepTemplateDraft(prev[id], templates.find((t) => t.platformId === id)?.labels, dirtyPlatforms.current.has(id));
+        if (JSON.stringify(prev[id] ?? {}) !== JSON.stringify(kept)) {
+          next[id] = kept;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [templates]);
+
+  const editDraft = (platformId: string, field: PasteTemplateField, label: string) => {
+    dirtyPlatforms.current.add(platformId);
+    setDrafts((prev) => ({ ...prev, [platformId]: { ...prev[platformId], [field]: label } }));
+  };
 
   const dismissSummary = useCallback(() => {
     if (summaryTimer.current) {
@@ -924,14 +952,9 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               <table className="smart-reg-table">
                 <thead>
                   <tr>
-                    <th>상태</th>
-                    <th>이름</th>
-                    <th>전화</th>
-                    <th>타입</th>
-                    <th>입실</th>
-                    <th>박수</th>
-                    <th>판매금</th>
-                    <th>예약번호</th>
+                    {SMART_REGISTER_TEMPLATE_COLUMNS.filter((col) => col.preview).map((col) => (
+                      <th key={col.id}>{col.label}</th>
+                    ))}
                     <th>건너뛰기</th>
                   </tr>
                 </thead>
@@ -1145,9 +1168,10 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       {templateOpen ? (
         <PasteTemplatePanel
           platforms={s.platforms}
-          templates={templates}
           sample={paste}
           onSample={onPasteChange}
+          drafts={drafts}
+          onEdit={editDraft}
           canSave={!readOnly}
           onClose={() => setTemplateOpen(false)}
           onSave={(template) => {
@@ -1155,7 +1179,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
             if (Object.keys(template.labels).length) next.push(template);
             void writeTemplates(next);
           }}
-          onReset={(id) => void writeTemplates(templates.filter((t) => t.platformId !== id))}
+          onReset={(id) => {
+            dirtyPlatforms.current.delete(id);
+            setDrafts((prev) => ({ ...prev, [id]: {} }));
+            void writeTemplates(templates.filter((t) => t.platformId !== id));
+          }}
         />
       ) : null}
 
