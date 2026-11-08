@@ -14,6 +14,7 @@ import {
   listPasteChoices,
   loadPasteTemplates,
   readFieldValue,
+  lineIndexForSelection,
   readPasteLines,
   ruleForPickedLine,
   parseAgodaLabeledTable,
@@ -608,6 +609,62 @@ test("등록되지 않은 한글 이름·객실명도 위 줄을 칸 이름으�
   assert.equal(serializePasteTemplateStore([saved.template]).includes("다른손님"), false);
   const orphan = readPasteLines("테스트손님");
   assert.equal(ruleForPickedLine(orphan, 0, "guestName"), null);
+});
+
+test("같은 줄의 한글 값과 반복된 숫자는 고른 위치만 다시 읽는다", () => {
+  const text = [
+    "예약자: 홍길동",
+    "객실 종류: 디럭스 더블",
+    "도착일: 2026-12-05",
+    "판매가: KRW 90,000",
+    "숙박 기간: 2",
+    "성인: 2",
+    "안내 사항",
+    "이 예약은 변경할 수 없습니다",
+    "객실 설명",
+    "디럭스 더블",
+    "바다 전망",
+    "조식 포함",
+  ].join("\n");
+  const lines = readPasteLines(text);
+  assert.equal(lines.find((line) => line.text === "홍길동")?.label, "예약자");
+  assert.equal(lines.find((line) => line.text === "디럭스 더블" && line.label === "객실 종류")?.label, "객실 종류");
+  const nameAt = lines.findIndex((line) => line.text === "홍길동");
+  const partial = lineIndexForSelection(lines, lines[nameAt]!.valueStart + 1, lines[nameAt]!.valueEnd);
+  assert.equal(partial, nameAt);
+  const twos = lines.filter((line) => line.text === "2");
+  assert.equal(twos.length, 2);
+  assert.notEqual(twos[0]!.label, twos[1]!.label);
+  const adultAt = lines.findIndex((line) => line.text === "2" && line.label === "성인");
+  const adultRule = ruleForPickedLine(lines, adultAt, "adults");
+  assert.equal(adultRule?.label, "성인");
+  assert.equal(lineIndexForSelection(lines, lines[adultAt]!.valueStart, lines[adultAt]!.valueEnd), adultAt);
+  const roomAt = lines.findIndex((line) => line.text === "디럭스 더블" && line.label === "객실 종류");
+  const roomRule = ruleForPickedLine(lines, roomAt, "typeRaw");
+  const nameRule = ruleForPickedLine(lines, nameAt, "guestName");
+  const saved = validatePasteTemplate({
+    platformId: "p-other",
+    labels: { guestName: nameRule!.label, typeRaw: roomRule!.label, checkIn: "도착일", salesTotal: "판매가", adults: "성인" },
+    rules: { guestName: nameRule!, typeRaw: roomRule!, adults: adultRule! },
+  });
+  assert.equal(saved.ok, true);
+  if (!saved.ok) return;
+  const stored = serializePasteTemplateStore([saved.template]);
+  assert.equal(stored.includes("홍길동"), false);
+  assert.equal(stored.includes("디럭스"), false);
+  assert.equal(stored.includes("변경할 수 없습니다"), false);
+  const next = ["예약자: 김테스트", "객실 종류: 온돌", "도착일: 2027-01-02", "판매가: KRW 70,000", "성인: 3"].join("\n");
+  assert.equal(readFieldValue(next, "guestName", "예약자"), "김테스트");
+  assert.equal(readFieldValue(next, "typeRaw", "객실 종류"), "온돌");
+  assert.equal(readFieldValue(next, "checkIn", "도착일"), "2027-01-02");
+  assert.equal(readFieldValue(next, "salesTotal", "판매가"), "KRW 70000");
+  assert.equal(readFieldValue(next, "adults", "성인"), "3");
+  const repeated = ["성인", "2", "성인", "5"].join("\n");
+  const repeatedLines = readPasteLines(repeated);
+  const second = ruleForPickedLine(repeatedLines, repeatedLines.findIndex((line) => line.text === "5"), "adults");
+  assert.equal(second?.occurrence, 1);
+  assert.equal(readFieldValue(["성인", "4", "성인", "9"].join("\n"), "adults", "성인", 1), "9");
+  assert.equal(ruleForPickedLine(readPasteLines("홍길동"), 0, "guestName"), null);
 });
 
 test("붙여넣기 인식 코드는 네트워크 AI를 부르지 않는다", () => {
