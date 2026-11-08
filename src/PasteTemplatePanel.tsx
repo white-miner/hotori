@@ -11,7 +11,8 @@ import {
   type PasteTemplate,
   type PasteTemplateField,
   choiceFitsField,
-  listPasteChoices,
+  readFieldValue,
+  readPasteLines,
   templateProfile,
   validatePasteTemplate,
 } from "../shared/pasteTemplate";
@@ -49,7 +50,8 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
     setErr(null);
   }, [platformId, templates]);
 
-  const choices = useMemo(() => listPasteChoices(sample).filter((c) => choiceFitsField(field, c.value)), [sample, field]);
+  const lines = useMemo(() => readPasteLines(sample), [sample]);
+  const readValue = draft[field] ? readFieldValue(sample, field, draft[field]!) : "";
   const platform = platforms.find((p) => p.id === platformId);
 
   const pickPlatform = (id: string) => {
@@ -130,18 +132,21 @@ export default function PasteTemplatePanel({ platforms, templates, sample, onSam
             </div>
           </div>
           <div>
-            <p className="sub">{PASTE_FIELD_LABELS[field]}에 넣을 값</p>
-            {choices.length ? (
+            <p className="sub">{PASTE_FIELD_LABELS[field]} · 붙여넣은 글 {lines.length}줄{readValue ? ` · 읽힘 ${readValue}` : ""}</p>
+            {lines.length ? (
               <div className="paste-template-values">
-                {choices.map((c) => (
-                  <button key={`${c.label}\0${c.value}`} type="button" className={draft[field] === c.label ? "btn sm dark" : "btn sm line"} onClick={() => pickValue(c.label)}>
-                    <b>{c.label}</b>
-                    <span>{c.value}</span>
-                  </button>
-                ))}
+                {lines.map((line, i) => {
+                  const fits = choiceFitsField(field, line.text) || (!!draft[field] && draft[field] === line.label && !!readValue);
+                  return (
+                    <button key={`${i}\0${line.text}`} type="button" className={draft[field] === line.label && fits ? "btn sm dark" : "btn sm line"} onClick={() => pickValue(line.label)}>
+                      <b>{line.text}</b>
+                      <span>{line.label === line.text ? "칸 이름" : `칸 이름 ${line.label}`}</span>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
-              <p className="sub">이 칸에 맞는 값이 없어요. 글을 붙여넣거나 다른 칸을 고르세요.</p>
+              <p className="sub">아직 읽은 글이 없어요. 위에 예약 정보를 붙여넣으세요.</p>
             )}
           </div>
         </div>
