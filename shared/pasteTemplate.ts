@@ -468,7 +468,8 @@ function matchLabel(line: string, label: string): { rest: string } | null {
     const restNorm = ln.slice(lb.length);
     const note = restNorm.startsWith("(") || restNorm.startsWith("（");
     const inlineValue = /\d/u.test(restNorm);
-    if (!note && !inlineValue) return null;
+    const colonValue = /[：:]/u.test(line);
+    if (!note && !inlineValue && !colonValue) return null;
   }
   const rest = stripLabelPrefix(line, label);
   if (rest == null) return null;
@@ -1001,10 +1002,13 @@ function isLabelish(line: string): boolean {
 }
 
 export interface PasteReadLine {
-  /** 붙여넣은 줄 그대로 */
+  /** 보여 주는 값. 같은 줄이면 콜론 뒤만. */
   text: string;
-  /** 이 줄을 고르면 저장할 칸 이름. 값이면 위 줄, 칸 이름이면 그 줄. */
+  /** 이 줄을 고르면 저장할 칸 이름. 값이면 위 줄이나 콜론 앞, 칸 이름이면 그 줄. */
   label: string;
+  /** 원문에서 이 값이 시작하는 위치. 부분 선택에 쓴다. */
+  valueStart: number;
+  valueEnd: number;
 }
 
 function headerFlags(lines: string[]): boolean[] {
@@ -1022,23 +1026,57 @@ function cleanHeader(line: string): string {
   return line.replace(/\s*[：:]\s*$/u, "").trim();
 }
 
+function contentSpans(text: string): { text: string; start: number; end: number }[] {
+  const src = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const out: { text: string; start: number; end: number }[] = [];
+  let offset = 0;
+  for (const part of src.split("\n")) {
+    const lead = part.length - part.trimStart().length;
+    const trimmed = part.replace(/[\u200b\u200c\u200d\ufeff]/g, "").replace(/\u00a0/g, " ").trim();
+    if (trimmed && !isIconLine(trimmed)) out.push({ text: trimmed, start: offset + lead, end: offset + lead + part.trim().length });
+    offset += part.length + 1;
+  }
+  return out;
+}
+
 /** 붙여넣은 글을 줄로 읽는다. 아이콘·빈 줄만 빼고, 나머지는 전부 보여 준다. */
 export function readPasteLines(text: string): PasteReadLine[] {
-  const lines = splitLines(text).map((l) => l.trim()).filter((l) => l && !isIconLine(l));
+  const spans = contentSpans(text);
+  const lines = spans.map((span) => span.text);
   const headers = headerFlags(lines);
-  return lines.map((line, i) => {
+  return spans.map((span, i) => {
+    const line = span.text;
     const adult = line.match(/^(성인)\s*\d{1,2}\s*명$/u);
-    if (adult) return { text: line, label: adult[1]! };
+    if (adult) return { text: line, label: adult[1]!, valueStart: span.start, valueEnd: span.end };
     const colon = line.match(/^(.{2,40}?)\s*[：:]\s*(\S.*)$/u);
     const timeColon = !!colon && /\d\s*$/u.test(colon[1]!) && /^\d/u.test(colon[2]!);
-    if (colon && !timeColon && isLabelish(colon[1]!) && !isLabelish(colon[2]!)) return { text: colon[2]!.trim(), label: cleanHeader(colon[1]!) };
-    if (statusKind(line) || headers[i]) return { text: line, label: cleanHeader(line) };
+    if (colon && !timeColon && isLabelish(colon[1]!)) {
+      const value = colon[2]!.trim();
+      const at = line.lastIndexOf(value);
+      return { text: value, label: cleanHeader(colon[1]!), valueStart: span.start + Math.max(0, at), valueEnd: span.start + Math.max(0, at) + value.length };
+    }
+    if (statusKind(line) || headers[i]) return { text: line, label: cleanHeader(line), valueStart: span.start, valueEnd: span.end };
     for (let j = i - 1; j >= 0; j--) {
       if (!headers[j]) continue;
-      return { text: line, label: cleanHeader(lines[j]!) };
+      return { text: line, label: cleanHeader(lines[j]!), valueStart: span.start, valueEnd: span.end };
     }
-    return { text: line, label: cleanHeader(line) };
+    return { text: line, label: cleanHeader(line), valueStart: span.start, valueEnd: span.end };
   });
+}
+
+/** 원문에서 드래그하거나 키보드로 고른 구간이 어느 값인지. 같은 글자가 여러 번이어도 그 위치만. */
+export function lineIndexForSelection(lines: readonly PasteReadLine[], start: number, end: number): number {
+  if (end <= start) return -1;
+  let best = -1;
+  let bestOverlap = 0;
+  lines.forEach((line, i) => {
+    const overlap = Math.min(end, line.valueEnd) - Math.max(start, line.valueStart);
+    if (overlap > bestOverlap) {
+      best = i;
+      bestOverlap = overlap;
+    }
+  });
+  return best;
 }
 
 export interface PasteValueChoice {

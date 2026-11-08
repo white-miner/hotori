@@ -319,3 +319,89 @@ test("한글 이름과 객실명은 위 칸 이름으로 연결되고 다음 글
     root.unmount();
   });
 });
+
+test("같은 줄의 일부 선택과 반복된 2는 고른 칸만 연결하고 다음 선택을 덮지 않는다", async () => {
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  await act(async () => {
+    root.render(createElement(Host));
+  });
+  const open = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!open) throw new Error("양식 설정 버튼 없음");
+  await click(open);
+  const text = ["예약자: 홍길동", "객실 종류: 디럭스 더블", "도착일: 2026-12-05", "판매가: KRW 90,000", "숙박 기간: 2", "성인: 2"].join("\n");
+  await paste(text);
+  const area = document.querySelector(".paste-template-sample textarea") as HTMLTextAreaElement;
+  const select = async (needle: string, which: number) => {
+    let from = 0;
+    let at = -1;
+    for (let n = 0; n <= which; n++) {
+      at = area.value.indexOf(needle, from);
+      from = at + needle.length;
+    }
+    area.focus();
+    area.setSelectionRange(at, at + needle.length);
+    area.dispatchEvent(new dom.window.Event("select", { bubbles: true }));
+    area.dispatchEvent(new dom.window.KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
+  };
+  const down = async (field: string) => {
+    const el = document.querySelector(`[data-field="${field}"]`);
+    if (!el) throw new Error(field);
+    await act(async () => {
+      el.dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+    });
+  };
+  await select("홍길동", 0);
+  await down("guestName");
+  const adultMark = area.value.lastIndexOf("성인: ");
+  area.focus();
+  area.setSelectionRange(adultMark + "성인: ".length, adultMark + "성인: ".length + 1);
+  area.dispatchEvent(new dom.window.Event("select", { bubbles: true }));
+  area.dispatchEvent(new dom.window.KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
+  await down("adults");
+  await down("typeRaw");
+  let shown = fieldText();
+  assert.match(shown, /guestName:이름 · 홍길동/);
+  assert.match(shown, /adults:인원 · 2/);
+  assert.equal(shown.includes("typeRaw:타입 ·"), false);
+  await select("디럭스 더블", 0);
+  const typeBtn = document.querySelector('[data-field="typeRaw"]');
+  if (!typeBtn) throw new Error("타입 없음");
+  await act(async () => {
+    typeBtn.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  });
+  await pick("checkIn", "2026-12-05");
+  await pick("salesTotal", "KRW 90,000");
+  shown = fieldText();
+  assert.match(shown, /typeRaw:타입 · 디럭스 더블/);
+  assert.match(shown, /checkIn:입실 · 2026-12-05/);
+  assert.match(shown, /salesTotal:판매금 · KRW 90000/);
+  bridge().failSave.current = true;
+  const save = [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === "계정에 저장");
+  if (!save) throw new Error("저장 없음");
+  await click(save);
+  assert.match(fieldText(), /guestName:이름 · 홍길동/);
+  bridge().failSave.current = false;
+  await click(save);
+  const stored = bridge().saves.current.at(-1) ?? "";
+  assert.equal(stored.includes("홍길동"), false);
+  assert.equal(stored.includes("디럭스"), false);
+  const close = document.querySelector('[aria-label="닫기"]');
+  if (!close) throw new Error("닫기 없음");
+  await click(close);
+  const reopen = [...document.querySelectorAll("button")].find((el) => el.textContent?.includes("양식 설정"));
+  if (!reopen) throw new Error("다시 열기 없음");
+  await click(reopen);
+  await paste(["예약자: 김테스트", "객실 종류: 온돌", "도착일: 2027-03-09", "판매가: KRW 70,000", "성인: 4"].join("\n"));
+  shown = fieldText();
+  assert.match(shown, /guestName:이름 · 김테스트/);
+  assert.match(shown, /typeRaw:타입 · 온돌/);
+  assert.match(shown, /checkIn:입실 · 2027-03-09/);
+  assert.match(shown, /salesTotal:판매금 · KRW 70000/);
+  assert.match(shown, /adults:인원 · 4/);
+  assert.equal(bridge().writes.current, 0);
+  await act(async () => {
+    root.unmount();
+  });
+});

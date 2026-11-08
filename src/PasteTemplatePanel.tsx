@@ -2,7 +2,7 @@
  * 스마트등록 양식 설정.
  * 붙여넣은 글에서 값을 고르면, 그 값 위의 칸 이름만 호텔 계정에 저장한다.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import type { Platform } from "../shared/ledger";
 import {
@@ -11,6 +11,7 @@ import {
   type PasteTemplateField,
   choiceFitsField,
   readFieldValue,
+  lineIndexForSelection,
   readPasteLines,
   ruleForPickedLine,
   templateProfile,
@@ -50,6 +51,25 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
   const [pickedLine, setPickedLine] = useState<Partial<Record<PasteTemplateField, number>>>({});
   const [err, setErr] = useState<string | null>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
+  const selectionRef = useRef<{ start: number; end: number } | null>(null);
+  const rememberSelection = () => {
+    const area = areaRef.current;
+    if (!area || area.selectionStart === area.selectionEnd) return;
+    selectionRef.current = { start: area.selectionStart, end: area.selectionEnd };
+  };
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const remember = () => rememberSelection();
+    area.addEventListener("select", remember);
+    area.addEventListener("keyup", remember);
+    area.addEventListener("mouseup", remember);
+    return () => {
+      area.removeEventListener("select", remember);
+      area.removeEventListener("keyup", remember);
+      area.removeEventListener("mouseup", remember);
+    };
+  }, [sample]);
   const draft = drafts[platformId] ?? { labels: {}, rules: {} };
 
   const pickPlatform = (id: string) => {
@@ -69,6 +89,7 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
   const platform = platforms.find((p) => p.id === platformId);
 
   const pickLine = (index: number, forField: PasteTemplateField = field) => {
+    selectionRef.current = null;
     const rule = ruleForPickedLine(lines, index, forField);
     if (!rule) {
       setField(forField);
@@ -90,11 +111,13 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
 
   const bindSelection = (forField: PasteTemplateField) => {
     const area = areaRef.current;
-    if (!area) return;
-    const sel = area.value.slice(area.selectionStart, area.selectionEnd).trim();
-    if (!sel) return;
-    const idx = lines.findIndex((line) => line.text === sel);
+    const live = area && area.selectionStart !== area.selectionEnd ? { start: area.selectionStart, end: area.selectionEnd } : null;
+    const sel = live ?? selectionRef.current;
+    selectionRef.current = null;
+    if (!sel || !area) return;
+    const idx = lineIndexForSelection(lines, sel.start, sel.end);
     if (idx >= 0) pickLine(idx, forField);
+    if (live) area.setSelectionRange(sel.end, sel.end);
   };
 
   const save = () => {
@@ -143,7 +166,13 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
             ref={areaRef}
             aria-label="양식에 쓸 예약 정보"
             placeholder="플랫폼 예약 화면을 복사해서 여기에 붙여넣으세요. 줄을 고르거나, 글자를 선택한 뒤 왼쪽 칸을 누르세요."
-            onChange={(e) => onSample(e.target.value)}
+            onChange={(e) => {
+              selectionRef.current = null;
+              onSample(e.target.value);
+            }}
+            onSelect={rememberSelection}
+            onKeyUp={rememberSelection}
+            onMouseUp={rememberSelection}
           />
         </label>
         <div className="paste-template-pick">
@@ -154,7 +183,18 @@ export default function PasteTemplatePanel({ platforms, sample, onSample, drafts
                 const id = templateFieldOf(col.id);
                 const shown = readFor(id);
                 return (
-                  <button key={col.id} type="button" data-field={id} className={field === id ? "btn sm dark" : "btn sm line"} onMouseDown={() => bindSelection(id)} onClick={() => setField(id)} title={col.id === "adults" ? "원문의 성인 수. 예약 인원으로 저장됩니다" : undefined}>
+                  <button
+                    key={col.id}
+                    type="button"
+                    data-field={id}
+                    className={field === id ? "btn sm dark" : "btn sm line"}
+                    onMouseDown={() => bindSelection(id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") bindSelection(id);
+                    }}
+                    onClick={() => setField(id)}
+                    title={col.id === "adults" ? "원문의 성인 수. 예약 인원으로 저장됩니다" : undefined}
+                  >
                     {col.label}
                     {shown ? <small> · {shown}</small> : draft.labels[id] ? <small> · {draft.labels[id]}{draft.rules[id]?.occurrence ? ` · ${draft.rules[id]!.occurrence + 1}번째` : ""}</small> : null}
                   </button>
