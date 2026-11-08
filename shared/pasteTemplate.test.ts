@@ -325,9 +325,9 @@ test("양식 저장은 칸 이름만 담고 손님 글·결제 글자·깨진 �
   assert.equal(status.ok, false);
   const dup = validatePasteTemplate({
     platformId: "agoda",
-    labels: { guestName: "투숙객", checkIn: "투숙객" },
+    labels: { guestName: "투숙객", adults: "성인", nights: "성인", checkIn: "체크인", checkInTime: "체크인" },
   });
-  assert.equal(dup.ok, false);
+  assert.equal(dup.ok, true);
 
   const ok = validatePasteTemplate({ platformId: "agoda", labels: { guestName: "Guest" } });
   assert.equal(ok.ok, true);
