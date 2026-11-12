@@ -975,24 +975,30 @@ function parseYanoljaCardBlock(
     break;
   }
 
+  /** Partner UI may insert 체크인/입실일/이용일 labels before stay dates — do not stop the date scan. */
+  const DATE_LABEL_ONLY = /^(?:체크인|체크아웃|입실일?|퇴실일?|이용일|check-?in|check-?out)$/i;
+  const DATE_LABEL_PREFIX = /^(?:체크인|체크아웃|입실일?|퇴실일?|이용일|check-?in|check-?out)\s*[:：]?\s*/i;
   const dates: string[] = [];
   while (i < lines.length && dates.length < 2) {
-    const l = lines[i]!;
-    // Stay dates only (YYYY.MM.DD…); skip if we somehow still see nights chrome
-    if (/^(?:\/\s*)?\d+\s*박$/.test(l) || /^(숙박|연박)$/.test(l)) {
-      const nm = l.match(/^(?:\/\s*)?(\d+)\s*박$/);
+    const rawLine = lines[i]!;
+    if (/^(?:\/\s*)?\d+\s*박$/.test(rawLine) || /^(숙박|연박)$/.test(rawLine)) {
+      const nm = rawLine.match(/^(?:\/\s*)?(\d+)\s*박$/);
       if (nm && !nights) nights = nm[1]!;
       i += 1;
       continue;
     }
-    if (/^\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}/.test(l)) {
+    if (DATE_LABEL_ONLY.test(rawLine)) {
+      i += 1;
+      continue;
+    }
+    const l = rawLine.replace(DATE_LABEL_PREFIX, "");
+    if (/^\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}/.test(l) || /^\d{4}\s*년/.test(l)) {
       dates.push(l);
       i += 1;
       continue;
     }
     break;
   }
-  // If nights missing but both stay dates present, hotel-night diff fills later in normalizeRow.
 
   // created datetime · 미리예약 (stay dates already taken above)
   while (i < lines.length) {
@@ -2493,6 +2499,12 @@ export const YANOLJA_DRAG_COPY_COLLAPSED_LINE_FIXTURE =
  */
 export const YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-unified-card-paste.txt",
+  import.meta.url,
+);
+
+/** Production-shaped card where 체크인/입실일/이용일 labels precede stay dates (main left checkIn empty). */
+export const YANOLJA_CARD_DATE_LABELS_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-card-date-labels.txt",
   import.meta.url,
 );
 
