@@ -846,17 +846,24 @@ export function matchPlatformByLabel(
 /**
  * True for 야놀자 파트너 「통합내역」 drag-copy: vertical card stack
  * (one field per line, blocks split by long digit reservation ids) — not TSV.
+ *
+ * Partner UI chrome (필터·특·직접관리 체크박스) can copy as one tab-heavy row.
+ * That single row must not veto the card path — otherwise Agoda/shared/TSV
+ * fallbacks mis-detect the paste (#247–#250 regression class).
+ * Real multi-column tables still win when several rows are tab-separated.
  */
 export function looksLikeYanoljaCardPaste(text: string): boolean {
   const lines = text
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .split("\n")
-    .map(normalizePasteLine);
+    .map(normalizePasteLine)
+    .filter((l) => l.length > 0);
   const ids = lines.filter((l) => YANOLJA_CARD_RES_ID.test(l));
   if (ids.length < 1) return false;
-  // Real TSV/multi-col table wins over card heuristics
-  if (lines.some((l) => l.split("\t").length >= 4)) return false;
+  const tabby = lines.filter((l) => l.split("\t").length >= 4);
+  // Align with looksVerticalCellPaste: one chrome row is OK; a real TSV has many.
+  if (tabby.length >= 3 || (tabby.length >= 2 && tabby.length > lines.length * 0.25)) return false;
   const blob = lines.join("\n");
   const hasNights = /\/\s*\d+\s*박/.test(blob);
   const hasSale = /판매가/.test(blob);

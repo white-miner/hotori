@@ -702,11 +702,27 @@ function hasStrongTable(text: string): boolean {
 }
 
 /**
+ * 야놀자 통합내역 세로 카드 모양. 아고다·공용 칸이름 판독이 가로채지 않게 쓴다.
+ * (smartRegister.looksLikeYanoljaCardPaste와 같은 신호 — 순환 import 없이 복제)
+ */
+function yanoljaCardShape(text: string): boolean {
+  const lines = splitLines(text);
+  if (!lines.some((l) => /^\d{10,}$/.test(l))) return false;
+  const blob = lines.join("\n");
+  const hasNights = /\/\s*\d+\s*박/.test(blob);
+  const hasSale = /판매가/.test(blob);
+  const hasStatus = /예약완료|예약취소|미리예약/.test(blob);
+  const hasTypeId = /객실\s*타입\s*ID/.test(blob);
+  return (hasNights || hasSale) && (hasStatus || hasTypeId);
+}
+
+/**
  * 아고다 파트너 상세의 고유 글자. 저장된 양식이 다른 플랫폼 표를 가로채지 못하게
  * 기본 글자만 보고, 사용자가 적은 라벨은 여기 쓰지 않는다.
+ * 야놀자 세로 카드는 절대 아고다로 보지 않는다.
  */
 export function agodaPartnerSignature(text: string): boolean {
-  if (!text.trim() || hasStrongTable(text)) return false;
+  if (!text.trim() || hasStrongTable(text) || yanoljaCardShape(text)) return false;
   const lines = splitLines(text);
   const hasIcon = lines.some((l) => isIconLine(l));
   const has = (field: PasteTemplateField) => (AGODA_LABEL_ALIASES[field] ?? []).some((label) => lines.some((l) => matchLabel(l, label)));
@@ -1211,7 +1227,8 @@ function readShared(raw: string, saved?: readonly PasteTemplate[] | null): Label
  * 예약번호나 입실일이 있고 핵심 칸이 셋 이상일 때만 예약으로 본다. 표·야놀자 카드·아고다 판독 뒤에만 쓴다.
  */
 export function parseSharedLabeledTable(raw: string, saved?: readonly PasteTemplate[] | null): LabeledTable | null {
-  if (!canUseSavedTemplate(raw)) return null;
+  // 야놀자 카드·아고다 상세는 전용 판독이 먼저다. 공용 칸이름이 섞지 않는다.
+  if (!canUseSavedTemplate(raw) || yanoljaCardShape(raw) || agodaPartnerSignature(raw)) return null;
   const rows = readShared(raw, saved).filter((r) => {
     if (!r.reservationId && !r.checkIn) return false;
     const core = [r.reservationId, r.guestName, r.checkIn, r.checkOut, r.typeRaw, r.nights, r.salesTotal].filter((v) => v != null && v !== "");
@@ -1668,7 +1685,7 @@ export function parseBestSavedTemplate(
   text: string,
   saved?: readonly PasteTemplate[] | null,
 ): { table: LabeledTable; platformId: string } | null {
-  if (!canUseSavedTemplate(text) || agodaPartnerSignature(text)) return null;
+  if (!canUseSavedTemplate(text) || agodaPartnerSignature(text) || yanoljaCardShape(text)) return null;
   let best: { template: PasteTemplate; score: number } | null = null;
   let second = 0;
   for (const template of saved ?? []) {
