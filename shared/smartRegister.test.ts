@@ -195,6 +195,26 @@ test("yanolja single-space / vertical / collapsed → preview Path A", () => {
   }
 });
 
+test("parseYanoljaCardPaste: partner UI tab chrome must not veto 야놀자 card (#247–#250)", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH), "utf8");
+  // 파트너센터 필터·특·직접관리 체크박스가 탭 줄로 붙어도 세로 카드로 본다.
+  const withChrome = `필터\t특\t직접관리\t예약완료\n${raw}`;
+  assert.equal(looksLikeYanoljaCardPaste(withChrome), true);
+  const card = parseYanoljaCardPaste(withChrome);
+  assert.ok(card);
+  assert.equal(card!.rows.length, 12);
+  const viaPaste = parsePasteTable(withChrome);
+  assert.ok(viaPaste);
+  assert.equal(detectProfile(viaPaste!.headers, withChrome).profileId, "yanolja");
+  const preview = buildPreviewRows(viaPaste!, profileById("yanolja")!, settings, [], "p-ya");
+  assert.equal(preview[0]!.reservationId, "2610151829300184");
+  assert.equal(preview[0]!.guestName, "김테스트");
+  assert.match(preview[0]!.typeRaw, /Family Room/);
+  assert.equal(preview[0]!.checkIn, "2026-10-26");
+  assert.equal(preview[0]!.nights, 2);
+  assert.equal(preview[0]!.amount, 200000);
+});
+
 test("parseYanoljaCardPaste: anonymized unified card SoT fixture", () => {
   const raw = readFileSync(fileURLToPath(YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH), "utf8");
   assert.equal(looksLikeYanoljaCardPaste(raw), true);
