@@ -20,6 +20,7 @@ import {
   YANOLJA_NESTED_TIDESQUARE_CARD_FIXTURE_PATH,
   YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
+  YANOLJA_CARD_DATE_LABELS_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
   detectProfile,
@@ -50,6 +51,7 @@ import {
   typeRawBilingualTail,
   typeRawForAliasMatch,
   parseAmount,
+  parseForcedHotelPlatform,
   parseLooseDate,
   parseNightsCell,
   parsePasteTable,
@@ -193,6 +195,35 @@ test("yanolja single-space / vertical / collapsed → preview Path A", () => {
     assert.equal(preview[1]!.rowStatus, "cancel");
     assert.equal(preview[1]!.matchBookingId, null);
   }
+});
+
+test("chip=야놀자: 체크인/입실일/이용일 labels must fill checkIn+nights (production date miss)", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_CARD_DATE_LABELS_FIXTURE_PATH), "utf8");
+  // Exact date lines the parser must read (label line or same-line label+date):
+  //   체크인 → 2026.11.01(토) 15:00
+  //   입실일 → 2026.11.05(수) 16:00
+  //   이용일 2026.11.10
+  assert.match(raw, /^체크인$/m);
+  assert.match(raw, /^2026\.11\.01\(토\) 15:00$/m);
+  assert.match(raw, /^입실일$/m);
+  assert.match(raw, /^2026\.11\.05\(수\) 16:00$/m);
+  assert.match(raw, /^이용일 2026\.11\.10$/m);
+
+  const hit = parseForcedHotelPlatform(raw, "p-ya", settings);
+  assert.ok(hit);
+  assert.equal(hit!.kind, "yanolja-card");
+  assert.equal(hit!.platformId, "p-ya");
+  const rows = buildPreviewRows(hit!.table, hit!.profile, settings, [], "p-ya");
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0]!.checkIn, "2026-11-01");
+  assert.equal(rows[0]!.nights, 2);
+  assert.equal(rows[0]!.reservationId, "2610999111100001");
+  assert.equal(rows[0]!.amount, 120000);
+  assert.equal(rows[1]!.checkIn, "2026-11-05");
+  assert.equal(rows[1]!.nights, 1);
+  assert.equal(rows[2]!.checkIn, "2026-11-10");
+  assert.equal(rows[2]!.nights, 3);
+  assert.equal(rows.every((r) => !!r.checkIn && (r.nights ?? 0) >= 1), true);
 });
 
 test("parseYanoljaCardPaste: partner UI tab chrome must not veto 야놀자 card (#247–#250)", () => {
