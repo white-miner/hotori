@@ -975,7 +975,11 @@ function parseYanoljaCardBlock(
     break;
   }
 
-  /** Partner UI may insert 체크인/입실일/이용일 labels before stay dates — do not stop the date scan. */
+  /**
+   * Partner UI may insert labels (체크인/입실일/이용일) or badges (미리예약·특·직접관리)
+   * before stay dates — keep scanning until check-in + checkout dates are found.
+   * Block lines are already one reservation; do not stop on non-date chrome.
+   */
   const DATE_LABEL_ONLY = /^(?:체크인|체크아웃|입실일?|퇴실일?|이용일|check-?in|check-?out)$/i;
   const DATE_LABEL_PREFIX = /^(?:체크인|체크아웃|입실일?|퇴실일?|이용일|check-?in|check-?out)\s*[:：]?\s*/i;
   const dates: string[] = [];
@@ -997,7 +1001,8 @@ function parseYanoljaCardBlock(
       i += 1;
       continue;
     }
-    break;
+    // 미리예약 and similar non-date badges — skip and keep looking for stay dates
+    i += 1;
   }
 
   // created datetime · 미리예약 (stay dates already taken above)
@@ -2505,6 +2510,12 @@ export const YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH = new URL(
 /** Production-shaped card where 체크인/입실일/이용일 labels precede stay dates (main left checkIn empty). */
 export const YANOLJA_CARD_DATE_LABELS_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-card-date-labels.txt",
+  import.meta.url,
+);
+
+/** Production-shaped card where 미리예약 (and similar badges) sit BEFORE stay dates — main left checkIn empty. */
+export const YANOLJA_CARD_MIRIYAEAK_BEFORE_DATES_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-card-miriyaeyak-before-dates.txt",
   import.meta.url,
 );
 

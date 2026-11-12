@@ -21,6 +21,7 @@ import {
   YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH,
   YANOLJA_UNIFIED_CARD_PASTE_FIXTURE_PATH,
   YANOLJA_CARD_DATE_LABELS_FIXTURE_PATH,
+  YANOLJA_CARD_MIRIYAEAK_BEFORE_DATES_FIXTURE_PATH,
   buildPreviewRows,
   cancelDraftFromMatch,
   detectProfile,
@@ -223,6 +224,45 @@ test("chip=야놀자: 체크인/입실일/이용일 labels must fill checkIn+nig
   assert.equal(rows[1]!.nights, 1);
   assert.equal(rows[2]!.checkIn, "2026-11-10");
   assert.equal(rows[2]!.nights, 3);
+  assert.equal(rows.every((r) => !!r.checkIn && (r.nights ?? 0) >= 1), true);
+});
+
+test("chip=야놀자: 미리예약 before stay dates must fill checkIn+nights (production date miss)", () => {
+  const raw = readFileSync(fileURLToPath(YANOLJA_CARD_MIRIYAEAK_BEFORE_DATES_FIXTURE_PATH), "utf8");
+  // Badge(s) sit between / N박 and stay dates — must not end the date scan:
+  //   / 2박 → 연박 → 미리예약 → 2026.11.01 …
+  //   / 1박 → 미리예약 → 특 → 직접관리 → 2026.11.05 …
+  assert.match(raw, /^\/ 2박$/m);
+  assert.match(raw, /^미리예약$/m);
+  assert.match(raw, /^2026\.11\.01\(토\) 15:00$/m);
+  assert.match(raw, /^특$/m);
+  assert.match(raw, /^직접관리$/m);
+  assert.match(raw, /^2026\.11\.05\(수\) 16:00$/m);
+  const beforeDates = raw.indexOf("미리예약");
+  const firstStay = raw.indexOf("2026.11.01(토) 15:00");
+  assert.ok(beforeDates >= 0 && firstStay > beforeDates, "미리예약 must precede stay dates in fixture");
+
+  const hit = parseForcedHotelPlatform(raw, "p-ya", settings);
+  assert.ok(hit);
+  assert.equal(hit!.kind, "yanolja-card");
+  assert.equal(hit!.platformId, "p-ya");
+  assert.equal(hit!.table.rows[0]![4], "2026.11.01(토) 15:00");
+  assert.equal(hit!.table.rows[0]![5], "2026.11.03(월) 11:00");
+  assert.equal(hit!.table.rows[0]![6], "2");
+  assert.equal(hit!.table.rows[1]![4], "2026.11.05(수) 16:00");
+  assert.equal(hit!.table.rows[1]![5], "2026.11.06(목) 11:00");
+  assert.equal(hit!.table.rows[1]![6], "1");
+
+  const rows = buildPreviewRows(hit!.table, hit!.profile, settings, [], "p-ya");
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]!.reservationId, "2610999222200001");
+  assert.equal(rows[0]!.checkIn, "2026-11-01");
+  assert.equal(rows[0]!.nights, 2);
+  assert.equal(rows[0]!.amount, 120000);
+  assert.equal(rows[1]!.reservationId, "2610999222200002");
+  assert.equal(rows[1]!.checkIn, "2026-11-05");
+  assert.equal(rows[1]!.nights, 1);
+  assert.equal(rows[1]!.amount, 80000);
   assert.equal(rows.every((r) => !!r.checkIn && (r.nights ?? 0) >= 1), true);
 });
 
