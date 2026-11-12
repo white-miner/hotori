@@ -259,7 +259,7 @@ test("처음 보는 플랫폼: 미리보기에서 원문 값을 한 번 고르�
     assert.equal(value("입실"), "2026-11-07", "공용 칸 이름으로 입실");
     assert.equal(value("판매금"), "210000");
     assert.equal(value("이름"), "");
-    assert.ok(document.body.textContent?.includes("어느 플랫폼 예약인가요?"));
+    assert.ok([...document.querySelectorAll(".smart-reg-chip-block button")].some((b) => b.textContent?.includes("동네예약")));
     await click(chip("동네예약"));
 
     await previewPick("guestName", "Mina Park");

@@ -37,7 +37,6 @@ import {
 import { saveFailMessage } from "../shared/errors";
 import { validateGuestPhone } from "../shared/payment";
 import {
-  PLATFORM_PROFILES,
   type PlatformProfileId,
   type PreviewRow,
   buildPreviewRows,
@@ -47,10 +46,12 @@ import {
   isFixBlockingRow,
   isFixLabelRow,
   matchPlatformId,
+  matchProfileForHotelPlatform,
   smartClipboardText,
   nightRatesDiff,
   previewNightDates,
   suggestedNightAmounts,
+  parseForcedHotelPlatform,
   parsePasteTable,
   parseYanoljaCardPaste,
   pathACancelDraftFromPreview,
@@ -71,7 +72,6 @@ import {
   mentionedPlatformId,
   platformByLearnedLabels,
   parseBestSavedTemplate,
-  parseManualLabeledTable,
   parseReservationToken,
   parseSalesTotal,
   parseSharedLabeledTable,
@@ -130,7 +130,6 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
 
   const [paste, setPaste] = useState("");
   const [profileId, setProfileId] = useState<PlatformProfileId | null>(null);
-  const [profileForced, setProfileForced] = useState(false);
   const [detectWeak, setDetectWeak] = useState(false);
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [parseErr, setParseErr] = useState<string | null>(null);
@@ -151,6 +150,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const [learnedOpen, setLearnedOpen] = useState(false);
   /** 공용 칸 이름으로 읽었거나 저장 양식으로 읽은 글. 이때는 호텔 플랫폼을 직접 고른다. */
   const [readKind, setReadKind] = useState<"table" | "saved" | "shared" | null>(null);
+  /** Settings platforms[] chip — user pick wins over auto-detect. */
+  const [selectedPlatformId, setSelectedPlatformId] = useState<string | null>(null);
   const [ownPlatformId, setOwnPlatformId] = useState("");
   /** 미리보기에서 고른 칸 이름을 저장해도 직원이 고친 미리보기를 다시 읽지 않는다. */
   const quietLearn = useRef(false);
@@ -201,23 +202,43 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   };
 
   const rebuild = useCallback(
-    (text: string, forcedId: PlatformProfileId | null, forced: boolean, pickPlat?: string) => {
+    (text: string, forcedHotelPlatId: string | null) => {
       setSummary(null);
+      const known = (id: string | null | undefined) => (id && s.platforms.some((p) => p.id === id) ? id : null);
+      const forcedPlat = known(forcedHotelPlatId);
+
+      // User chip wins: only that platform's isolated reader — no cross-platform cascade.
+      if (forcedPlat) {
+        const hit = parseForcedHotelPlatform(text, forcedPlat, s, { channelLabels, templates });
+        setSelectedPlatformId(forcedPlat);
+        setOwnPlatformId(forcedPlat);
+        setDetectWeak(false);
+        if (hit) {
+          setReadKind(hit.kind === "saved" ? "saved" : "table");
+          setProfileId(hit.profile.id);
+          setRows(ownRows(buildPreviewRows(hit.table, hit.profile, s, data.bookings, forcedPlat), forcedPlat));
+          setParseErr(null);
+          return;
+        }
+        const seed = matchProfileForHotelPlatform(s.platforms.find((p) => p.id === forcedPlat)!);
+        setReadKind(null);
+        setProfileId(seed?.id ?? null);
+        setRows([]);
+        setParseErr(
+          text.trim()
+            ? "이 플랫폼 전용으로 읽지 못했어요. 아래에서 칸을 골라 주세요."
+            : null,
+        );
+        return;
+      }
+
       const card = parseYanoljaCardPaste(text, { channelLabels });
       const savedHit = !card && canUseSavedTemplate(text) ? parseBestSavedTemplate(text, templates) : null;
-      const table =
-        card ??
-        savedHit?.table ??
-        parsePasteTable(text, { channelLabels, templates }) ??
-        (forced && forcedId ? parseManualLabeledTable(text, forcedId, templates) : null);
+      const table = card ?? savedHit?.table ?? parsePasteTable(text, { channelLabels, templates });
       const shared = !table ? parseSharedLabeledTable(text, templates) : null;
-      const known = (id: string | null | undefined) => (id && s.platforms.some((p) => p.id === id) ? id : null);
       if (!table && shared) {
         const platId =
-          known(pickPlat) ??
-          mentionedPlatformId(text, s.platforms) ??
-          known(platformByLearnedLabels(text, templates)) ??
-          (pickPlat === undefined ? known(ownPlatformId) : null);
+          mentionedPlatformId(text, s.platforms) ?? known(platformByLearnedLabels(text, templates));
         setReadKind("shared");
         setDetectWeak(false);
         setProfileId(null);
@@ -231,28 +252,25 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setRows([]);
         setParseErr(
           text.trim()
-            ? "이 글을 아직 몰라요. 아래에서 플랫폼과 칸을 골라 주세요."
+            ? "이 글을 아직 몰라요. 위에서 플랫폼을 고르거나 아래에서 칸을 골라 주세요."
             : null,
         );
-        if (!forced) {
-          setProfileId(null);
-          setDetectWeak(false);
-        }
+        setProfileId(null);
+        setDetectWeak(false);
         return;
       }
       setReadKind(savedHit ? "saved" : "table");
       const det = detectProfile(table.headers, text);
-      let pid = forced && forcedId ? forcedId : det.confident ? det.profileId : forcedId;
+      const pid = det.confident ? det.profileId : null;
       const savedTemplate = savedHit ? templates.find((t) => t.platformId === savedHit.platformId) : undefined;
       const savedProfile = savedTemplate ? templateProfile(savedTemplate) : null;
       const weak = savedHit ? false : !det.confident;
       setDetectWeak(weak);
       if (savedProfile) setProfileId(savedProfile);
       else if (savedHit) setProfileId(null);
-      else if (!forced) setProfileId(pid);
-      else setProfileId(forcedId);
+      else setProfileId(pid);
 
-      const useId = savedHit ? (savedProfile ?? "yanolja") : (forced ? forcedId : pid);
+      const useId = savedHit ? (savedProfile ?? "yanolja") : pid;
       if (!useId) {
         setRows([]);
         setParseErr(weak ? "플랫폼을 골라 주세요. (형식 자동인식 약함)" : "프로필을 골라 주세요.");
@@ -264,14 +282,14 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
         setParseErr("알 수 없는 프로필이에요.");
         return;
       }
-      const platId = savedHit ? (known(pickPlat) ?? savedHit.platformId) : matchPlatformId(p, s);
-      if (savedHit) setOwnPlatformId(platId ?? "");
+      const platId = savedHit ? known(savedHit.platformId) : matchPlatformId(p, s);
+      if (platId) setOwnPlatformId(platId);
       const preview = buildPreviewRows(table, p, s, data.bookings, platId);
       setRows(savedHit ? ownRows(preview, platId) : preview);
       setParseErr(null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [s, data.bookings, channelLabels, templates, ownPlatformId],
+    [s, data.bookings, channelLabels, templates],
   );
 
   // 직원 id가 늦게 도착하거나 양식을 저장·되돌린 뒤, 이미 붙여넣은 글을 그 양식으로 다시 읽는다.
@@ -281,14 +299,18 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       return;
     }
     if (!paste.trim()) return;
-    rebuild(paste, profileForced ? profileId : null, profileForced);
+    rebuild(paste, selectedPlatformId);
   }, [templates]); // paste 입력은 onPasteChange가 바로 읽는다.
 
   const onPasteChange = (v: string) => {
     setPaste(v);
-    setProfileForced(false);
-    setOwnPlatformId("");
-    rebuild(v, null, false, "");
+    rebuild(v, selectedPlatformId);
+  };
+
+  const onPickHotelPlatform = (platId: string) => {
+    setSelectedPlatformId(platId);
+    setOwnPlatformId(platId);
+    rebuild(paste, platId);
   };
 
   const writeTemplates = async (next: PasteTemplate[]) => {
@@ -306,7 +328,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     setRows([]);
     setParseErr(null);
     setProfileId(null);
-    setProfileForced(false);
+    setSelectedPlatformId(null);
+    setOwnPlatformId("");
     setDetectWeak(false);
     setReadKind(null);
     if (!opts?.keepSummary) setSummary(null);
@@ -323,11 +346,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
     onPasteChange(selected);
   };
 
-  const onPickProfile = (id: PlatformProfileId) => {
-    setProfileForced(true);
-    setProfileId(id);
-    rebuild(paste, id, true);
-  };
+  const chipPlatformId = selectedPlatformId ?? ownPlatformId;
 
   const patchRow = (key: string, patch: Partial<PreviewRow>) => {
     setRows((list) =>
@@ -836,7 +855,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
       clearWorkspace({ keepSummary: true });
       setSummary(result);
     } else {
-      if (paste) rebuild(paste, profileId, profileForced);
+      if (paste) rebuild(paste, selectedPlatformId);
       setSummary(result);
     }
     summaryTimer.current = setTimeout(() => {
@@ -943,6 +962,42 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
             ) : null}
 
             <div className="smart-reg-paste-body" hidden={!pasteOpen}>
+              <div className="smart-reg-chip-block">
+                <div className="sub">
+                  플랫폼
+                  {selectedPlatformId
+                    ? " (선택함 — 이 플랫폼만 읽어요)"
+                    : detectWeak
+                      ? " (자동인식 약함 — 골라 주세요)"
+                      : ""}
+                </div>
+                {s.platforms.length ? (
+                  <ChipGroup scroll>
+                    {s.platforms.map((p) => {
+                      const on = chipPlatformId === p.id;
+                      return (
+                        <Chip
+                          key={p.id}
+                          sm
+                          active={on}
+                          tone={on ? "info" : undefined}
+                          onClick={() => onPickHotelPlatform(p.id)}
+                          disabled={busy || readOnly}
+                        >
+                          {p.name}
+                        </Chip>
+                      );
+                    })}
+                  </ChipGroup>
+                ) : (
+                  <div className="err">
+                    설정에 등록된 플랫폼이 없어요.{" "}
+                    <a className="smart-reg-alias-link" href="#/settings/plats">
+                      설정에서 플랫폼 추가
+                    </a>
+                  </div>
+                )}
+              </div>
               <textarea
                 ref={taRef}
                 id="smart-reg-ta"
@@ -956,43 +1011,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                 rows={8}
                 aria-label="붙여넣기"
               />
-              {(readKind === "shared" || readKind === "saved") && paste.trim() ? (
-                <div className="smart-reg-chip-block">
-                  <div className="sub">어느 플랫폼 예약인가요?</div>
-                  <ChipGroup scroll>
-                    {s.platforms.map((p) => (
-                      <Chip
-                        key={p.id}
-                        sm
-                        active={ownPlatformId === p.id}
-                        tone={ownPlatformId === p.id ? "info" : undefined}
-                        onClick={() => rebuild(paste, null, false, p.id)}
-                        disabled={busy}
-                      >
-                        {p.name}
-                      </Chip>
-                    ))}
-                  </ChipGroup>
-                </div>
-              ) : !rows.length && paste.trim() && !readOnly ? (
+              {!rows.length && paste.trim() && !readOnly ? (
                 <div className="smart-reg-teach" aria-label="칸 고르기">
-                  <div className="sub">어느 플랫폼 예약인가요?</div>
-                  <ChipGroup scroll>
-                    {s.platforms.map((p) => (
-                      <Chip
-                        key={p.id}
-                        sm
-                        active={ownPlatformId === p.id}
-                        tone={ownPlatformId === p.id ? "info" : undefined}
-                        onClick={() => setOwnPlatformId(p.id)}
-                        disabled={busy}
-                      >
-                        {p.name}
-                      </Chip>
-                    ))}
-                  </ChipGroup>
                   <div className="sub">
-                    원문에서 예약번호·입실일 등을 골라 주세요. 칸 이름만 기억하고, 충분히 고르면 미리보기가 나와요.
+                    {chipPlatformId
+                      ? "원문에서 예약번호·입실일 등을 골라 주세요. 칸 이름만 기억하고, 충분히 고르면 미리보기가 나와요."
+                      : "위에서 플랫폼을 고른 뒤, 원문에서 칸을 골라 주세요."}
                   </div>
                   <div className="smart-reg-teach-fields">
                     {TEACH_FIELDS.map((field) => {
@@ -1015,40 +1039,12 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                     })}
                   </div>
                 </div>
-              ) : (detectWeak || !profileId) && paste.trim() ? (
-                <div className="smart-reg-chip-block">
-                  <div className="sub">플랫폼 {detectWeak ? "(자동인식 약함 — 골라 주세요)" : ""}</div>
-                  <ChipGroup scroll>
-                    {PLATFORM_PROFILES.map((p) => (
-                      <Chip
-                        key={p.id}
-                        sm
-                        active={profileId === p.id}
-                        tone={p.active ? "info" : undefined}
-                        onClick={() => onPickProfile(p.id)}
-                        disabled={busy}
-                      >
-                        {p.label}
-                        {!p.active ? " · 미검증" : ""}
-                      </Chip>
-                    ))}
-                  </ChipGroup>
-                </div>
-              ) : profile ? (
-                <div className="smart-reg-chip-block">
-                  <ChipGroup>
-                    <Chip sm active tone="info" onClick={() => setDetectWeak(true)}>
-                      {profile.label}
-                      {platformId ? "" : " · 설정 미연결"}
-                    </Chip>
-                    <Chip sm onClick={() => setDetectWeak(true)} disabled={busy}>
-                      변경
-                    </Chip>
-                  </ChipGroup>
-                </div>
               ) : null}
               {parseErr ? <div className="err">{parseErr}</div> : null}
-              {!platformId && profile && !rows.some((r) => r.platformId) ? (
+              {selectedPlatformId && !rows.some((r) => r.platformId) && rows.length === 0 && paste.trim() ? null : !platformId &&
+                profile &&
+                !rows.some((r) => r.platformId) &&
+                !selectedPlatformId ? (
                 <div className="err">설정 → 플랫폼에 「{profile.label}」을 추가해 주세요.</div>
               ) : null}
               {rows.some((r) => r.nestedChannelUnmatched) ? (

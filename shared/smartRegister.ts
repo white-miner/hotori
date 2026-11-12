@@ -13,7 +13,15 @@ import {
   usableTypes,
 } from "./ledger";
 import { type StayNightRates, occupiedNightDates } from "./nightrates";
-import { agodaPartnerSignature, parseAgodaLabeledTable, parseAdults, parseClock, type PasteTemplate } from "./pasteTemplate";
+import {
+  agodaPartnerSignature,
+  parseAgodaLabeledTable,
+  parseManualLabeledTable,
+  parseSharedLabeledTable,
+  parseAdults,
+  parseClock,
+  type PasteTemplate,
+} from "./pasteTemplate";
 import { resolveNightRate } from "./salesCalendar";
 
 /** Canonical paste fields (shared across platforms). */
@@ -945,7 +953,7 @@ function parseYanoljaCardBlock(
       i += 1;
       break;
     }
-    if (/^숙박$/.test(l) || /^\/\s*\d+\s*박/.test(l) || /^\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(l)) break;
+    if (/^숙박$/.test(l) || /^(?:\/\s*)?\d+\s*박$/.test(l) || /^\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}/.test(l)) break;
     if (!typeRaw) typeRaw = l;
     i += 1;
   }
@@ -953,7 +961,8 @@ function parseYanoljaCardBlock(
   let nights = "";
   while (i < lines.length) {
     const l = lines[i]!;
-    const nm = l.match(/\/\s*(\d+)\s*박/);
+    // `/ 2박` (SoT) or bare `2박` / `2 박` on its own line
+    const nm = l.match(/^(?:\/\s*)?(\d+)\s*박$/);
     if (nm) {
       nights = nm[1]!;
       i += 1;
@@ -969,13 +978,21 @@ function parseYanoljaCardBlock(
   const dates: string[] = [];
   while (i < lines.length && dates.length < 2) {
     const l = lines[i]!;
-    if (/^\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(l)) {
+    // Stay dates only (YYYY.MM.DD…); skip if we somehow still see nights chrome
+    if (/^(?:\/\s*)?\d+\s*박$/.test(l) || /^(숙박|연박)$/.test(l)) {
+      const nm = l.match(/^(?:\/\s*)?(\d+)\s*박$/);
+      if (nm && !nights) nights = nm[1]!;
+      i += 1;
+      continue;
+    }
+    if (/^\d{4}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{1,2}/.test(l)) {
       dates.push(l);
       i += 1;
       continue;
     }
     break;
   }
+  // If nights missing but both stay dates present, hotel-night diff fills later in normalizeRow.
 
   // created datetime · 미리예약 (stay dates already taken above)
   while (i < lines.length) {
@@ -1163,35 +1180,25 @@ export function yanoljaGuestSlots(
 }
 
 /**
- * Split clipboard text into header + body rows.
- * Intake pipeline: prefer HTML table → **야놀자 card stack** → normalize lines →
- * vertical/collapsed reassembly → tab/pipe/comma/2+ spaces → single-space
- * fallback when column count matches header aliases.
+ * Generic TSV/CSV/space table only — no 야놀자 card, no 아고다 labeled reader.
+ * Used by auto cascade after dedicated readers, and by forced chip paths that must not cross-read.
  */
-export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPasteTable | null {
+export function parseGenericPasteTable(raw: string, _opts?: ParsePasteOpts): ParsedPasteTable | null {
   let text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!text) return null;
 
-  // HTML table pasted into textarea (or fed from onPaste) → TSV
   if (/<table[\s>]/i.test(text)) {
     const fromHtml = htmlTableToPlain(text);
     if (fromHtml) text = fromHtml;
   }
 
-  // 야놀자 통합내역 drag-copy SoT: vertical card stack (not TSV)
-  const card = parseYanoljaCardPaste(text, opts);
-  if (card) return card;
-
-  // 아고다 파트너 상세: 칸 이름 아래 값. 표·야놀자 카드보다 뒤에서만 본다.
-  const labeled = parseAgodaLabeledTable(text, opts?.templates);
-  if (labeled) return labeled;
-
   const aliasNorms = allHeaderAliasNorms();
-  let rawLines = text.split("\n").map((l) => l.trimEnd());
-  let lines = rawLines.filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
+  let lines = text
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim().length > 0 && !isJunkPasteLine(l));
   if (!lines.length) return null;
 
-  // One giant line (newlines collapsed) → tokenize + reassemble
   if (lines.length === 1) {
     const rebuilt = reassembleCollapsedToTsv(lines[0]!, aliasNorms);
     if (rebuilt) lines = rebuilt;
@@ -1206,16 +1213,161 @@ export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPaste
   const primary = finishTable(lines, delimiter, aliasNorms, false);
   if (primary) return primary;
 
-  // Fallback: single-space columns when 2+ space / other delims yield no table
   const single = trySingleSpaceParse(lines, aliasNorms);
   if (single) return single;
 
-  // Last try: force single-space split through finishTable
   if (delimiter === "space") {
     const forced = finishTable(lines, "space", aliasNorms, true);
     if (forced) return forced;
   }
   return null;
+}
+
+/**
+ * Split clipboard text into header + body rows.
+ * Intake pipeline: prefer HTML table → **야놀자 card stack** → normalize lines →
+ * vertical/collapsed reassembly → tab/pipe/comma/2+ spaces → single-space
+ * fallback when column count matches header aliases.
+ */
+export function parsePasteTable(raw: string, opts?: ParsePasteOpts): ParsedPasteTable | null {
+  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text) return null;
+
+  // 야놀자 통합내역 drag-copy SoT: vertical card stack (not TSV)
+  const card = parseYanoljaCardPaste(text, opts);
+  if (card) return card;
+
+  // 아고다 파트너 상세: 칸 이름 아래 값. 표·야놀자 카드보다 뒤에서만 본다.
+  const labeled = parseAgodaLabeledTable(text, opts?.templates);
+  if (labeled) return labeled;
+
+  return parseGenericPasteTable(text, opts);
+}
+
+/** Settings platforms[] row → seed profile (야놀자/여기어때/아고다/…). */
+export function matchProfileForHotelPlatform(plat: {
+  id?: string;
+  name?: string | null;
+  abbr?: string | null;
+}): PlatformProfile | undefined {
+  const name = normHeader(plat.name ?? "");
+  const abbr = normHeader(plat.abbr ?? "");
+  for (const p of PLATFORM_PROFILES) {
+    for (const kw of p.hotoriPlatformMatch) {
+      const n = normHeader(kw);
+      if (!n) continue;
+      // Single-char seeds (야/여/아/네) match abbr only — avoid 「동네예약」⊃「네」→ naver.
+      if (n.length <= 1) {
+        if (abbr && abbr === n) return p;
+        continue;
+      }
+      if (name && (name === n || name.includes(n) || n.includes(name))) return p;
+      if (abbr && abbr === n) return p;
+    }
+  }
+  return undefined;
+}
+
+export type ForcedPlatformParseKind = "yanolja-card" | "agoda" | "table" | "saved";
+
+export interface ForcedPlatformParse {
+  table: ParsedPasteTable;
+  profile: PlatformProfile;
+  platformId: string;
+  kind: ForcedPlatformParseKind;
+}
+
+/** True when generic TSV headers map enough fields for this profile (not random space-split garbage). */
+function tableFitsProfile(table: ParsedPasteTable, profile: PlatformProfile, bodyText: string): boolean {
+  const det = detectProfile(table.headers, bodyText, { allowInactive: true });
+  if (det.confident && det.profileId !== profile.id) return false;
+  if (det.confident && det.profileId === profile.id) return true;
+  const col = mapColumns(table.headers, profile);
+  const hits = [col.reservationId, col.guestName, col.checkIn, col.nights, col.amount, col.typeRaw].filter((x) => x != null).length;
+  return hits >= 3;
+}
+
+/**
+ * Chip-forced paste: only that hotel platform's reader.
+ * No shared/Agoda/other-platform fallback when the user picked a chip.
+ */
+export function parseForcedHotelPlatform(
+  raw: string,
+  hotelPlatformId: string,
+  s: HotelSettings,
+  opts?: ParsePasteOpts,
+): ForcedPlatformParse | null {
+  const text = raw.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!text || !hotelPlatformId) return null;
+  const plat = (s.platforms ?? []).find((p) => p.id === hotelPlatformId);
+  if (!plat) return null;
+
+  const profile = matchProfileForHotelPlatform(plat);
+  const templates = opts?.templates;
+
+  if (profile?.id === "yanolja") {
+    const card = parseYanoljaCardPaste(text, opts);
+    if (card) return { table: card, profile, platformId: hotelPlatformId, kind: "yanolja-card" };
+    // Never Agoda partner page / foreign dedicated shapes under 야놀자 chip.
+    if (agodaPartnerSignature(text)) return null;
+    const table = parseGenericPasteTable(text, opts);
+    if (table && tableFitsProfile(table, profile, text)) {
+      return { table, profile, platformId: hotelPlatformId, kind: "table" };
+    }
+    return null;
+  }
+
+  if (profile?.id === "agoda") {
+    // 야놀자 card must not be rewritten by Agoda labels when chip=아고다.
+    if (looksLikeYanoljaCardPaste(text)) return null;
+    const labeled =
+      parseAgodaLabeledTable(text, templates) ??
+      parseManualLabeledTable(text, hotelPlatformId, templates, { isolate: true });
+    if (labeled) return { table: labeled, profile, platformId: hotelPlatformId, kind: "agoda" };
+    return null;
+  }
+
+  if (profile) {
+    if (looksLikeYanoljaCardPaste(text) || agodaPartnerSignature(text)) return null;
+    const table = parseGenericPasteTable(text, opts);
+    if (table && tableFitsProfile(table, profile, text)) {
+      return { table, profile, platformId: hotelPlatformId, kind: "table" };
+    }
+    const saved = parseManualLabeledTable(text, hotelPlatformId, templates, { isolate: true });
+    if (saved) return { table: saved, profile, platformId: hotelPlatformId, kind: "saved" };
+    return null;
+  }
+
+  // Unknown settings platform: never steal 야놀자/아고다 dedicated pastes.
+  // Own saved labels first; else shared 칸이름 reader tagged with this chip's platformId.
+  // Partial teach (1–2 labels) must stay null so FO can keep picking fields.
+  if (looksLikeYanoljaCardPaste(text) || agodaPartnerSignature(text)) return null;
+  const saved = parseManualLabeledTable(text, hotelPlatformId, templates, { isolate: true });
+  if (saved && labeledTableReady(saved)) {
+    return {
+      table: saved,
+      profile: profileById("yanolja")!,
+      platformId: hotelPlatformId,
+      kind: "saved",
+    };
+  }
+  const shared = parseSharedLabeledTable(text, templates);
+  if (!shared || !labeledTableReady(shared)) return null;
+  return {
+    table: shared,
+    profile: profileById("yanolja")!,
+    platformId: hotelPlatformId,
+    kind: "saved",
+  };
+}
+
+/** Shared/saved preview needs enough core cells — not a single taught label. */
+function labeledTableReady(table: ParsedPasteTable): boolean {
+  return table.rows.some((row) => {
+    const [reservationId, guestName, , typeRaw, checkIn, , nights, amount] = row;
+    const core = [reservationId, guestName, checkIn, typeRaw, nights, amount].filter((v) => v != null && String(v).trim() !== "");
+    return core.length >= 3 && !!(reservationId?.trim() || checkIn?.trim());
+  });
 }
 
 /** 카드 텍스트에는 HTML 표 밖의 취소 상태·마스킹 이름도 포함된다. 이를 표로 덮어쓰지 않는다. */

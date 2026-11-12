@@ -1339,6 +1339,7 @@ export function parseManualLabeledTable(
   raw: string,
   platformId: string,
   saved?: readonly PasteTemplate[] | null,
+  opts?: { isolate?: boolean },
 ): LabeledTable | null {
   if (!raw.trim() || hasStrongTable(raw)) return null;
   const custom = saved?.find((t) => t.platformId === platformId) ?? null;
@@ -1346,6 +1347,8 @@ export function parseManualLabeledTable(
   if (agodaPartnerSignature(raw) && !agoda) return null;
   if (agoda) return toTable(readAgoda(raw, custom, saved));
   if (!custom) return null;
+  // Chip-forced path: only this platform's saved labels — no shared dictionary merge.
+  if (opts?.isolate) return toTable(extractLabeledPaste(raw, custom));
   return toTable(mergeReads(extractLabeledPaste(raw, custom), readShared(raw, saved)));
 }
 
