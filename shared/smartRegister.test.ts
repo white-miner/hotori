@@ -73,6 +73,8 @@ import {
   previewRowStatusLabel,
   reservationIdFromMemo,
   reservationMemo,
+  salesChannelFromMemo,
+  platformWithSalesChannel,
   upsertTypeAlias,
 } from "./smartRegister.ts";
 
@@ -1248,6 +1250,56 @@ test("yanolja nested 카카오톡예약·TRIPTOPAZ: channel not guest, platform 
   assert.equal(draft.platformId, "p-ya");
   assert.equal(draft.price, 230000);
   assert.equal(draft.nightRates, null);
+});
+
+test("가짜 판매 채널은 야놀자 옆에 보이고 메모에서 다시 읽힌다", () => {
+  const fake = "FAKECHANNEL";
+  const guest = "가상손님라";
+  const typeRaw = "Standardㅣ스탠다드(공기청정기)";
+  const block = [
+    "9900990000000099",
+    fake,
+    guest,
+    "0500-0000-1099",
+    "도보",
+    typeRaw,
+    "(객실 타입 ID: 100001)",
+    "숙박",
+    "/ 1박",
+    typeRaw,
+    "2026.11.14(토) 16:00",
+    "2026.11.15(일) 12:00",
+    "미리예약",
+    "예약완료",
+    "판매가 110,000원",
+  ].join("\n");
+  const card = parseYanoljaCardPaste(block)!;
+  assert.equal(card.rows[0]![1], guest);
+  assert.equal(card.rows[0]![9], fake);
+  const preview = buildPreviewRows(card, profileById("yanolja")!, settings, [], "p-ya");
+  const row = preview[0]!;
+  assert.equal(row.guestName, guest);
+  assert.notEqual(row.guestName, fake);
+  assert.equal(row.platformId, "p-ya");
+  assert.equal(row.platformLabel, "야놀자");
+  assert.equal(row.nestedChannelRaw, fake);
+  assert.equal(platformWithSalesChannel(row.platformLabel, row.nestedChannelRaw), "야놀자 · FAKECHANNEL");
+  assert.equal(platformWithSalesChannel("야놀자", ""), "야놀자");
+  const draft = pathADraftFromPreview(row, {
+    platformId: row.platformId!,
+    platformLabel: row.platformLabel,
+    id: "b-fake-ch",
+    nowIso: "2026-11-13T00:00:00.000Z",
+  });
+  assert.equal(draft.platformId, "p-ya");
+  assert.equal(draft.guestName, guest);
+  assert.equal(salesChannelFromMemo(draft.memo), fake);
+  assert.equal(salesChannelFromMemo(reservationMemo("야놀자", "QQ-1")), null);
+  const typed = reservationMemo("야놀자", "QQ-2", "Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)", fake);
+  assert.equal(salesChannelFromMemo(typed), fake);
+  assert.equal(smartImportInfo({ memo: typed })?.rawType, "Standard2 ㅣ스탠다드 (스타일러ㅣ공기청정기)");
+  assert.equal(salesChannelFromMemo("직접 등록한 예약"), null);
+  assert.equal(salesChannelFromMemo(null), null);
 });
 
 test("normal yanolja card unchanged when no nested channel line", () => {

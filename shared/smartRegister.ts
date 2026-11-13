@@ -2002,6 +2002,29 @@ export function reservationMemo(
   return `[스마트등록] ${base}${extra}`;
 }
 
+/**
+ * 스마트등록 메모의 판매 채널. `야놀자(채널) 예약번호 …` 만 읽는다.
+ * 채널이 없거나 원문 타입의 괄호면 null. 새 컬럼 없이 기존 메모만 사용한다.
+ */
+export function salesChannelFromMemo(memo: string | null | undefined): string | null {
+  const first = memo?.split("\n")[0]?.trim();
+  if (!first) return null;
+  const m = first.match(/^(?:\[스마트등록\]\s*)?(.+?)\(([^()\n]+)\)\s+(?:예약번호\s+\S+|붙여넣기)(?:\s|$)/u);
+  if (!m) return null;
+  const platform = m[1]!.trim();
+  const channel = m[2]!.trim();
+  if (!channel || channel === platform) return null;
+  return channel;
+}
+
+/** 예약 플랫폼 옆 표시. 채널이 없으면 플랫폼만. */
+export function platformWithSalesChannel(platformLabel: string, salesChannel: string | null | undefined): string {
+  const plat = platformLabel.trim();
+  const channel = salesChannel?.trim() ?? "";
+  if (!channel || channel === plat) return plat;
+  return plat ? `${plat} · ${channel}` : channel;
+}
+
 /** Extract reservation id from memo written by smart register / same convention. */
 export function reservationIdFromMemo(memo: string | null | undefined): string | null {
   if (!memo) return null;

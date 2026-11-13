@@ -6490,6 +6490,9 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .book-delete-confirm { border: 1px solid #e6a7af; background: #fff5f5; padding: 10px; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
 .book-delete-confirm p { color: #922131; }
 .book-shell .book-choice { width: 100%; max-width: 100%; min-height: 44px; padding: 9px 32px 9px 12px; border: 1px solid #cbd2dc; border-radius: 9px; background: #fff; color: #242830; font-size: 16px; }
+.book-shell .book-platform-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.book-shell .book-platform-row .book-choice { width: auto; flex: 1 1 auto; min-width: 8em; }
+.book-shell .book-sales-channel { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--ink2); }
 .book-shell .book-pane-left { position: static; max-height: none; overflow: visible; padding-right: 0; }
 .book-editor .book-pane-toggle { display: none; }
 .book-editor .book-pane-left.is-collapsed .book-pane-left-body { display: flex; }

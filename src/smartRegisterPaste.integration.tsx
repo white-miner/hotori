@@ -425,3 +425,45 @@ test("아무것도 못 읽은 글: 플랫폼과 원문 값을 고르면 칸 이�
     });
   }
 });
+
+test("야놀자 미리보기는 가짜 판매 채널을 플랫폼 옆에 보여 주고 이름은 바꾸지 않는다", async () => {
+  hostPlatforms = [{ id: "p-ya", name: "야놀자", abbr: "야" }];
+  hostTemplates = [];
+  const rootEl = document.getElementById("root");
+  if (!rootEl) throw new Error("root 없음");
+  const root = createRoot(rootEl);
+  const card = [
+    "9900990000000099",
+    "FAKECHANNEL",
+    "가상손님라",
+    "0500-0000-1099",
+    "도보",
+    "Standardㅣ스탠다드(공기청정기)",
+    "(객실 타입 ID: 100001)",
+    "숙박",
+    "/ 1박",
+    "Standardㅣ스탠다드(공기청정기)",
+    "2026.11.14(토) 16:00",
+    "2026.11.15(일) 12:00",
+    "미리예약",
+    "예약완료",
+    "판매가 110,000원",
+  ].join("\n");
+  try {
+    await act(async () => {
+      root.render(createElement(Host));
+    });
+    await paste(card);
+    const name = (document.querySelector('[aria-label="이름"]') as HTMLInputElement | null)?.value;
+    assert.equal(name, "가상손님라");
+    const line = document.querySelector(".smart-reg-sales-channel")?.textContent ?? "";
+    assert.match(line, /야놀자 · FAKECHANNEL/);
+    assert.equal(line.includes("가상손님라"), false);
+  } finally {
+    hostPlatforms = null;
+    hostTemplates = [];
+    await act(async () => {
+      root.unmount();
+    });
+  }
+});

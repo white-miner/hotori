@@ -98,7 +98,7 @@ import {
 } from "../shared/extend";
 import { type NightShiftMode, shiftDays, shiftDifferences, shiftNightRates } from "../shared/nightShift";
 import { EDIT_COPY, commitEditStayDates, nightsUpOpensExtendPanel } from "../shared/bookingEdit";
-import { importedTypeSuggestion } from "../shared/smartRegister";
+import { importedTypeSuggestion, salesChannelFromMemo } from "../shared/smartRegister";
 import BookingImportInfo from "./BookingImportInfo";
 import {
   STAY_CREDIT_COPY,
@@ -1352,6 +1352,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   // 현장 결제·장기만 잔금 UI. OTA는 결제 내역이 있어도 「플랫폼에서 결제 · 잔금 없음」.
   const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
+  const salesChannel = salesChannelFromMemo(memo);
   /** 라벨 * · HTML required · save validateGuestPhone 동일 SoT (바로입실 빈 연락처 수정 완화) */
   const phoneRequired = isGuestPhoneRequired(
     curPlat,
@@ -2840,9 +2841,12 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           <label>
             플랫폼<em>*</em>
           </label>
-          <select className="book-choice" aria-label="예약 경로" value={platformId} onChange={(e) => setPlatformId(e.target.value)}>
-            {s.platforms.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
-          </select>
+          <div className="book-platform-row">
+            <select className="book-choice" aria-label="예약 경로" value={platformId} onChange={(e) => setPlatformId(e.target.value)}>
+              {s.platforms.map((pl) => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
+            </select>
+            {salesChannel ? <span className="book-sales-channel">· {salesChannel}</span> : null}
+          </div>
         </div>
 
         <div className="fld">
