@@ -696,6 +696,39 @@ export function looksLikeGuestNameLine(raw: string): boolean {
   return false;
 }
 
+/**
+ * Person line that follows a nested channel (김한나 · Hana Cho).
+ * Transport, phone, and occupancy badges are not that person.
+ */
+function looksLikeChannelFollowerPerson(line: string): boolean {
+  const s = normalizePasteLine(line);
+  if (!s) return false;
+  if (/^(차량|도보)$/.test(s)) return false;
+  if (isOccupancyOrPlanChrome(s)) return false;
+  if (looksLikeYanoljaCardPhoneLine(s)) return false;
+  if (YANOLJA_CARD_RES_ID.test(s)) return false;
+  if (/[ㅣ|]/.test(s)) return false;
+  if (/^\d{4}/.test(s)) return false;
+  return looksLikeGuestNameLine(s);
+}
+
+/**
+ * Unknown label sitting between the reservation id and the person name
+ * (카카오톡예약 · TRIPTOPAZ, and the same shape).
+ * Short Hangul names (김한나, 2–4) stay guests. A one-character platform
+ * abbreviation must not promote those names — this check does not use abbrs.
+ */
+export function looksLikePositionalNestedChannel(candidate: string, next: string): boolean {
+  const raw = normalizePasteLine(candidate);
+  if (!raw || hardRejectNestedChannelLine(raw)) return false;
+  if (!looksLikeChannelFollowerPerson(next)) return false;
+  if (/^[\uac00-\ud7a3]{1,4}$/.test(raw)) return false;
+  if (/^[\uac00-\ud7a3]{5,28}$/.test(raw)) return true;
+  if (/^[A-Za-z][A-Za-z0-9]{3,27}$/.test(raw)) return true;
+  if (looksLikeMarketplaceSlug(raw)) return true;
+  return false;
+}
+
 /** `Brand_Subbrand` / `Brand-Subbrand` marketplace slugs (야놀자 hub resale). */
 function looksLikeMarketplaceSlug(raw: string): boolean {
   if (raw.includes("_")) return true;
@@ -817,7 +850,8 @@ export function matchPlatformByLabel(
     const abbr = normHeader(p.abbr ?? "");
     if (!name && !abbr) continue;
     if (name === n || abbr === n) return { id: p.id, name: p.name };
-    if (name && n.length >= 2 && (name.includes(n) || n.includes(name))) {
+    // 한 글자 플랫폼 이름·약자(김·아·야)는 완전 일치만. "김"이 "김한나"를 가져가지 않는다.
+    if (name.length >= 2 && n.length >= 2 && (name.includes(n) || n.includes(name))) {
       return { id: p.id, name: p.name };
     }
     if (channelKeyHitsLabel(key, p.name ?? "") || (abbr.length > 1 && channelKeyHitsLabel(key, p.abbr ?? ""))) {
@@ -826,7 +860,7 @@ export function matchPlatformByLabel(
     for (const v of variants) {
       if (!v) continue;
       if (name === v || (abbr.length > 1 && abbr === v)) return { id: p.id, name: p.name };
-      if (name && v.length >= 2 && (name.includes(v) || v.includes(name))) {
+      if (name.length >= 2 && v.length >= 2 && (name.includes(v) || v.includes(name))) {
         return { id: p.id, name: p.name };
       }
       if (channelKeyHitsLabel(v, p.name ?? "") || (abbr.length > 1 && channelKeyHitsLabel(v, p.abbr ?? ""))) {
@@ -898,9 +932,21 @@ function parseYanoljaCardBlock(
   const reservationId = lines[0]!;
   let i = 1;
 
-  /** Hub resale line (아고다 등) — not guestName. Shift remaining fields. */
+  /**
+   * Hub resale line (아고다 · 카카오톡예약 · TRIPTOPAZ) — channel field, not guestName.
+   * Known labels, or the same shape sitting immediately before the person name.
+   */
   let nestedChannel = "";
+  let follower = "";
+  if (i < lines.length) {
+    let j = i + 1;
+    while (j < lines.length && isOccupancyOrPlanChrome(lines[j]!)) j += 1;
+    follower = lines[j] ?? "";
+  }
   if (i < lines.length && isKnownNestedChannelLabel(lines[i]!, channelLabels)) {
+    nestedChannel = lines[i]!;
+    i += 1;
+  } else if (i < lines.length && looksLikePositionalNestedChannel(lines[i]!, follower)) {
     nestedChannel = lines[i]!;
     i += 1;
   }
@@ -2051,8 +2097,8 @@ export interface PreviewRow {
    */
   nestedChannelRaw: string;
   /**
-   * Effective Hotori platform for this row (nested match wins; else paste-source).
-   * Mount / type alias / cancel match use this — not always the profile chip.
+   * Hotori platform for this row. 야놀자 붙여넣기는 중첩 채널이 있어도 야놀자.
+   * 다른 프로필만 설정에 맞는 중첩 플랫폼으로 바꿀 수 있다.
    */
   platformId: string | null;
   /** Display label for effective platform (nested name or profile label). */
@@ -2181,9 +2227,11 @@ export function buildPreviewRows(
     }
     const nestedRaw = nestedChannelFromRow(table, row);
     const nestedHit = nestedRaw ? matchPlatformByLabel(nestedRaw, s) : null;
-    // Matched nested → that Hotori platform; unknown nested chip only → keep paste-source platform
-    const rowPlatformId = nestedHit?.id ?? platformId;
-    const rowPlatformLabel = nestedHit?.name ?? sourceLabel;
+    // 야놀자 카드·칩: 중첩 라벨은 판매채널만. 예약 플랫폼은 붙여넣은 야놀자.
+    // 다른 프로필은 예전처럼 설정에 있는 중첩 플랫폼을 쓸 수 있다.
+    const keepSourcePlatform = profile.id === "yanolja";
+    const rowPlatformId = keepSourcePlatform ? platformId : (nestedHit?.id ?? platformId);
+    const rowPlatformLabel = keepSourcePlatform ? sourceLabel : (nestedHit?.name ?? sourceLabel);
     const nestedChannelUnmatched = !!nestedRaw && !nestedHit;
 
     const typeId = matchTypeIdNested(n.typeRaw, s, nestedHit?.id ?? null, platformId);
@@ -2539,7 +2587,7 @@ export const YANOLJA_CANCEL_CHROME_COMPLETE_CARD_FIXTURE_PATH = new URL(
 
 /**
  * Owner nested-channel SoT: 야놀자 통합내역 card with 아고다 line after reservation id
- * (hub inventory resale). Guest/phone/type must shift; platform = 아고다 when in Settings.
+ * (hub inventory resale). Guest/phone/type shift; 판매채널=아고다; 예약 플랫폼은 야놀자.
  */
 export const YANOLJA_NESTED_AGODA_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-nested-agoda-card.txt",
@@ -2573,6 +2621,15 @@ export const YANOLJA_NESTED_CTRIP_CARD_FIXTURE_PATH = new URL(
  */
 export const YANOLJA_TRIPLE_CHROME_CARD_FIXTURE_PATH = new URL(
   "./fixtures/yanolja-triple-chrome-card.txt",
+  import.meta.url,
+);
+
+/**
+ * Anonymized: unknown nested labels (카카오톡예약 · TRIPTOPAZ) before the guest,
+ * plus 아고다, stay on platform 야놀자. Direct names stay guests. Fake phones only.
+ */
+export const YANOLJA_NESTED_CHANNEL_NOT_GUEST_FIXTURE_PATH = new URL(
+  "./fixtures/yanolja-nested-channel-not-guest.txt",
   import.meta.url,
 );
 

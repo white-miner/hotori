@@ -1227,7 +1227,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                                   </a>
                                 </>
                               ) : (
-                                r.platformLabel
+                                <>채널 {r.nestedChannelRaw}</>
                               )}
                             </div>
                           ) : null}
