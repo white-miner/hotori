@@ -57,6 +57,7 @@ import {
   pathACancelDraftFromPreview,
   pathADraftFromPreview,
   previewRowStatusLabel,
+  platformWithSalesChannel,
   SMART_REGISTER_TEMPLATE_COLUMNS,
   profileById,
   recomputeRowStatus,
@@ -1212,23 +1213,22 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                           ) : null}
                           {r.nestedChannelRaw ? (
                             <div
-                              className="sub"
+                              className="sub smart-reg-sales-channel"
                               title={
                                 r.nestedChannelUnmatched
                                   ? `설정에 「${r.nestedChannelRaw}」 없음 · ${r.platformLabel}로 유지 · 메모에 원문 보관`
                                   : undefined
                               }
                             >
+                              <span>{platformWithSalesChannel(r.platformLabel, r.nestedChannelRaw)}</span>
                               {r.nestedChannelUnmatched ? (
                                 <>
-                                  {r.nestedChannelRaw} ·{" "}
+                                  {" · "}
                                   <a className="smart-reg-alias-link" href="#/settings/plats">
                                     플랫폼 미등록
                                   </a>
                                 </>
-                              ) : (
-                                <>채널 {r.nestedChannelRaw}</>
-                              )}
+                              ) : null}
                             </div>
                           ) : null}
                         </td>
