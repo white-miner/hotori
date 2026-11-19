@@ -62,7 +62,8 @@ import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
 import { hashGroupBadgeColor } from "../shared/group";
 import { groupMoveRow } from "../shared/groupMove";
-import { saveScheduleChanges, scheduleLock, scheduleUpdateRow, type ScheduleChange } from "../shared/groupSchedule";
+import { longReachOr, mergeBookings, reachesInto } from "../shared/loadWindow";
+import { saveScheduleChanges, scheduleLock, type ScheduleChange } from "../shared/groupSchedule";
 import type { ExtendWriteLine } from "../shared/groupExtend";
 import {
   type NightCharge,
@@ -437,18 +438,21 @@ export function useHotelData(hotelId: string) {
   const fetchFreshAround = useCallback(
     async (checkIn: string, nights: number): Promise<{ bookings: Booking[]; settings: HotelSettings } | null> => {
       try {
-        const [h, b] = await Promise.all([
+        const back = addDays(checkIn, -WINDOW_BACK);
+        const [h, b, far] = await Promise.all([
           supabase.from("hotels").select("settings").eq("id", hotelId).single(),
           supabase
             .from("bookings")
             .select(COLS)
             .eq("hotel_id", hotelId)
-            .gte("check_in", addDays(checkIn, -WINDOW_BACK))
+            .gte("check_in", back)
             .lte("check_in", addDays(checkIn, Math.max(1, nights)))
             .limit(10000),
+          longReachQuery(hotelId, back, WINDOW_BACK),
         ]);
         if (h.error || b.error || !h.data || !b.data) return null;
-        return { bookings: (b.data as BookingRow[]).map(fromRow), settings: normalizeSettings(h.data.settings) };
+        const extra = far.error ? [] : (far.data as BookingRow[]).map(fromRow).filter((x) => reachesInto(x, checkIn));
+        return { bookings: mergeBookings((b.data as BookingRow[]).map(fromRow), extra), settings: normalizeSettings(h.data.settings) };
       } catch {
         return null;
       }
@@ -465,7 +469,7 @@ export function useHotelData(hotelId: string) {
     const genAtStart = mutateGen.current;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
-      const [h, b, g, c, ch] = await Promise.all([
+      const [h, b, g, c, ch, far] = await Promise.all([
         supabase.from("hotels").select("id,name,plan,is_demo,settings").eq("id", hotelId).single(),
         supabase
           .from("bookings")
@@ -477,6 +481,8 @@ export function useHotelData(hotelId: string) {
         supabase.from("booking_groups").select(GROUP_COLS).eq("hotel_id", hotelId).limit(5000),
         supabase.from("stay_credits").select(CREDIT_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(2000),
         supabase.from("booking_changes").select(CHANGE_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(3000),
+        // 120일보다 먼저 입실했지만 아직 이어지는 긴 숙박 (장기·퇴실 미정·박수 120 초과)
+        longReachQuery(hotelId, since, WINDOW_BACK),
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
@@ -492,7 +498,8 @@ export function useHotelData(hotelId: string) {
         isDemo: h.data.is_demo,
         settings: normalizeSettings(h.data.settings),
       });
-      setBookings((b.data as BookingRow[]).map(fromRow));
+      const farList = far.error ? [] : (far.data as BookingRow[]).map(fromRow).filter((x) => reachesInto(x, since));
+      setBookings(mergeBookings((b.data as BookingRow[]).map(fromRow), farList));
       // 정산 표를 못 읽어도 예약 화면은 그대로 (정산 정보만 비어요)
       if (!g.error) setGroups(new Map((g.data as unknown as GroupRow[]).map((r) => [r.id, groupFromRow(r)])));
       // 마이그레이션 전이면 표가 없을 수 있음 → 빈 목록
@@ -956,18 +963,22 @@ export function useHotelData(hotelId: string) {
   /** 기존 단체 일정/요금만 수정. 배정·수납을 쓰지 않고 행 버전으로 동시 수정을 감지한다. */
   const saveGroupSchedule = useCallback(async (groupId: string, changes: ScheduleChange[]) => {
     if (changes.some(c => c.before.groupId !== groupId || scheduleLock(c.before))) throw new Error("이 단체의 수정 가능한 숙박 예약만 선택해 주세요.");
+    // 전부 되거나 전부 안 되거나: 기간 연장과 같은 DB 함수(extend_group_stay) 한 번으로 저장
     const result = await saveScheduleChanges(changes, {
       read: async ids => {
         const r = await supabase.from("bookings").select(COLS).eq("hotel_id", hotelId).in("id", ids);
         if (r.error) throw r.error;
         return (r.data as BookingRow[]).map(fromRow);
       },
-      update: async ({ before, patch }) => {
-        const row = scheduleUpdateRow(patch);
-        const r = await supabase.from("bookings").update(row).eq("hotel_id", hotelId).eq("group_id", groupId).eq("id", before.id)
-          .eq("updated_at", before.updatedAt).eq("status", "active").is("checked_out_at", null).select(COLS).single();
+      saveAll: async lines => {
+        const { data, error } = await supabase.rpc("extend_group_stay", { p_lines: lines });
+        if (error) throw error;
+        return ((data ?? []) as BookingRow[]).map(fromRow);
+      },
+      clearPriceUnset: async ids => {
+        const r = await supabase.from("bookings").update({ price_unset: false }).eq("hotel_id", hotelId).eq("group_id", groupId).in("id", ids).select(COLS);
         if (r.error) throw r.error;
-        return fromRow(r.data as BookingRow);
+        return (r.data as BookingRow[]).map(fromRow);
       },
     });
     const saved = new Map(result.saved.map(b => [b.id, b]));
@@ -1556,17 +1567,30 @@ export async function hasShopSales(hotelId: string, itemId: string): Promise<boo
   return (count ?? 0) > 0;
 }
 
-/** 재고 현황·객실 캘린더에서 오래전 기간을 볼 때만: 그 기간에 걸친 예약 (숙박은 최대 90박이라 입실일 90일 앞부터, 대실은 캘린더 점용) */
-export async function queryStays(hotelId: string, from: string, to: string, lookbackDays = 90): Promise<Booking[]> {
-  const { data, error } = await supabase
+/** 입실일이 before보다 앞이면서 박수가 길거나 장기·퇴실 미정인 숙박 (화면 범위까지 이어질 수 있는 것만 DB에서 먼저 걸러요) */
+function longReachQuery(hotelId: string, before: string, lookbackDays: number) {
+  return supabase
     .from("bookings")
     .select(COLS)
     .eq("hotel_id", hotelId)
-    .gte("check_in", addDays(from, -lookbackDays))
-    .lte("check_in", to)
-    .limit(20000);
-  if (error) throw error;
-  return (data as BookingRow[]).map(fromRow);
+    .lt("check_in", before)
+    .neq("status", "cancelled")
+    .or(longReachOr(lookbackDays))
+    .limit(2000);
+}
+
+/** 재고 현황·객실 캘린더에서 오래전 기간을 볼 때만: 그 기간에 걸친 예약.
+ * 입실일 lookback일 앞부터 + 그보다 먼저 입실해 기간 안까지 이어지는 긴 숙박(최대 366박·장기·퇴실 미정). */
+export async function queryStays(hotelId: string, from: string, to: string, lookbackDays = 90): Promise<Booking[]> {
+  const back = addDays(from, -lookbackDays);
+  const [near, far] = await Promise.all([
+    supabase.from("bookings").select(COLS).eq("hotel_id", hotelId).gte("check_in", back).lte("check_in", to).limit(20000),
+    longReachQuery(hotelId, back, lookbackDays),
+  ]);
+  if (near.error) throw near.error;
+  if (far.error) throw far.error;
+  const extra = (far.data as BookingRow[]).map(fromRow).filter((b) => reachesInto(b, from));
+  return mergeBookings((near.data as BookingRow[]).map(fromRow), extra);
 }
 
 // ---------- 지출 · 거래처 ----------

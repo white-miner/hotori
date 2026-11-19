@@ -37,7 +37,7 @@ export interface PaymentDeskGlance {
   paid: number;
   left: number;
   full: boolean;
-  /** 그룹 합산이면 true */
+  /** 단체 예약이면 true (활성 방이 1개여도 단체 결제 한 줄로 저장) */
   group: boolean;
   memberCount: number;
   priceUnset: boolean;
@@ -69,7 +69,7 @@ export function paymentDeskGlance(
       paid: f.paid,
       left: f.owed,
       full: f.tracked && f.owed === 0 && st.total > 0,
-      group: active.length > 1,
+      group: true,
       memberCount: active.length,
       priceUnset,
       label: f.label,
@@ -95,6 +95,15 @@ export function paymentDeskGlance(
     label: f.label,
     ota: f.ota,
   };
+}
+
+/**
+ * 결제 등록 입구를 고를 때 쓰는 단체 id. 단체 숙박이면 언제나 단체 결제 등록(단체 한 장부)으로,
+ * 개인·장기 숙박은 예약 결제 등록으로 가요. (장기는 단체 장부에서 빠지는 원장이라 객실 결제)
+ */
+export function paymentEntryGroupId(b: Pick<Booking, "groupId" | "kind" | "stayMode"> | null | undefined): string | null {
+  if (!b || !b.groupId || b.kind !== "stay" || b.stayMode === "long_stay") return null;
+  return b.groupId;
 }
 
 /** 동일 groupId 점유 복수선택 허용 여부 */

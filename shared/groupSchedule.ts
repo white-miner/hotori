@@ -1,3 +1,4 @@
+import type { ExtendWriteLine } from "./groupExtend";
 import { addDays, daysBetween, fitSegments, isEarlyOut, legsOf, occupiesRoom, roomOnNight, STAY_NIGHTS_MAX, type Booking } from "./ledger";
 import { extrasTotal, occupiedNightDates, stayNightRatesToJson, type StayNightRates } from "./nightrates";
 import { stayAddons } from "./extend";
@@ -86,33 +87,66 @@ export function scheduleMatches(b: Booking, change: ScheduleChange): boolean {
   return scheduleSame(b, expected);
 }
 export interface ScheduleSaveResult { saved: Booking[]; error: string | null }
-/** 行별 CAS 저장. 중간 실패를 숨기지 않고 저장 확정된 객실만 반환, 실패 이후 쓰기는 중단. */
+
+/** 한 트랜잭션 저장 줄 (DB 함수 extend_group_stay와 같은 모양). 배정 호실은 그대로 넘겨 바꾸지 않아요. 결제 열은 없어요. */
+export function scheduleWriteLine(change: ScheduleChange): ExtendWriteLine {
+  const row = scheduleUpdateRow(change.patch);
+  return {
+    id: change.before.id,
+    nights: row.nights ?? change.before.nights ?? 1,
+    price: row.price,
+    night_rates: row.night_rates as ExtendWriteLine["night_rates"],
+    open_ended: row.open_ended,
+    room_id: change.before.roomId ?? null,
+    room_segments: row.room_segments,
+    updated_at: change.before.updatedAt ?? "",
+  };
+}
+
+/**
+ * 단체 일정·요금 저장: 전부 되거나 전부 안 되거나 (기간 연장과 같은 DB 함수 한 번 = 한 트랜잭션).
+ * 저장 전에 행 버전을 확인하고, 다른 사람이 먼저 고쳤으면 아무것도 쓰지 않아요.
+ * 금액미정 해제(price_unset)는 박수·요금이 한 번에 저장된 뒤 같은 객실에만 따로 맞춰요 (몇 번 해도 결과가 같아요).
+ */
 export async function saveScheduleChanges(changes: ScheduleChange[], io: {
   read: (ids: string[]) => Promise<Booking[]>;
-  update: (change: ScheduleChange) => Promise<Booking>;
+  saveAll: (lines: ExtendWriteLine[]) => Promise<Booking[]>;
+  clearPriceUnset?: (ids: string[]) => Promise<Booking[]>;
 }): Promise<ScheduleSaveResult> {
-  const saved: Booking[] = [];
-  const failure = (msg: string) => ({ saved, error: msg });
+  const none = (msg: string): ScheduleSaveResult => ({ saved: [], error: msg });
+  if (!changes.length) return { saved: [], error: null };
+  if (new Set(changes.map(x => x.before.id)).size !== changes.length) return none("중복 예약이 있습니다.");
+  // 금액미정 표시는 트랜잭션 저장 뒤에 맞추므로, 그 전 비교는 원래 표시로 해요
+  const stage1 = (c: ScheduleChange): ScheduleChange => ({ ...c, patch: { ...c.patch, priceUnset: !!c.before.priceUnset } });
+  const ids = changes.map(x => x.before.id);
   try {
-    if (!changes.length) return { saved, error: null };
-    if (new Set(changes.map(x => x.before.id)).size !== changes.length) return failure("중복 예약이 있습니다.");
-    const fresh = await io.read(changes.map(x => x.before.id));
-    if (changes.some(x => !fresh.some(b => scheduleSame(b, x.before)))) return failure("다른 작업에서 예약이 변경됐습니다. 최신 정보를 다시 불러온 뒤 수정해 주세요.");
-    for (const change of changes) {
-      try {
-        const b = await io.update(change);
-        if (!scheduleMatches(b, change)) return failure("저장 결과가 요청과 다릅니다. 최신 정보를 확인해 주세요.");
-        saved.push(b);
-      } catch {
-        // 응답 유실 시 한 번 조회해 실제 반영 여부를 확인한다. 같은 수정 재실행으로 덮어쓰지 않는다.
-        const actual = await io.read([change.before.id]);
-        const applied = actual.find(b => scheduleMatches(b, change));
-        if (applied) { saved.push(applied); continue; }
-        return failure("저장을 확인하지 못했습니다. 미저장 객실의 최신 정보를 확인한 뒤 다시 시도해 주세요.");
-      }
+    const fresh = await io.read(ids);
+    if (changes.some(x => !fresh.some(b => scheduleSame(b, x.before)))) return none("다른 작업에서 예약이 변경됐습니다. 최신 정보를 다시 불러온 뒤 수정해 주세요.");
+  } catch { return none("서버 연결을 확인해 주세요. 아무 객실도 바꾸지 않았습니다."); }
+  let saved: Booking[];
+  try {
+    saved = await io.saveAll(changes.map(scheduleWriteLine));
+  } catch {
+    // 응답만 잃었을 수 있어요: 한 번 조회해서 전부 반영됐는지만 확인 (다시 쓰지 않아요)
+    try {
+      const actual = await io.read(ids);
+      const all = changes.map(c => actual.find(b => scheduleMatches(b, stage1(c))));
+      if (all.every(Boolean)) saved = all as Booking[];
+      else return none("저장하지 못했습니다. 아무 객실도 바뀌지 않았습니다. 최신 정보를 확인한 뒤 다시 시도해 주세요.");
+    } catch { return none("저장 결과를 확인하지 못했습니다. 최신 정보를 다시 불러와 확인해 주세요."); }
+  }
+  if (changes.some(c => !saved.some(b => scheduleMatches(b, stage1(c))))) return { saved, error: "저장 결과가 요청과 다릅니다. 최신 정보를 확인해 주세요." };
+  const unset = changes.filter(c => !!c.before.priceUnset && !c.patch.priceUnset).map(c => c.before.id);
+  if (unset.length && io.clearPriceUnset) {
+    try {
+      const cleared = await io.clearPriceUnset(unset);
+      const m = new Map(cleared.map(b => [b.id, b]));
+      saved = saved.map(b => m.get(b.id) ?? b);
+    } catch {
+      return { saved, error: "박수·요금은 저장했지만 금액미정 표시를 지우지 못했습니다. 다시 저장해 주세요." };
     }
-    return { saved, error: null };
-  } catch { return failure("서버 연결을 확인해 주세요. 저장 결과를 확인하지 못한 객실은 그대로 남겼습니다."); }
+  }
+  return { saved, error: null };
 }
 
 /** 새로 늘어난 점유 밤만 검사: 이미 존재한 겹침과 구분하며 단체 내부 예약도 검사한다. */
