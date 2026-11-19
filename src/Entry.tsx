@@ -208,7 +208,8 @@ interface Props {
   today: string;
   req: EntryRequest;
   onClose: () => void;
-  onSaved: (msg: string, again?: Partial<Booking>, payGroupId?: string) => void;
+  /** reopen: 저장은 됐지만 결제를 못 적었을 때 그 예약을 바로 다시 열어 결제 등록을 이어 가요 */
+  onSaved: (msg: string, again?: Partial<Booking>, payGroupId?: string, reopen?: Booking) => void;
   /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
   onBoardMove?: () => void;
   notify: (m: string, opt?: ToastOpt) => void;
@@ -1517,6 +1518,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       try {
         const saved = await saveNewDraft(draft);
         let payTail = "";
+        let payFailed = false;
         if (isActive(saved)) {
           try {
             await data.addPayment(saved.id, { kind, method: recv.method, amount, bizDate: recv.date });
@@ -1525,10 +1527,11 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
             if (left) payTail += ` · 미수금 ${won(left)}원`;
             else if (kind === "balance") payTail += " · 정산 완료";
           } catch (e) {
-            payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
+            payTail = ` · 결제는 적지 못했어요 (${e instanceof Error ? e.message : "연결 확인"}) · 예약을 다시 열었어요, 결제 칸에서 다시 수납해 주세요`;
+            payFailed = true;
           }
         }
-        onSaved(`${saved.guestName} 님 예약을 기록했어요${payTail}`);
+        onSaved(`${saved.guestName} 님 예약을 기록했어요${payTail}`, undefined, undefined, payFailed ? saved : undefined);
       } catch (e) {
         setPayErr(saveFailMessage(e));
       } finally {

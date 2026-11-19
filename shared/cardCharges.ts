@@ -19,10 +19,16 @@ export function cardCharges(b: Booking, model: RoomCardModel | null, platform: P
       )
     : null;
   const snap = payState(b, platform, today);
+  // 요금 미등록 박은 한 줄로 접어요 (박마다 ‘요금 미등록’을 늘어놓지 않아요 · 총액을 박에 나누지도 않아요)
+  const unset = nights.filter((n) => n.amount == null);
   return {
     nights,
+    setNights: nights.filter((n) => n.amount != null),
+    unsetCount: unset.length,
+    unsetFrom: unset[0]?.date ?? null,
+    unsetTo: unset[unset.length - 1]?.date ?? null,
     needsPrice: !!b.priceUnset || (b.kind === "stay" && b.stayMode !== "long_stay" && b.price === 0 && nights.some(n => n.amount == null)),
     due: group ? group.owed : snap.tracked ? Math.max(0, snap.left) : 0,
-    scope: group ? "단체 미수" : "받을 돈",
+    scope: group ? "단체 미수금" : "받을 돈",
   };
 }

@@ -77,9 +77,9 @@ test("선결제 OTA 단체(수납액 없음)는 남은 금액을 따지지 않�
   const st2 = settle(members(), info({ payMode: "prepaid" }), { name: "현장·전화" });
   assert.equal(st2.left, 9360000);
   assert.deepEqual(settleBadge(st2, info({ payMode: "prepaid" })), { text: "미수금 9,360,000", due: true });
-  // 정산 정보가 없는 예전 단체: 평균 1박 요금으로 보여 줘요
+  // 정산 정보(타입 단가)가 없는 단체: 총액을 박 수로 나눈 평균을 단가로 만들지 않아요 (0 = 화면에 —)
   const st3 = settle(members(), null, OTA);
-  assert.equal(st3.lines[0].rate, 50000);
+  assert.equal(st3.lines[0].rate, 0);
 });
 
 test("추가 항목 검사", () => {

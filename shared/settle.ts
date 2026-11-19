@@ -117,7 +117,8 @@ export function settle(
   }
   const lines = [...byType.values()].map((l) => {
     const r = info?.rates?.[l.typeId];
-    return { ...l, rate: r && r > 0 ? r : l.nights ? Math.round(l.subtotal / l.nights) : 0 };
+    // 단가는 단체에 정해 둔 타입 요금만 · 없으면 0 (총액을 박 수로 나눈 평균을 단가처럼 보이지 않아요)
+    return { ...l, rate: r && r > 0 ? r : 0 };
   });
   const cx = members.filter((b) => b.status === "cancelled");
   const roomSum = lines.reduce((a, l) => a + l.subtotal, 0);

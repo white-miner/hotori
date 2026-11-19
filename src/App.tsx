@@ -424,9 +424,9 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
                 }
               : undefined
           }
-          onSaved={(m, again, payGroupId) => {
+          onSaved={(m, again, payGroupId, reopen) => {
             notify(m);
-            setEntry(again ? { preset: again, n: Date.now() } : null);
+            setEntry(reopen ? { booking: reopen, n: Date.now() } : again ? { preset: again, n: Date.now() } : null);
             if (payGroupId && view === "board") setPayGroupReq({ groupId: payGroupId, n: Date.now() });
           }}
         />

@@ -19,9 +19,9 @@ test('날짜별 다른 요금 합산과 누락 검증, 0원 서비스 날짜 보
  assert.equal(resolveStayPrice(ci,3,d).price,140000);assert.equal(resolveStayPrice(ci,3,d).error,null);
  assert.match(resolveStayPrice(ci,4,d).error!,/모든 숙박일/);
 });
-test('명시적 총액 균등 배분은 마지막 날 나머지 원 포함, 합계 일치',()=>{
+test('총액 입력(2박 이상)은 총액만 저장 · 박에 나누지 않아요',()=>{
  const r=resolveStayPrice(ci,3,{mode:'total',amount:'200000'});
- assert.deepEqual(Object.values(r.rates.nights!),[66666,66666,66668]);assert.equal(r.price,200000);
+ assert.equal(r.rates.nights,null);assert.equal(r.price,200000);assert.equal(r.complete,true);assert.equal(r.error,null);assert.equal(r.totalOnly,true);
 });
 test('추가 항목·시간 비용을 객실료에서 분리하고 할인도 한 번만 반영',()=>{
  const d={mode:'total' as const,amount:'170000',rates:{extras:[{name:'이불',amount:10000}]}};

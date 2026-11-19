@@ -1,11 +1,10 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours, outTimeOf } from "./extratime";
-import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, nightBoard, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
+import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, nightBoard, occupiesNight, revenueOf, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { PAYMENT_METHOD_LABEL, isOnsite, payState, type Payment, type PaymentMethod } from "./payment";
 import { groupFolio } from "./folio";
 import { type GroupInfo, settle } from "./settle";
 import { balanceLabel, groupLedger, type GroupLedger } from "./groupLedger";
-import { isPeriodPayable, stayNightAmounts } from "./periodPay";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
 
 /**
@@ -532,7 +531,7 @@ export function nowAmountGlance(
   }
   // 단체 객실: 칸에는 이 객실 자기 요금만 — 단체 결제·잔금·합계를 객실마다 되풀이해 적지 않아요 (단체 합계는 단체 머리글·대장 칸에만)
   if (group && b.groupId && !b.priceUnset && group.members.length > 0) {
-    const own = isPeriodPayable(b) ? stayNightAmounts(b).reduce((n, r) => n + r.amount, 0) : b.price;
+    const own = Math.max(0, revenueOf(b)); // 이 객실 예약 총액 (박에 나누지 않아요)
     return own > 0 ? `₩${won(own)}` : null;
   }
   const ps = nowPaySnap(b, plat, group);

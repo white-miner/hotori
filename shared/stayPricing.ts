@@ -1,5 +1,7 @@
 import { type StayNightRates, extrasTotal, nightRatesFromTotal, occupiedNightDates, sumNightAmounts } from './nightrates';
 
+// 총액 입력(2박 이상): 총액만 저장하고 박마다 나누지 않아요 (균등 분배 금지 · 박별 요금은 비워 둬요).
+
 export type StayPriceMode = 'uniform' | 'daily' | 'total';
 /** An explicit input choice. Existing bookings have no draft until the user edits. */
 export interface StayPriceDraft {
@@ -15,7 +17,11 @@ export function resolveStayPrice(checkIn: string, nights: number, draft: StayPri
   const amount = Math.min(100_000_000, rawAmount);
   let overLimit = rawAmount > 100_000_000;
   let rates: StayNightRates;
-  if (draft.mode === 'total') {
+  const totalOnly = draft.mode === 'total' && dates.length > 1;
+  if (totalOnly) {
+    rates = { flat: null, weekday: null, weekend: null, nights: null };
+  } else if (draft.mode === 'total') {
+    // 1박은 총액이 곧 그 밤 요금 (나누는 것이 아니에요)
     rates = nightRatesFromTotal(checkIn, nights, amount);
   } else if (draft.mode === 'uniform') {
     rates = { flat: amount, nights: Object.fromEntries(dates.map(d => [d, amount])) };
@@ -31,10 +37,10 @@ export function resolveStayPrice(checkIn: string, nights: number, draft: StayPri
     rates = { ...draft.rates, flat: null, weekday: null, weekend: null, nights: map };
   }
   if (draft.rates?.extras) rates.extras = draft.rates.extras.map(x => ({ ...x }));
-  const complete = dates.length > 0 && dates.every(d => rates.nights?.[d] != null);
-  const roomTotal = sumNightAmounts(rates.nights);
+  const complete = totalOnly || (dates.length > 0 && dates.every(d => rates.nights?.[d] != null));
+  const roomTotal = totalOnly ? amount : sumNightAmounts(rates.nights);
   const extra = extrasTotal(rates) + addons;
-  return { rates, roomTotal, price: Math.max(0, roomTotal + extra), complete,
+  return { rates, roomTotal, totalOnly, price: Math.max(0, roomTotal + extra), complete,
     error: overLimit ? '입력 금액은 100,000,000원 이하여야 합니다.' : !complete ? '모든 숙박일의 요금을 입력해 주세요.' : roomTotal <= 0 ? '객실 요금을 입력하거나 금액미정을 선택해 주세요.' : null };
 }
 

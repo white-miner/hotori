@@ -100,7 +100,7 @@ export default function ExtendNightModal({
           <p className="muted sm">기존 총액 {won(booking.price)}원에 입력한 약정 요금을 더합니다. 기본 후불이며, 카드·현금·이체는 이번 금액을 실제 수납한 경우 선택하세요.</p>
           {onGroupExtend ? (
             <p className="muted sm">
-              단체 객실이에요. 이 화면은 이 객실만 하룻밤 늘려요. 단체 여러 객실을 늘리려면{" "}
+              단체 객실이에요. 이 화면은 이 객실만 하룻밤 늘려요. 이 단체 다른 방도 같이 늘리려면{" "}
               <button type="button" className="btn sm line" disabled={busy} onClick={onGroupExtend}>기간 연장</button>
             </p>
           ) : null}

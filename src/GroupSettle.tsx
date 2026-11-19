@@ -206,7 +206,7 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                   </td>
                   <td className="r num">{l.rooms}실</td>
                   <td className="r num">{!l.rooms ? "—" : Number.isInteger(l.nights / l.rooms) ? `${l.nights / l.rooms}박` : `${l.nights}박 합`}</td>
-                  <td className="r num">{won(l.rate)}</td>
+                  <td className="r num">{l.rate > 0 ? won(l.rate) : "—"}</td>
                   <td className="r num">{won(l.subtotal)}</td>
                 </tr>
               ))}

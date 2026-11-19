@@ -346,6 +346,7 @@ function PayEditor({
       <label className="rec-fld col">
         <span>메모 (선택)</span>
         <input className="inp" maxLength={80} value={note} placeholder="예: 10/25~10/27 3박" onChange={(e) => setNote(e.target.value)} aria-label="메모" />
+        <small className="muted">{note.length}/80자</small>
       </label>
       {roomTag && groupId ? (
         <div className="rec-fld col">
@@ -361,6 +362,7 @@ function PayEditor({
         <label className="rec-fld col">
           <span>정정 사유 (필수)</span>
           <input className="inp" maxLength={80} value={reason} placeholder="예: 카드 금액을 잘못 눌렀어요" onChange={(e) => setReason(e.target.value)} aria-label="정정 사유" />
+          <small className="muted">{reason.length}/80자</small>
           <small className="muted">원래 {PAYMENT_METHOD_LABEL[payment.method]} {won(payment.amount)}원 ({md(payment.bizDate)}) · 고치거나 지워도 원래 금액과 사유가 변경 기록에 「정정됨」으로 남아요.</small>
         </label>
       ) : null}

@@ -6807,3 +6807,15 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .now-page .detail-contract-list button,.now-page .detail-due-line {min-height:calc(var(--detail-text-unit) * 1.5);font-size:calc(var(--detail-text-unit) * .9375);line-height:1.4}
 .now-page .detail-actions {padding:calc(var(--detail-text-unit) * .125);gap:calc(var(--detail-text-unit) * .25)}
 .now-page .detail-actions button {font-size:var(--detail-text-unit);height:calc(var(--detail-text-unit) * 2.5);min-height:40px}
+
+/* 휴대폰: 단체 일정 표를 객실마다 세로 목록으로 (가로 스크롤 없이 날짜가 아래로) */
+@media(max-width:640px) {
+  .gs-table thead { display:none; }
+  .gs-table, .gs-table tbody, .gs-table tr, .gs-table tbody th, .gs-table tbody td { display:block; width:100%; }
+  .gs-table tbody tr { border-bottom:2px solid #c7cfd9; padding-bottom:6px; }
+  .gs-table th:first-child { position:static; min-width:0; border-right:0; }
+  .gs-scroll th,.gs-scroll td { min-width:0; border-right:0; }
+  .gs-table tbody td[data-d] { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; }
+  .gs-table tbody td[data-d]::before { content:attr(data-d); flex:0 0 96px; font-weight:700; color:#3b4350; }
+  .gs-total { min-width:0!important; }
+}
