@@ -2843,7 +2843,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         bookingId: bk.groupId ? null : bk.id,
         summary: on ? `열린 숙박 켬${targets.length > 1 ? ` (${targets.length}실)` : ""} · 방 보호 ${hold === 0 ? "오늘 밤만" : `${hold}일`}` : `열린 숙박 끔${targets.length > 1 ? ` (${targets.length}실)` : ""}`,
       });
-      notify(on ? `${targets.length > 1 ? `${targets.length}실을 ` : ""}끝 날짜 없이 계속 묵는 것으로 해 두었어요 · 앱이 오늘 밤까지 이어 줘요` : "열린 숙박을 껐어요");
+      notify(on ? `${targets.length > 1 ? `${targets.length}실을 ` : ""}퇴실일 없이 계속 묵는 것으로 해 두었어요 · 박수는 앱이 자동으로 늘려요` : "열린 숙박을 껐어요");
     } catch (e) {
       notify(saveFailMessage(e, "열린 숙박을 저장하지 못했어요"));
     }

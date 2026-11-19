@@ -25,5 +25,5 @@ export function openStayFields(checkIn: string, today: string, hold: number): { 
 }
 
 export function openStayHint(hold: number): string {
-  return `끝 날짜 없이 계속 묵어요 · 앱이 오늘 밤까지 이어 줘요 · 방은 ${hold === 0 ? "오늘 밤만" : `${clampHold(hold)}일 앞까지`} 막아 둬요 (청구는 오늘 밤까지만)`;
+  return `퇴실일 없이 계속 묵어요 · 박수는 앱이 자동으로 늘려요 · ${hold === 0 ? "방을 앞날까지 더 막지는 않아요" : `방은 ${clampHold(hold)}일 앞까지 막아 둬요`}`;
 }
