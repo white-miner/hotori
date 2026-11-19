@@ -235,7 +235,7 @@ import SalesCalendar from "./SalesCalendar";
 import RateSheet from "./RateSheet";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
+import { groupMoveMoneyLines, groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
 import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowPlatformPayPart, nowRangeFull } from "../shared/nowCard";
 import RoomCardFacts from "./RoomCardFacts";
 import { roomCardModel } from "../shared/roomCard";
@@ -3435,6 +3435,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                           const to = toGid ? groupMoveTargets(bookings, selectedGroupHead.groupId).find((t) => t.groupId === toGid) ?? null : null;
                           if (toGid && !to) return;
                           const roomNo = `${bk.roomId ? L.roomLabel(bk.roomId) : "?"}호`;
+                          const fromName = bk.groupName?.trim() || (bk.groupId ? "단체" : null);
+                          const money = groupMoveMoneyLines({
+                            roomNo,
+                            from: fromName,
+                            to: to?.name ?? null,
+                            roomPaid: (bk.payments ?? []).reduce((n, p) => n + p.amount, 0),
+                            groupPaid: (bk.groupId ? data.groups.get(bk.groupId)?.payments ?? [] : []).reduce((n, p) => n + p.amount, 0),
+                          });
+                          const ok = await askConfirm({ title: to ? `${roomNo}를 ${to.name}로 옮길까요?` : `${roomNo}를 단체에서 뺄까요?`, body: money.join("\n"), confirmLabel: to ? "옮기기" : "빼기" });
+                          if (!ok) return;
                           try {
                             await data.moveBookingGroup(bk, to ? { groupId: to.groupId, name: to.name } : null);
                             const sum = groupMoveSummary(roomNo, bk.groupName ?? null, to?.name ?? null);

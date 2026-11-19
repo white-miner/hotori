@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { groupMoveRow, groupMoveSummary, groupMoveTargets } from "./groupMove";
+import { groupMoveMoneyLines, groupMoveRow, groupMoveSummary, groupMoveTargets } from "./groupMove";
 import type { Booking } from "./ledger";
 
 const bk = (id: string, groupId: string | null, name: string | null, roomId: string, status: "active" | "cancelled" = "active"): Booking =>
@@ -21,4 +21,12 @@ test("저장값은 group_id·group_name이 같이 있거나 같이 없어요", (
 test("변경 기록 문장", () => {
   assert.match(groupMoveSummary("602호", "가나", "다라"), /가나 → 다라/);
   assert.match(groupMoveSummary("602호", "가나", null), /단체에서 뺌/);
+});
+
+test("단체 이동 안내: 방 결제만 따라가고 단체 결제는 남는다고 금액과 함께", () => {
+  const l = groupMoveMoneyLines({ roomNo: "502호", from: "가나", to: "다라", roomPaid: 80_000, groupPaid: 690_000 });
+  assert.equal(l[0], "방 결제만 따라갑니다: 502호 결제 80,000원 → 다라");
+  assert.equal(l[1], "단체 결제는 남습니다: 가나 단체 결제 690,000원은 가나에 그대로");
+  const solo = groupMoveMoneyLines({ roomNo: "502호", from: "가나", to: null, roomPaid: 0, groupPaid: 0 });
+  assert.match(solo[0]!, /→ 개인 예약$/);
 });
