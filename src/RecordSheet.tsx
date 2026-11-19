@@ -99,14 +99,14 @@ export default function RecordSheet({
   const logTo = (p: { kind: "money" | "stay" | "rate" | "room"; summary: string; bookingId?: string | null }) =>
     void data.logChange({ kind: p.kind, summary: p.summary, groupId, bookingId: groupId ? null : p.bookingId ?? members[0]?.id ?? null, effectiveOn: today });
 
-  const doSave = async (payId: string | null, e: PaymentEdit) => {
+  const doSave = async (payId: string | null, e: PaymentEdit, reason?: string) => {
     setErr(null);
     try {
       if (payId) {
         const before = allPays.find((p) => p.id === payId)!;
         await data.updatePayment(payId, e);
-        logTo({ kind: "money", summary: fixPaymentSummary(before, e, bookingName), bookingId: e.bookingId ?? before.bookingId });
-        setMsg("결제 기록을 고쳤어요");
+        logTo({ kind: "money", summary: fixPaymentSummary(before, e, bookingName, reason), bookingId: e.bookingId ?? before.bookingId });
+        setMsg("결제 기록을 정정했어요 · 원래 금액과 사유는 변경 기록에 남아요");
       } else {
         const synthetic: Payment = { id: "", bookingId: e.bookingId ?? "", groupId: e.bookingId ? null : e.groupId, kind: e.kind, method: e.method, amount: e.amount, bizDate: e.bizDate, createdAt: "", note: e.note ?? null, nightDate: e.nightDate ?? null, periodNights: e.periodNights ?? null };
         await data.restorePayment(synthetic);
@@ -119,12 +119,12 @@ export default function RecordSheet({
       setErr(saveFailMessage(x, "저장하지 못했어요"));
     }
   };
-  const doDelete = async (p: Payment) => {
+  const doDelete = async (p: Payment, reason?: string) => {
     setErr(null);
     try {
       if (p.bookingId) await data.deletePayment(p.bookingId, p.id);
       else if (p.groupId) await data.deleteGroupPayment(p.groupId, p.id);
-      logTo({ kind: "money", summary: fixPaymentDeleteSummary(p, bookingName), bookingId: p.bookingId });
+      logTo({ kind: "money", summary: fixPaymentDeleteSummary(p, bookingName, reason), bookingId: p.bookingId });
       setUndo(p);
       setMsg(null);
       setOpen(null);
@@ -174,7 +174,7 @@ export default function RecordSheet({
                     {editable ? <span className="rec-edit">{isOpen ? "닫기" : "고치기"}</span> : null}
                   </button>
                   {isOpen && p ? (
-                    <PayEditor payment={p} members={live} groupId={groupId} today={today} roomName={bookingName} onCancel={() => setOpen(null)} onSave={(e) => doSave(p.id, e)} onDelete={() => doDelete(p)} />
+                    <PayEditor payment={p} members={live} groupId={groupId} today={today} roomName={bookingName} onCancel={() => setOpen(null)} onSave={(e, reason) => doSave(p.id, e, reason)} onDelete={(reason) => doDelete(p, reason)} />
                   ) : null}
                   {isOpen && !p && b ? (
                     <StayEditor
@@ -282,8 +282,8 @@ function PayEditor({
   today: string;
   roomName: (bookingId: string) => string;
   onCancel: () => void;
-  onSave: (e: PaymentEdit) => Promise<void>;
-  onDelete?: () => void;
+  onSave: (e: PaymentEdit, reason?: string) => Promise<void>;
+  onDelete?: (reason: string) => void;
 }) {
   const first = members[0] ?? null;
   const [amount, setAmount] = useState(payment ? String(payment.amount) : "");
@@ -293,6 +293,8 @@ function PayEditor({
   // 예전에 객실·기간을 적어 둔 줄은 그대로 두고, 원하면 「단체 결제로 바꾸기」로 표시만 떼요.
   const [asGroup, setAsGroup] = useState<boolean>(payment ? !payment.bookingId : !!groupId);
   const [note, setNote] = useState(payment?.note ?? "");
+  // 이미 있는 결제를 고치거나 지울 때: 사유를 남겨요 (원래 금액과 함께 변경 기록에 「정정됨」으로)
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [localErr, setLocalErr] = useState<string | null>(null);
 
@@ -304,6 +306,7 @@ function PayEditor({
     const toGroup = asGroup && !!groupId;
     const bookingId = toGroup ? null : payment?.bookingId || first?.id || null;
     if (!bookingId && !toGroup) return setLocalErr("저장할 곳을 찾지 못했어요.");
+    if (payment && !reason.trim()) return setLocalErr("정정 사유를 적어 주세요. 원래 금액과 함께 변경 기록에 남아요.");
     const keepPeriod = !toGroup && !!payment?.bookingId && payment.bookingId === bookingId;
     setBusy(true);
     setLocalErr(null);
@@ -319,7 +322,7 @@ function PayEditor({
         note: note.trim() || null,
         nightDate: keepPeriod ? payment?.nightDate ?? null : null,
         periodNights: keepPeriod ? payment?.periodNights ?? null : null,
-      });
+      }, payment ? reason.trim() : undefined);
     } finally {
       setBusy(false);
     }
@@ -354,9 +357,16 @@ function PayEditor({
           </label>
         </div>
       ) : null}
+      {payment ? (
+        <label className="rec-fld col">
+          <span>정정 사유 (필수)</span>
+          <input className="inp" maxLength={80} value={reason} placeholder="예: 카드 금액을 잘못 눌렀어요" onChange={(e) => setReason(e.target.value)} aria-label="정정 사유" />
+          <small className="muted">원래 {PAYMENT_METHOD_LABEL[payment.method]} {won(payment.amount)}원 ({md(payment.bizDate)}) · 고치거나 지워도 원래 금액과 사유가 변경 기록에 「정정됨」으로 남아요.</small>
+        </label>
+      ) : null}
       {localErr ? <div className="ferr">{localErr}</div> : null}
       <div className="rec-acts">
-        {onDelete ? <button type="button" className="btn line danger" disabled={busy} onClick={onDelete}>삭제</button> : null}
+        {onDelete ? <button type="button" className="btn line danger" disabled={busy} onClick={() => (reason.trim() ? onDelete(reason.trim()) : setLocalErr("지우는 사유를 적어 주세요. 원래 금액과 함께 변경 기록에 남아요."))}>삭제</button> : null}
         <button type="button" className="btn line" disabled={busy} onClick={onCancel}>취소</button>
         <button type="button" className="btn dark" disabled={busy} onClick={() => void submit()}>{busy ? "저장 중…" : payment ? "저장" : "기록 추가"}</button>
       </div>

@@ -77,7 +77,7 @@ import GroupJoinSheet from "./GroupJoinSheet";
 import MoveScheduleSheet from "./MoveScheduleSheet";
 import { type PendingMove, cancelScheduledMove, moveDoneSummary, moveDueToday, moveLabel, nextMove } from "../shared/scheduledMove";
 import RecordSheet from "./RecordSheet";
-import { payLines, type PayLine } from "../shared/recordTimeline";
+import { fixPaymentDeleteSummary, payLines, type PayLine } from "../shared/recordTimeline";
 import GroupLeaveSheet from "./GroupLeaveSheet";
 import { groupLedger } from "../shared/groupLedger";
 import { planStayEnd, stayEndSummary } from "../shared/stayEndPlan";
@@ -2947,8 +2947,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
     try {
+      const bk = data.bookings.find((x) => x.id === bookingId);
+      const gone = bk?.payments?.find((p) => p.id === payId);
       await data.deletePayment(bookingId, payId);
-      notify("결제 내역을 삭제했어요");
+      // 지운 결제도 원래 금액은 변경 기록에 「정정됨」으로 남겨요
+      if (gone) void data.logChange({ kind: "money", summary: fixPaymentDeleteSummary(gone, () => `${bk?.roomId ? L.roomLabel(bk.roomId) : "?"}호`, "결제 등록 화면에서 삭제"), groupId: bk?.groupId ?? null, bookingId: bk?.groupId ? null : bookingId, effectiveOn: today });
+      notify("결제 내역을 삭제했어요 · 원래 금액은 변경 기록에 남아요");
     } catch (e) {
       notify(saveFailMessage(e, "결제 내역을 삭제하지 못했어요"));
     } finally {
@@ -2960,8 +2964,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
     try {
+      const gone = data.groups.get(groupId)?.payments?.find((p) => p.id === payId);
       await data.deleteGroupPayment(groupId, payId);
-      notify("단체 결제 내역을 삭제했어요");
+      if (gone) void data.logChange({ kind: "money", summary: fixPaymentDeleteSummary(gone, () => "단체", "결제 등록 화면에서 삭제"), groupId, bookingId: null, effectiveOn: today });
+      notify("단체 결제 내역을 삭제했어요 · 원래 금액은 변경 기록에 남아요");
     } catch (e) {
       notify(saveFailMessage(e, "단체 결제 내역을 삭제하지 못했어요"));
     } finally {

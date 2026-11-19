@@ -204,7 +204,11 @@ export function paymentLabel(p: Pick<Payment, "method" | "amount" | "bizDate">):
 }
 
 /** 결제 줄 정정 → 바뀐 칸만 한 줄로 */
-export function fixPaymentSummary(before: Payment, after: PaymentEdit, roomName: (bookingId: string) => string): string {
+/** 정정 사유 (선택 입력) → 「 · 사유: …」 */
+const reasonTail = (reason?: string | null) => (reason?.trim() ? ` · 사유: ${reason.trim().slice(0, 80)}` : "");
+
+/** 결제 줄 정정 → 「결제 정정됨 (원래 …)」 + 바뀐 칸만 + 사유. 원래 금액은 이력에 남아요. */
+export function fixPaymentSummary(before: Payment, after: PaymentEdit, roomName: (bookingId: string) => string, reason?: string | null): string {
   const parts: string[] = [];
   if (before.amount !== after.amount) parts.push(`금액 ${won(before.amount)} → ${won(after.amount)}원`);
   if (before.method !== after.method) parts.push(`수단 ${PAYMENT_METHOD_LABEL[before.method]} → ${PAYMENT_METHOD_LABEL[after.method]}`);
@@ -218,14 +222,15 @@ export function fixPaymentSummary(before: Payment, after: PaymentEdit, roomName:
   if (pb !== pa) parts.push(`기간 ${pb} → ${pa}`);
   if ((before.note ?? "") !== (after.note?.trim() ?? "")) parts.push("메모 수정");
   if (before.kind !== after.kind) parts.push(`종류 ${before.kind === "deposit" ? "선금" : "잔금"} → ${after.kind === "deposit" ? "선금" : "잔금"}`);
-  return clip(`${FIX_PREFIX}결제 수정 (${paymentLabel(before)}): ${parts.join(", ") || "변경 없음"}`);
+  return clip(`${FIX_PREFIX}결제 정정됨 (원래 ${paymentLabel(before)}): ${parts.join(", ") || "변경 없음"}${reasonTail(reason)}`);
 }
 export function fixPaymentAddSummary(p: Pick<Payment, "method" | "amount" | "bizDate" | "bookingId" | "nightDate" | "periodNights">, roomName: (bookingId: string) => string): string {
   const per = periodText(p);
   return clip(`${FIX_PREFIX}결제 추가: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}${per ? ` · ${per}` : ""}`);
 }
-export function fixPaymentDeleteSummary(p: Payment, roomName: (bookingId: string) => string): string {
-  return clip(`${FIX_PREFIX}결제 삭제: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}`);
+/** 결제 줄 삭제 → 「결제 정정됨 · 삭제: 원래 …」 + 사유. 줄은 없어져도 원래 금액·수단·결제일은 이력에 남아요. */
+export function fixPaymentDeleteSummary(p: Payment, roomName: (bookingId: string) => string, reason?: string | null): string {
+  return clip(`${FIX_PREFIX}결제 정정됨 · 삭제: 원래 ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}${reasonTail(reason)}`);
 }
 export function fixPaymentRestoreSummary(p: Payment, roomName: (bookingId: string) => string): string {
   return clip(`${FIX_PREFIX}결제 삭제 되돌림: ${paymentLabel(p)} · ${p.bookingId ? roomName(p.bookingId) : "단체"}`);

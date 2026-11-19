@@ -205,7 +205,7 @@ export default function PaymentDeskModal({
     void (async () => {
       const ok = await askConfirm({
         title: "결제 내역 삭제",
-        body: "이 결제 내역을 삭제할까요? 잔금이 다시 늘어날 수 있어요.",
+        body: "이 결제 내역을 삭제할까요? 미수금이 다시 늘어날 수 있어요. 원래 금액은 변경 기록에 「정정됨」으로 남아요. 사유를 남기려면 기록 정정에서 고쳐 주세요.",
         confirmLabel: "삭제",
         danger: true,
       });
