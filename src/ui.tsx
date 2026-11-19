@@ -203,7 +203,7 @@ export function GroupBadge({
         <button
           type="button"
           className={`${cls} payable`}
-          title={`${title} · 눌러서 기간 결제`}
+          title={`${title} · 눌러서 결제 등록`}
           aria-haspopup="dialog"
           onClick={(e) => {
             e.stopPropagation();

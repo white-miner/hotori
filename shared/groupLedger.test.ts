@@ -17,7 +17,7 @@ const room = (id: string, per: number, count: number, checkIn = "2026-10-25", p:
     nightRates: { flat: per, nights: Object.fromEntries(Array.from({ length: count }, (_, i) => [addDays(checkIn, i), per])) },
     payments: [], checkedOutAt: null, stayMode: null, ...p,
   }) as PeriodBooking;
-const TODAY = "2026-10-25";
+const TODAY = "2026-10-27";
 const three = () => [room("r602", 70_000, 3), room("r501", 80_000, 3), room("r301", 80_000, 3)];
 
 test("사례: 602(7만)+501(8만)+301(8만) 10/25~10/27 3박 = 청구 690,000 → 카드 690,000 결제 = 정산 완료", () => {
@@ -69,7 +69,7 @@ test("502호 추가(박당 8만) 3박: 청구 930,000 → 결제 690,000이면 �
 
 test("502호가 1박(8만)만이면 카드 8만 결제로 정확히 정산 완료", () => {
   const rooms = [...three(), room("r502", 80_000, 1, "2026-10-26")];
-  const g = groupLedger(rooms.map((r) => (r.id === "r502" ? ({ ...r, payments: [pay("r502", 80_000, { bizDate: "2026-10-26" })] } as PeriodBooking) : r)), 690_000, "2026-10-26");
+  const g = groupLedger(rooms.map((r) => (r.id === "r502" ? ({ ...r, payments: [pay("r502", 80_000, { bizDate: "2026-10-26" })] } as PeriodBooking) : r)), 690_000, "2026-10-27");
   assert.equal(g.due, 770_000);
   assert.equal(g.paid, 770_000);
   assert.equal(balanceLabel(g), "정산 완료");
@@ -135,10 +135,13 @@ test("열린 숙박 단체: 미수금은 오늘 밤(10/28)까지 청구 기준 �
   assert.equal(diffLine(g), "오늘 밤까지 청구 1,000,000원 − 결제 770,000원 = 미수금 230,000원 · 이후 예정 280,000원");
   assert.equal(groupLedger(open, 1_000_000, T).owed, 0);
   assert.equal(balanceLabel(groupLedger(open, 1_100_000, T)), "선수금 100,000원");
-  // 퇴실일이 정해진 숙박은 그대로 전부 청구
-  const fixed = groupLedger(three(), 0, TODAY);
-  assert.equal(fixed.owed, 690_000);
-  assert.equal(fixed.upcoming, 0);
+  // 퇴실일이 있어도 미수금은 오늘 밤까지. 나머지 박은 예정.
+  const first = groupLedger(three(), 0, "2026-10-25");
+  assert.equal(first.due, 690_000);
+  assert.equal(first.dueSoFar, 230_000);
+  assert.equal(first.upcoming, 460_000);
+  assert.equal(first.owed, 230_000);
+  assert.equal(balanceLabel(groupLedger(three(), 690_000, "2026-10-25")), "선수금 460,000원");
 });
 
 test("사례 그대로: 청구 1,390,000 · 오늘 밤까지 1,080,000 · 결제 770,000 → 미수금 310,000 · 예정 310,000", () => {

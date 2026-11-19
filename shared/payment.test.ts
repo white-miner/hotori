@@ -172,9 +172,9 @@ test("수납액 검사", () => {
 test("내역 카피: 방법+금액이 먼저 · kind는 장기/표준 라벨", () => {
   assert.equal(payLineMain("cash", 80000), "현금 80,000");
   assert.equal(payLineMain("card", 80000), "카드 80,000");
-  assert.equal(payKindLabel("deposit"), "선금");
-  assert.equal(payKindLabel("balance"), "잔금");
-  assert.equal(payKindLabel("deposit", true), "선수");
+  assert.equal(payKindLabel("deposit"), "선수금");
+  assert.equal(payKindLabel("balance"), "수납");
+  assert.equal(payKindLabel("deposit", true), "선수금");
   assert.equal(payKindLabel("balance", true), "수납");
 });
 
@@ -201,12 +201,12 @@ test("생성 progressive: prepaid=완납 balance · 후불=none · 선금=deposi
   assert.deepEqual(planOnsiteCreatePay("prepaid", { priceUnset: true, saleTotal: 80000, depAmt: "", depMethod: "card" }), {
     kind: "none",
   });
-  assert.equal(onsiteCreatePayTail({ kind: "balance", amount: 80000, method: "card" }), " · 완납 80,000원");
-  assert.equal(onsiteCreatePayTail({ kind: "deposit", amount: 30000, method: "cash" }), " · 선금 30,000원(현금)");
+  assert.equal(onsiteCreatePayTail({ kind: "balance", amount: 80000, method: "card" }), " · 전액 80,000원");
+  assert.equal(onsiteCreatePayTail({ kind: "deposit", amount: 30000, method: "cash" }), " · 선수금 30,000원(현금)");
   assert.equal(validateOnsiteCreateDeposit("postpaid", { saleTotal: 80000, depAmt: "", depMethod: "card", bizDate: "2026-10-22" }), null);
   assert.match(
     validateOnsiteCreateDeposit("deposit", { saleTotal: 80000, depAmt: "90000", depMethod: "card", bizDate: "2026-10-22" })!,
-    /선금이 판매금/,
+    /선수금이 판매금/,
   );
   assert.equal(
     validateOnsiteCreateDeposit("deposit", { saleTotal: 80000, depAmt: "30000", depMethod: "card", bizDate: "2026-10-22" }),

@@ -1,5 +1,6 @@
 // 장기숙박(퇴실 미정): 요금표 · 박별 누적 · 미수 · 재고 창 롤링
 import { type Booking, STAY_NIGHTS_MAX, addDays, dayLabel, fitSegments, won } from "./ledger";
+import { longStayFolio } from "./folio";
 import { applyExtend, canExtend, extendBlock, extendOverlaps, type ExtendDraft } from "./extend";
 import type { HotelSettings } from "./ledger";
 
@@ -80,10 +81,9 @@ export function accruedOf(b: Pick<Booking, "charges"> | { charges?: NightCharge[
   return (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
 }
 
-/** 미수 = max(0, 누적 − 수납액). 과입금은 0 클램프 */
-export function balanceDue(b: Pick<Booking, "charges" | "payments">): number {
-  const paid = (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
-  return Math.max(0, accruedOf(b) - paid);
+/** 미수금 = 오늘 밤까지 원장 − 수납. today를 안 넘기면 올라 있는 원장 전부. */
+export function balanceDue(b: Pick<Booking, "charges" | "payments" | "priceUnset">, today = "9999-12-31"): number {
+  return longStayFolio(b, true, today).owed;
 }
 
 export interface LongPayState {

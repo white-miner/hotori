@@ -85,7 +85,7 @@ export default function PaymentDeskModal({
   const L = lookups(s);
   const first = members[0];
   const plat = first ? L.plats.get(first.platformId) : undefined;
-  const glance = useMemo(() => paymentDeskGlance(members, plat, groupInfo), [members, plat, groupInfo]);
+  const glance = useMemo(() => paymentDeskGlance(members, plat, groupInfo, today), [members, plat, groupInfo, today]);
   const single = !glance.group && members.length === 1 ? members[0] : null;
   const canSurcharge = !!single && !!onSurcharge;
   const matchedCredits = useMemo(
@@ -251,13 +251,13 @@ export default function PaymentDeskModal({
             닫기
           </button>
         </div>
-        <ModalTabs scope={scope} label="데스크 모드" value={mode} onChange={changeMode} disabled={busy} tabs={[{id:"pay",label:"수납·선금"},...(canSurcharge ? [{id:"surcharge" as const,label:"할증"}] : []),...(canCredit ? [{id:"credit" as const,label:STAY_CREDIT_COPY.use}] : []),{id:"ledger",label:"결제 내역"}]} />
+        <ModalTabs scope={scope} label="데스크 모드" value={mode} onChange={changeMode} disabled={busy} tabs={[{id:"pay",label:"결제 등록"},...(canSurcharge ? [{id:"surcharge" as const,label:"할증"}] : []),...(canCredit ? [{id:"credit" as const,label:STAY_CREDIT_COPY.use}] : []),{id:"ledger",label:"결제 내역"}]} />
         <div className="mb modal-task-body">
           <p>
             <b>{roomLabels.map((n) => `${n}호`).join(", ")}</b> · {guestLabel}
             {glance.group ? ` · ${glance.memberCount}실` : ""}
           </p>
-          <div className="payment-desk-glance" aria-label="잔금">
+          <div className="payment-desk-glance" aria-label="잔액">
             <span>
               청구 <b>{won(glance.due)}</b>
             </span>
@@ -265,10 +265,11 @@ export default function PaymentDeskModal({
               수납 <b>{won(glance.paid)}</b>
             </span>
             <span className={glance.tracked && glance.left > 0 ? "left" : ""}>
-              잔액 <b>{glance.tracked ? won(glance.left) : "—"}</b>
+              {glance.ota ? "OTA" : "미수금"} <b>{glance.ota ? glance.label : won(glance.left)}</b>
             </span>
           </div>
-          {!glance.tracked ? <p className="muted sm">플랫폼 선결제 · 잔금 추적 없음 (기록만 가능)</p> : null}
+          {glance.upcoming > 0 ? <p className="muted sm">예정 {won(glance.upcoming)}원 · 오늘 밤 다음 박은 미수금에 넣지 않아요</p> : null}
+          {glance.ota ? <p className="muted sm">OTA 선결제 · 결제 줄은 만들지 않아요. 머리글과 같은 미수금 0원입니다.</p> : null}
           {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 수납해 주세요.</p> : null}
           {clearOk ? (
             <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
@@ -304,7 +305,7 @@ export default function PaymentDeskModal({
                     수납
                   </Chip>
                   <Chip sm active={kind === "deposit"} disabled={busy} onClick={() => setKind("deposit")}>
-                    선금
+                    선수금
                   </Chip>
                 </ChipGroup>
                 <ChipGroup role="group" aria-label="결제 방법">

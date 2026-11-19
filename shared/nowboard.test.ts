@@ -382,13 +382,13 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
   assert.equal(simplePayGlance(bk({ price: 180000, payments: [] }), true), "후불");
   assert.equal(
     simplePayGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "balance", method: "card", amount: 180000, bizDate: "2026-10-19", createdAt: "" }] }), true),
-    "완납",
+    "정산 완료",
   );
   // 미수(수납 0) = due · 선금·일부 = partial · 완납 = paid
   assert.equal(nowAmountTone(bk({ price: 180000, payments: [] }), onsite), "due");
   assert.equal(
     nowAmountGlance(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
-    "잔금 ₩130,000",
+    "미수금 ₩130,000",
   );
   assert.equal(
     nowAmountTone(bk({ price: 180000, payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "cash", amount: 50000, bizDate: "2026-10-19", createdAt: "" }] }), onsite),
@@ -420,7 +420,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       }),
       onsite,
     ),
-    "미수 ₩80,000",
+    "미수금 ₩80,000",
   );
   assert.equal(
     nowAmountTone(
@@ -465,7 +465,7 @@ test("금액 글랜스 · 톤 · 메타 줄", () => {
       payments: [{ id: "1", bookingId: "b", kind: "deposit", method: "transfer", amount: 50000, bizDate: "2026-10-19", createdAt: "" }],
     });
     const leftAmt = nowAmountGlance(partial, onsite);
-    assert.equal(leftAmt, "잔금 ₩130,000");
+    assert.equal(leftAmt, "미수금 ₩130,000");
     assert.equal(nowPayMethodGlance(partial), "이체");
     assert.equal(nowPayMethodPrefix(leftAmt, "이체"), null);
     const paid = bk({

@@ -1,6 +1,7 @@
 // 단체 정산: 단체 하나를 결제자 하나로. 금액은 방들의 지금 상태로 계산해요.
 import { type Booking, type Platform, won } from "./ledger";
 import { type Payment, isOnsite, paidOf, payState } from "./payment";
+import { FOLIO_THROUGH_STAY, groupFolio } from "./folio";
 
 export type GroupPayMode = "prepaid" | "postpaid";
 export const PAY_MODE_LABEL: Record<GroupPayMode, string> = { prepaid: "선결제", postpaid: "후불(퇴실 후 정산)" };
@@ -86,7 +87,12 @@ export interface Settlement {
  * 정산 계산: 취소한 방은 빼고, 노쇼는 넣고, 조기 퇴실 환불은 빼요.
  * 방 가격을 고쳤으면 고친 가격이 들어가요 (가격 = 판매 가격 − 추가 인원 − 빠른 입실·늦은 퇴실).
  */
-export function settle(members: Booking[], info: GroupInfo | null | undefined, plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null): Settlement {
+export function settle(
+  members: Booking[],
+  info: GroupInfo | null | undefined,
+  plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null,
+  today = FOLIO_THROUGH_STAY,
+): Settlement {
   const counted = members.filter((b) => b.status !== "cancelled");
   const byType = new Map<string, SettleLine>();
   let extraGuests = 0;
@@ -118,9 +124,10 @@ export function settle(members: Booking[], info: GroupInfo | null | undefined, p
   const extras = (info?.extras ?? []).reduce((a, x) => a + Math.max(0, x.amount), 0);
   const total = Math.max(0, roomSum + extraGuests + extraTime + parking + extras - refunds);
   const paid = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0) + counted.reduce((a, b) => a + paidOf(b), 0);
-  // 후불·현장 결제만 잔금. OTA 선결제(prepaid)는 결제 내역·추가항목이 있어도 플랫폼 선결제 → 잔금 없음.
-  const tracked = info?.payMode === "postpaid" || isOnsite(plat);
-  const left = tracked ? Math.max(0, total - paid) : 0;
+  // 미수금·OTA 선결제는 잔액 함수 하나. 후불이면 OTA여도 미수금을 따집니다.
+  const folio = groupFolio(counted, (info?.payments ?? []).reduce((a, x) => a + x.amount, 0), extras, { onsite: isOnsite(plat), payMode: info?.payMode ?? null }, today);
+  const tracked = folio.tracked;
+  const left = tracked ? folio.owed : 0;
   return {
     lines,
     roomSum,
@@ -143,7 +150,7 @@ export function settleBadge(st: Settlement, info: GroupInfo | null | undefined):
   if (!st.tracked || st.total <= 0) return null;
   if (st.settled) return { text: "정산 완료", due: false };
   const v = st.left.toLocaleString("ko-KR");
-  return { text: info?.payMode === "postpaid" ? `정산 대기 ${v}` : `잔금 ${v}`, due: true };
+  return { text: info?.payMode === "postpaid" ? `정산 대기 ${v}` : `미수금 ${v}`, due: true };
 }
 
 /** P1 글랜스 뱃지: 단체 내역만 → 단체납 · 한 방 대납 완납 → 대납 · 방마다(S1) → 없음 */
@@ -174,10 +181,11 @@ export function groupSettleGlance(
   members: Booking[],
   info: GroupInfo | null | undefined,
   plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null,
+  today = FOLIO_THROUGH_STAY,
 ): GroupSettleGlance | null {
   const active = members.filter((b) => b.status !== "cancelled");
   if (active.length === 0) return null;
-  const st = settle(active, info, plat);
+  const st = settle(active, info, plat, today);
   if (!st.tracked || st.total <= 0) return null;
 
   const n = active.length;
@@ -204,8 +212,8 @@ export function groupSettleGlance(
   // 완납: `단체 · N실 완납` (정산 완료와 동치 · Ops는 N실 표기 유지)
   const strip =
     k === 0
-      ? `단체 · ${n}실 완납`
-      : `단체 · ${paidRooms}실 완납 / ${k}실 잔금 · 잔액 ₩${won(st.left)}`;
+      ? `단체 · ${n}실 정산 완료`
+      : `단체 · ${paidRooms}실 정산 완료 / ${k}실 미수금 · 잔액 ₩${won(st.left)}`;
   const compact = k === 0 ? `${n}완` : `${paidRooms}완/${k}잔`;
 
   return {

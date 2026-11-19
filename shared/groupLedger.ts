@@ -1,7 +1,7 @@
 // 단체 요금·결제 비교: 두 장부를 따로 두고 견줘요.
 //  (A) 객실 요금 = 객실마다 날짜별(요일별) 박 요금 → 객실 소계 → 단체 청구 합계
 //  (B) 결제 내역 = 실제로 받은 돈을 날짜·수단·금액 한 줄씩 (객실·박에 나누지 않아요)
-//  청구 합계(A) − 결제 합계(B) = 미수금 / 초과 수납 / 정산 완료.
+//  미수금 = 오늘 밤까지 청구 − 결제. 그 다음 박은 예정. 전체 청구보다 더 받으면 초과 수납.
 // 결제를 객실이나 박에 배분하지 않아요 — 객실마다 요금이 달라도 평균이 되지 않고, 숫자는 항상 두 합계의 차이예요.
 import { addDays, md, stayEnd, won } from "./ledger";
 import { type RoomExtra, cleanRoomExtras, extrasTotal } from "./nightrates";
@@ -115,9 +115,9 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
       live: !!last && last >= today,
       staying: !!tonightRow,
       tonight: tonightRow?.amount ?? 0,
-      // 열린 숙박만 오늘 밤까지 (방 보호로 미리 이어 놓은 밤은 예정) · 퇴실일이 정해진 숙박은 약속된 청구라 전부 지금 청구
-      accrued: sum(rows.filter((x) => b.openEnded !== true || x.date <= today).map((x) => x.amount)),
-      upcoming: sum(rows.filter((x) => b.openEnded === true && x.date > today).map((x) => x.amount)),
+      // 미수금은 오늘 밤까지. 퇴실일이 있어도 그 다음 박은 예정 (열린 숙박의 방 보호 밤과 같은 기준).
+      accrued: sum(rows.filter((x) => x.date <= today).map((x) => x.amount)),
+      upcoming: sum(rows.filter((x) => x.date > today).map((x) => x.amount)),
       noted: sum((b.payments ?? []).map((p) => p.amount)),
     };
   });
@@ -126,7 +126,7 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
   const due = roomCharges + extras;
   const paid = noted + lumpSum;
   const balance = paid - due;
-  // 미수금은 "오늘 밤까지" 쌓인 청구 기준 — 미리 이어 놓은 열린 숙박 밤·앞으로 올 밤은 따로 예정으로 보여요
+  // 미수금 = 오늘 밤까지 청구 − 결제. 오늘 다음 박은 예정. 단체 추가 항목은 오늘 청구에 넣어요.
   const dueSoFar = sum(rooms.map((r) => r.accrued)) + extras;
   const upcoming = sum(rooms.map((r) => r.upcoming));
   return {

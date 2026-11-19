@@ -126,9 +126,9 @@ const c19 = mk({ checkIn: "2026-10-28", nights: 1, arrived: false, price: 70_000
 
 export const CARD_CASES: CardCase[] = [
   { id: "C01", name: "개인 · 1박 · 현장 · 미결제", b: mk({ price: 80_000 }), plat: ONSITE, bookings: solo(mk({ price: 80_000 })), info: noInfo, view: TODAY, expect: { line: "10/28 · 1박", rate: "₩80,000", pay: "미결제", due: 80_000, lead: false } },
-  { id: "C02", name: "개인 · 3박 · 박마다 다름 · 카드 일부 결제", b: c02, plat: ONSITE, bookings: solo(c02), info: noInfo, view: TODAY, expect: { line: "10/27~10/29 · 2/3박", rate: "₩80,000", varies: true, pay: "카드100,000", due: 140_000, lead: false } },
+  { id: "C02", name: "개인 · 3박 · 박마다 다름 · 카드 일부 결제", b: c02, plat: ONSITE, bookings: solo(c02), info: noInfo, view: TODAY, expect: { line: "10/27~10/29 · 2/3박", rate: "₩80,000", varies: true, pay: "카드100,000", due: 50_000, lead: false } },
   { id: "C03", name: "개인 · 3박 · 같은 요금 · 완납(현금)", b: c03, plat: ONSITE, bookings: solo(c03), info: noInfo, view: TODAY, expect: { line: "10/28~10/30 · 1/3박", rate: "₩70,000", pay: "현금210,000", due: 0, lead: false } },
-  { id: "C04", name: "개인 · 12박 장기 연박 · 일부 결제", b: c04, plat: ONSITE, bookings: solo(c04), info: noInfo, view: TODAY, expect: { line: "10/20~10/31 · 9/12박", rate: "₩60,000", pay: "이체300,000", due: 420_000, lead: false } },
+  { id: "C04", name: "개인 · 12박 장기 연박 · 일부 결제", b: c04, plat: ONSITE, bookings: solo(c04), info: noInfo, view: TODAY, expect: { line: "10/20~10/31 · 9/12박", rate: "₩60,000", pay: "이체300,000", due: 240_000, lead: false } },
   { id: "C05", name: "장기숙박(요금표) · 퇴실 미정 · 일부 결제", b: c05, plat: ONSITE, bookings: solo(c05), info: noInfo, view: TODAY, expect: { line: "10/20 ~ · 9박째", rate: "₩60,000", pay: "이체400,000", due: 140_000, lead: false } },
   { id: "C06", name: "OTA 야놀자 · 3박 · 박별 요금", b: c06, plat: YANOLJA, bookings: solo(c06), info: noInfo, view: TODAY, expect: { line: "10/27~10/29 · 2/3박", rate: "₩100,000", varies: true, pay: "야놀자270,000", due: 0, lead: false } },
   { id: "C07", name: "OTA · 3박 · 박별 요금 없음 (평균 금지)", b: c07, plat: YANOLJA, bookings: solo(c07), info: noInfo, view: TODAY, expect: { line: "10/27~10/29 · 2/3박", rate: null, pay: "야놀자270,000", due: 0, lead: false } },
@@ -138,12 +138,12 @@ export const CARD_CASES: CardCase[] = [
   gcase("C11", "단체 다른 객실 · 자기 기간·요금만", G[1]!, ONSITE, { line: "10/25~10/28 · 4/4박", rate: "₩80,000", pay: null, due: 0, lead: false, member: true, company: "(주)호토리" }),
   gcase("C12", "단체 다른 객실 · 중간 입실", G[3]!, ONSITE, { line: "10/27~10/28 · 2/2박", rate: "₩80,000", pay: null, due: 0, lead: false, member: true, company: "(주)호토리" }),
   gcase("C13", "단체 다른 객실 · 플랫폼 판매금액", G[2]!, YANOLJA, { line: "10/25~10/28 · 4/4박", rate: "₩80,000", pay: "야놀자320,000", due: 0, lead: false, member: true, company: "(주)호토리" }),
-  { id: "C14", name: "단체지만 활성 객실 1개 → 개인처럼 (대표객실 글자 없음)", b: c11a, plat: ONSITE, bookings: [c11a, c11b], info: noInfo, view: TODAY, expect: { line: "10/28~10/29 · 1/2박", rate: "₩80,000", pay: "미결제", due: 160_000, lead: false } },
+  { id: "C14", name: "단체지만 활성 객실 1개 → 개인처럼 (대표객실 글자 없음)", b: c11a, plat: ONSITE, bookings: [c11a, c11b], info: noInfo, view: TODAY, expect: { line: "10/28~10/29 · 1/2박", rate: "₩80,000", pay: "미결제", due: 80_000, lead: false } },
   { id: "C15", name: "퇴실 미정 · 개인 · 일부 결제", b: c12, plat: ONSITE, bookings: solo(c12), info: noInfo, view: TODAY, expect: { line: "10/25 ~ · 4박째", rate: "₩70,000", pay: "이체100,000", due: 180_000, lead: false } },
   { id: "C16", name: "취소 예약 (카드에 요금·결제 줄 없음)", b: c13, plat: ONSITE, bookings: solo(c13), info: noInfo, view: TODAY, expect: { line: "", rate: null, pay: null, due: 0, lead: false } },
   { id: "C17", name: "금액 미정", b: c14, plat: ONSITE, bookings: solo(c14), info: noInfo, view: TODAY, expect: { line: "10/28~10/29 · 1/2박", rate: null, pay: "금액미정", due: 0, lead: false } },
   { id: "C18", name: "박별 요금 일부만 적음 → 적은 박은 그 값", b: c15, plat: ONSITE, bookings: solo(c15), info: noInfo, view: TODAY, expect: { line: "10/28~10/30 · 1/3박", rate: "₩95,000", varies: true, pay: "현금255,000", due: 0, lead: false } },
   { id: "C19", name: "배치에서 다른 날짜(10/27) 보기 · 2박째", b: c16, plat: ONSITE, bookings: solo(c16), info: noInfo, view: "2026-10-27", boardOnly: true, expect: { line: "10/26~10/28 · 2/3박", rate: "₩100,000", varies: true, pay: "카드270,000", due: 0, lead: false } },
-  { id: "C20", name: "입실 전 예약 (10/30 입실) · 몇째 밤 숨김", b: c18, plat: ONSITE, bookings: solo(c18), info: noInfo, view: TODAY, expect: { line: "10/30~10/31 · 2박", rate: "₩80,000", pay: "미결제", due: 160_000, lead: false } },
+  { id: "C20", name: "입실 전 예약 (10/30 입실) · 몇째 밤 숨김", b: c18, plat: ONSITE, bookings: solo(c18), info: noInfo, view: TODAY, expect: { line: "10/30~10/31 · 2박", rate: "₩80,000", pay: "미결제", due: 0, lead: false } },
   { id: "C21", name: "오늘 입실 · 아직 입실 전 · 1박 · 완납", b: c19, plat: ONSITE, bookings: solo(c19), info: noInfo, view: TODAY, expect: { line: "10/28 · 1박", rate: "₩70,000", pay: "현금70,000", due: 0, lead: false } },
 ];

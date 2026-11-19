@@ -134,8 +134,8 @@ test("「1박 연장」과 분리: nights·checkOut 불변 · 카피 다름", ()
 test("내역 카피: 이체 주 + 추가금 보조", () => {
   assert.equal(surchargePayNote("late_out"), "추가금 · 늦은 퇴실");
   assert.match(payLineSub("balance", "2026-10-20", "추가금 · 늦은 퇴실"), /^추가금 · 늦은 퇴실 · 10\/20/);
-  assert.match(payLineSub("balance", "2026-10-20", null), /^잔금 · 10\/20/);
-  assert.match(payLineSub("deposit", "2026-10-18", null), /^선금 · 10\/18/);
+  assert.match(payLineSub("balance", "2026-10-20", null), /^수납 · 10\/20/);
+  assert.match(payLineSub("deposit", "2026-10-18", null), /^선수금 · 10\/18/);
 });
 
 test("메모 접두 · 알림 줄 · canAddSurcharge", () => {

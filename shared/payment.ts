@@ -1,6 +1,7 @@
 // 선금 · 잔금: 수납액은 예약마다 줄로 적고, 잔금은 화면에서 계산해요.
 import { type Booking, type Platform, revenueOf } from "./ledger";
 import { won } from "./ledger";
+import { FOLIO_THROUGH_STAY, bookingFolio } from "./folio";
 
 /** 예약 결제 방법: 카드 · 현금 · 이체 (이체는 현금 시재에 안 들어가요). 매점은 카드·현금, 지출은 카드·현금·이체 */
 export type BookPayMethod = "card" | "cash" | "transfer";
@@ -19,10 +20,9 @@ export const isBookPayMethod = (v: unknown): v is BookPayMethod => v === "card" 
 export const isPaymentMethod = (v: unknown): v is PaymentMethod => isBookPayMethod(v) || v === "credit";
 
 export type PayKind = "deposit" | "balance";
-export const PAY_KIND_LABEL: Record<PayKind, string> = { deposit: "선금", balance: "잔금" };
-/** 장기: 선수 / 수납 · 표준: 선금 / 잔금 */
-export function payKindLabel(kind: PayKind, long = false): string {
-  if (long) return kind === "deposit" ? "선수" : "수납";
+export const PAY_KIND_LABEL: Record<PayKind, string> = { deposit: "선수금", balance: "수납" };
+/** 결제 종류 문구. 못 받은 돈은 미수금이고, 이 라벨은 결제 줄의 종류입니다. */
+export function payKindLabel(kind: PayKind, _long = false): string {
   return PAY_KIND_LABEL[kind];
 }
 /** Entry 내역 주 카피: `현금 80,000` · `잔액 사용 80,000` */
@@ -171,20 +171,23 @@ export interface PayState {
  * 청구액 = 판매 가격 − 조기 퇴실 환불.
  * 장기(long_stay): 청구액 = 원장 누적 − 수납액 (판매가 price 총액 모델 아님).
  */
-export function payState(b: Booking, plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined): PayState {
+export function payState(
+  b: Booking,
+  plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
+  today = FOLIO_THROUGH_STAY,
+): PayState {
   const paid = paidOf(b);
-  // 금액미정: 잔금·완납 계산 보류 (글랜스는 nowAmountGlance)
   if (b.priceUnset) return { tracked: false, due: 0, paid, left: 0, full: false };
+  const f = bookingFolio(b, isOnsite(plat), today);
   if (b.stayMode === "long_stay" && b.status === "active") {
-    const due = (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
-    const left = Math.max(0, due - paid);
-    return { tracked: true, due, paid, left, full: due > 0 && left === 0 };
+    const left = f.ota ? 0 : f.owed;
+    return { tracked: !f.ota, due: f.due, paid, left, full: !f.ota && f.due > 0 && paid >= f.due };
   }
-  // 현장·전화(또는 설정에서 '현장 결제' ON)만 잔금. OTA는 paid>0이어도 잔금 표시 안 함.
+  // left = 오늘 밤까지 미수금. full = 퇴실일까지 청구를 모두 받은 상태(정산 완료).
   const tracked = b.status === "active" && isOnsite(plat);
   const due = revenueOf(b);
-  const left = tracked ? Math.max(0, due - paid) : 0;
-  return { tracked, due, paid, left, full: tracked && left === 0 && due > 0 };
+  const left = tracked ? f.owed : 0;
+  return { tracked, due, paid, left, full: tracked && due > 0 && paid >= due };
 }
 /** 장부 현금 시재에 들어가는 예약 현금 (기간 안에 받은 선금·잔금) */
 export function bookingCash(list: Pick<Payment, "method" | "amount" | "bizDate">[], from: string, to: string): number {
@@ -225,9 +228,9 @@ export function splitLine(p: Record<BookPayMethod, number>): string {
 export type OnsitePayMode = "prepaid" | "postpaid" | "deposit";
 export const ONSITE_PAY_MODES = ["prepaid", "postpaid", "deposit"] as const;
 export const ONSITE_PAY_MODE_LABEL: Record<OnsitePayMode, string> = {
-  prepaid: "완납",
+  prepaid: "전액",
   postpaid: "후불",
-  deposit: "선금",
+  deposit: "선수금",
 };
 
 export type OnsiteCreatePayPlan =
@@ -269,7 +272,7 @@ export function validateOnsiteCreateDeposit(
   const amt = Number(opts.depAmt || 0);
   const pv = validatePayment(amt, opts.depMethod, opts.bizDate);
   if (pv) return pv;
-  if (amt > opts.saleTotal) return "선금이 판매금보다 커요.";
+    if (amt > opts.saleTotal) return "선수금이 판매금보다 커요.";
   return null;
 }
 
@@ -290,7 +293,7 @@ export function planOnsiteCreatePay(
 }
 
 export function onsiteCreatePayTail(plan: OnsiteCreatePayPlan): string {
-  if (plan.kind === "balance") return ` · 완납 ${won(plan.amount)}원`;
-  if (plan.kind === "deposit") return ` · 선금 ${won(plan.amount)}원(${BOOK_PAY_LABEL[plan.method]})`;
+  if (plan.kind === "balance") return ` · 전액 ${won(plan.amount)}원`;
+  if (plan.kind === "deposit") return ` · 선수금 ${won(plan.amount)}원(${BOOK_PAY_LABEL[plan.method]})`;
   return "";
 }

@@ -14,7 +14,7 @@ const room = (id: string, per: number, count: number, checkIn = "2026-10-25"): P
   }) as unknown as PeriodBooking;
 
 const rooms = () => [room("r602", 70_000, 3), room("r501", 80_000, 3), room("r301", 80_000, 3)];
-const T = "2026-10-25";
+const T = "2026-10-27";
 
 test("열면 금액은 미수금 · 큰 버튼은 「결제 등록 · 690,000원」", () => {
   const led = groupLedger(rooms(), 0, T);

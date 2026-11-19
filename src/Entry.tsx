@@ -777,7 +777,8 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       let collected = false;
       if (ex.collect && plan.collectAmount > 0) {
         try {
-          await data.addPayment(saved.id, { kind: "balance", method: ex.method, amount: plan.collectAmount, bizDate: today });
+          if (saved.groupId) await data.addGroupPayment(saved.groupId, { kind: "balance", method: ex.method, amount: plan.collectAmount, bizDate: today, note: "1박 연장" });
+          else await data.addPayment(saved.id, { kind: "balance", method: ex.method, amount: plan.collectAmount, bizDate: today, note: "1박 연장" });
           collected = true;
         } catch (e) {
           onClose();
@@ -929,7 +930,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     const members = coConfirm.members.map((m) => data.bookings.find((x) => x.id === m.id) ?? m);
     const plat = L.plats.get(b.platformId);
     const info = b.groupId ? data.groups.get(b.groupId) ?? null : null;
-    const left = b.groupId ? settle(members, info, plat).left : payState(b, plat).left;
+    const left = b.groupId ? settle(members, info, plat, today).left : payState(b, plat, today).left;
     setCoConfirm(null);
     await applyEntryCheckOut(b, false, left > 0 ? checkoutLeaveBalanceNotifyLine(b.guestName, left) : undefined);
   };
@@ -951,7 +952,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           setCheckedOutAt(null);
           return;
         }
-        await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today });
+        await data.addGroupPayment(gid, { method: plan.method, amount: plan.amount, bizDate: today, kind: plan.kind });
       } else {
         await data.addPayment(b.id, {
           kind: plan.kind,
@@ -3229,7 +3230,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
             <div className="payb">
               {!payTracked ? (
                 <div className="muted sm payota">
-                  플랫폼에서 결제 · 잔금 없음 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 잔금을 따져요)</span>
+                  OTA 선결제 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 미수금을 따져요)</span>
                 </div>
               ) : (
                 <>
@@ -3238,7 +3239,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                   <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                     {payLeft > 0 ? (
                       <>
-                        {long ? "미수" : "잔금"} <b className="num">{won(payLeft)}원</b>
+                        미수금 <b className="num">{won(payLeft)}원</b>
                         <span className="muted">
                           {" "}
                           = {long ? "청구 합계" : "판매"} {won(payDue)} − 수납 {won(payPaid)}
@@ -3246,7 +3247,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                       </>
                     ) : payPaid > 0 ? (
                       <>
-                        <Check size={14} strokeWidth={2.6} /> {long ? "정산됨" : "완납"} <span className="muted">· 수납액 {won(payPaid)}원</span>
+                        <Check size={14} strokeWidth={2.6} /> 정산 완료 <span className="muted">· 수납액 {won(payPaid)}원</span>
                       </>
                     ) : (
                       <span className="muted">{long ? "요금표를 입력하면 미수가 보여요" : "판매 가격을 입력하면 잔금이 보여요"}</span>
@@ -3294,7 +3295,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         {payBusy ? "저장 중…" : long ? "미수금 수납" : "수납"}
                       </button>
                       <button type="button" className="btn sm line" disabled={payBusy} onClick={() => void recordPay("deposit")}>
-                        {long ? "선수" : "선금"}
+                        선수금
                       </button>
                     </div>
                   </div>

@@ -151,12 +151,13 @@ interface Props {
   ncxBusy?: string | null;
   /** 결제/납입 데스크 (단실 · 동일 groupId 복수). b 주면 그 예약 기준 */
   onPaymentDesk?: (b?: Booking) => void;
-  /** 다실 단체 「기간 결제」 시트 열기 (null이면 버튼 없음) */
+  /** 다실 단체 「결제 등록」 시트 열기 (null이면 버튼 없음) */
   onGroupPay?: (() => void) | null;
   /** 단체 머리글(결제 현황 + 큰 버튼) — 단체 객실을 골랐을 때 */
   groupHead?: {
     onEditSchedule?: () => void;
     onEvidence?: () => void;
+    onExtend?: () => void;
     ledger: GroupLedger;
     name?: string | null;
     onJoin?: () => void;
@@ -317,20 +318,20 @@ export default function NowSidePanel({
   const t = typeId ? L.types.get(typeId) : null;
   const f = b ? nowFlags(b, today, nowOpts) : null;
   const plat = b ? L.plats.get(b.platformId) : null;
-  const ps = b && !b.priceUnset ? payState(b, plat) : null;
+  const ps = b && !b.priceUnset ? payState(b, plat, today) : null;
   const balGlance = useMemo(() => {
     // 단체: 형제+GroupInfo settle (칸 nowAmountGlance와 동일 SoT · 단체 수납 반영)
     if (settleMembers.length >= 1 && settleMembers[0]?.groupId) {
       const p0 = L.plats.get(settleMembers[0]!.platformId);
-      return paymentDeskGlance(settleMembers, p0, settleGroupInfo);
+      return paymentDeskGlance(settleMembers, p0, settleGroupInfo, today);
     }
     if (multiGroup && selectedGroupBookings.length > 1) {
       const p0 = L.plats.get(selectedGroupBookings[0]!.platformId);
-      return paymentDeskGlance(selectedGroupBookings, p0, selectedGroupInfo);
+      return paymentDeskGlance(selectedGroupBookings, p0, selectedGroupInfo, today);
     }
-    if (b && !b.priceUnset) return paymentDeskGlance([b], plat);
+    if (b && !b.priceUnset) return paymentDeskGlance([b], plat, null, today);
     return null;
-  }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats]);
+  }, [settleMembers, settleGroupInfo, multiGroup, selectedGroupBookings, selectedGroupInfo, b, plat, L.plats, today]);
   /** 운영 = 통합 원장: 받을·받은·남은 + 이력(최신 위). 칸 하이브리드(최근액)와 분리 */
   const payHistMembers =
     settleMembers.length >= 1 && settleMembers[0]?.groupId
@@ -359,8 +360,8 @@ export default function NowSidePanel({
       const own = groupHead.ledger.rooms.find((r) => r.bookingId === b.id)?.subtotal ?? b.price;
       return own > 0 ? `₩${won(own)}` : "—";
     }
-    if (balGlance?.tracked && balGlance.left > 0) return `잔금 ₩${won(balGlance.left)}`;
-    if (!balGlance && ps?.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
+    if (balGlance?.tracked && balGlance.left > 0) return `미수금 ₩${won(balGlance.left)}`;
+    if (!balGlance && ps?.tracked && ps.left > 0) return `미수금 ₩${won(ps.left)}`;
     if (b.price > 0) return `₩${won(b.price)}`;
     return "—";
   })();
@@ -577,7 +578,7 @@ export default function NowSidePanel({
                 </div>
               </div>
               {groupHead && onGroupPay ? (
-                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} roomLabel={groupHead.roomLabel} onPay={onGroupPay} onJoin={groupHead.onJoin} onSetEnd={groupHead.onSetEnd} onEditRoom={groupHead.onEditRoom} lead={groupHead.lead} moves={groupHead.moves} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} onEditSchedule={groupHead.onEditSchedule} onEvidence={groupHead.onEvidence} />
+                <GroupHead ledger={groupHead.ledger} today={today} name={groupHead.name} readOnly={readOnly} roomLabel={groupHead.roomLabel} onPay={onGroupPay} onJoin={groupHead.onJoin} onSetEnd={groupHead.onSetEnd} onEditRoom={groupHead.onEditRoom} lead={groupHead.lead} moves={groupHead.moves} record={record ? { lines: record.lines, onOpen: record.onOpen } : null} onEditSchedule={groupHead.onEditSchedule} onEvidence={groupHead.onEvidence} onExtend={groupHead.onExtend} />
               ) : null}
               {b && notes ? (
                 <button type="button" className={`nsel-notes${notes.pinned ? " has" : ""}`} onClick={notes.onOpen} aria-label="메모 · 기록 열기">
@@ -677,7 +678,7 @@ export default function NowSidePanel({
                         : groupHead
                           ? "판매금"
                           : (balGlance?.tracked ? balGlance.left > 0 : !!(ps?.tracked && ps.left > 0))
-                          ? "잔금"
+                          ? "미수금"
                           : "판매금"}
                     </span>
                     <span className="nsel-v">{feeDisplay}</span>
@@ -877,7 +878,7 @@ export default function NowSidePanel({
                         {onGroupPay && !groupHead && !readOnly ? (
                           <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
                             <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
-                            기간 결제
+                            결제 등록
                           </button>
                         ) : null}
                         {showPaymentDesk ? (
@@ -975,7 +976,7 @@ export default function NowSidePanel({
                     {onGroupPay && !groupHead && !readOnly ? (
                       <button type="button" className="btn sm dark" disabled={moving} onClick={onGroupPay}>
                         <CircleDollarSign size={14} strokeWidth={2.2} aria-hidden />
-                        기간 결제
+                        결제 등록
                       </button>
                     ) : null}
                     {showPaymentDesk ? (

@@ -17,6 +17,9 @@ const glance = (p: Partial<PaymentDeskGlance>): PaymentDeskGlance => ({
   group: false,
   memberCount: 1,
   priceUnset: false,
+  label: "미수금 100,000원",
+  upcoming: 0,
+  ota: false,
   ...p,
 });
 

@@ -30,12 +30,12 @@ function cardFacts(p: NowRoomCardProps) {
   const { booking: b, model, platform, group } = p;
   const active = b?.status === "active";
   const times = b ? detailedTimes(b, p.settings) : null;
-  const snap = b ? payState(b, platform) : null;
+  const snap = b ? payState(b, platform, p.today) : null;
   const groupPaid = model?.groupCtx ? [...(model.groupCtx.info?.payments ?? []), ...model.groupCtx.members.flatMap((m) => m.payments ?? [])].reduce((n, x) => n + x.amount, 0) : 0;
   const priceReview = b ? cardCharges(b, model, platform, p.today ?? b.checkIn).needsPrice : false;
   const payment = !active ? "—" : b.priceUnset ? "금액 미정" : priceReview ? "요금 확인 필요" : b.price === 0 ? "0원 약정" : group && model && !model.longStay
     ? model.tone === "paid" ? "결제 완료" : groupPaid > 0 ? "일부 결제" : "미결제"
-    : !platform ? "경로 미지정" : !snap?.tracked ? "플랫폼 결제" : snap.full || snap.left <= 0 ? "결제 완료" : snap.paid > 0 ? "일부 결제" : "미결제";
+    : !platform ? "경로 미지정" : !snap?.tracked ? "OTA 선결제" : snap.full ? "정산 완료" : snap.left > 0 ? (snap.paid > 0 ? "일부 결제" : "미결제") : snap.paid > 0 ? "선수금" : "예정";
   const guest = active ? group?.lead ? `${group.name} · 대표` : b.guestName || group?.name || "이름 미입력" : b ? b.guestName : "예약 없음";
   return { active, times, payment, guest };
 }

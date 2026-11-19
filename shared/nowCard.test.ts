@@ -88,7 +88,7 @@ test("받아야 할 돈: 다 냈거나 금액미정·장기면 0 → 카드에 �
 test("받아야 할 돈: 단실은 청구 − 받은 돈", () => {
   const s = { ...open("s", "r1", 70_000, "2026-10-27", 2), groupId: null, openEnded: false, payments: [{ id: "x", bookingId: "s", kind: "deposit", method: "cash", amount: 40_000, bizDate: "2026-10-27", createdAt: "" }] } as unknown as Booking;
   const due = nowDueAmount(s, { name: "현장", onsite: true }, null, "2026-10-27", false);
-  assert.equal(due, 100_000);
+  assert.equal(due, 30_000);
   assert.equal(nowDueAmount(s, null, null, "2026-10-27", false), 0, "수납을 추적하지 않는 플랫폼은 받을 돈을 만들지 않아요");
 });
 
