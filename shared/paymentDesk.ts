@@ -130,7 +130,7 @@ export interface PaymentDeskPayPlan {
 }
 
 export function validatePaymentDeskPay(glance: PaymentDeskGlance, input: PaymentDeskPayInput): string | null {
-  if (glance.priceUnset) return "금액미정 예약이 있어요. 판매가를 먼저 확정해 주세요.";
+  // 금액미정이어도 받은 돈은 적어요 (선수금 등). 미수금은 판매가 확정 전이라 계산하지 않아요.
   if (!isBookPayMethod(input.method)) return "카드 · 현금 · 이체 중에 골라 주세요.";
   if (input.kind !== "balance" && input.kind !== "deposit") return "수납 · 선금 중에 골라 주세요.";
   const pv = validatePayment(input.amount, input.method, input.bizDate);

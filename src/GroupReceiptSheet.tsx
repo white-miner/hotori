@@ -195,7 +195,7 @@ export default function GroupReceiptSheet({
                   <input className="grc-memo" aria-label="메모(선택)" placeholder={hint ? `예: ${hint}` : "예: 현장 결제"} maxLength={RECEIPT_MEMO_MAX} value={memo} onChange={(e) => setMemo(e.target.value)} />
                 </label>
               </div>
-              {plan.ok ? <p className="muted sm grc-note">{receiptAfterLabel(plan.after)}</p> : null}
+              {plan.ok ? <p className="muted sm grc-note">{members.some((m) => m.status === "active" && m.priceUnset) ? "금액미정 객실이 있어요 · 받은 돈은 기록되고, 미수금은 판매가 확정 전이에요" : receiptAfterLabel(plan.after)}</p> : null}
             </>
           )}
 
