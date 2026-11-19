@@ -140,3 +140,20 @@ test("조기 퇴실 현금 환불: 돌려준 돈을 '환불' 한 줄(음수)로 
   const part = room("p", 100_000, 3, "2026-11-17", { payments: [pay(250_000, "cash")] });
   assert.equal(earlyOutRefundReturn(part, 100_000), 50_000);
 });
+
+test("대실도 같은 잔액: 후불 대실은 판매가가 미수금 · 받으면 정산 완료", async () => {
+  const { payState } = await import("./payment");
+  const { bookingFolio } = await import("./folio");
+  const { dayuseSaleNotifyLine } = await import("./dayuseSale");
+  const du = { id: "d1", kind: "dayuse", status: "active", checkIn: "2026-11-20", nights: 0, price: 30_000, payments: [], platformId: "p" } as never;
+  const onsite = { name: "현장", onsite: true };
+  assert.equal(payState(du, onsite, "2026-11-20").left, 30_000);
+  assert.equal(bookingFolio(du, true, "2026-11-20").label, "미수금 30,000원");
+  const paid = { ...(du as object), payments: [{ id: "x", amount: 30_000, method: "cash", kind: "balance", bizDate: "2026-11-20", createdAt: "" }] } as never;
+  assert.equal(payState(paid, onsite, "2026-11-20").left, 0);
+  assert.equal(payState(paid, onsite, "2026-11-20").full, true);
+  // OTA 대실은 미수금 없음
+  assert.equal(payState(du, { name: "야놀자", onsite: false }, "2026-11-20").left, 0);
+  assert.match(dayuseSaleNotifyLine("홍길동", "301", 30_000, false, null), /미수금 30,000원/);
+  assert.doesNotMatch(dayuseSaleNotifyLine("홍길동", "301", 30_000, true, "cash"), /미수금/);
+});

@@ -131,7 +131,7 @@ export function dayuseSaleNotifyLine(guestName: string, roomLabel: string, price
     collected && method && price > 0
       ? ` · ${BOOK_PAY_LABEL[method]} ${won(price)}원`
       : price > 0
-        ? ` · ${won(price)}원`
+        ? ` · ${won(price)}원 · 미수금 ${won(price)}원 (결제 등록에서 수납)`
         : "";
   return `${roomLabel}호 대실 판매 · ${guestName}${pay}`;
 }

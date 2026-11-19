@@ -79,6 +79,11 @@ export function bookingFolio(b: Booking, onsite: boolean, today = ""): Folio {
   }
   if (b.stayMode === "long_stay" && b.status === "active") return longStayFolio(b, onsite, today);
   const g = groupLedger([b as PeriodBooking], 0, today);
+  // 대실(박이 없는 예약)도 같은 잔액: 청구 = 판매가(−환불), 미수금 = 청구 − 결제
+  if (b.kind !== "stay" && b.status === "active") {
+    const due = revenueOf(b), paid = paidSum(b);
+    return folioOf({ ...g, due, paid, owed: Math.max(0, due - paid), balance: paid - due, roomCount: 1 }, { ota: otaPrepaidCovered(null, onsite) });
+  }
   if (b.status !== "active") {
     const due = revenueOf(b);
     return folioOf(
