@@ -132,6 +132,8 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
   const notices = useHotelNotices(hotelId, userId);
   const [view, setView] = useState<View>(viewFromHash);
   const [entry, setEntry] = useState<EntryRequest | null>(null);
+  /** 등록 직후 현황에서 열 단체 결제 등록 (단체 등록 · 현장 결제) */
+  const [payGroupReq, setPayGroupReq] = useState<{ groupId: string; n: number } | null>(null);
   const [today, setToday] = useState(businessDate());
   const [selDate, setSelDate] = useState(today);
   const [query, setQuery] = useState("");
@@ -353,6 +355,8 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
           move={boardMove}
           onMoveStart={(m) => setBoardMove(m)}
           onMoveEnd={() => setBoardMove(null)}
+          payGroupRequest={payGroupReq}
+          onPayGroupHandled={() => setPayGroupReq(null)}
         />
       ) : view === "ledger" ? (
         <Ledger
@@ -420,9 +424,10 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
                 }
               : undefined
           }
-          onSaved={(m, again) => {
+          onSaved={(m, again, payGroupId) => {
             notify(m);
             setEntry(again ? { preset: again, n: Date.now() } : null);
+            if (payGroupId && view === "board") setPayGroupReq({ groupId: payGroupId, n: Date.now() });
           }}
         />
       ) : null}

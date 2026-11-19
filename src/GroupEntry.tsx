@@ -38,6 +38,7 @@ import {
 } from "../shared/group";
 import { typeGuests } from "../shared/surcharge";
 import { type GroupPayMode, PAY_MODE_LABEL } from "../shared/settle";
+import { isOnsite } from "../shared/payment";
 import { type RateEdits, draftRates, roomSlots, slotRows, typeSlots, unpricedMessage } from "../shared/groupRates";
 import type { HotelData } from "./data";
 import { PlatBadge, TypeBadge, lookups } from "./ui";
@@ -51,7 +52,8 @@ interface Props {
   init: { platformId: string; checkIn: string; nights: number };
   onBack: () => void;
   onClose: () => void;
-  onSaved: (msg: string) => void;
+  /** payGroupId: 등록 직후 이 단체의 결제 등록을 열어 달라는 요청 (현장 채널 · 지금 결제) */
+  onSaved: (msg: string, payGroupId?: string) => void;
 }
 const num = (v: string) => v.replace(/\D/g, "").slice(0, 10);
 const roomOrder = (s: HotelSettings) => new Map(allRooms(s).map((r, i) => [r.id, i]));
@@ -75,6 +77,9 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
   const setStayCheckOut = (d: string) => setNights(nightsFromStayDates(checkIn, d));
   const [assignMode, setAssignMode] = useState<AssignMode>("typeOnly");
   const [payMode, setPayMode] = useState<GroupPayMode>("prepaid");
+  // 현장 채널: 선결제(OTA가 먼저 받음)가 아니라 프런트에서 받는 돈 → 기본은 ‘지금 결제’(등록 뒤 결제 등록을 바로 열어요)
+  const onsiteCh = isOnsite(s.platforms.find((p) => p.id === platformId));
+  const [payNow, setPayNow] = useState(true);
   const [dueOn, setDueOn] = useState<string | null>(null);
   const [payer, setPayer] = useState({ company: "", name: "", phone: "" });
   /** 객실별 요금 수정분 (객실 줄 키 기준) — 비어 있으면 호텔 요금표 제안 그대로 */
@@ -219,7 +224,8 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
       const how = assignMode !== "rooms" ? `${n}실(${dailyMode ? "날짜별 객실·요금" : "간단 예약"}·호실 미정)` : `${n}실`;
       const tentTag = assignMode === "rooms" && tentative ? " · 임시" : "";
       onSaved(
-        `단체 ${name.trim()} ${how} · ${dailyMode ? `${dailyResult.roomNights}객실박` : openOn ? "∞ 미정" : `${nights}박`} 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : ""}${tentTag}`,
+        `단체 ${name.trim()} ${how} · ${dailyMode ? `${dailyResult.roomNights}객실박` : openOn ? "∞ 미정" : `${nights}박`} 예약을 한 번에 기록했어요 · 합계 ${won(sum)}원${payMode === "postpaid" ? " · 후불" : onsiteCh ? ` · 미수금 ${won(sum)}원` : ""}${tentTag}`,
+        onsiteCh && payMode !== "postpaid" && payNow ? groupId : undefined,
       );
     } catch (e) {
       setErr(saveFailMessage(e, "하나도 저장하지 않았어요"));
@@ -538,7 +544,7 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
             <div className="seg sm">
               {(["prepaid", "postpaid"] as const).map((m) => (
                 <button type="button" key={m} className={payMode === m ? "on" : ""} onClick={() => setPayMode(m)}>
-                  {PAY_MODE_LABEL[m]}
+                  {onsiteCh && m === "prepaid" ? "현장 결제" : PAY_MODE_LABEL[m]}
                 </button>
               ))}
             </div>
@@ -553,7 +559,13 @@ export default function GroupEntry({ data, today, init, onBack, onClose, onSaved
                 <input className="inp sm" placeholder="연락처" aria-label="결제자 연락처" inputMode="tel" maxLength={30} value={payer.phone} onChange={(e) => setPayer({ ...payer, phone: e.target.value })} />
               </div>
             ) : (
-              <span className="muted sm">방마다 잔금은 보이지 않고, 장부의 단체 정산에서 한 번에 정산해요</span>
+              onsiteCh ? (
+                <label className="muted sm">
+                  <input type="checkbox" checked={payNow} onChange={(e) => setPayNow(e.target.checked)} aria-label="등록 후 결제 등록 열기" /> 등록 후 바로 단체 결제 등록 열기 · 받을 돈은 단체 전체 청구 − 받은 결제 (방마다 나누지 않아요)
+                </label>
+              ) : (
+                <span className="muted sm">플랫폼이 먼저 받은 단체예요 · 현장에서 받을 추가 항목만 단체 결제 등록에서 받아요</span>
+              )
             )}
           </div>
         </div>

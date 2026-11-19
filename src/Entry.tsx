@@ -208,7 +208,7 @@ interface Props {
   today: string;
   req: EntryRequest;
   onClose: () => void;
-  onSaved: (msg: string, again?: Partial<Booking>) => void;
+  onSaved: (msg: string, again?: Partial<Booking>, payGroupId?: string) => void;
   /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
   onBoardMove?: () => void;
   notify: (m: string, opt?: ToastOpt) => void;
@@ -1836,7 +1836,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         init={{ platformId, checkIn, nights }}
         onBack={() => setGroup(false)}
         onClose={onClose}
-        onSaved={(m) => onSaved(m)}
+        onSaved={(m, payGroupId) => onSaved(m, undefined, payGroupId)}
       />
     );
   return (

@@ -264,6 +264,9 @@ interface Props {
   move?: BoardMove | null;
   onMoveStart?: (m: BoardMove) => void;
   onMoveEnd?: () => void;
+  /** 등록 직후 열 단체 결제 등록 (App이 넘겨줘요) */
+  payGroupRequest?: { groupId: string; n: number } | null;
+  onPayGroupHandled?: () => void;
   /** 현황 공유 링크: 보기만 해요 (수정·입실 완료·방 배정·가격 없음) */
   readOnly?: boolean;
   /** 공유 보기에서 고를 수 있는 날짜 범위 */
@@ -364,7 +367,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
   return [tab, setTab];
 }
 
-export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveStart = () => {}, onMoveEnd = () => {} }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveStart = () => {}, onMoveEnd = () => {}, payGroupRequest = null, onPayGroupHandled }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
@@ -1856,6 +1859,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       setPeriodPay({ groupId });
     }
   };
+
+  // 단체 등록(현장 결제) 직후: 그 단체의 결제 등록을 바로 열어요 (단체가 화면 데이터에 들어온 뒤)
+  const payGroupReady = !!payGroupRequest && bookings.some((b) => b.groupId === payGroupRequest.groupId);
+  useEffect(() => {
+    if (!payGroupRequest || !payGroupReady) return;
+    openGroupPay(payGroupRequest.groupId);
+    onPayGroupHandled?.();
+  }, [payGroupRequest?.n, payGroupReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 이동일 「이동 완료」 — 손님이 새 객실로 옮겼다고 기록해요 (객실 배치는 이미 이동일부터 새 객실이에요) */
   const finishMove = async (bk: Booking, m: PendingMove) => {
