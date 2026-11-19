@@ -1,3 +1,4 @@
+import { groupExtrasTotal } from "../shared/folio";
 import ModalTabs, { ModalTabPanel } from "./ModalTabs";
 import { dayLabel, won } from "../shared/ledger";
 import { atLabel, changesFor } from "../shared/changes";
@@ -18,7 +19,7 @@ export default function GroupEvidenceSheet({ data, today, groupId, readOnly, onC
   onHighlight?: () => void; onPay?: () => void; onAddRooms?: () => void; onRoom?: (b: Booking) => void;
 }) {
   const members = data.bookings.filter(b => b.groupId === groupId), info = data.groups.get(groupId), L = lookups(data.hotel!.settings);
-  const ledger = groupLedger(members, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) });
+  const ledger = groupLedger(members, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: groupExtrasTotal(info) });
   const roomLabel = (id: string) => { const b = members.find(x => x.id === id); return b?.roomId ? `${L.roomLabel(b.roomId) ?? "?"}호` : `${L.types.get(b?.typeId ?? "")?.name ?? "객실"} · 미배정`; };
   const title = groupEvidenceText(ledger, roomLabel);
   const payments = [...members.filter(isPeriodPayable).flatMap(b => (b.payments ?? []).map(p => ({ ...p, scope: roomLabel(b.id) }))), ...(info?.payments ?? []).map(p => ({ ...p, scope: "단체 수납" }))].sort((a, b) => a.createdAt.localeCompare(b.createdAt));

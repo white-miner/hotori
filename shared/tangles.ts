@@ -2,6 +2,7 @@
  * 확인 필요 (꼬임) 탐지 — 순수 함수. 안내만 하고 저장·입실·퇴실·결제를 막지 않아요.
  * 규칙마다 `signature`가 있어요: 값이 바뀌면 달라져서 "이대로 둠"이 풀리고 다시 나타나요.
  */
+import { groupExtrasTotal } from "./folio";
 import { type Booking, type Leg, type Platform, addDays, legsClash, legsOf, md, occupiesRoom, stayEnd, won } from "./ledger";
 import { groupLedger } from "./groupLedger";
 import { isOnsite, paidOf, payState } from "./payment";
@@ -208,7 +209,7 @@ export function findOverpaid(bookings: readonly Booking[], ctx: TangleCtx): Tang
     if (!info) continue;
     if (!members.some((m) => isOnsite(ctx.plat?.(m.platformId) ?? null))) continue;
     const g = groupLedger(members, (info.payments ?? []).reduce((n, x) => n + x.amount, 0), today, {
-      extras: (info.extras ?? []).reduce((n, x) => n + x.amount, 0),
+      extras: groupExtrasTotal(info),
     });
     if (!g.roomCount || g.paid <= g.due || g.due <= 0) continue;
     const ids = members.filter((m) => m.status === "active").map((m) => m.id).sort();

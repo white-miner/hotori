@@ -1,7 +1,8 @@
 // 단체 정산: 단체 하나를 결제자 하나로. 금액은 방들의 지금 상태로 계산해요.
 import { type Booking, type Platform, won } from "./ledger";
 import { type Payment, isOnsite, paidOf, payState } from "./payment";
-import { groupFolio } from "./folio";
+import { groupExtrasTotal, groupFolio } from "./folio";
+import { type ShopCharge, shopChargesTotal } from "./shop";
 
 export type GroupPayMode = "prepaid" | "postpaid";
 export const PAY_MODE_LABEL: Record<GroupPayMode, string> = { prepaid: "선결제", postpaid: "후불(퇴실 후 정산)" };
@@ -30,6 +31,8 @@ export interface GroupInfo {
   badgeColor: GroupBadgeColor | null;
   /** 직원이 지정한 대장 객실(예약 id). null/없음 = 자동 선택 (booking_groups.lead_booking_id) */
   leadBookingId?: string | null;
+  /** 매점 객실 외상: 단체 장부에 올린 매점 청구 (결제가 아니라 청구, 추가 항목처럼 미수금에 더해요) */
+  shopCharges?: ShopCharge[];
 }
 export const emptyGroupInfo = (id: string): GroupInfo => ({
   id,
@@ -122,11 +125,13 @@ export function settle(
   });
   const cx = members.filter((b) => b.status === "cancelled");
   const roomSum = lines.reduce((a, l) => a + l.subtotal, 0);
-  const extras = (info?.extras ?? []).reduce((a, x) => a + Math.max(0, x.amount), 0);
+  // 추가 청구 = 단체 추가 항목 + 매점 객실 외상(단체 장부 · 객실에 직접 올린 것)
+  const extras = groupExtrasTotal(info) + counted.reduce((a, b) => a + shopChargesTotal(b.shopCharges), 0);
   const total = Math.max(0, roomSum + extraGuests + extraTime + parking + extras - refunds);
   const paid = (info?.payments ?? []).reduce((a, x) => a + x.amount, 0) + counted.reduce((a, b) => a + paidOf(b), 0);
   // 미수금·OTA 선결제는 잔액 함수 하나. 후불이면 OTA여도 미수금을 따집니다.
-  const folio = groupFolio(counted, (info?.payments ?? []).reduce((a, x) => a + x.amount, 0), extras, { onsite: isOnsite(plat), payMode: info?.payMode ?? null }, today);
+  // 객실에 직접 올린 매점 외상은 groupFolio가 더해요 (두 번 더하지 않게 단체 장부 몫만 넘겨요)
+  const folio = groupFolio(counted, (info?.payments ?? []).reduce((a, x) => a + x.amount, 0), groupExtrasTotal(info), { onsite: isOnsite(plat), payMode: info?.payMode ?? null }, today);
   const tracked = folio.tracked;
   const left = tracked ? folio.owed : 0;
   return {

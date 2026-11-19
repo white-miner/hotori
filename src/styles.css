@@ -1296,6 +1296,15 @@ label.ck input[type="checkbox"] {
 .smr .a { text-align: right; font-weight: 750; }
 .smr.tot { border-bottom: 0; font-weight: 800; }
 .smr.tot .a { color: var(--red-d); }
+/* 매점 객실 외상: 받은 돈이 아니라 객실 장부의 청구 */
+.st-row.st-room .st-m { font-size: 12px; letter-spacing: -0.02em; }
+.shop-tabs { margin-top: 14px; }
+.shop-tabs h3 small { font-weight: 500; }
+.shop-tabs .smr { grid-template-columns: minmax(0, 1fr) 96px auto; }
+.shop-tabs .smr .n small { display: block; color: var(--ink3); font-weight: 500; font-size: 12px; }
+.shop-tab .tab-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow: auto; }
+.shop-tab .tab-pick { justify-content: space-between; text-align: left; width: 100%; }
+.shop-tab .tab-pick.recent { box-shadow: inset 0 0 0 1.5px var(--dark); }
 .lsum { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .lsum span { background: var(--panel); border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--ink2); }
 .lsum b { font-family: var(--num); color: var(--ink); margin-left: 4px; }

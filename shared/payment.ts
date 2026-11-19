@@ -2,6 +2,7 @@
 import { type Booking, type Platform, revenueOf } from "./ledger";
 import { won } from "./ledger";
 import { bookingFolio } from "./folio";
+import { shopChargesTotal } from "./shop";
 
 /** 예약 결제 방법: 카드 · 현금 · 이체 (이체는 현금 시재에 안 들어가요). 매점은 카드·현금, 지출은 카드·현금·이체 */
 export type BookPayMethod = "card" | "cash" | "transfer";
@@ -171,7 +172,7 @@ export interface PayState {
 /**
  * 잔금 계산: 정상 예약만. 플랫폼(OTA) 예약은 손님·플랫폼이 받은 걸로 봐서 잔금이 없어요
  * (결제 내역이 있어도 현장 결제 채널이 아니면 잔금·미수 톤 금지 — 보드 완납/검정).
- * 청구액 = 판매 가격 − 조기 퇴실 환불.
+ * 청구액 = 판매 가격 − 조기 퇴실 환불 + 매점 객실 외상.
  * 장기(long_stay): 청구액 = 원장 누적 − 수납액 (판매가 price 총액 모델 아님).
  */
 export function payState(
@@ -187,8 +188,10 @@ export function payState(
     return { tracked: !f.ota, due: f.due, paid, left, full: !f.ota && f.due > 0 && paid >= f.due };
   }
   // left = 미수금 (예약 전체 청구 − 결제). full = 전체 청구를 모두 받은 상태(정산 완료).
-  const tracked = b.status === "active" && isOnsite(plat);
-  const due = revenueOf(b);
+  // 매점 객실 외상은 OTA 예약이어도 현장에서 받을 청구라 미수금을 따져요 (folio의 onsiteDue)
+  const tab = shopChargesTotal(b.shopCharges);
+  const tracked = b.status === "active" && (isOnsite(plat) || tab > 0);
+  const due = revenueOf(b) + tab;
   const left = tracked ? f.owed : 0;
   return { tracked, due, paid, left, full: tracked && due > 0 && paid >= due };
 }

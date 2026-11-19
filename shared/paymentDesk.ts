@@ -21,7 +21,8 @@ import {
   type AddSurchargePlan,
 } from "./addSurcharge";
 import { type GroupInfo, settle } from "./settle";
-import { bookingFolio, groupFolio } from "./folio";
+import { bookingFolio, groupFolio, groupExtrasTotal } from "./folio";
+import type { ShopCharge } from "./shop";
 
 export const PAYMENT_DESK_TITLE = "결제 등록";
 export const PAYMENT_DESK_CTA = "결제 등록";
@@ -44,6 +45,8 @@ export interface PaymentDeskGlance {
   /** 머리글과 같은 문구 */
   label: string;
   ota: boolean;
+  /** 매점 객실 외상 (장부의 청구 줄. 결제 아님) */
+  shopCharges?: ShopCharge[];
 }
 
 export function paymentDeskGlance(
@@ -60,7 +63,7 @@ export function paymentDeskGlance(
 
   if (isGroup) {
     const lump = (groupInfo?.payments ?? []).reduce((n, p) => n + p.amount, 0);
-    const extras = (groupInfo?.extras ?? []).reduce((n, x) => n + x.amount, 0);
+    const extras = groupExtrasTotal(groupInfo);
     const f = groupFolio(active, lump, extras, { onsite, payMode: groupInfo?.payMode ?? null, priceUnset }, today);
     const st = settle(active, groupInfo ?? null, plat, today);
     return {
@@ -74,12 +77,13 @@ export function paymentDeskGlance(
       priceUnset,
       label: f.label,
       ota: f.ota,
+      shopCharges: [...(groupInfo?.shopCharges ?? []), ...active.flatMap((x) => x.shopCharges ?? [])],
     };
   }
 
   const b = active[0];
   if (!b) {
-    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", ota: false };
+    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", ota: false, shopCharges: [] };
   }
   const f = bookingFolio(b, onsite, today);
   const ps = payState(b, plat, today);
@@ -94,6 +98,7 @@ export function paymentDeskGlance(
     priceUnset,
     label: f.label,
     ota: f.ota,
+    shopCharges: b.shopCharges ?? [],
   };
 }
 

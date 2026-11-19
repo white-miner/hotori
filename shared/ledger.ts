@@ -2,6 +2,7 @@ import { normalizePlatformFee, normalizeRate } from "./feerate";
 import { platformAbbr } from "./platform";
 import { type ExpenseCategory, normalizeExpenseCategories } from "./expense";
 import type { Payment } from "./payment";
+import type { ShopCharge } from "./shop";
 import type { LongStayRate, NightCharge, SettleCycle, StayMode } from "./longstay";
 import type { StayNightRates } from "./nightrates";
 import {
@@ -260,6 +261,8 @@ export interface Booking {
   roomId: string | null; // 방 (객실 이동이 있으면 첫 방)
   /** 객실 이동: 방별 박수 [{roomId: 301, nights: 1}, {roomId: 305, nights: 3}]. 없으면 roomId 한 방에 전부 */
   segments?: RoomSegment[] | null;
+  /** 매점 객실 외상: 이 예약 장부에 올린 매점 청구 (shop_sales의 room 판매. 결제가 아니라 청구) */
+  shopCharges?: ShopCharge[];
   checkIn: string; // YYYY-MM-DD
   nights: number | null; // 숙박만
   startTime: string | null; // HH:MM (대실만)

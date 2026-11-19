@@ -1,7 +1,7 @@
 /** 숙박확인서 금액 줄 — 결제 등록·장부와 같은 잔액 기준 (shared/folio) · 기관 환급용. See stay-confirmation-letter-plan.md */
 import { type Booking, type Platform, revenueOf } from "./ledger";
 import { isOnsite, paidOf, payState } from "./payment";
-import { bookingBalance, groupFolio } from "./folio";
+import { bookingBalance, groupFolio, groupExtrasTotal } from "./folio";
 import type { GroupInfo } from "./settle";
 
 export type StayConfirmMoney = {
@@ -39,7 +39,7 @@ export function stayConfirmMoney(
   if (b.groupId && group) {
     const members = group.members.filter((x) => x.groupId === b.groupId && x.status !== "cancelled");
     const lump = (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0);
-    const extras = (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0);
+    const extras = groupExtrasTotal(group.info);
     const f = groupFolio(members.length ? members : [b], lump, extras, { onsite: plat ? isOnsite(plat) : null, payMode: group.info?.payMode ?? null });
     const tracked = f.tracked || isOnsite(plat);
     const left = tracked && !f.priceUnset && f.owed > 0 ? f.owed : null;

@@ -4,7 +4,7 @@ import RoomMovePicker from "./RoomMovePicker";
 import { executeRoomSwap, moveSourceKey, planRoomMove, roomMoveRange } from "../shared/roomMoveSearch";
 import { receiptBatch } from "../shared/receiptBatch";
 import { createPaymentLines, type CreatePaymentLine } from "../shared/payment";
-import { groupFolio } from "../shared/folio";
+import { groupFolio, groupExtrasTotal } from "../shared/folio";
 import { useCreateReceipts } from "./useCreateReceipts";
 import { changesFor, extendSummary, leaveSummary, noteBookingIds, pinnedNote } from "../shared/changes";
 import ChangeLogSheet from "./ChangeLogSheet";
@@ -980,7 +980,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     const info = data.groups.get(gid) ?? null;
     return {
       groupId: gid,
-      ledger: groupLedger(peers, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }),
+      ledger: groupLedger(peers, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: groupExtrasTotal(info) }),
       name: peers[0]?.groupName,
       onJoin: () => setJoinGroupId(gid),
     };
@@ -1003,7 +1003,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     return {
       title: (gid ? base.groupName : null) ?? base.guestName,
       lines,
-      ledger: peers.length ? groupLedger(members, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }) : null,
+      ledger: peers.length ? groupLedger(members, (info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, { extras: groupExtrasTotal(info) }) : null,
       onOpen: () => setRecordFor({ groupId: gid, bookingId: gid ? null : base.id }),
     };
   }, [selectedSettle, selectedRoomIds, selectedRoomId, nowBoardMap, data.bookings, data.groups, data.meId, today, L]);
@@ -1983,7 +1983,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         groupName={peers[0]?.groupName}
         groupLump={(info?.payments ?? []).reduce((n, p) => n + p.amount, 0)}
         lumps={info?.payments ?? []}
-        extras={(info?.extras ?? []).reduce((n, x) => n + x.amount, 0)}
+        extras={groupExtrasTotal(info)}
         leadId={lead?.id ?? null}
         leadPinned={!!info?.leadBookingId && peers.some((p) => p.id === info.leadBookingId)}
         badgeColor={groupDisplayColor(groupId, info?.badgeColor)}
@@ -3747,7 +3747,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
             const folio = groupFolio(
               next,
               (info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
-              (info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+              groupExtrasTotal(info),
               { onsite: isOnsite(plat), payMode: info?.payMode ?? null },
               today,
             );

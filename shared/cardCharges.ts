@@ -1,8 +1,9 @@
 import { type Booking, type Platform } from "./ledger";
 import { occupiedNightDates } from "./nightrates";
-import { groupFolio } from "./folio";
+import { groupFolio, groupExtrasTotal } from "./folio";
 import type { RoomCardModel } from "./roomCard";
 import { isOnsite, payState } from "./payment";
+import { shopChargesTotal } from "./shop";
 
 /** 약정 단가는 실제 저장된 밤 셀만 표시한다. 장부의 총액 분할 값을 계약 단가로 쓰지 않는다.
  * 받을 돈 = 예약 전체 청구 − 받은 결제 (결제 등록·단체 머리글과 같은 shared/folio 기준). */
@@ -13,7 +14,7 @@ export function cardCharges(b: Booking, model: RoomCardModel | null, platform: P
     ? groupFolio(
         ctx.members,
         (ctx.info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
-        (ctx.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+        groupExtrasTotal(ctx.info),
         { onsite: platform ? isOnsite(platform) : null, payMode: ctx.info?.payMode ?? null },
         today,
       )
@@ -30,5 +31,9 @@ export function cardCharges(b: Booking, model: RoomCardModel | null, platform: P
     needsPrice: !!b.priceUnset || (b.kind === "stay" && b.stayMode !== "long_stay" && b.price === 0 && nights.some(n => n.amount == null)),
     due: group ? group.owed : snap.tracked ? Math.max(0, snap.left) : 0,
     scope: group ? "단체 미수금" : "받을 돈",
+    /** 받을 돈 중 매점 객실 외상 (장부 청구. 단체면 단체 장부 전체) */
+    shopTab: ctx
+      ? shopChargesTotal(ctx.info?.shopCharges) + ctx.members.reduce((n, m) => n + (m.status === "cancelled" ? 0 : shopChargesTotal(m.shopCharges)), 0)
+      : shopChargesTotal(b.shopCharges),
   };
 }

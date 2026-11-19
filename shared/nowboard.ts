@@ -2,7 +2,7 @@
 import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, nightBoard, occupiesNight, revenueOf, roomOnNight, stayEnd, usedNights, won } from "./ledger";
 import { PAYMENT_METHOD_LABEL, isOnsite, payState, type Payment, type PaymentMethod } from "./payment";
-import { groupFolio } from "./folio";
+import { groupFolio, groupExtrasTotal } from "./folio";
 import { type GroupInfo, settle } from "./settle";
 import { balanceLabel, groupLedger, type GroupLedger } from "./groupLedger";
 import { DEFAULT_STAY_TIMES, type StayTimes, shiftTime } from "./tiers";
@@ -401,7 +401,7 @@ export function nowAmountTone(
     const f = groupFolio(
       group.members,
       (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
-      (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+      groupExtrasTotal(group.info),
       { onsite: plat ? isOnsite(plat) : null, payMode: group.info?.payMode ?? null },
       today,
     );
@@ -436,7 +436,7 @@ export function nowDueAmount(
     const f = groupFolio(
       group.members,
       (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
-      (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+      groupExtrasTotal(group.info),
       { onsite: plat ? isOnsite(plat) : null, payMode: group.info?.payMode ?? null },
       today,
     );

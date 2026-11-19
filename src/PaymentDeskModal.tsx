@@ -21,6 +21,7 @@ import {
   planPaymentDeskSurcharge,
 } from "../shared/paymentDesk";
 import { type BookPayMethod, payLineMain } from "../shared/payment";
+import { shopChargeLabel, shopChargesTotal } from "../shared/shop";
 import { payLineSub, type SurchargeReason } from "../shared/addSurcharge";
 import {
   STAY_CREDIT_COPY,
@@ -268,7 +269,21 @@ export default function PaymentDeskModal({
               {glance.ota ? "OTA" : "미수금"} <b>{glance.ota ? glance.label : glance.priceUnset ? "판매가 확정 전" : won(glance.left)}</b>
             </span>
           </div>
-          {glance.ota ? <p className="muted sm">OTA 선결제 · 숙박료는 채널이 받았어요. 현장에서 받을 돈은 단체 추가 항목만 미수금에 들어가요.</p> : null}
+          {glance.ota ? <p className="muted sm">OTA 선결제 · 숙박료는 채널이 받았어요. 현장에서 받을 돈(단체 추가 항목 · 매점 객실 외상)만 미수금에 들어가요.</p> : null}
+          {glance.shopCharges?.length ? (
+            <details className="payment-desk-tabs">
+              <summary>
+                청구 중 매점 객실 외상 <b>{won(shopChargesTotal(glance.shopCharges))}원</b> · {glance.shopCharges.length}건
+              </summary>
+              <ul className="muted sm">
+                {glance.shopCharges.map((c) => (
+                  <li key={c.id}>
+                    {md(c.bizDate)} {shopChargeLabel(c)} {won(c.amount)}원
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {glance.priceUnset ? <p className="muted sm">금액미정 예약이 있어요 · 받은 돈은 지금 적을 수 있고, 미수금은 판매가를 확정하면 계산돼요 (청구 − 받은 결제).</p> : null}
           {clearOk ? (
             <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
