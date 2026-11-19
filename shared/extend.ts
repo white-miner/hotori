@@ -339,7 +339,7 @@ export function planOpsExtend(b: Booking, input: OpsExtendInput): OpsExtendPlan 
     if (isEarlyOut(b)) return { err: "조기 퇴실한 예약은 1박 연장할 수 없어요. 먼저 되돌리거나 예약을 수정해 주세요." };
     if (b.status !== "active") return { err: "취소·노쇼 예약은 1박 연장할 수 없어요." };
     if (b.kind !== "stay") return { err: "숙박만 1박 연장할 수 있어요." };
-    if ((b.nights ?? 0) >= 90) return { err: "박수가 너무 많아요 (90박까지)." };
+    if ((b.nights ?? 0) >= STAY_NIGHTS_MAX) return { err: `박수가 너무 많아요 (${STAY_NIGHTS_MAX}박까지).` };
     return { err: "1박 연장할 수 없어요." };
   }
   if (!isExtendPayMethod(input.method)) return { err: "카드 · 이체 · 현금 · 서비스 · 후불 중에 골라 주세요." };

@@ -3592,6 +3592,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={extendNightBusy}
           onCancel={() => !extendNightBusy && setExtendNight(null)}
           onConfirm={(input) => void commitOpsExtend(input)}
+          onGroupExtend={extendNight.booking.groupId && !readOnly ? () => { const gid = extendNight.booking.groupId!; setExtendNight(null); setExtendGroupId(gid); } : undefined}
         />
       ) : null}
       {connectStay ? (
@@ -3764,7 +3765,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onFinance={b => b.groupId ? setEvidenceGroupId(b.groupId) : setRecordFor({ groupId: null, bookingId: b.id })}
         onPay={b => openPaymentDesk(b)}
       /> : null}
-      {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
+      {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} onExtend={() => { setExtendGroupId(scheduleGroupId); setScheduleGroupId(null); }} /> : null}
       {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}
         onHighlight={() => { setHighlightGroup(evidenceGroupId); setEvidenceGroupId(null); }}
         onAddRooms={() => { setJoinGroupId(evidenceGroupId); setEvidenceGroupId(null); }}
