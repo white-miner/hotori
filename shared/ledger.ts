@@ -1501,8 +1501,19 @@ export function assignableRooms(
     });
 }
 
-export function perNight(b: Pick<Booking, "price" | "nights">): number | null {
-  return b.nights && b.nights > 1 ? Math.round(b.price / b.nights) : null;
+/** 장부 표시용 1박 요금: 모든 박에 같은 약정 요금이 적혀 있을 때만 (총액을 박 수로 나눈 평균은 만들지 않아요) */
+export function perNight(b: Pick<Booking, "price" | "nights" | "checkIn" | "nightRates">): number | null {
+  if (!b.nights || b.nights < 2) return null;
+  const map = b.nightRates?.nights;
+  if (!map) return null;
+  let v: number | null = null;
+  for (let i = 0; i < b.nights; i++) {
+    const a = map[addDays(b.checkIn, i)];
+    if (a == null || !Number.isFinite(a)) return null;
+    if (v != null && v !== a) return null;
+    v = a;
+  }
+  return v != null && v > 0 ? Math.round(v) : null;
 }
 export const won = (v: number) => v.toLocaleString("ko-KR");
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;

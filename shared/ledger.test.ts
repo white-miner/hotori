@@ -317,8 +317,11 @@ test("미리보기: 저장하면 'S 잔여 객실 2 → 1'처럼 바뀌는 밤�
 });
 
 test("총액으로 입력하고 1박 평균은 자동 계산", () => {
-  assert.equal(perNight({ price: 148000, nights: 2 }), 74000);
-  assert.equal(perNight({ price: 80000, nights: 1 }), null);
+  // 총액만 있으면 평균을 만들지 않아요
+  assert.equal(perNight({ price: 148000, nights: 2, checkIn: "2026-10-25", nightRates: null }), null);
+  assert.equal(perNight({ price: 148000, nights: 2, checkIn: "2026-10-25", nightRates: { nights: { "2026-10-25": 74000, "2026-10-26": 74000 } } as never }), 74000);
+  assert.equal(perNight({ price: 150000, nights: 2, checkIn: "2026-10-25", nightRates: { nights: { "2026-10-25": 70000, "2026-10-26": 80000 } } as never }), null);
+  assert.equal(perNight({ price: 80000, nights: 1, checkIn: "2026-10-25", nightRates: null }), null);
 });
 
 test("대실은 이용 시간이 꼭 있어야 저장돼요", () => {
