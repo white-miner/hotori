@@ -49,7 +49,7 @@ export function surchargePayNote(reason: SurchargeReason): string {
 
 /** Entry 내역 보조 줄: note 있으면 추가금 라벨 · 없으면 kind 라벨 */
 export function payLineSub(
-  kind: "deposit" | "balance",
+  kind: "deposit" | "balance" | "refund",
   bizDate: string,
   note: string | null | undefined,
   long = false,

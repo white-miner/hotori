@@ -21,7 +21,7 @@ import {
   type AddSurchargePlan,
 } from "./addSurcharge";
 import { type GroupInfo, settle } from "./settle";
-import { FOLIO_THROUGH_STAY, bookingFolio, groupFolio } from "./folio";
+import { bookingFolio, groupFolio } from "./folio";
 
 export const PAYMENT_DESK_TITLE = "결제 등록";
 export const PAYMENT_DESK_CTA = "결제 등록";
@@ -37,13 +37,12 @@ export interface PaymentDeskGlance {
   paid: number;
   left: number;
   full: boolean;
-  /** 그룹 합산이면 true */
+  /** 단체 예약이면 true (활성 방이 1개여도 단체 결제 한 줄로 저장) */
   group: boolean;
   memberCount: number;
   priceUnset: boolean;
   /** 머리글과 같은 문구 */
   label: string;
-  upcoming: number;
   ota: boolean;
 }
 
@@ -51,7 +50,7 @@ export function paymentDeskGlance(
   members: Booking[],
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
   groupInfo?: GroupInfo | null,
-  today = FOLIO_THROUGH_STAY,
+  today = "",
 ): PaymentDeskGlance {
   const active = members.filter((b) => b.status === "active");
   const priceUnset = active.some((b) => b.priceUnset);
@@ -70,18 +69,17 @@ export function paymentDeskGlance(
       paid: f.paid,
       left: f.owed,
       full: f.tracked && f.owed === 0 && st.total > 0,
-      group: active.length > 1,
+      group: true,
       memberCount: active.length,
       priceUnset,
       label: f.label,
-      upcoming: f.upcoming,
       ota: f.ota,
     };
   }
 
   const b = active[0];
   if (!b) {
-    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", upcoming: 0, ota: false };
+    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", ota: false };
   }
   const f = bookingFolio(b, onsite, today);
   const ps = payState(b, plat, today);
@@ -95,9 +93,17 @@ export function paymentDeskGlance(
     memberCount: 1,
     priceUnset,
     label: f.label,
-    upcoming: f.upcoming,
     ota: f.ota,
   };
+}
+
+/**
+ * 결제 등록 입구를 고를 때 쓰는 단체 id. 단체 숙박이면 언제나 단체 결제 등록(단체 한 장부)으로,
+ * 개인·장기 숙박은 예약 결제 등록으로 가요. (장기는 단체 장부에서 빠지는 원장이라 객실 결제)
+ */
+export function paymentEntryGroupId(b: Pick<Booking, "groupId" | "kind" | "stayMode"> | null | undefined): string | null {
+  if (!b || !b.groupId || b.kind !== "stay" || b.stayMode === "long_stay") return null;
+  return b.groupId;
 }
 
 /** 동일 groupId 점유 복수선택 허용 여부 */

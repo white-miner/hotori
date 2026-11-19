@@ -27,6 +27,7 @@ import Settings from "./Settings";
 import Shop from "./Shop";
 import { AccountMenu, AppTopBar, SidebarTop, TopAlerts, type SbNavItem, type TopAlertsProps } from "./SidebarParts";
 import { Sidebar, SidebarProvider, useSidebarState } from "./Sidebar";
+import { EARLY_OUT_REFUND_NOTE } from "../shared/payment";
 
 type View = "board" | "ledger" | "expenses" | "shop" | "issuance" | "settings";
 /** 데스크톱 텍스트 내비: 설정은 우측 톱니로 이동 (공지와 자리 교체) */
@@ -218,6 +219,10 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
       }
       try {
         await data.setEarlyOut(id, null, null);
+        // 조기 퇴실 때 남긴 환불 줄(돌려준 돈)도 같이 지워 받은 돈 합계를 원래대로
+        for (const p of (b.payments ?? []).filter((x) => x.kind === "refund" && x.note === EARLY_OUT_REFUND_NOTE)) {
+          await data.deletePayment(b.id, p.id);
+        }
         notify(`${b.guestName} 님 조기 퇴실을 되돌렸어요 · 원래대로 ${dayLabel(checkOut(b))} 퇴실`);
         return true;
       } catch (e) {
@@ -226,7 +231,7 @@ function Shell({ hotelId, email, userId }: { hotelId: string; email: string; use
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notify, data.setEarlyOut],
+    [notify, data.setEarlyOut, data.deletePayment],
   );
 
   useEffect(() => {

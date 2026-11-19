@@ -313,7 +313,8 @@ function PayEditor({
         groupId: toGroup ? groupId : null,
         kind: payment?.kind ?? "balance",
         method,
-        amount: amt,
+        // 환불 줄은 돌려준 돈이라 음수로 저장해요
+        amount: payment?.kind === "refund" ? -Math.abs(amt) : amt,
         bizDate,
         note: note.trim() || null,
         nightDate: keepPeriod ? payment?.nightDate ?? null : null,

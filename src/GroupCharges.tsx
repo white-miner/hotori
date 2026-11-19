@@ -128,27 +128,11 @@ export default function GroupCharges({
           </div>
         ) : null}
         <div className="gch-row gch-tot" role="row">
-          <span className="gch-no">{ledger.upcoming > 0 ? "오늘 밤까지 청구" : "청구 합계"}</span>
+          <span className="gch-no">청구 합계</span>
           <span />
           <span />
-          <span className="r gch-sub">{won(ledger.dueSoFar)}원</span>
+          <span className="r gch-sub">{won(ledger.due)}원</span>
         </div>
-        {ledger.upcoming > 0 ? (
-          <>
-            <div className="gch-row gch-up" role="row">
-              <span className="gch-no">이후 예정 청구</span>
-              <span className="muted sm">미수금에 넣지 않아요</span>
-              <span />
-              <span className="r gch-sub">{won(ledger.upcoming)}원</span>
-            </div>
-            <div className="gch-row gch-tot" role="row">
-              <span className="gch-no">청구 합계</span>
-              <span />
-              <span />
-              <span className="r gch-sub">{won(ledger.due)}원</span>
-            </div>
-          </>
-        ) : null}
       </div>
     </section>
   );
@@ -166,7 +150,7 @@ function RoomRow({
   const [date, setDate] = useState(r.checkOut);
   const [moving, setMoving] = useState(false);
   return (
-    <div className={`gch-item${open ? " on" : ""}${r.accrued === 0 && r.upcoming > 0 ? " up" : ""}`} role="rowgroup">
+    <div className={`gch-item${open ? " on" : ""}`} role="rowgroup">
       <div className="gch-row" role="row">
         <span className="gch-no">{name}{isLead ? <i className="gch-lead" title={leadPinned ? "직접 지정한 대표객실" : "자동 대표객실"}>대표객실</i> : null}</span>
         <span className="gch-range">
@@ -185,7 +169,6 @@ function RoomRow({
         <button type="button" className="r gch-rate" title={r.rows.map(x => `${x.date} · ${won(x.amount)}원 (장부 청구 반영액)`).join("\n")} onClick={onEvidence ?? onToggle}>{rateLabel(r)}</button>
         <button type="button" className="r gch-sub" title={`${name}: ${r.rows.map(x => `${x.date} ${won(x.amount)}원`).join(" + ")} = ${won(r.subtotal)}원`} onClick={onEvidence ?? onToggle}>
           {won(r.subtotal)}원
-          {r.upcoming > 0 ? <small className="gch-up-tag" title="오늘 밤 이후 예정 청구는 미수금에 넣지 않아요">예정 {won(r.upcoming)}</small> : null}
         </button>
       </div>
       {r.extraLines.length ? (

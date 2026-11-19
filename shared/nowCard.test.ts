@@ -67,12 +67,13 @@ const grp602 = (legacy: boolean): Booking[] => [
   open("d", "r502", 80_000, "2026-10-27", legacy ? 3 : 2),
 ];
 
-test("받아야 할 돈: 602 단체는 대표객실에만 오늘 밤 기준 미수금 310,000 (예정 청구 제외)", () => {
+test("받아야 할 돈: 602 단체는 대표객실에만 단체 전체 청구 − 결제", () => {
   for (const legacy of [false, true]) {
     const members = grp602(legacy);
     const info = { payments: [{ id: "p1", method: "transfer", amount: 770_000 }], extras: [] } as never;
     const ctx = { members, info };
-    assert.equal(nowDueAmount(members[0]!, null, ctx, "2026-10-28", true), 310_000, `legacy=${legacy}`);
+    // 4박 기록: 920,000 + 160,000 − 770,000 = 310,000 · 5박 기록: 1,150,000 + 240,000 − 770,000 = 620,000
+    assert.equal(nowDueAmount(members[0]!, null, ctx, "2026-10-28", true), legacy ? 620_000 : 310_000, `legacy=${legacy}`);
     assert.equal(nowDueAmount(members[1]!, null, ctx, "2026-10-28", false), 0, "대표 아닌 멤버 칸에는 안 보여요");
   }
 });
@@ -88,7 +89,7 @@ test("받아야 할 돈: 다 냈거나 금액미정·장기면 0 → 카드에 �
 test("받아야 할 돈: 단실은 청구 − 받은 돈", () => {
   const s = { ...open("s", "r1", 70_000, "2026-10-27", 2), groupId: null, openEnded: false, payments: [{ id: "x", bookingId: "s", kind: "deposit", method: "cash", amount: 40_000, bizDate: "2026-10-27", createdAt: "" }] } as unknown as Booking;
   const due = nowDueAmount(s, { name: "현장", onsite: true }, null, "2026-10-27", false);
-  assert.equal(due, 30_000);
+  assert.equal(due, 100_000, "2박 140,000 − 40,000 (날짜로 끊지 않아요)");
   assert.equal(nowDueAmount(s, null, null, "2026-10-27", false), 0, "수납을 추적하지 않는 플랫폼은 받을 돈을 만들지 않아요");
 });
 

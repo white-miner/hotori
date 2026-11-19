@@ -1,6 +1,6 @@
 // 객실 카드(현황·배치) 한 장의 내용을 정하는 곳 — 두 화면이 같은 함수를 써요 (docs/room-card-spec.md).
 // 순서: 객실번호(+건물) → 이용기간(+박수) → 결제 방식·금액 → 손님 이름 → 회사 → 박당 요금.
-// 색: 박당 요금=빨강 · 받은 돈=검정 · 받아야 할 돈(오늘 밤 기준 미수금)=파랑.
+// 색: 박당 요금=빨강 · 받은 돈=검정 · 받아야 할 돈(미수금 = 예약 전체 청구 − 결제)=파랑.
 import { type Booking, type Platform, isActive } from "./ledger";
 import { type GroupInfo } from "./settle";
 import { isLongStay } from "./longstay";
@@ -36,7 +36,7 @@ export interface RoomCardInput {
   info: GroupInfo | null;
   /** 보는 날짜 (박당 요금·몇째 밤 기준) */
   view: string;
-  /** 영업일 (받아야 할 돈은 오늘 밤 기준) */
+  /** 영업일 (표시용 · 받아야 할 돈은 예약 전체 기준) */
   today: string;
   /** 단체 대표객실 예약 id — 직원이 지정한 대표객실 */
   preferredLeadId?: string | null;

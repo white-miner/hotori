@@ -394,7 +394,7 @@ export function nowAmountTone(
   b: Booking,
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
   group?: NowPayGroupCtx | null,
-  /** 영업일을 주면 단체 색은 "오늘 밤까지" 기준: 미수금 있으면 빨강 · 오늘까지는 냈고 앞으로 남았으면 파랑 · 다 냈으면 검정 */
+  /** 영업일을 주면 단체 색은 단체 한 장부 기준: 미수금(전체 청구 − 결제) 있으면 빨강 · 다 냈으면 검정 */
   today?: string,
 ): NowAmountTone {
   if (b.priceUnset) return "neutral";
@@ -407,10 +407,8 @@ export function nowAmountTone(
       today,
     );
     if (f.priceUnset) return "neutral";
-    if (f.ota) return "paid";
     if (f.roomCount > 0) {
       if (f.owed > 0) return "due";
-      if (f.due > f.paid) return "partial";
       return "paid";
     }
   }
@@ -422,8 +420,8 @@ export function nowAmountTone(
 }
 
 /**
- * 객실 카드에 파랑으로 보여 줄 「받아야 할 돈」(미수금, 오늘 밤 기준). 0이면 카드에 안 보여요.
- * - 단체 대표객실: 단체 합계의 오늘 밤까지 미수금 (객실에 나누지 않음) · 대표 아닌 멤버 칸은 0 (대표객실에만)
+ * 객실 카드에 파랑으로 보여 줄 「받아야 할 돈」(미수금 = 예약 전체 청구 − 결제). 0이면 카드에 안 보여요.
+ * - 단체 대표객실: 단체 합계의 미수금 (객실에 나누지 않음) · 대표 아닌 멤버 칸은 0 (대표객실에만)
  * - 단실: 청구 − 받은 돈. 장기·금액미정은 0 (그 칸은 자기 표기)
  */
 export function nowDueAmount(

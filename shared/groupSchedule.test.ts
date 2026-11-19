@@ -26,8 +26,9 @@ test("배정 단체 일부만 금요일 퇴실: 6→4실, 73만원, 배정·수�
   const original = bookings(); const snapshot = JSON.stringify(original);
   const changes = [change(original[2]!, fri), change(original[5]!, fri)];
   let db = structuredClone(original); const writes: string[] = [];
-  const result = await saveScheduleChanges(changes, { read: async ids => db.filter(b => ids.includes(b.id)), update: async c => { writes.push(c.before.id); const next = { ...db.find(b => b.id === c.before.id)!, ...c.patch, updatedAt: "2026-10-30T01:00:00Z" }; db = db.map(b => b.id === next.id ? next : b); return next; } });
-  assert.equal(result.error, null); assert.equal(result.saved.length, 2); assert.equal(writes.length, 2);
+  let calls = 0;
+  const result = await saveScheduleChanges(changes, { read: async ids => db.filter(b => ids.includes(b.id)), saveAll: async lines => { calls++; return lines.map(l => { writes.push(l.id); const c = changes.find(x => x.before.id === l.id)!; assert.equal(l.room_id, c.before.roomId, "배정 호실은 그대로"); const next = { ...db.find(b => b.id === l.id)!, ...c.patch, priceUnset: !!c.before.priceUnset, updatedAt: "2026-10-30T01:00:00Z" }; db = db.map(b => b.id === next.id ? next : b); return next; }); } });
+  assert.equal(result.error, null); assert.equal(result.saved.length, 2); assert.equal(writes.length, 2); assert.equal(calls, 1, "한 번에 저장");
   assert.equal(JSON.stringify(original), snapshot, "계획은 원본을 변경하지 않는다");
   for (let i = 0; i < db.length; i++) {
     const a = original[i]!, b = db[i]!;
@@ -66,18 +67,31 @@ test("퇴실·취소·장기 예약 보호, 날짜와 금액 검증", () => {
 test("다른 직원의 수정·단체 이동을 감지하면 쓰기 전 중단", async () => {
   const bs = bookings(), c = change(bs[0]!, fri); let writes = 0;
   for (const changed of [{ ...bs[0]!, updatedAt: "v2" }, { ...bs[0]!, groupId: "other" }]) {
-    const result = await saveScheduleChanges([c], { read: async () => [changed], update: async () => { writes++; return changed; } });
+    const result = await saveScheduleChanges([c], { read: async () => [changed], saveAll: async () => { writes++; return [changed]; } });
     assert.ok(result.error); assert.equal(result.saved.length, 0);
   } assert.equal(writes, 0);
 });
-test("부분 성공 표시·후속 중단, 응답 유실 조회 확인과 이중 쓰기 방지", async () => {
+test("일정 저장은 전부 되거나 전부 안 됨 · 응답 유실은 조회로 확인하고 다시 쓰지 않음", async () => {
   const bs = bookings(), cs = [change(bs[0]!, fri), change(bs[1]!, fri), change(bs[2]!, fri)];
   let db = structuredClone(bs), writes = 0;
-  const r = await saveScheduleChanges(cs, { read: async ids => db.filter(b => ids.includes(b.id)), update: async c => { writes++; if (writes === 2) throw Error("network"); const b = { ...c.before, ...c.patch, updatedAt: "v2" }; db = db.map(x => x.id === b.id ? b : x); return b; } });
-  assert.ok(r.error); assert.equal(r.saved.length, 1); assert.equal(writes, 2); assert.equal(db[2]!.nights, 2);
+  // DB 함수가 실패하면 (트랜잭션 롤백) 어떤 객실도 바뀌지 않아요
+  const r = await saveScheduleChanges(cs, { read: async ids => db.filter(b => ids.includes(b.id)), saveAll: async () => { writes++; throw Error("network"); } });
+  assert.ok(r.error); assert.equal(r.saved.length, 0); assert.equal(writes, 1);
+  assert.deepEqual(db.map(b => b.nights), bs.map(b => b.nights), "부분 저장 없음");
   db = structuredClone(bs); writes = 0;
-  const verified = await saveScheduleChanges([cs[0]!], { read: async ids => db.filter(b => ids.includes(b.id)), update: async c => { writes++; db = db.map(b => b.id === c.before.id ? { ...b, ...c.patch, updatedAt: "v2" } : b); throw Error("lost response"); } });
+  const verified = await saveScheduleChanges([cs[0]!], { read: async ids => db.filter(b => ids.includes(b.id)), saveAll: async () => { writes++; db = db.map(b => b.id === cs[0]!.before.id ? { ...b, ...cs[0]!.patch, priceUnset: false, updatedAt: "v2" } : b); throw Error("lost response"); } });
   assert.equal(verified.error, null); assert.equal(verified.saved.length, 1); assert.equal(writes, 1); assert.ok(scheduleMatches(db[0]!, cs[0]!));
+});
+test("금액미정 객실은 박수·요금을 한 번에 저장한 뒤 그 객실만 금액미정 표시를 지워요", async () => {
+  const bs = bookings().map((b, i) => (i === 0 ? { ...b, priceUnset: true } : b));
+  const cs = [change(bs[0]!, fri), change(bs[1]!, fri)];
+  let db = structuredClone(bs); const cleared: string[][] = [];
+  const r = await saveScheduleChanges(cs, {
+    read: async ids => db.filter(b => ids.includes(b.id)),
+    saveAll: async lines => lines.map(l => { const c = cs.find(x => x.before.id === l.id)!; const next = { ...db.find(b => b.id === l.id)!, ...c.patch, priceUnset: !!c.before.priceUnset, updatedAt: "v2" }; db = db.map(b => b.id === next.id ? next : b); return next; }),
+    clearPriceUnset: async ids => { cleared.push(ids); db = db.map(b => ids.includes(b.id) ? { ...b, priceUnset: false } : b); return db.filter(b => ids.includes(b.id)); },
+  });
+  assert.equal(r.error, null); assert.deepEqual(cleared, [[bs[0]!.id]]); assert.equal(r.saved.find(b => b.id === bs[0]!.id)?.priceUnset, false);
 });
 test("같은 단체의 다른 예약까지 연장 객실 겹침 검사", () => {
   const bs = bookings(), other = { ...bs[1]!, id: "next-guest", roomId: bs[0]!.roomId, checkIn: sat, nights: 1 };

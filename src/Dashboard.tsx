@@ -116,6 +116,7 @@ import {
   paymentDeskNotifyLine,
   planPaymentDeskSurcharge,
   sameGroupId,
+  paymentEntryGroupId,
   type PaymentDeskPayPlan,
 } from "../shared/paymentDesk";
 import type { SurchargeReason } from "../shared/addSurcharge";
@@ -1036,25 +1037,31 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
   };
   /** 단체 잔금은 addGroupPayment → 형제 전부 members로 열어 settle/칸 SoT 맞춤 */
   const payDeskMembersFor = (bk: Booking): Booking[] => {
-    if (!bk.groupId) return [bk];
+    if (!bk.groupId || bk.stayMode === "long_stay") return [bk];
     const peers = groupStayPeers(bookings, bk.groupId);
     return peers.length ? peers : [bk];
   };
+  /** 결제 등록 입구는 하나: 단체 예약은 언제나 단체 결제 등록(빠른 업무·단체 머리글과 같은 시트), 개인만 예약 결제 등록 */
   const openPaymentDesk = (b?: Booking) => {
     if (readOnly) return;
+    const route = (bk: Booking) => {
+      const gid = paymentEntryGroupId(bk);
+      if (gid) openGroupPay(gid);
+      else setPayDesk({ members: payDeskMembersFor(bk), focusId: bk.id });
+    };
     if (b) {
-      setPayDesk({ members: payDeskMembersFor(b), focusId: b.id });
+      route(b);
       return;
     }
     if (selectedGroupBookings.length > 1) {
-      setPayDesk({ members: selectedGroupBookings });
+      const gid = sameGroupId(selectedGroupBookings);
+      if (gid) openGroupPay(gid);
+      else setPayDesk({ members: selectedGroupBookings });
       return;
     }
     if (selectedRoomIds.length === 1) {
       const bk = nowBoardMap.get(selectedRoomIds[0]);
-      if (bk && isActive(bk) && bk.kind === "stay") {
-        setPayDesk({ members: payDeskMembersFor(bk), focusId: bk.id });
-      }
+      if (bk && isActive(bk) && bk.kind === "stay") route(bk);
     }
   };
   const nowDayuseByRoom = useMemo(() => dayuseByRoomMap(bookings, viewDate), [bookings, viewDate]);
@@ -3755,7 +3762,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onEdit={b => onOpen(b, roomWork.date)}
         onRates={b => setRecordFor({ groupId: null, bookingId: b.id, focusKey: `in-${b.id}` })}
         onFinance={b => b.groupId ? setEvidenceGroupId(b.groupId) : setRecordFor({ groupId: null, bookingId: b.id })}
-        onPay={b => { if (b.groupId) openGroupPay(b.groupId); else openPaymentDesk(b); }}
+        onPay={b => openPaymentDesk(b)}
       /> : null}
       {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
       {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}

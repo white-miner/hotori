@@ -630,6 +630,7 @@ export default function Issuance({ data, hotelId, userId, today, notify }: Props
       {stayConfirm && stayConfirm.kind === "stay" ? (
         <StayConfirmLetter
           booking={stayConfirm}
+          group={stayConfirm.groupId ? { members: data.bookings, info: data.groups.get(stayConfirm.groupId) ?? null } : null}
           hotelName={hotel.name}
           s={s}
           today={today || businessDate()}

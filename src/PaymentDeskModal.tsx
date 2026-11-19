@@ -268,8 +268,7 @@ export default function PaymentDeskModal({
               {glance.ota ? "OTA" : "미수금"} <b>{glance.ota ? glance.label : won(glance.left)}</b>
             </span>
           </div>
-          {glance.upcoming > 0 ? <p className="muted sm">예정 {won(glance.upcoming)}원 · 오늘 밤 다음 박은 미수금에 넣지 않아요</p> : null}
-          {glance.ota ? <p className="muted sm">OTA 선결제 · 결제 줄은 만들지 않아요. 머리글과 같은 미수금 0원입니다.</p> : null}
+          {glance.ota ? <p className="muted sm">OTA 선결제 · 숙박료는 채널이 받았어요. 현장에서 받을 돈은 단체 추가 항목만 미수금에 들어가요.</p> : null}
           {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 수납해 주세요.</p> : null}
           {clearOk ? (
             <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
