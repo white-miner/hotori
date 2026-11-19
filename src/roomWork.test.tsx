@@ -5,6 +5,7 @@ import { emptySettings, normalizeSettings, type Booking } from "../shared/ledger
 import { CARD_CASES } from "../shared/roomCardCases";
 import { detailedStatus } from "../shared/detailedRoomCard";
 import { assignmentRoom, assignableBooking, roomWorkState } from "../shared/roomWork";
+import { emptyGroupInfo } from "../shared/settle";
 import AssignmentRoomCard from "./AssignmentRoomCard";
 import RoomWorkSheet from "./RoomWorkSheet";
 import type { HotelData } from "./data";
@@ -55,6 +56,23 @@ test("빠른 업무 기록은 선택한 예약의 박별 약정·수납만 표�
 test("빠른 업무 전용 모달은 판매·배정·기록·상태 입구를 제공",()=>{
  const data={hotel:{settings:s},bookings:[booking()],groups:new Map()} as unknown as HotelData;
  const html=renderToStaticMarkup(<RoomWorkSheet {...props} data={data} initialTab="quick"/>);
- for(const name of ["숙박 예약·판매","대실 예약·판매","이 객실에 예약 배정","선택 예약 이용·결제 기록","객실 이용상태 변경"])assert.ok(html.includes(name));
+ for(const name of ["결제 등록","숙박 예약·판매","대실 예약·판매","이 객실에 예약 배정","선택 예약 이용·결제 기록","객실 이용상태 변경"])assert.ok(html.includes(name));
+ assert.match(html,/미수금 290,000원/);
  assert.match(html,/role="dialog"/);
+ const empty=renderToStaticMarkup(<RoomWorkSheet {...props} bookingId={null} data={{hotel:{settings:s},bookings:[],groups:new Map()} as unknown as HotelData} initialTab="quick"/>);
+ assert.match(empty,/class="btn dark rw-pay" disabled="">결제 등록/);
+});
+test("빠른 업무 미수금은 오늘 밤까지이고 단체는 단체 잔액을 보여 준다",()=>{
+ const mid=booking({checkIn:"2026-10-27",nights:4,price:290000,nightRates:{nights:{"2026-10-27":60000,"2026-10-28":70000,"2026-10-29":80000,"2026-10-30":80000}}});
+ const one={hotel:{settings:s},bookings:[mid],groups:new Map()} as unknown as HotelData;
+ const solo=renderToStaticMarkup(<RoomWorkSheet {...props} today="2026-10-28" data={one} initialTab="quick"/>);
+ assert.match(solo,/미수금 130,000원/);
+ assert.match(solo,/예정 160,000원/);
+ const a=booking({id:"chosen",groupId:"g",checkIn:"2026-10-29",nights:2,price:120000,nightRates:{nights:{"2026-10-29":60000,"2026-10-30":60000}}});
+ const c=booking({id:"room2",groupId:"g",roomId:"r2",guestName:"다른객실",checkIn:"2026-10-29",nights:2,price:160000,nightRates:{nights:{"2026-10-29":80000,"2026-10-30":80000}}});
+ const groups=new Map([["g",{...emptyGroupInfo("g"),payMode:"postpaid" as const}]]);
+ const groupHtml=renderToStaticMarkup(<RoomWorkSheet {...props} today="2026-10-29" data={{hotel:{settings:s},bookings:[a,c],groups} as unknown as HotelData} initialTab="quick"/>);
+ assert.match(groupHtml,/미수금 140,000원/);
+ assert.match(groupHtml,/예정 140,000원/);
+ assert.doesNotMatch(groupHtml,/미수금 60,000원/);
 });

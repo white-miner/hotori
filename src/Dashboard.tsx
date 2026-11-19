@@ -3755,6 +3755,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onEdit={b => onOpen(b, roomWork.date)}
         onRates={b => setRecordFor({ groupId: null, bookingId: b.id, focusKey: `in-${b.id}` })}
         onFinance={b => b.groupId ? setEvidenceGroupId(b.groupId) : setRecordFor({ groupId: null, bookingId: b.id })}
+        onPay={b => { if (b.groupId) openGroupPay(b.groupId); else openPaymentDesk(b); }}
       /> : null}
       {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
       {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}
