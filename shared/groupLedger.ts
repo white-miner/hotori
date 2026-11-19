@@ -4,9 +4,9 @@
 //  기준은 하나: 미수금 = 예약 전체 청구(퇴실일까지 모든 박 + 추가 항목) − 받은 결제. 1박·10박·장기·단체 모두 같아요.
 //  받은 결제가 전체 청구보다 많으면 초과 수납. 박 단위로 끊어서 보지 않아요.
 // 결제를 객실이나 박에 배분하지 않아요 — 객실마다 요금이 달라도 평균이 되지 않고, 숫자는 항상 두 합계의 차이예요.
-import { addDays, md, stayEnd, won } from "./ledger";
+import { addDays, md, revenueOf, stayEnd, won } from "./ledger";
 import { type RoomExtra, cleanRoomExtras, extrasTotal } from "./nightrates";
-import { type PeriodBooking, isPeriodPayable, stayNightAmounts } from "./periodPay";
+import { type PeriodBooking, isPeriodPayable, stayNightRows } from "./periodPay";
 
 export interface RoomLedger {
   bookingId: string;
@@ -17,9 +17,11 @@ export interface RoomLedger {
   nights: number;
   /** 이용 기간 미정 (퇴실일 없음) */
   openEnded: boolean;
-  /** 박별 요금 (청구액) */
-  rows: { date: string; amount: number }[];
-  /** 객실 소계 (환불·조기 퇴실 반영) — 박 요금 + 이 객실의 추가 항목 */
+  /** 박별 약정 요금 (적어 둔 값만 · 없으면 null = 요금 미등록. 총액을 박에 나누지 않아요) */
+  rows: { date: string; amount: number | null }[];
+  /** 모든 박에 박별 요금이 적혀 있음 (false면 총액만 있는 예약) */
+  perNight: boolean;
+  /** 객실 소계 = 예약 총액 (판매가 − 환불) · 박 요금 합이 아니라 저장된 총액이에요 */
   subtotal: number;
   /** 이 객실만의 추가 항목 (인원 추가 · 추가 이불 · 계약 조건 …) */
   extraLines: RoomExtra[];
@@ -105,11 +107,12 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
   const extras = Math.max(0, Math.round(opts.extras ?? 0));
   const lumpSum = Math.round(lump) || 0;
   const rooms: RoomLedger[] = payable.map((b) => {
-    const rows = stayNightAmounts(b);
+    const rows = stayNightRows(b);
+    const subtotal = Math.max(0, revenueOf(b));
     const extraLines = cleanRoomExtras(b.nightRates?.extras);
-    const extraTotal = Math.min(extrasTotal(b.nightRates), sum(rows.map((r) => r.amount)));
-    // 추가 항목은 마지막 박에 합쳐져 있으니 박 요금 범위(최저·최고)에서는 빼서 봐요
-    const amounts = rows.map((r, i) => (i === rows.length - 1 ? Math.max(0, r.amount - extraTotal) : r.amount));
+    const extraTotal = Math.min(extrasTotal(b.nightRates), subtotal);
+    const amounts = rows.map((r) => r.amount).filter((x): x is number => x != null);
+    const perNight = rows.length > 0 && amounts.length === rows.length;
     const last = rows.length ? rows[rows.length - 1]!.date : null;
     const tonightRow = rows.find((r) => r.date === today);
     return {
@@ -119,7 +122,8 @@ export function groupLedger(members: readonly PeriodBooking[], lump: number, tod
       nights: rows.length,
       openEnded: b.openEnded === true,
       rows,
-      subtotal: sum(rows.map((r) => r.amount)),
+      perNight,
+      subtotal,
       extraLines,
       extraTotal,
       rateMin: amounts.length ? Math.min(...amounts) : 0,
@@ -174,8 +178,9 @@ export function diffLine(g: Pick<GroupLedger, "due" | "paid" | "owed" | "prepaid
 }
 
 /** 박 요금 문구: 모두 같으면 `80,000원` · 요일마다 다르면 `70,000~80,000원 (요일별)` */
-export function rateLabel(r: Pick<RoomLedger, "rateMin" | "rateMax" | "nights">): string {
+export function rateLabel(r: Pick<RoomLedger, "rateMin" | "rateMax" | "nights"> & { perNight?: boolean }): string {
   if (!r.nights) return "요금 없음";
+  if (r.perNight === false) return "박별 요금 없음 · 총액만";
   return r.rateMin === r.rateMax ? `${won(r.rateMin)}원` : `${won(r.rateMin)}~${won(r.rateMax)}원 (요일별)`;
 }
 

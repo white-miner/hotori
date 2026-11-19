@@ -143,8 +143,8 @@ function RoomRow({
             stayRangeLabel(r)
           )}
         </span>
-        <button type="button" className="r gch-rate" title={r.rows.map(x => `${x.date} · ${won(x.amount)}원 (장부 청구 반영액)`).join("\n")} onClick={onEvidence ?? onToggle}>{rateLabel(r)}</button>
-        <button type="button" className="r gch-sub" title={`${name}: ${r.rows.map(x => `${x.date} ${won(x.amount)}원`).join(" + ")} = ${won(r.subtotal)}원`} onClick={onEvidence ?? onToggle}>
+        <button type="button" className="r gch-rate" title={r.perNight ? r.rows.map(x => `${x.date} · ${won(x.amount ?? 0)}원 (약정 요금)`).join("\n") : "박별 약정 요금이 없어요 · 객실 청구는 예약 총액이에요 (박에 나누지 않아요)"} onClick={onEvidence ?? onToggle}>{rateLabel(r)}</button>
+        <button type="button" className="r gch-sub" title={`${name}: 예약 총액 ${won(r.subtotal)}원${r.perNight ? ` (박별 약정 ${r.rows.map(x => won(x.amount ?? 0)).join(" + ")}원${r.extraTotal ? ` + 추가 ${won(r.extraTotal)}원` : ""})` : " · 박별 요금 없음"}`} onClick={onEvidence ?? onToggle}>
           {won(r.subtotal)}원
         </button>
       </div>
