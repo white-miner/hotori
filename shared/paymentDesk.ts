@@ -21,7 +21,7 @@ import {
   type AddSurchargePlan,
 } from "./addSurcharge";
 import { type GroupInfo, settle } from "./settle";
-import { FOLIO_THROUGH_STAY, bookingFolio, groupFolio } from "./folio";
+import { bookingFolio, groupFolio } from "./folio";
 
 export const PAYMENT_DESK_TITLE = "결제 등록";
 export const PAYMENT_DESK_CTA = "결제 등록";
@@ -43,7 +43,6 @@ export interface PaymentDeskGlance {
   priceUnset: boolean;
   /** 머리글과 같은 문구 */
   label: string;
-  upcoming: number;
   ota: boolean;
 }
 
@@ -51,7 +50,7 @@ export function paymentDeskGlance(
   members: Booking[],
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
   groupInfo?: GroupInfo | null,
-  today = FOLIO_THROUGH_STAY,
+  today = "",
 ): PaymentDeskGlance {
   const active = members.filter((b) => b.status === "active");
   const priceUnset = active.some((b) => b.priceUnset);
@@ -74,14 +73,13 @@ export function paymentDeskGlance(
       memberCount: active.length,
       priceUnset,
       label: f.label,
-      upcoming: f.upcoming,
       ota: f.ota,
     };
   }
 
   const b = active[0];
   if (!b) {
-    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", upcoming: 0, ota: false };
+    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", ota: false };
   }
   const f = bookingFolio(b, onsite, today);
   const ps = payState(b, plat, today);
@@ -95,7 +93,6 @@ export function paymentDeskGlance(
     memberCount: 1,
     priceUnset,
     label: f.label,
-    upcoming: f.upcoming,
     ota: f.ota,
   };
 }

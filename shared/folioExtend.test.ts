@@ -121,15 +121,14 @@ test("연장 후 조기 퇴실해도 결제 줄은 그대로이고 지나지 않
   assert.equal(afterLeave.paid, paid);
 });
 
-test("퇴실 미정 객실이 섞여도 미수금은 오늘 밤까지이고 보드는 날짜~", () => {
+test("퇴실 미정 객실이 섞여도 미수금은 전체 청구 − 결제이고 보드는 날짜~", () => {
   const today = "2026-11-19";
   const fixed = room("a", 70_000, 5, "2026-11-17");
   const open = room("b", 80_000, 4, "2026-11-17", { openEnded: true });
   const folio = groupFolio([fixed, open], 0, 0, { onsite: true, payMode: "postpaid" }, today);
-  const tonight = 70_000 * 3 + 80_000 * 3;
-  assert.equal(folio.dueSoFar, tonight);
-  assert.ok(folio.upcoming > 0);
-  assert.equal(folio.owed, tonight);
+  const all = 70_000 * 5 + 80_000 * 4;
+  assert.equal(folio.due, all);
+  assert.equal(folio.owed, all);
   assert.equal(nowNightRange(open).label.endsWith("~"), true);
   assert.equal(inHouseMember(open, today), true);
 });

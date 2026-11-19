@@ -1,7 +1,7 @@
 // 단체 정산: 단체 하나를 결제자 하나로. 금액은 방들의 지금 상태로 계산해요.
 import { type Booking, type Platform, won } from "./ledger";
 import { type Payment, isOnsite, paidOf, payState } from "./payment";
-import { FOLIO_THROUGH_STAY, groupFolio } from "./folio";
+import { groupFolio } from "./folio";
 
 export type GroupPayMode = "prepaid" | "postpaid";
 export const PAY_MODE_LABEL: Record<GroupPayMode, string> = { prepaid: "선결제", postpaid: "후불(퇴실 후 정산)" };
@@ -91,7 +91,7 @@ export function settle(
   members: Booking[],
   info: GroupInfo | null | undefined,
   plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null,
-  today = FOLIO_THROUGH_STAY,
+  today = "",
 ): Settlement {
   const counted = members.filter((b) => b.status !== "cancelled");
   const byType = new Map<string, SettleLine>();
@@ -181,7 +181,7 @@ export function groupSettleGlance(
   members: Booking[],
   info: GroupInfo | null | undefined,
   plat?: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null,
-  today = FOLIO_THROUGH_STAY,
+  today = "",
 ): GroupSettleGlance | null {
   const active = members.filter((b) => b.status !== "cancelled");
   if (active.length === 0) return null;

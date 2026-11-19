@@ -687,7 +687,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           ) : null}
           {tab === "bookings" && dueTotal > 0 ? (
             <div className="lsum-f">
-              <span className="dueamt">미수금 {won(dueTotal)}원</span> <span className="muted">· 오늘 밤까지</span>
+              <span className="dueamt">미수금 {won(dueTotal)}원</span> <span className="muted">· 예약 전체 청구 − 결제</span>
             </div>
           ) : null}
           {tab === "bookings" && sumUp.shop === null ? (

@@ -52,6 +52,8 @@ export type StayConfirmStrings = {
   paid: string;
   balance: string;
   amountUnset: string;
+  /** 단체 객실: 수납·잔금이 단체 전체 기준임을 알리는 한 줄 */
+  groupBasis: string;
   attest: string;
   issued: string;
   representative: string;
@@ -87,6 +89,7 @@ const STAY_CONFIRM_KO: StayConfirmStrings = {
   paid: "수납액",
   balance: "잔금",
   amountUnset: "금액미정",
+  groupBasis: "수납·잔금은 단체 전체 기준",
   attest: "위와 같이 숙박하였음을 확인합니다.",
   issued: "발급일",
   representative: "대표자",
@@ -122,6 +125,7 @@ const STAY_CONFIRM_EN: StayConfirmStrings = {
   paid: "Paid",
   balance: "Balance",
   amountUnset: "Amount TBD",
+  groupBasis: "Paid/balance are for the whole group",
   attest: "This certifies that the above guest stayed at our property.",
   issued: "Issued",
   representative: "Representative",

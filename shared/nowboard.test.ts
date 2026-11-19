@@ -533,14 +533,14 @@ test("latestPaymentOf: createdAt 최신 · 동률 bizDate · 단체 내역 포�
   assert.equal(latestPaymentOf({ payments: [newer, credit] })?.method, "credit");
 });
 
-test("단체 미수 색은 오늘 밤까지 기준 (기간 전체 대비가 아님)", () => {
+test("단체 미수 색은 전체 청구 − 결제 기준", () => {
   const g = (id: string, roomId: string, paid: number) =>
     bk({ id, groupId: "g1", roomId, checkIn: "2026-10-20", nights: 30, price: 3_000_000, payments: paid ? [{ id: id + "p", bookingId: id, kind: "balance", method: "card", amount: paid, bizDate: "2026-10-20", createdAt: "" }] : [] });
-  const today = "2026-10-22"; // 오늘 밤까지 3박 = 300,000
+  const today = "2026-10-22";
   const none = [g("a", "r1", 0)];
   assert.equal(nowAmountTone(none[0]!, null, { members: none }, today), "due");
   const enough = [g("a", "r1", 300_000)];
-  assert.equal(nowAmountTone(enough[0]!, null, { members: enough }, today), "partial", "오늘까지 냈고 뒤쪽이 남음 → 파랑");
+  assert.equal(nowAmountTone(enough[0]!, null, { members: enough }, today), "due", "전체 3,000,000 중 300,000만 받음 → 미수금");
   const short = [g("a", "r1", 200_000)];
   assert.equal(nowAmountTone(short[0]!, null, { members: short }, today), "due");
   const all = [g("a", "r1", 3_000_000)];

@@ -112,6 +112,7 @@ import {
   validateEarlyOutKeep,
 } from "../shared/stayCredit";
 import { paidOf } from "../shared/payment";
+import { bookingBalance, groupFolio } from "../shared/folio";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
   type StayNightRates,
@@ -1351,8 +1352,18 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     [data.stayCredits, guestName, guestPhone, live?.guestName, live?.guestPhone],
   );
   // 현장 결제·장기만 잔금 UI. OTA는 결제 내역이 있어도 「플랫폼에서 결제 · 잔금 없음」.
-  const payTracked = long || isOnsite(L.plats.get(platformId));
   const curPlat = L.plats.get(platformId);
+  // 단체 객실: 예약 상세에서도 단체 한 장부(단체 결제 등록)로 보고 받아요. 객실 결제 줄로 따로 적지 않아요.
+  const entryGroupId = base && !long ? (base.groupId ?? null) : null;
+  const entryGroup = useMemo(() => {
+    if (!entryGroupId) return null;
+    const info = data.groups.get(entryGroupId) ?? null;
+    const members = data.bookings.filter((x) => x.groupId === entryGroupId && x.status !== "cancelled");
+    const lump = (info?.payments ?? []).reduce((n, p) => n + p.amount, 0);
+    const extras = (info?.extras ?? []).reduce((n, x) => n + x.amount, 0);
+    return groupFolio(members, lump, extras, { onsite: curPlat ? isOnsite(curPlat) : null, payMode: info?.payMode ?? null }, today);
+  }, [entryGroupId, data.groups, data.bookings, curPlat, today]);
+  const payTracked = entryGroup ? entryGroup.tracked : long || isOnsite(curPlat);
   const salesChannel = salesChannelFromMemo(memo);
   /** 라벨 * · HTML required · save validateGuestPhone 동일 SoT (바로입실 빈 연락처 수정 완화) */
   const phoneRequired = isGuestPhoneRequired(
@@ -1377,7 +1388,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const poLine = payoutLine(po);
   // 쿠폰 · 입금 칸: 플랫폼 예약이거나 수수료율이 있는 플랫폼 (또는 이미 쿠폰을 적었으면)
   const feeOn = !long && !!curPlat && (!isOnsite(curPlat) || !!curPlat.feeRate || coupons.length > 0);
-  const payPaid = livePays.reduce((n, x) => n + x.amount, 0);
+  const payPaid = entryGroup ? entryGroup.paid : livePays.reduce((n, x) => n + x.amount, 0);
   const longPay = long
     ? longPayState({
         status: "active",
@@ -1385,8 +1396,11 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         payments: livePays,
       })
     : null;
-  const payDue = longPay ? longPay.accrued : multi ? multiTotal : revenueOf({ ...draftBase, status: "active" });
-  const payLeft = longPay ? Math.max(0, longPay.accrued - payPaid) : Math.max(0, payDue - payPaid);
+  // 잔액 기준은 하나: 예약 전체 청구 − 받은 결제 (shared/folio bookingBalance · 단체는 groupFolio)
+  const payDue = entryGroup ? entryGroup.onsiteDue : longPay ? longPay.accrued : multi ? multiTotal : revenueOf({ ...draftBase, status: "active" });
+  const payMoney = bookingBalance(payDue, payPaid);
+  const payLeft = entryGroup ? entryGroup.owed : payMoney.owed;
+  const payOver = entryGroup ? entryGroup.over : payMoney.over;
   // 잔금이 생겼는데 금액 칸이 비어 있으면 기본값으로 채워요 (선금용으로 비운 경우는 유지)
   useEffect(() => {
     if (!payTracked || payLeft <= 0) return;
@@ -1498,8 +1512,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     setPayBusy(true);
     setPayErr(null);
     try {
-      await data.addPayment(base.id, { kind, method: recv.method, amount, bizDate: recv.date });
-      const left = Math.max(0, payDue - payPaid - amount);
+      if (entryGroupId) await data.addGroupPayment(entryGroupId, { kind, method: recv.method, amount, bizDate: recv.date });
+      else await data.addPayment(base.id, { kind, method: recv.method, amount, bizDate: recv.date });
+      const left = Math.max(0, payLeft - amount);
       setRecv((r) => ({ ...r, amount: left > 0 && kind === "balance" ? String(left) : "" }));
       notify(payNoteOf(kind, amount, recv.method, left));
     } catch (e) {
@@ -3230,7 +3245,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
             <div className="payb">
               {!payTracked ? (
                 <div className="muted sm payota">
-                  OTA 선결제 <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 미수금을 따져요)</span>
+                  {entryGroup ? entryGroup.label : "OTA 선결제"} <span>(설정 › 플랫폼에서 '현장 결제'를 켜면 미수금을 따져요)</span>
                 </div>
               ) : (
                 <>
@@ -3242,8 +3257,13 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         미수금 <b className="num">{won(payLeft)}원</b>
                         <span className="muted">
                           {" "}
-                          = {long ? "청구 합계" : "판매"} {won(payDue)} − 수납 {won(payPaid)}
+                          = {entryGroup ? "단체 청구" : long ? "청구 합계" : "판매"} {won(payDue)} − {entryGroup ? "단체 수납" : "수납"} {won(payPaid)}
                         </span>
+                      </>
+                    ) : payOver > 0 ? (
+                      <>
+                        초과 수납 <b className="num">{won(payOver)}원</b>
+                        <span className="muted"> = 수납 {won(payPaid)} − {entryGroup ? "단체 청구" : long ? "청구 합계" : "판매"} {won(payDue)}</span>
                       </>
                     ) : payPaid > 0 ? (
                       <>
@@ -3300,6 +3320,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                     </div>
                   </div>
                   {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {entryGroupId ? <div className="muted sm">단체 객실이에요 · 여기서 받은 돈은 단체 결제 한 줄로 등록돼요</div> : null}
                   {base && entryOpenCredits.length > 0 ? (
                     <div className="paytake" style={{ marginTop: 8 }}>
                       <span className="muted sm">

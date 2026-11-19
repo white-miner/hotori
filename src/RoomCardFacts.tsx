@@ -32,7 +32,7 @@ export default function RoomCardFacts({
   period?: string;
   /** 퇴실 미정(열린 숙박): 「퇴실 미정」 표시 */
   openEnded?: boolean;
-  /** 받아야 할 돈(미수금, 오늘 밤 기준) — 0보다 클 때만 파랑으로 채워요 */
+  /** 받아야 할 돈(미수금 = 예약 전체 청구 − 결제) — 0보다 클 때만 파랑으로 채워요 */
   due?: number | null;
   /** 단체 구성원 카드: 대표객실을 가리키는 건물+호수 (예: `본관 602호`) — 연동 표시 한 줄 */
   linkLabel?: string | null;
@@ -61,7 +61,7 @@ export default function RoomCardFacts({
         </div>
       ) : null}
       {top ? (
-        <div className="rc-due amt-due" data-slot="due" title={!linkLabel && due != null && due > 0 ? "받아야 할 돈 (미수금 · 오늘 밤까지)" : undefined}>
+        <div className="rc-due amt-due" data-slot="due" title={!linkLabel && due != null && due > 0 ? "받아야 할 돈 (미수금 · 예약 전체 청구 − 결제)" : undefined}>
           {!linkLabel && due != null && due > 0 ? (
             <>
               <span className="rc-due-k">받을 돈</span> {won(due)}

@@ -1,6 +1,7 @@
 // 장기숙박(퇴실 미정): 요금표 · 박별 누적 · 미수 · 재고 창 롤링
 import { type Booking, STAY_NIGHTS_MAX, addDays, dayLabel, fitSegments, won } from "./ledger";
 import { longStayFolio } from "./folio";
+import { moneyBalance } from "./groupLedger";
 import { applyExtend, canExtend, extendBlock, extendOverlaps, type ExtendDraft } from "./extend";
 import type { HotelSettings } from "./ledger";
 
@@ -81,9 +82,9 @@ export function accruedOf(b: Pick<Booking, "charges"> | { charges?: NightCharge[
   return (b.charges ?? []).reduce((n, x) => n + x.amount, 0);
 }
 
-/** 미수금 = 오늘 밤까지 원장 − 수납. today를 안 넘기면 올라 있는 원장 전부. */
-export function balanceDue(b: Pick<Booking, "charges" | "payments" | "priceUnset">, today = "9999-12-31"): number {
-  return longStayFolio(b, true, today).owed;
+/** 미수금 = 올라 있는 원장 전부 − 수납 (날짜로 끊지 않아요). */
+export function balanceDue(b: Pick<Booking, "charges" | "payments" | "priceUnset">): number {
+  return longStayFolio(b, true).owed;
 }
 
 export interface LongPayState {
@@ -96,7 +97,7 @@ export interface LongPayState {
 export function longPayState(b: Pick<Booking, "charges" | "payments" | "status">): LongPayState {
   const accrued = accruedOf(b);
   const paid = (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
-  const due = Math.max(0, accrued - paid);
+  const due = moneyBalance(accrued, paid).owed;
   return { accrued, paid, balanceDue: due, full: b.status === "active" && accrued > 0 && due === 0 };
 }
 

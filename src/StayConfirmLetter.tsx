@@ -18,7 +18,7 @@ import {
   stayConfirmDateRange,
   stayConfirmStrings,
 } from "../shared/hotelBiz";
-import { stayConfirmMoney } from "../shared/stayConfirmMoney";
+import { type StayConfirmGroup, stayConfirmMoney } from "../shared/stayConfirmMoney";
 import {
   formatIssuanceNightDate,
   issuanceNightCells,
@@ -32,6 +32,8 @@ interface Props {
   hotelName: string;
   s: HotelSettings;
   today: string;
+  /** 단체 객실이면 같은 단체 예약·단체 결제 (잔금을 단체 한 장부로) */
+  group?: StayConfirmGroup | null;
   onClose: () => void;
 }
 
@@ -60,7 +62,7 @@ function runPrint(title: string) {
   window.setTimeout(done, 1500);
 }
 
-export default function StayConfirmLetter({ booking: b, hotelName, s, today, onClose }: Props) {
+export default function StayConfirmLetter({ booking: b, hotelName, s, today, group, onClose }: Props) {
   const [lang, setLang] = useState<StayConfirmLang>("ko");
   const [page, setPage] = useState(0);
   const t = stayConfirmStrings(lang);
@@ -81,13 +83,14 @@ export default function StayConfirmLetter({ booking: b, hotelName, s, today, onC
     : `${t.unassigned}${type ? ` · ${type}` : ""}`;
   const period = stayConfirmDateRange(lang, b.checkIn, out, nights, dayLabel);
   const hasBiz = hotelBizHasAny(biz);
-  const money = stayConfirmMoney(b, plat);
+  const money = stayConfirmMoney(b, plat, group);
   const moneyLine = money.unset
     ? t.amountUnset
     : [
         `${t.sale} ₩${won(money.sale)}`,
         money.showPaid ? `${t.paid} ₩${won(money.paid)}` : null,
         money.left != null ? `${t.balance} ₩${won(money.left)}` : null,
+        money.group && (money.showPaid || money.left != null) ? t.groupBasis : null,
       ]
         .filter(Boolean)
         .join(" · ");
