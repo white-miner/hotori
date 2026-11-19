@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import { supabase } from "./supabase";
 import { writeVerifiedReceiptBatch, type ReceiptBatchLine } from "../shared/receiptBatch";
 import { type Change, type ChangeKind, NOTE_MAX } from "../shared/changes";
@@ -15,7 +15,7 @@ import {
   type ShopItem,
   normalizeSettings,
 } from "../shared/ledger";
-import { type PayMethod, type ShopSale, isPayMethod } from "../shared/shop";
+import { type ShopCharge, type ShopMethod, type ShopSale, groupShopCharges, isShopMethod } from "../shared/shop";
 import { type Expense, type ExpenseVendor, type VendorType, isExpensePayMethod, isVendorType } from "../shared/expense";
 import {
   type RoomMemo,
@@ -410,6 +410,10 @@ export function useHotelData(hotelId: string) {
   const [syncedAt, setSyncedAt] = useState<number>(0);
   // 단체 정산 정보 (id = group_id)
   const [groups, setGroups] = useState<Map<string, GroupInfo>>(new Map());
+  /** 매점 객실 외상 (예약·단체 장부의 청구). 예약·단체 목록에 shopCharges로 붙여서 내보내요 */
+  const [shopTabs, setShopTabs] = useState<ShopSale[]>([]);
+  const shopTabIds = useRef(new Set<string>());
+  shopTabIds.current = new Set(shopTabs.map((x) => x.id));
   /** 잔액 보관(Option A) — open/depleted/void 전부 로드(목록·매칭) */
   const [stayCredits, setStayCredits] = useState<StayCredit[]>([]);
   /** 메모 + 변경 기록 (표가 없으면 빈 목록 — 예약 화면은 그대로) */
@@ -470,7 +474,7 @@ export function useHotelData(hotelId: string) {
     const genAtStart = mutateGen.current;
     try {
       const since = addDays(businessDate(), -WINDOW_BACK);
-      const [h, b, g, c, ch, far] = await Promise.all([
+      const [h, b, g, c, ch, far, tabs] = await Promise.all([
         supabase.from("hotels").select("id,name,plan,is_demo,settings").eq("id", hotelId).single(),
         supabase
           .from("bookings")
@@ -484,6 +488,8 @@ export function useHotelData(hotelId: string) {
         supabase.from("booking_changes").select(CHANGE_COLS).eq("hotel_id", hotelId).order("created_at", { ascending: false }).limit(3000),
         // 120일보다 먼저 입실했지만 아직 이어지는 긴 숙박 (장기·퇴실 미정·박수 120 초과)
         longReachQuery(hotelId, since, WINDOW_BACK),
+        // 못 읽어도(마이그레이션 전) 예약 화면은 그대로, 객실 외상만 비어요
+        queryShopTabs(hotelId, since).catch(() => null),
       ]);
       if (h.error) throw h.error;
       if (b.error) throw b.error;
@@ -506,6 +512,7 @@ export function useHotelData(hotelId: string) {
       // 마이그레이션 전이면 표가 없을 수 있음 → 빈 목록
       if (!c.error) setStayCredits((c.data as StayCreditRow[]).map(creditFromRow));
       if (!ch.error) setChanges((ch.data as unknown as ChangeRow[]).map(changeFromRow));
+      if (tabs) setShopTabs(tabs);
       setError(null);
       setSyncedAt(Date.now());
     } catch (e) {
@@ -533,6 +540,14 @@ export function useHotelData(hotelId: string) {
       .on("postgres_changes", { event: "*", schema: "public", table: "hotels", filter: `id=eq.${hotelId}` }, soon)
       .on("postgres_changes", { event: "*", schema: "public", table: "booking_groups", filter: `hotel_id=eq.${hotelId}` }, soon)
       .on("postgres_changes", { event: "*", schema: "public", table: "stay_credits", filter: `hotel_id=eq.${hotelId}` }, soon)
+      // 매점 객실 외상: 새 판매(이 호텔) · 지운 판매(내가 가진 외상일 때만)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "shop_sales", filter: `hotel_id=eq.${hotelId}` }, (p) => {
+        if ((p.new as { payment_method?: string } | null)?.payment_method === "room") soon();
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "shop_sales" }, (p) => {
+        const id = (p.old as { id?: string } | null)?.id;
+        if (id && shopTabIds.current.has(id)) soon();
+      })
       .subscribe();
     const poll = setInterval(() => {
       if (document.visibilityState === "visible") void refresh();
@@ -1281,9 +1296,25 @@ export function useHotelData(hotelId: string) {
     if (r.error) setChanges((l) => l.map((x) => (x.id === id ? { ...x, pinned: !pinned } : x)));
   }, []);
 
+  // 예약·단체에 매점 객실 외상을 붙여서 내보내요 (잔액은 shared/folio가 청구로 더해요)
+  const tabsBy = useMemo(() => groupShopCharges(shopTabs), [shopTabs]);
+  const bookingsOut = useMemo(
+    () => (tabsBy.byBooking.size ? bookings.map((b) => (tabsBy.byBooking.has(b.id) ? { ...b, shopCharges: tabsBy.byBooking.get(b.id) } : b)) : bookings),
+    [bookings, tabsBy],
+  );
+  const groupsOut = useMemo(() => {
+    if (!tabsBy.byGroup.size) return groups;
+    const m = new Map(groups);
+    for (const [gid, list] of tabsBy.byGroup) {
+      const g = m.get(gid);
+      if (g) m.set(gid, { ...g, shopCharges: list as ShopCharge[] });
+    }
+    return m;
+  }, [groups, tabsBy]);
+
   return {
     hotel,
-    bookings,
+    bookings: bookingsOut,
     error,
     syncedAt,
     refresh,
@@ -1310,7 +1341,7 @@ export function useHotelData(hotelId: string) {
     saveGroupSchedule,
     extendGroupStay,
     patchGroup,
-    groups,
+    groups: groupsOut,
     saveGroupInfo,
     groupify,
     addGroupPayment,
@@ -1409,8 +1440,25 @@ interface ShopSaleRow {
   biz_date: string;
   created_at: string;
   payment_method: string | null;
+  booking_id?: string | null;
+  group_id?: string | null;
 }
-const SHOP_COLS = "id,item_id,item_name,unit_price,qty,biz_date,created_at,payment_method";
+const SHOP_COLS_BASE = "id,item_id,item_name,unit_price,qty,biz_date,created_at,payment_method";
+/** 객실 외상 연결 칸 (20261120100000_shop_room_tab). 마이그레이션 전 DB면 없어서, 한 번 실패하면 예전 칸만 읽어요 */
+const SHOP_COLS_TAB = `${SHOP_COLS_BASE},booking_id,group_id`;
+let shopTabColumns = true;
+const shopCols = () => (shopTabColumns ? SHOP_COLS_TAB : SHOP_COLS_BASE);
+const missingColumn = (e: { code?: string; message?: string } | null | undefined) =>
+  !!e && (e.code === "42703" || e.code === "PGRST204" || /column .* does not exist|booking_id|group_id/i.test(e.message ?? ""));
+/** 예전 칸만 있는 DB면 한 번 더 예전 칸으로 읽어요 */
+async function withShopCols(run: (cols: string) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>) {
+  const first = await run(shopCols());
+  if (first.error && shopTabColumns && missingColumn(first.error)) {
+    shopTabColumns = false;
+    return run(shopCols());
+  }
+  return first;
+}
 const fromShopRow = (r: ShopSaleRow): ShopSale => ({
   id: r.id,
   itemId: r.item_id,
@@ -1419,19 +1467,28 @@ const fromShopRow = (r: ShopSaleRow): ShopSale => ({
   qty: r.qty,
   bizDate: r.biz_date,
   createdAt: r.created_at,
-  method: isPayMethod(r.payment_method) ? r.payment_method : null,
+  method: isShopMethod(r.payment_method) ? r.payment_method : null,
+  bookingId: r.booking_id ?? null,
+  groupId: r.group_id ?? null,
 });
 export async function queryShopSales(hotelId: string, from: string, to: string): Promise<ShopSale[]> {
-  const { data, error } = await supabase
-    .from("shop_sales")
-    .select(SHOP_COLS)
-    .eq("hotel_id", hotelId)
-    .gte("biz_date", from)
-    .lte("biz_date", to)
-    .order("created_at")
-    .limit(20000);
+  const { data, error } = await withShopCols((cols) =>
+    supabase.from("shop_sales").select(cols).eq("hotel_id", hotelId).gte("biz_date", from).lte("biz_date", to).order("created_at").limit(20000),
+  );
   if (error) throw error;
-  return (data as ShopSaleRow[]).map(fromShopRow);
+  return ((data as ShopSaleRow[] | null) ?? []).map(fromShopRow);
+}
+/**
+ * 객실 외상(매점 → 예약·단체 장부 청구)만 불러와요. 투숙 중에 올린 청구라 입실일보다 늦은 영업일이에요.
+ * since = 예약 목록을 불러온 시작일. 긴 숙박도 담게 1년 더 앞에서부터 읽어요.
+ */
+async function queryShopTabs(hotelId: string, since: string): Promise<ShopSale[]> {
+  if (!shopTabColumns) return [];
+  const { data, error } = await withShopCols((cols) =>
+    supabase.from("shop_sales").select(cols).eq("hotel_id", hotelId).eq("payment_method", "room").gte("biz_date", addDays(since, -365)).order("created_at").limit(20000),
+  );
+  if (error || !shopTabColumns) return [];
+  return ((data as ShopSaleRow[] | null) ?? []).map(fromShopRow).filter((s) => s.method === "room");
 }
 
 /** 매점 판매: 기간(영업일)으로 불러오고, 다른 기기에서 판 것도 실시간 + 10초마다 맞춰요 */
@@ -1491,7 +1548,10 @@ export function useShopSales(hotelId: string, from: string, to: string) {
 
   /** 1개 팔기: 화면에는 바로 보이고, 저장은 뒤에서 해요 */
   const sell = useCallback(
-    async (item: ShopItem, bizDate: string, method: PayMethod): Promise<void> => {
+    async (item: ShopItem, bizDate: string, method: ShopMethod, target?: { bookingId: string | null; groupId: string | null }): Promise<void> => {
+      // 객실 외상은 투숙 중인 예약·단체 하나를 꼭 골라야 해요 (청구를 올릴 장부)
+      const tab = method === "room" ? { booking_id: target?.groupId ? null : (target?.bookingId ?? null), group_id: target?.groupId ?? null } : null;
+      if (tab && !tab.booking_id && !tab.group_id) throw new Error("객실 외상은 투숙 중인 객실을 골라 주세요");
       const tmp = `tmp-${Math.random().toString(36).slice(2)}`;
       const optimistic: ShopSale = {
         id: tmp,
@@ -1502,16 +1562,20 @@ export function useShopSales(hotelId: string, from: string, to: string) {
         bizDate,
         createdAt: new Date().toISOString(),
         method,
+        bookingId: tab?.booking_id ?? null,
+        groupId: tab?.group_id ?? null,
       };
       setSales((cur) => [...(cur ?? []), optimistic]);
       const p = (async () => {
         const { data, error } = await supabase
           .from("shop_sales")
-          .insert({ hotel_id: hotelId, item_id: item.id, item_name: optimistic.itemName, unit_price: item.price, qty: 1, biz_date: bizDate, payment_method: method })
-          .select(SHOP_COLS)
+          .insert({ hotel_id: hotelId, item_id: item.id, item_name: optimistic.itemName, unit_price: item.price, qty: 1, biz_date: bizDate, payment_method: method, ...(tab ?? {}) })
+          .select(tab ? SHOP_COLS_TAB : shopCols())
           .single();
+        if (error && tab && (missingColumn(error) || /payment_method|check constraint|room tab/i.test(error.message ?? "")))
+          throw new Error(/room tab booking|room tab group/i.test(error.message ?? "") ? "그 예약을 찾지 못했어요. 새로 고친 뒤 다시 골라 주세요" : "객실 외상은 서버 준비(DB 업데이트)가 끝나야 쓸 수 있어요");
         if (error) throw error;
-        const saved = fromShopRow(data as ShopSaleRow);
+        const saved = fromShopRow(data as unknown as ShopSaleRow);
         setSales((cur) => (cur ?? []).map((s) => (s.id === tmp ? saved : s)).filter((s, i, a) => a.findIndex((x) => x.id === s.id) === i));
         return saved.id;
       })();

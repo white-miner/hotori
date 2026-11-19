@@ -1,3 +1,4 @@
+import { groupExtrasTotal } from "../shared/folio";
 import ModalTabs, { ModalTabPanel } from "./ModalTabs";
 import { useId, useMemo, useRef, useState } from "react";
 import { addDays, dayLabel, daysBetween, fitSegments, roomOnNight, STAY_NIGHTS_MAX, stockTable, type Booking, won } from "../shared/ledger";
@@ -41,7 +42,7 @@ export default function GroupScheduleSheet({ data, groupId, today, onClose, onSa
     if (n < 1 || n > STAY_NIGHTS_MAX) return b;
     return { ...b, ...byId.get(b.id), nights: n, segments: fitSegments(b.segments, b.roomId, n) };
   });
-  const opts = { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) };
+  const opts = { extras: groupExtrasTotal(info) };
   const lump = (info?.payments ?? []).reduce((n, p) => n + p.amount, 0);
   const beforeLedger = groupLedger(membersNow, lump, today, opts), afterLedger = groupLedger(preview, lump, today, opts);
   const allNext = data.bookings.map(b => preview.find(p => p.id === b.id) ?? b);

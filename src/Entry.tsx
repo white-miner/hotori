@@ -1,4 +1,5 @@
 import { receiptBatch } from "../shared/receiptBatch";
+import { shopChargeLabel, shopChargesTotal } from "../shared/shop";
 import { useCreateReceipts } from "./useCreateReceipts";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock, DoorOpen, Minus, Plus, X } from "lucide-react";
@@ -112,7 +113,7 @@ import {
   validateEarlyOutKeep,
 } from "../shared/stayCredit";
 import { EARLY_OUT_REFUND_NOTE, earlyOutRefundReturn, paidOf } from "../shared/payment";
-import { bookingBalance, groupFolio } from "../shared/folio";
+import { bookingBalance, groupFolio, groupExtrasTotal } from "../shared/folio";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
   type StayNightRates,
@@ -1394,10 +1395,13 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     const info = data.groups.get(entryGroupId) ?? null;
     const members = data.bookings.filter((x) => x.groupId === entryGroupId && x.status !== "cancelled");
     const lump = (info?.payments ?? []).reduce((n, p) => n + p.amount, 0);
-    const extras = (info?.extras ?? []).reduce((n, x) => n + x.amount, 0);
+    const extras = groupExtrasTotal(info);
     return groupFolio(members, lump, extras, { onsite: curPlat ? isOnsite(curPlat) : null, payMode: info?.payMode ?? null }, today);
   }, [entryGroupId, data.groups, data.bookings, curPlat, today]);
-  const payTracked = entryGroup ? entryGroup.tracked : long || isOnsite(curPlat);
+  // 매점 객실 외상: 이 예약 장부의 청구 (단체 객실은 단체 장부에 있어요). OTA 예약이어도 현장에서 받을 돈
+  const entryTabs = entryGroup ? [] : (live?.shopCharges ?? []);
+  const entryTab = shopChargesTotal(entryTabs);
+  const payTracked = entryGroup ? entryGroup.tracked : long || isOnsite(curPlat) || entryTab > 0;
   const salesChannel = salesChannelFromMemo(memo);
   /** 라벨 * · HTML required · save validateGuestPhone 동일 SoT (바로입실 빈 연락처 수정 완화) */
   const phoneRequired = isGuestPhoneRequired(
@@ -1431,7 +1435,10 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       })
     : null;
   // 잔액 기준은 하나: 예약 전체 청구 − 받은 결제 (shared/folio bookingBalance · 단체는 groupFolio)
-  const payDue = entryGroup ? entryGroup.onsiteDue : longPay ? longPay.accrued : multi ? multiTotal : revenueOf({ ...draftBase, status: "active" });
+  const payDueBase = entryGroup ? entryGroup.onsiteDue : longPay ? longPay.accrued : multi ? multiTotal : revenueOf({ ...draftBase, status: "active" });
+  // OTA 선결제 예약은 숙박료를 채널이 받았으니 현장 청구는 매점 객실 외상만 (shared/folio onsiteDue와 같은 기준)
+  const payDue = entryGroup ? payDueBase : entryTab > 0 && !long && !isOnsite(curPlat) ? entryTab : payDueBase + entryTab;
+  const dueWord = entryGroup ? "단체 청구" : long ? "청구 합계" : entryTab > 0 ? (isOnsite(curPlat) ? "판매 + 매점 외상" : "매점 외상") : "판매";
   const payMoney = bookingBalance(payDue, payPaid);
   const payLeft = entryGroup ? entryGroup.owed : payMoney.owed;
   const payOver = entryGroup ? entryGroup.over : payMoney.over;
@@ -3368,19 +3375,24 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                 <>
                   {evidence ? <PayEvidence title={evidence.title} lines={evidence.lines} ledger={null} onOpen={() => setRecOpen(true)} /> : null}
                   {livePays.length > 0 ? <div className="muted sm paysplit">수납액 {splitLine(paySplit(livePays))}</div> : null}
+                  {entryTabs.length > 0 ? (
+                    <div className="muted sm paysplit" title="매점에서 객실 외상으로 올린 청구예요. 취소는 매점 화면에서 해요">
+                      매점 객실 외상 {won(entryTab)}원 · {entryTabs.map((c) => `${md(c.bizDate)} ${shopChargeLabel(c)} ${won(c.amount)}`).join(", ")}
+                    </div>
+                  ) : null}
                   <div className={`payleft ${payLeft > 0 ? "due" : "ok"}`}>
                     {payLeft > 0 ? (
                       <>
                         미수금 <b className="num">{won(payLeft)}원</b>
                         <span className="muted">
                           {" "}
-                          = {entryGroup ? "단체 청구" : long ? "청구 합계" : "판매"} {won(payDue)} − {entryGroup ? "단체 수납" : "수납"} {won(payPaid)}
+                          = {dueWord} {won(payDue)} − {entryGroup ? "단체 수납" : "수납"} {won(payPaid)}
                         </span>
                       </>
                     ) : payOver > 0 ? (
                       <>
                         초과 수납 <b className="num">{won(payOver)}원</b>
-                        <span className="muted"> = 수납 {won(payPaid)} − {entryGroup ? "단체 청구" : long ? "청구 합계" : "판매"} {won(payDue)}</span>
+                        <span className="muted"> = 수납 {won(payPaid)} − {dueWord} {won(payDue)}</span>
                       </>
                     ) : payPaid > 0 ? (
                       <>

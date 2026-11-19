@@ -920,6 +920,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                 수납일 기준 · 행=플랫폼 · 열=결제수단 · 매점은 별도 행
                 {platPay.total.credit > 0 ? ` · 잔액 사용 ${won(platPay.total.credit)}원(합계 제외)` : ""}
                 {payMethods.shop.none > 0 ? ` · 매점 미지정 ${won(payMethods.shop.none)}원(합계 제외)` : ""}
+                {payMethods.shop.room > 0 ? ` · 매점 객실 외상 ${won(payMethods.shop.room)}원(객실 장부 청구 · 받으면 결제 등록에 잡혀요 · 합계 제외)` : ""}
               </p>
             </section>
 

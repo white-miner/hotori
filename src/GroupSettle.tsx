@@ -2,7 +2,8 @@
 import { hasExtraTime, isTimeService, timeTags } from "../shared/extratime";
 import { useState } from "react";
 import { Check, Plus, Printer, X } from "lucide-react";
-import { type Booking, addDays, dayLabel, typeLabel, won } from "../shared/ledger";
+import { type Booking, addDays, dayLabel, md, typeLabel, won } from "../shared/ledger";
+import { shopChargeLabel } from "../shared/shop";
 import { BOOK_PAY_LABEL, BOOK_PAY_METHODS, PAYMENT_METHOD_LABEL, type BookPayMethod, paySplit, splitLine, validatePayment } from "../shared/payment";
 import { type GroupInfo, type GroupPayMode, EXTRA_MAX, PAY_MODE_LABEL, emptyGroupInfo, settle, validateExtra } from "../shared/settle";
 import type { HotelData } from "./data";
@@ -247,10 +248,18 @@ export default function GroupSettle({ data, today, groupId, members, onClose, no
                   <td className="r num">+{won(x.amount)}</td>
                 </tr>
               ))}
+              {(info.shopCharges ?? []).map((c) => (
+                <tr key={`s${c.id}`} title="매점에서 객실 외상으로 올린 청구예요. 취소는 매점 화면에서 해요">
+                  <td colSpan={4}>
+                    {md(c.bizDate)} {shopChargeLabel(c)} <small className="muted">객실 외상</small>
+                  </td>
+                  <td className="r num">+{won(c.amount)}</td>
+                </tr>
+              ))}
               <tr className="noprint">
                 <td colSpan={5}>
                   <div className="sh-add">
-                    <input className="inp sm" placeholder="추가 항목 (예: 매점 외상, 세미나실)" aria-label="추가 항목 이름" maxLength={30} value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} />
+                    <input className="inp sm" placeholder="추가 항목 (예: 세미나실, 식사)" aria-label="추가 항목 이름" maxLength={30} value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} />
                     <span className="inp price sm">
                       <input className="num" inputMode="numeric" aria-label="추가 항목 금액" placeholder="금액" value={extra.amount ? won(Number(extra.amount)) : ""} onChange={(e) => setExtra({ ...extra, amount: num(e.target.value) })} />원
                     </span>

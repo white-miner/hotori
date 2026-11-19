@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
-import { FREE_SHOP_ITEM_LIMIT, SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem, addDays, dayLabel, won } from "../shared/ledger";
+import { FREE_SHOP_ITEM_LIMIT, SHOP_CATEGORY_MAX, SHOP_NAME_MAX, type ShopItem, addDays, dayLabel, roomLabel, roomOnNight, stayPhase, won } from "../shared/ledger";
 import { hasProAccess } from "../shared/proGates";
 import {
-  type PayMethod,
-  PAY_LABEL,
+  type ShopMethod,
+  type ShopSale,
+  type ShopTabTarget,
+  SHOP_METHOD_LABEL,
   addMonths,
   canAddShopItem,
   lastSaleOf,
@@ -13,10 +15,12 @@ import {
   onDay,
   payLine,
   shopGroups,
+  shopTabTargets,
   shopTotals,
   validateShopDraft,
 } from "../shared/shop";
 import { type HotelData, useShopSales } from "./data";
+import { paymentEntryGroupId } from "../shared/paymentDesk";
 import NumInput from "./NumInput";
 import { uid } from "./ui";
 
@@ -25,6 +29,74 @@ interface Props {
   hotelId: string;
   today: string;
   notify: (m: string) => void;
+}
+
+/**
+ * 객실 외상: 청구를 올릴 투숙 중 객실 고르기 (PMS의 Post to Room처럼 투숙 중인 예약만 보여요).
+ * 고른 곳의 장부에 청구로 올라가고, 손님이 낼 때 결제 등록으로 받아요.
+ */
+function ShopTabPicker({
+  itemName,
+  price,
+  targets,
+  last,
+  onPick,
+  onClose,
+}: {
+  itemName: string;
+  price: number;
+  targets: ShopTabTarget[];
+  last: string | null;
+  onPick: (t: ShopTabTarget) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const shown = targets.filter((t) => !q.trim() || t.label.includes(q.trim()));
+  const recent = last ? shown.find((t) => t.key === last) : undefined;
+  const rest = shown.filter((t) => t !== recent);
+  return (
+    <div className="dim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal shop-add shop-tab" role="dialog" aria-label="객실 외상 객실 고르기">
+        <div className="grab" />
+        <div className="mh">
+          <h2>객실 외상 · {itemName} {won(price)}원</h2>
+          <button type="button" className="x" onClick={onClose}>
+            <kbd>Esc</kbd>닫기
+          </button>
+        </div>
+        <p className="fine">투숙 중인 객실만 보여요. 고른 예약(단체면 단체 장부)에 청구로 올라가고, 결제 등록으로 받아요.</p>
+        {targets.length > 6 ? (
+          <input className="inp" value={q} placeholder="객실 번호·이름 검색" aria-label="객실 검색" onChange={(e) => setQ(e.target.value.slice(0, 30))} />
+        ) : null}
+        {targets.length === 0 ? (
+          <div className="lempty">지금 투숙 중(입실 처리)인 객실이 없어요</div>
+        ) : (
+          <div className="tab-list">
+            {recent ? (
+              <button type="button" className="btn line tab-pick recent" onClick={() => onPick(recent)}>
+                {recent.label}
+                <small className="muted">방금 고른 곳</small>
+              </button>
+            ) : null}
+            {rest.map((t) => (
+              <button key={t.key} type="button" className="btn line tab-pick" onClick={() => onPick(t)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** 매점에서 바로 물품 등록 · 설정과 같은 shopItems 저장 */
@@ -193,17 +265,64 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
     setAdding(false);
   };
 
-  const sell = (it: ShopItem, m: PayMethod) => {
-    notify(`${it.name} 1개 +${won(it.price)}원 · ${PAY_LABEL[m]}`);
+  // 객실 외상: 투숙 중(입실 처리 · 퇴실 전) 예약만. 단체 객실은 단체 장부 하나로
+  const tabTargets = useMemo(
+    () =>
+      shopTabTargets(
+        data.bookings.filter((b) => stayPhase(b) === "in"),
+        (b) => roomLabel(hotel.settings, (b.kind === "stay" ? roomOnNight(b, today) : undefined) ?? b.roomId),
+        paymentEntryGroupId,
+      ),
+    [data.bookings, hotel.settings, today],
+  );
+  const tabName = (s: Pick<ShopSale, "bookingId" | "groupId">): string => {
+    if (s.groupId) {
+      const t = tabTargets.find((x) => x.groupId === s.groupId);
+      if (t) return t.label;
+      const m = data.bookings.find((b) => b.groupId === s.groupId);
+      return `단체 ${m?.groupName?.trim() || m?.guestName || ""}`.trim();
+    }
+    const b = s.bookingId ? data.bookings.find((x) => x.id === s.bookingId) : undefined;
+    if (!b) return "연결된 예약 없음";
+    const r = roomLabel(hotel.settings, b.roomId);
+    return `${r ? `${r}호 · ` : ""}${b.guestName}`;
+  };
+  const [picking, setPicking] = useState<ShopItem | null>(null);
+  const [lastTab, setLastTab] = useState<string | null>(null);
+
+  const sell = (it: ShopItem, m: ShopMethod) => {
+    if (m === "room") {
+      if (!isToday) return notify("객실 외상은 오늘 판매에만 올릴 수 있어요 (투숙 중인 객실 장부에 청구)");
+      return setPicking(it);
+    }
+    notify(`${it.name} 1개 +${won(it.price)}원 · ${SHOP_METHOD_LABEL[m]}`);
     shop.sell(it, day, m).catch((e) => notify(`저장하지 못했어요: ${e instanceof Error ? e.message : "연결을 확인해 주세요"}`));
   };
+  const sellToRoom = (it: ShopItem, t: ShopTabTarget) => {
+    setPicking(null);
+    setLastTab(t.key);
+    notify(`${it.name} 1개 ${won(it.price)}원 · 객실 외상 → ${t.label} 장부에 청구`);
+    shop
+      .sell(it, day, "room", { bookingId: t.bookingId, groupId: t.groupId })
+      .then(() => data.refresh())
+      .catch((e) => notify(`저장하지 못했어요: ${e instanceof Error ? e.message : "연결을 확인해 주세요"}`));
+  };
+  const cancelSale = (sale: ShopSale) => {
+    const m = sale.method ?? null;
+    notify(`${sale.itemName} 1개 취소 −${won(sale.unitPrice)}원${m ? ` · ${SHOP_METHOD_LABEL[m]}` : ""}${m === "room" ? ` (${tabName(sale)} 청구도 같이 취소)` : ""}`);
+    shop
+      .undo(sale)
+      .then(() => (m === "room" ? data.refresh() : undefined))
+      .catch(() => notify("취소하지 못했어요. 다시 눌러 주세요"));
+  };
   // − 는 그 결제 방법으로 판 것 중 가장 최근 1건만 삭제해요
-  const undo = (id: string, name: string, m: PayMethod) => {
+  const undo = (id: string, _name: string, m: ShopMethod) => {
     const last = lastSaleOf(sales, id, day, m);
     if (!last) return;
-    notify(`${name} 1개 취소 −${won(last.unitPrice)}원 · ${PAY_LABEL[m]}`);
-    shop.undo(last).catch(() => notify("취소하지 못했어요. 다시 눌러 주세요"));
+    cancelSale(last);
   };
+  const daySales = sales.filter(onDay(day));
+  const dayTabs = daySales.filter((x) => x.method === "room").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const setDaySafe = (d: string) => setDay(d > today ? today : d);
 
   const addBtn = (
@@ -324,7 +443,8 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
                       {r.name}
                       <small className="num">
                         카드 {r.card} · 현금 {r.cash}
-                        {r.count - r.card - r.cash ? ` · 미지정 ${r.count - r.card - r.cash}` : ""}
+                        {r.room ? ` · 객실 외상 ${r.room}` : ""}
+                        {r.count - r.card - r.cash - r.room ? ` · 미지정 ${r.count - r.card - r.cash - r.room}` : ""}
                       </small>
                     </span>
                     <span className="num c">{r.count}개</span>
@@ -366,20 +486,20 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
   }
 
   /** 물품 칸: 이름·가격, 그리고 현금·카드 줄마다 − 개수 + */
-  const payRows = (id: string, name: string, it: ShopItem | null, r?: { card: number; cash: number }) =>
-    (["cash", "card"] as const).map((m) => {
+  const payRows = (id: string, name: string, it: ShopItem | null, r?: { card: number; cash: number; room?: number }) =>
+    (["cash", "card", "room"] as const).map((m) => {
       const n = r?.[m] ?? 0;
       return (
-        <div key={m} className={`st-row ${n ? "has" : ""}`}>
-          <span className="st-m">{PAY_LABEL[m]}</span>
-          <button className="st-b" disabled={!n} aria-label={`${name} ${PAY_LABEL[m]} 1개 취소`} onClick={() => undo(id, name, m)}>
+        <div key={m} className={`st-row ${n ? "has" : ""} ${m === "room" ? "st-room" : ""}`}>
+          <span className="st-m">{SHOP_METHOD_LABEL[m]}</span>
+          <button className="st-b" disabled={!n} aria-label={`${name} ${SHOP_METHOD_LABEL[m]} 1개 취소`} onClick={() => undo(id, name, m)}>
             <Minus size={18} strokeWidth={2.6} />
           </button>
           <span className="st-q num">{n}</span>
           <button
             className="st-b st-add"
             disabled={!it}
-            aria-label={`${name} ${PAY_LABEL[m]} 1개 팔기`}
+            aria-label={`${name} ${SHOP_METHOD_LABEL[m]} 1개 팔기`}
             onClick={() => it && sell(it, m)}
           >
             <Plus size={18} strokeWidth={2.6} />
@@ -431,11 +551,44 @@ export default function Shop({ data, hotelId, today, notify }: Props) {
           </div>
         </section>
       ) : null}
+      {dayTabs.length ? (
+        <section className="card shop-tabs" aria-label="객실 외상">
+          <h3>
+            {isToday ? "오늘" : dayLabel(day)} 객실 외상 <span className="num">{won(dayTabs.reduce((n, x) => n + x.unitPrice * Math.max(1, x.qty), 0))}원</span>
+            <small className="muted"> · 받은 돈이 아니라 객실 장부의 청구예요. 결제 등록으로 받아요</small>
+          </h3>
+          <div className="smt">
+            {dayTabs.map((x) => (
+              <div key={x.id} className="smr">
+                <span className="n">
+                  {x.itemName}
+                  {x.qty > 1 ? ` ×${x.qty}` : ""}
+                  <small>{tabName(x)}</small>
+                </span>
+                <span className="num a">{won(x.unitPrice * Math.max(1, x.qty))}원</span>
+                <button type="button" className="btn sm line" aria-label={`${x.itemName} 객실 외상 취소`} onClick={() => cancelSale(x)}>
+                  취소
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <p className="shop-hint muted">
-        현금·카드 항목의 + 를 누르면 해당 결제수단으로 1개 판매가 바로 등록돼요. 잘못 눌렀으면 같은 항목의 − 를 눌러 주세요.{" "}
+        현금·카드 항목의 + 를 누르면 해당 결제수단으로 1개 판매가 바로 등록돼요. 객실 외상 + 는 투숙 중인 객실을 고르면 그 장부에 청구로 올라가요. 잘못 눌렀으면 같은 항목의 − 를 눌러 주세요.{" "}
         <a href="#/settings/shop">설정에서 물품 관리</a>
       </p>
       {modal}
+      {picking ? (
+        <ShopTabPicker
+          itemName={picking.name}
+          price={picking.price}
+          targets={tabTargets}
+          last={lastTab}
+          onPick={(t) => sellToRoom(picking, t)}
+          onClose={() => setPicking(null)}
+        />
+      ) : null}
     </main>
   );
 }

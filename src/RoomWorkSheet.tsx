@@ -6,7 +6,7 @@ import { assignmentRoom, assignableBooking, roomWorkState } from "../shared/room
 import { occupiedNightDates } from "../shared/nightrates";
 import { PAY_MODE_LABEL } from "../shared/settle";
 import { PAYMENT_METHOD_LABEL, isOnsite } from "../shared/payment";
-import { bookingFolio, groupFolio } from "../shared/folio";
+import { bookingFolio, groupFolio, groupExtrasTotal } from "../shared/folio";
 import type { HotelData } from "./data";
 import { lookups } from "./ui";
 
@@ -35,7 +35,7 @@ export default function RoomWorkSheet({ data, roomId, bookingId, date, today, co
       ? groupFolio(
           data.bookings.filter(x => x.groupId === b.groupId),
           (group?.payments ?? []).reduce((n, p) => n + p.amount, 0),
-          (group?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+          groupExtrasTotal(group),
           { onsite: plat ? isOnsite(plat) : null, payMode: group?.payMode ?? null },
           today,
         )

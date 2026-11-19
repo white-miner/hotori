@@ -1,3 +1,4 @@
+import { groupExtrasTotal } from "../shared/folio";
 import ModalTabs, { ModalTabPanel } from "./ModalTabs";
 import { useId, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
@@ -72,7 +73,7 @@ export default function RecordSheet({
   const groupPays = info?.payments ?? [];
   const allPays = useMemo(() => [...live.flatMap((m) => m.payments ?? []), ...groupPays], [live, groupPays]);
   const ledger = useMemo(
-    () => groupLedger(members, groupPays.reduce((n, p) => n + p.amount, 0), today, { extras: (info?.extras ?? []).reduce((n, x) => n + x.amount, 0) }),
+    () => groupLedger(members, groupPays.reduce((n, p) => n + p.amount, 0), today, { extras: groupExtrasTotal(info) }),
     [members, groupPays, today, info],
   );
   const lines = payLines(allPays, { roomName: bookingName, meId: data.meId });

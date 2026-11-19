@@ -104,7 +104,8 @@ export type MethodSales = {
   transfer: number;
   total: number;
   booking: { card: number; cash: number; transfer: number; credit: number; total: number };
-  shop: { card: number; cash: number; none: number; total: number };
+  /** total = 매점에서 받은 돈(카드·현금·미지정). room = 객실 외상(장부 청구라 받은 돈이 아니에요, 합계 제외) */
+  shop: { card: number; cash: number; none: number; room: number; total: number };
 };
 
 /** 객실 수납액 + 매점 카드·현금. 이체·잔액사용은 예약만. */
@@ -124,6 +125,7 @@ export function methodSales(
     card: sPay.card,
     cash: sPay.cash,
     none: sPay.none,
+    room: sPay.room ?? 0,
     total: sPay.card + sPay.cash + sPay.none,
   };
   const card = b.card + s.card;
