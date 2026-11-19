@@ -6,7 +6,8 @@ import type { GroupLedger } from "./groupLedger";
 import type { BookPayMethod } from "./payment";
 
 export const RECEIPT_AMOUNT_MAX = 100_000_000;
-export const RECEIPT_MEMO_MAX = 40;
+/** 결제 메모 최대 글자 수 (저장되는 결제 메모와 같은 80자 · 화면에 남은 글자 수를 보여 줘요) */
+export const RECEIPT_MEMO_MAX = 80;
 
 /** 금액 기본값: 미수금 (없으면 0) */
 export function receiptSuggest(ledger: Pick<GroupLedger, "owed">): number {
