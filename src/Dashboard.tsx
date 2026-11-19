@@ -2676,7 +2676,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           timeFee: planned.surcharge.draft.timeFee,
           memo: planned.surcharge.draft.memo,
         };
-        saved = await data.saveBooking(next, false);
+        // 빠른 업무도 낙관적 잠금: 창을 연 뒤 다른 직원이 고친 칸은 덮어쓰지 않아요
+        saved = await data.saveBooking(next, false, { opened: b });
         let collected = false;
         if (planned.collect && planned.payMethod && planned.surcharge.collectAmount > 0) {
           try {
@@ -2703,7 +2704,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           endTime: planned.endTime,
           price: planned.price,
         };
-        saved = await data.saveBooking(next, false);
+        saved = await data.saveBooking(next, false, { opened: b });
         let collected = false;
         if (planned.collectAmount > 0 && planned.payMethod) {
           try {
@@ -2796,7 +2797,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         segments: planned.draft.segments,
         nightRates: planned.draft.nightRates ?? live.nightRates ?? null,
       };
-      const saved = await data.saveBooking(next, false);
+      const saved = await data.saveBooking(next, false, { opened: live });
       void data.logChange({
         kind: "stay",
         groupId: live.groupId ?? null,
@@ -2993,7 +2994,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     try {
       const live = data.bookings.find((x) => x.id === b.id) ?? b;
       const hasTime = !!(live.earlyIn || live.lateOut);
-      await data.saveBooking({ ...live, price: newPrice, timeFee: hasTime ? 0 : live.timeFee }, false);
+      await data.saveBooking({ ...live, price: newPrice, timeFee: hasTime ? 0 : live.timeFee }, false, { opened: live });
       notify(`${live.guestName || "손님"} 님 잔금 맞춤 · 판매가 ${won(newPrice)}원`);
     } catch (e) {
       notify(saveFailMessage(e, "잔금을 맞추지 못했어요"));
@@ -3029,7 +3030,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         timeFee: planned.draft.timeFee,
         memo: planned.draft.memo,
       };
-      const saved = await data.saveBooking(next, false);
+      const saved = await data.saveBooking(next, false, { opened: b });
       let collected = false;
       if (planned.collectAmount > 0) {
         try {
