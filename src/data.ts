@@ -1170,49 +1170,6 @@ export function useHotelData(hotelId: string) {
     [hotelId, groups, refresh, setGroupLead],
   );
   /**
-   * 단체 기간 결제: 방마다 한 줄씩 한 번에 저장 (한 문장 insert = 모두 되거나 모두 안 됨 · created_at 같음).
-   * leadBookingId가 주어지면 현재 대장을 같이 고정해요 (자동 대장이 결제 때문에 바뀌지 않게).
-   */
-  const addPeriodPayments = useCallback(
-    async (
-      groupId: string,
-      lines: { bookingId: string; amount: number; nightDate: string; periodNights: number; note: string }[],
-      p: { method: BookPayMethod; bizDate: string; leadBookingId?: string | null },
-    ): Promise<Payment[]> => {
-      if (!lines.length) return [];
-      if (p.leadBookingId && !groups.get(groupId)?.leadBookingId) {
-        const r = await supabase.from("booking_groups").upsert({ id: groupId, hotel_id: hotelId, lead_booking_id: p.leadBookingId }, { onConflict: "id" });
-        if (r.error) throw r.error;
-      }
-      const { data, error } = await supabase
-        .from("booking_payments")
-        .insert(
-          lines.map((l) => ({
-            booking_id: l.bookingId,
-            kind: "balance",
-            method: p.method,
-            amount: Math.round(l.amount),
-            biz_date: p.bizDate,
-            note: l.note.slice(0, 80),
-            night_date: l.nightDate,
-            period_nights: l.periodNights,
-          })),
-        )
-        .select(PAY_COLS);
-      if (error) throw error;
-      const saved = (data as PaymentRow[]).map((x) => payFromRow(x));
-      setBookingsLocal((list) =>
-        list.map((x) => {
-          const mine = saved.filter((y) => y.bookingId === x.id);
-          return mine.length ? { ...x, payments: [...(x.payments ?? []), ...mine] } : x;
-        }),
-      );
-      if (p.leadBookingId) setGroups((m) => new Map(m).set(groupId, { ...(m.get(groupId) ?? emptyGroupInfo(groupId)), leadBookingId: m.get(groupId)?.leadBookingId ?? p.leadBookingId! }));
-      return saved;
-    },
-    [hotelId, groups],
-  );
-  /**
    * 결제 등록(단체): 결제일·수단·금액·메모 한 줄을 단체 결제로 저장해요. 객실·박에 나누지 않아요.
    * line = receiptPlan().line
    */
@@ -1360,7 +1317,6 @@ export function useHotelData(hotelId: string) {
     deleteGroupPayment,
     setGroupLead,
     moveBookingGroup,
-    addPeriodPayments,
     addReceipt,
     deleteReceipt,
     deletePayments,

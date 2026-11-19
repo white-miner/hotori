@@ -13,9 +13,7 @@ import {
   nightsChangedWithoutPrice,
   planExtend,
   planOpsExtend,
-  planGroupExtend,
   planThroughToday,
-  skippedNote,
   throughOverlaps,
   repriceForNights,
   isOpenFollowable,
@@ -225,46 +223,6 @@ test("unusedNightRefund: 20박 중 12박 이용 → 미사용 8박 × 단가", (
   const b = bk({ checkIn: "2026-10-01", nights: 20, price: 1_400_000 });
   assert.equal(unusedNightRefund(b, "2026-10-13", 70_000), 560_000);
   assert.equal(1_400_000 - 560_000, 840_000);
-});
-
-test("단체 연장: 타입 요금으로 방마다 가산, 겹치면 막음", () => {
-  const s = S();
-  const m1 = bk({ id: "g1", groupId: "g", roomId: "r301", typeId: "s", nights: 1, price: 100000, checkIn: "2026-10-18" });
-  const m2 = bk({ id: "g2", groupId: "g", roomId: "r302", typeId: "s", nights: 1, price: 100000, checkIn: "2026-10-18" });
-  assert.equal(groupMemberRate(m1, { s: 70000 }), 70000);
-  const ok = planGroupExtend(s, [m1, m2], [m1, m2], { s: 70000 });
-  assert.ok("ok" in ok);
-  if ("ok" in ok) {
-    assert.equal(ok.ok.members.length, 2);
-    assert.equal(ok.ok.totalRate, 140000);
-    assert.equal(ok.ok.members[0].draft.nights, 2);
-    assert.equal(ok.ok.members[0].draft.price, 170000);
-  }
-  const blocker = bk({ id: "x", checkIn: "2026-10-19", nights: 1, roomId: "r301" });
-  // 한 방만 겹치면 그 방만 건너뛰고 나머지는 연장해요
-  const part = planGroupExtend(s, [m1, m2, blocker], [m1, m2], { s: 70000 });
-  assert.ok("ok" in part);
-  if ("ok" in part) {
-    assert.deepEqual(part.ok.members.map((m) => m.id), ["g2"]);
-    assert.equal(part.ok.totalRate, 70000);
-    assert.deepEqual(part.ok.skipped.map((k) => k.id), ["g1"]);
-    assert.match(skippedNote(s, part.ok.skipped), /301호/);
-  }
-  // 전부 못 하면 안내
-  const none = planGroupExtend(s, [m1, blocker], [m1], { s: 70000 });
-  assert.ok("err" in none);
-});
-
-test("단체 연장: 조기 퇴실·객실 이동한 방은 건너뛰고 나머지 연장", () => {
-  const s = S();
-  const a = bk({ id: "a", groupId: "g", roomId: "r301", nights: 2, price: 200000, checkIn: "2026-10-18" });
-  const e = bk({ id: "e", groupId: "g", roomId: "r302", nights: 2, price: 200000, checkIn: "2026-10-18", earlyOut: "2026-10-19" });
-  const r = planGroupExtend(s, [a, e], [a, e], { s: 100000 });
-  assert.ok("ok" in r);
-  if ("ok" in r) {
-    assert.deepEqual(r.ok.members.map((m) => m.id), ["a"]);
-    assert.deepEqual(r.ok.skipped, [{ id: "e", roomId: "r302", reason: "조기 퇴실" }]);
-  }
 });
 
 test("오늘까지 연장: 퇴실일이 오늘 이전이면 오늘 밤까지 박수·가격을 늘림", () => {
