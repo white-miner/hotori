@@ -3790,7 +3790,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onRoom={b => { setEvidenceGroupId(null); if (b.roomId) { setSelectedRoomIds([b.roomId]); setSideMode("room"); sbx.reveal(); } else onOpen(b, viewDate); }}
         onEditSchedule={() => { setScheduleGroupId(evidenceGroupId); setEvidenceGroupId(null); }} onEditPayments={() => { setRecordFor({ groupId: evidenceGroupId, bookingId: null }); setEvidenceGroupId(null); }} /> : null}
       {leaveBkId ? renderLeave(leaveBkId) : null}
-    {renderChangeLog()}
       {renderChangeLog()}
       {payDesk ? (
         <PaymentDeskModal
