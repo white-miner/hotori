@@ -453,6 +453,10 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
   // 조기 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
   const [eoRefundMethod, setEoRefundMethod] = useState<BookPayMethod>("cash");
+  // 노쇼 확인: 받은 돈은 그대로 두고, 돌려줄 돈이 있으면 '환불' 한 줄(음수)로 같이 남겨요
+  const [noshowAsk, setNoshowAsk] = useState(false);
+  const [noshowRefund, setNoshowRefund] = useState("");
+  const [noshowMethod, setNoshowMethod] = useState<BookPayMethod>("cash");
   const [eo, setEo] = useState<{
     date: string;
     disposition: EarlyOutDisposition;
@@ -1742,6 +1746,17 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       const lines = isNew && !override && createOnsitePay && isActive(saved) && isOnsite(s.platforms.find((x) => x.id === saved.platformId))
         ? createPaymentLines(createPayMode, { saleTotal: saleAll, depAmt: createDepAmt, depMethod: createDepMethod, tenders }) : [];
       const payTail = lines.length ? " · 수납 등록 완료" : "";
+      let noshowTail = "";
+      const nsGive = override === "noshow" && base && !base.groupId ? Math.min(Math.round(Number(noshowRefund) || 0), paidOf(base)) : 0;
+      if (nsGive > 0) {
+        try {
+          await data.addPayment(saved.id, { kind: "refund", method: noshowMethod, amount: -nsGive, bizDate: today, note: "노쇼 환불" });
+          noshowTail = ` · ${BOOK_PAY_LABEL[noshowMethod]} ${won(nsGive)}원 돌려줌 (결제 내역에 환불 한 줄)`;
+        } catch (e) {
+          noshowTail = ` · 돌려준 돈을 결제 내역에 남기지 못했어요 (${e instanceof Error ? e.message : "다시 시도"}) · 기록 정정에서 확인해 주세요`;
+        }
+      }
+      if (override === "noshow") { setNoshowAsk(false); setNoshowRefund(""); }
       const t = L.types.get(saved.typeId);
       const hold =
         kind === "stay" && isActive(saved) && !saved.roomId
@@ -1759,7 +1774,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 잔여 객실이 늘었어요`
           : override === "noshow"
-            ? `${saved.guestName} 님 노쇼로 표시했어요 · 수납액은 매출에 남고 잔여 객실이 늘었어요`
+            ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 돈은 그대로 두었어요${noshowTail} · 잔여 객실이 늘었어요`
             : revived
               ? `${saved.guestName} 님 예약을 되살렸어요${tail}`
               : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
@@ -1901,8 +1916,38 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                 <h3>예약 상태</h3>
                 {isActive(draft) ? <>
                   <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "cancelled")}>취소 처리</button>
-                  <button type="button" className="btn line" disabled={busy} title="결제 금액은 매출에 남고 객실 재고는 비워요" onClick={() => void save(false, "noshow")}>노쇼 처리</button>
+                  <button type="button" className="btn line" disabled={busy} aria-expanded={noshowAsk} title="받은 돈은 그대로 두고 객실 재고는 비워요" onClick={() => setNoshowAsk((v) => !v)}>노쇼 처리…</button>
                 </> : <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "active")}>예약 되살리기</button>}
+                {isActive(draft) && noshowAsk && base ? (() => {
+                  const nsPaid = paidOf(base);
+                  const nsMax = base.groupId ? 0 : Math.max(0, nsPaid);
+                  const nsAmt = Math.min(Math.round(Number(noshowRefund) || 0), nsMax);
+                  return (
+                    <div className="noshow-ask" role="group" aria-label="노쇼 확인">
+                      <p><b>받은 돈은 그대로 둡니다.</b> 이 예약에 받은 돈 {won(nsPaid)}원은 매출에 남아요.</p>
+                      {payTracked && payLeft > 0 ? (
+                        <p>미수금 {won(payLeft)}원은 노쇼 뒤에는 받을 돈으로 잡지 않아요. 위약금 등을 받으려면 먼저 아래 결제 칸에서 수납한 뒤 노쇼 처리하세요.</p>
+                      ) : null}
+                      {base.groupId ? (
+                        <p className="muted sm">단체 결제는 단체에 남아요. 돌려줄 돈은 단체 결제 기록 정정에서 고쳐 주세요.</p>
+                      ) : nsPaid > 0 ? (
+                        <>
+                          <label className="inp price sm">
+                            <span className="pl">돌려줄 돈</span>
+                            <input className="num" inputMode="numeric" aria-label="노쇼 환불 금액" placeholder="0" value={noshowRefund ? won(Math.min(Number(noshowRefund), nsMax)) : ""} disabled={busy} onChange={(e) => setNoshowRefund(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                            원
+                          </label>
+                          {nsAmt > 0 ? <BookPayMethodCircles value={noshowMethod} onChange={setNoshowMethod} disabled={busy} /> : null}
+                          <small className="muted">비워 두면 환불 없이 노쇼만 처리해요 · 돌려주면 결제 내역에 &lsquo;환불&rsquo; 한 줄로 남아요 (최대 {won(nsMax)}원)</small>
+                        </>
+                      ) : null}
+                      <div className="noshow-acts">
+                        <button type="button" className="btn line" disabled={busy} onClick={() => { setNoshowAsk(false); setNoshowRefund(""); }}>닫기</button>
+                        <button type="button" className="btn stop" disabled={busy} onClick={() => void save(false, "noshow")}>{nsAmt > 0 ? `${won(nsAmt)}원 돌려주고 노쇼 처리` : "노쇼 처리"}</button>
+                      </div>
+                    </div>
+                  );
+                })() : null}
                 <p>취소·노쇼는 예약 상태를 변경하고 바로 저장해요.</p>
               </div>
             </div>
