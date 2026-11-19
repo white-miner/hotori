@@ -1713,7 +1713,8 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     setBusy(true);
     setErr(null);
     try {
-      const saved = isNew ? await saveNewDraft(draft) : await data.saveBooking(draft, isNew);
+      // 예약 상세 저장: 창을 연 뒤 다른 직원이 먼저 고쳤으면 덮어쓰지 않아요 (낙관적 잠금)
+      const saved = isNew ? await saveNewDraft(draft) : await data.saveBooking(draft, isNew, { opened: base });
       const lines = isNew && !override && createOnsitePay && isActive(saved) && isOnsite(s.platforms.find((x) => x.id === saved.platformId))
         ? createPaymentLines(createPayMode, { saleTotal: saleAll, depAmt: createDepAmt, depMethod: createDepMethod, tenders }) : [];
       const payTail = lines.length ? " · 수납 등록 완료" : "";

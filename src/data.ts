@@ -62,6 +62,7 @@ import { cleanCoupons } from "../shared/fee";
 import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/settle";
 import { hashGroupBadgeColor } from "../shared/group";
 import { groupMoveRow } from "../shared/groupMove";
+import { BookingConflictError, planBookingMerge } from "../shared/bookingLock";
 import { longReachOr, mergeBookings, reachesInto } from "../shared/loadWindow";
 import { saveScheduleChanges, scheduleLock, type ScheduleChange } from "../shared/groupSchedule";
 import type { ExtendWriteLine } from "../shared/groupExtend";
@@ -583,14 +584,44 @@ export function useHotelData(hotelId: string) {
     return saved;
   }, []);
 
+  /**
+   * 예약 저장. opened(창을 열 때의 예약)를 주면 낙관적 잠금: 그 뒤 다른 직원이 먼저 저장했는지 확인하고,
+   * 내가 고친 칸만 쓰거나 같은 칸을 둘 다 고쳤으면 덮어쓰지 않고 멈춰요 (shared/bookingLock).
+   */
   const saveBooking = useCallback(
-    async (b: Booking, isNew: boolean): Promise<Booking> => {
+    async (b: Booking, isNew: boolean, opts?: { opened?: Booking | null }): Promise<Booking> => {
       const row = toRow(b);
-      const q = isNew
-        ? supabase.from("bookings").insert({ ...row, hotel_id: hotelId }).select(COLS).single()
-        : supabase.from("bookings").update(row).eq("id", b.id).select(COLS).single();
-      const { data, error } = await q;
-      if (error) throw error;
+      let data: unknown;
+      const opened = !isNew ? opts?.opened ?? null : null;
+      if (opened?.updatedAt) {
+        const first = await supabase.from("bookings").update(row).eq("id", b.id).eq("updated_at", opened.updatedAt).select(COLS).maybeSingle();
+        if (first.error) throw first.error;
+        if (first.data) data = first.data;
+        else {
+          const cur = await supabase.from("bookings").select(COLS).eq("id", b.id).single();
+          if (cur.error) throw cur.error;
+          const current = fromRow(cur.data as BookingRow);
+          const plan = planBookingMerge(toRow(opened), row, toRow(current));
+          if (plan.conflicts.length) {
+            setBookingsLocal((list) => list.map((x) => (x.id === current.id ? current : x)));
+            throw new BookingConflictError(plan.conflicts);
+          }
+          if (!Object.keys(plan.write).length) data = cur.data;
+          else {
+            const second = await supabase.from("bookings").update(plan.write).eq("id", b.id).eq("updated_at", current.updatedAt).select(COLS).maybeSingle();
+            if (second.error) throw second.error;
+            if (!second.data) throw new BookingConflictError(Object.keys(plan.write));
+            data = second.data;
+          }
+        }
+      } else {
+        const q = isNew
+          ? supabase.from("bookings").insert({ ...row, hotel_id: hotelId }).select(COLS).single()
+          : supabase.from("bookings").update(row).eq("id", b.id).select(COLS).single();
+        const r = await q;
+        if (r.error) throw r.error;
+        data = r.data;
+      }
       let saved = fromRow(data as BookingRow);
       setBookingsLocal((list) => (isNew ? [...list, saved] : list.map((x) => (x.id === saved.id ? saved : x))));
       if (saved.stayMode === "long_stay") saved = await syncNightCharges({ ...saved, longStayRate: b.longStayRate ?? saved.longStayRate });
