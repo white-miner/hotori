@@ -167,6 +167,9 @@ export function slotRows(s: HotelSettings, slots: readonly RateSlot[], edits: Ra
   return slots.map((slot) => {
     const rates = slotRates(s, slot, edits, checkIn, nights);
     const vals = Object.values(rates.nights ?? {});
+    // 총액만 입력한 객실(2박 이상): 박별 요금 없이 총액이 객실료예요 (박에 나누지 않아요)
+    const resolved = edits[slot.key]?.pricing ? resolveStayPrice(checkIn, nights, edits[slot.key].pricing!) : null;
+    const totalOnly = !!resolved?.totalOnly;
     const edited = isEdited(edits, slot.key);
     const sug = suggestNights(s, slot.typeId, checkIn, nights);
     let sources: string[];
@@ -177,12 +180,12 @@ export function slotRows(s: HotelSettings, slots: readonly RateSlot[], edits: Ra
     return {
       slot,
       rates,
-      subtotal: slotSubtotal(rates),
-      roomCharge: slotRoomCharge(rates),
+      subtotal: totalOnly ? resolved!.roomTotal + extrasTotal(rates) : slotSubtotal(rates),
+      roomCharge: totalOnly ? resolved!.roomTotal : slotRoomCharge(rates),
       extras: extrasTotal(rates),
       edited,
-      complete: hasFullNightMatrix(checkIn, nights, rates),
-      pricingError: edits[slot.key]?.pricing ? resolveStayPrice(checkIn, nights, edits[slot.key].pricing!).error : null,
+      complete: totalOnly ? resolved!.roomTotal > 0 : hasFullNightMatrix(checkIn, nights, rates),
+      pricingError: resolved ? resolved.error : null,
       uniform: vals.length && vals.every((v) => v === vals[0]) ? vals[0]! : null,
       sources,
     };
