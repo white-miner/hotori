@@ -3739,7 +3739,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {joinGroupId ? renderJoin(joinGroupId) : null}
 {renderMoveSched()}
       {renderRecord()}
-      {batchCheckoutOpen && !readOnly ? <BatchCheckoutSheet data={data} today={today} opts={nowOpts} busy={!!coBusy} onClose={()=>!coBusy&&setBatchCheckoutOpen(false)} onRun={async(ids,leaveBalance)=>{
+      {batchCheckoutOpen && !readOnly ? <BatchCheckoutSheet data={data} today={today} opts={nowOpts} busy={!!coBusy} onClose={()=>!coBusy&&setBatchCheckoutOpen(false)} onPay={(b)=>{if(coBusy)return;setBatchCheckoutOpen(false);openPaymentDesk(b);}} onRun={async(ids,leaveBalance)=>{
         if(coBusy)return {done:[],failed:ids.map(id=>({id,reason:"다른 퇴실 업무가 진행 중입니다."}))};
         setCoBusy("batch");
         try {return await runBatchCheckout(ids,()=>batchCheckoutRows(moveSettingsRef.current,bookingsRef.current,moveGroupsRef.current,today,{stayTimes:moveSettingsRef.current.stayTimes,clock:hotelWallClock()}),(id,patch)=>data.patchBooking(id,patch),leaveBalance)}finally{setCoBusy(null)}
