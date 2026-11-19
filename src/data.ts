@@ -48,7 +48,7 @@ import {
   validateHotelDocFile,
   validateHotelDocumentDraft,
 } from "../shared/hotelDocuments";
-import { type BookPayMethod, type PayKind, type Payment, type PaymentEdit, type PaymentMethod, isBookPayMethod, isPaymentMethod } from "../shared/payment";
+import { type BookPayMethod, type PayKind, type Payment, type PaymentEdit, type PaymentMethod, type PaymentRowKind, isBookPayMethod, isPaymentMethod } from "../shared/payment";
 import {
   type StayCredit,
   type ApplyStayCreditPlan,
@@ -143,7 +143,7 @@ interface PaymentRow {
   id: string;
   booking_id?: string;
   group_id?: string | null;
-  kind: PayKind;
+  kind: PaymentRowKind;
   method: PaymentMethod;
   amount: number;
   biz_date: string;
@@ -199,7 +199,7 @@ const payFromRow = (r: PaymentRow, bookingId?: string): Payment => ({
   id: r.id,
   bookingId: r.booking_id ?? bookingId ?? "",
   groupId: r.group_id ?? null,
-  kind: r.kind === "balance" ? "balance" : "deposit",
+  kind: r.kind === "balance" ? "balance" : r.kind === "refund" ? "refund" : "deposit",
   method: isPaymentMethod(r.method) ? r.method : "card",
   amount: r.amount,
   bizDate: r.biz_date,
@@ -702,7 +702,7 @@ export function useHotelData(hotelId: string) {
     [hotelId, refresh],
   );
   // 선금·잔금 받음: 한 건씩 등록·삭제해요 (수정은 삭제 후 재등록)
-  const addPayment = useCallback(async (bookingId: string, p: { kind: PayKind; method: PaymentMethod; amount: number; bizDate: string; note?: string | null }) => {
+  const addPayment = useCallback(async (bookingId: string, p: { kind: PaymentRowKind; method: PaymentMethod; amount: number; bizDate: string; note?: string | null }) => {
     const note = p.note?.trim() ? p.note.trim().slice(0, 80) : null;
     const { data, error } = await supabase
       .from("booking_payments")

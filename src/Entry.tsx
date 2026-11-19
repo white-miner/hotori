@@ -111,7 +111,7 @@ import {
   planCreateStayCredit,
   validateEarlyOutKeep,
 } from "../shared/stayCredit";
-import { paidOf } from "../shared/payment";
+import { EARLY_OUT_REFUND_NOTE, earlyOutRefundReturn, paidOf } from "../shared/payment";
 import { bookingBalance, groupFolio } from "../shared/folio";
 import ExtendOverlapConfirm from "./ExtendOverlapConfirm";
 import {
@@ -435,6 +435,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [createDepAmt, setCreateDepAmt] = useState("");
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
   // 조기 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
+  const [eoRefundMethod, setEoRefundMethod] = useState<BookPayMethod>("cash");
   const [eo, setEo] = useState<{
     date: string;
     disposition: EarlyOutDisposition;
@@ -859,6 +860,17 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     try {
       // 보관 경로: refund_amount는 항상 null (현금 환불과 분리)
       const saved = await data.setEarlyOut(live.id, eo.date, eo.disposition === "refund" ? refund || null : null);
+      // 실제로 돌려준 돈은 결제 내역에 '환불' 한 줄(음수)로 남겨 받은 돈 합계·현금 시재와 맞춰요
+      let refundRowTail = "";
+      const giveBack = eo.disposition === "refund" && refund && !live.groupId ? earlyOutRefundReturn(live, refund) : 0;
+      if (giveBack > 0) {
+        try {
+          await data.addPayment(live.id, { kind: "refund", method: eoRefundMethod, amount: -giveBack, bizDate: today, note: EARLY_OUT_REFUND_NOTE });
+          refundRowTail = ` · ${BOOK_PAY_LABEL[eoRefundMethod]} ${won(giveBack)}원 돌려줌 (결제 내역에 환불 한 줄)`;
+        } catch (e) {
+          refundRowTail = ` · 돌려준 돈을 결제 내역에 남기지 못했어요 (${e instanceof Error ? e.message : "다시 시도"}) · 기록 정정에서 확인해 주세요`;
+        }
+      }
       let keepTail = "";
       if (eo.disposition === "keep") {
         const created = await data.createStayCredit({
@@ -877,7 +889,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         eo.disposition === "refund" && refund ? ` · 환불 ${won(refund)}원` : eo.disposition === "none" ? " · 환불 없음" : "";
       onClose();
       notify(
-        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 조기 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refundTail}${keepTail}`,
+        `${saved.guestName} 님 ${eo.date === today ? "오늘" : dayLabel(eo.date)} 조기 퇴실 · ${usedLabel(saved)} · ${room ? `${room}호 ` : ""}${freed}박 비웠어요${refundTail}${refundRowTail}${keepTail}`,
         { action: { label: "되돌리기", run: () => void undoEarlyOut(saved.id) }, ms: 8000 },
       );
     } catch (e) {
@@ -2293,6 +2305,20 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                   {won(Math.max(0, live.price - (Number(eo.refund) || 0)))}원
                 </small>
               </div>
+            ) : null}
+            {eo.disposition === "refund" && Number(eo.refund) > 0 ? (
+              live.groupId ? (
+                <div className="eoc-r"><small>단체 객실이에요 · 돌려준 돈은 단체 결제 기록 정정에서 남겨 주세요</small></div>
+              ) : earlyOutRefundReturn(live, Number(eo.refund)) > 0 ? (
+                <div className="eoc-r">
+                  <label>돌려줄 돈</label>
+                  <b className="num">{won(earlyOutRefundReturn(live, Number(eo.refund)))}원</b>
+                  <BookPayMethodCircles value={eoRefundMethod} onChange={setEoRefundMethod} disabled={eoBusy} />
+                  <small>받은 돈 {won(paidOf(live))}원 − 줄어든 청구 {won(Math.max(0, live.price - Number(eo.refund)))}원 · 결제 내역에 &lsquo;환불&rsquo; 한 줄로 남아 현금 시재에서 빠져요</small>
+                </div>
+              ) : (
+                <div className="eoc-r"><small>아직 받은 돈이 줄어든 청구보다 적어서 돌려줄 돈은 없어요 · 청구만 줄어요</small></div>
+              )
             ) : null}
             {eo.disposition === "keep" ? (
               <>
