@@ -823,7 +823,7 @@ export default function NowSidePanel({
                           aria-pressed={!!b.openEnded}
                           disabled={moving}
                           onClick={() => onOpenEnded?.(b, !b.openEnded, b.holdAhead ?? 1)}
-                          title="끝 날짜 없이 계속 묵어요. 앱이 열릴 때 오늘 밤까지 박수를 이어 줘요 (결제는 따로)"
+                          title="퇴실일 없이 계속 묵어요 · 박수는 앱이 자동으로 늘려요 (결제는 따로)"
                         >
                           ∞ 이용 기간 미정
                         </button>

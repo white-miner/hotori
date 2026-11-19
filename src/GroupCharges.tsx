@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Infinity as InfinityIcon, CalendarDays, Pencil } from "lucide-react";
+import { Infinity as InfinityIcon, Pencil } from "lucide-react";
 import { addDays, md, won } from "../shared/ledger";
 import type { GroupMoveTarget } from "../shared/groupMove";
 import { type GroupLedger, type RoomLedger, rateLabel, stayRangeLabel } from "../shared/groupLedger";
@@ -46,19 +46,14 @@ export default function GroupCharges({
   onEditSchedule?: () => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [groupDate, setGroupDate] = useState(false);
   const [busy, setBusy] = useState(false);
   const live = ledger.rooms.filter((r) => r.live || r.openEnded);
-  const allOpen = live.length > 0 && live.every((r) => r.openEnded);
-  const maxOut = live.map((r) => r.checkOut).sort().pop() ?? today;
-  const [gDate, setGDate] = useState(maxOut);
   const run = async (ids: string[], out: string | null) => {
     if (!onSetEnd || busy) return;
     setBusy(true);
     try {
       await onSetEnd(ids, out);
       setOpenId(null);
-      setGroupDate(false);
     } finally {
       setBusy(false);
     }
@@ -82,24 +77,6 @@ export default function GroupCharges({
         {live.some((r) => r.openEnded) ? <i className="gch-open-tag" title="끝 날짜 없이 계속 묵어요">∞ 퇴실 미정 {live.filter((r) => r.openEnded).length}/{live.length}실</i> : null}
         {onEvidence ? <button type="button" className="muted sm" title={`객실 청구 ${won(ledger.roomCharges)}원 + 단체 추가 ${won(ledger.extras)}원. 클릭하여 박별 근거 확인`} onClick={onEvidence}>청구 합계 {won(ledger.due)}원</button> : <span className="muted sm">청구 합계 {won(ledger.due)}원</span>}
       </div>
-      {can && live.length && !onEditSchedule ? (
-        <div className="gch-grp" role="group" aria-label="단체 전체 퇴실">
-          <button type="button" className={`gch-tog${allOpen ? " on" : ""}`} aria-pressed={allOpen} disabled={busy} onClick={() => void run(live.map((r) => r.bookingId), allOpen ? maxOut : null)}>
-            <InfinityIcon size={15} aria-hidden /> {allOpen ? "모두 퇴실 미정 · 누르면 퇴실일로" : "전체 퇴실 미정으로"}
-          </button>
-          <button type="button" className={`gch-tog${groupDate ? " on" : ""}`} aria-expanded={groupDate} disabled={busy} onClick={() => setGroupDate((v) => !v)}>
-            <CalendarDays size={15} aria-hidden /> 전체 퇴실일 정하기
-          </button>
-          {groupDate ? (
-            <div className="gch-date">
-              <input type="date" aria-label="전체 퇴실일" value={gDate} min={addDays(today, 0)} onChange={(e) => e.target.value && setGDate(e.target.value)} />
-              <button type="button" className="btn dark" disabled={busy} onClick={() => void run(live.map((r) => r.bookingId), gDate)}>
-                {live.length}실 퇴실 {md(gDate)}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
       <div className="gch-tbl" role="table" aria-label="객실별 요금표">
         <div className="gch-row gch-hd" role="row" aria-hidden>
           <span>객실</span>

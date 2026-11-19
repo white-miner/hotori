@@ -149,3 +149,13 @@ test("opsPayHistoryLines newest first · limit", () => {
   assert.equal(hist[0]!.pay.id, "p3");
   assert.equal(hist[1]!.pay.id, "p2");
 });
+
+test("금액미정이어도 받은 돈은 적을 수 있어요 · 미수금은 판매가 확정 전이라 0으로 두고 따지지 않아요", () => {
+  const b = { id: "u1", kind: "stay", status: "active", checkIn: "2026-11-20", nights: 2, price: 0, priceUnset: true, payments: [], platformId: "p", groupId: null } as unknown as Booking;
+  const g = paymentDeskGlance([b], { name: "현장", onsite: true }, null, "2026-11-20");
+  assert.equal(g.priceUnset, true);
+  assert.equal(g.left, 0);
+  const plan = planPaymentDeskPay(g, { amount: 50_000, method: "card", kind: "deposit", bizDate: "2026-11-20" });
+  assert.ok(!("err" in plan), "금액미정에서도 결제 등록 가능");
+  assert.equal((plan as { amount: number }).amount, 50_000);
+});

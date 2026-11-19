@@ -135,3 +135,17 @@ test("저장 미리보기 · 퇴실처리 박수 · 주간 힌트", () => {
   assert.match(settleHint("weekly", 720000), /주간/);
   assert.match(settleHint("adhoc", 0), /정산됨/);
 });
+
+test("장기 요금표 평일·주말: 주말 요일 밤만 주말 단가 · 두 칸으로 다시 풀림", async () => {
+  const { weekdayWeekendRate, splitWeekdayWeekend, nightAmount, validateLongStayRate } = await import("./longstay");
+  const r = weekdayWeekendRate(70_000, 90_000, [5, 6]);
+  assert.equal(validateLongStayRate(r), null);
+  assert.equal(nightAmount(r, "2026-11-20"), 90_000); // 금요일 밤
+  assert.equal(nightAmount(r, "2026-11-21"), 90_000); // 토요일 밤
+  assert.equal(nightAmount(r, "2026-11-22"), 70_000); // 일요일 밤
+  assert.deepEqual(splitWeekdayWeekend(r, [5, 6]), { weekday: 70_000, weekend: 90_000 });
+  // 요일마다 다른 예전 요금표는 두 칸으로 풀지 않아요
+  const odd = { ...r, dowAmounts: { ...r.dowAmounts, 1: 60_000 } };
+  assert.equal(splitWeekdayWeekend(odd, [5, 6]), null);
+  assert.equal(splitWeekdayWeekend({ kind: "flat", flatAmount: 1, currency: "KRW" }, [5, 6]), null);
+});

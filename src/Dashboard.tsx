@@ -77,7 +77,7 @@ import GroupJoinSheet from "./GroupJoinSheet";
 import MoveScheduleSheet from "./MoveScheduleSheet";
 import { type PendingMove, cancelScheduledMove, moveDoneSummary, moveDueToday, moveLabel, nextMove } from "../shared/scheduledMove";
 import RecordSheet from "./RecordSheet";
-import { payLines, type PayLine } from "../shared/recordTimeline";
+import { fixPaymentDeleteSummary, payLines, type PayLine } from "../shared/recordTimeline";
 import GroupLeaveSheet from "./GroupLeaveSheet";
 import { groupLedger } from "../shared/groupLedger";
 import { planStayEnd, stayEndSummary } from "../shared/stayEndPlan";
@@ -235,7 +235,7 @@ import SalesCalendar from "./SalesCalendar";
 import RateSheet from "./RateSheet";
 import SmartRegister from "./SmartRegister";
 import { type BookPayMethod, PAYMENT_METHOD_LABEL, isOnsite, isWalkInPlaceholderName, payState } from "../shared/payment";
-import { groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
+import { groupMoveMoneyLines, groupMoveSummary, groupMoveTargets } from "../shared/groupMove";
 import { nowCompanyOf, nowLongStayRate, nowNightRate, nowPayParts, nowPayText, nowPlatformPayPart, nowRangeFull } from "../shared/nowCard";
 import RoomCardFacts from "./RoomCardFacts";
 import { roomCardModel } from "../shared/roomCard";
@@ -264,6 +264,9 @@ interface Props {
   move?: BoardMove | null;
   onMoveStart?: (m: BoardMove) => void;
   onMoveEnd?: () => void;
+  /** 등록 직후 열 단체 결제 등록 (App이 넘겨줘요) */
+  payGroupRequest?: { groupId: string; n: number } | null;
+  onPayGroupHandled?: () => void;
   /** 현황 공유 링크: 보기만 해요 (수정·입실 완료·방 배정·가격 없음) */
   readOnly?: boolean;
   /** 공유 보기에서 고를 수 있는 날짜 범위 */
@@ -364,7 +367,7 @@ function useBoardTab(): [BoardTab, (t: BoardTab) => void] {
   return [tab, setTab];
 }
 
-export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveStart = () => {}, onMoveEnd = () => {} }: Props) {
+export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw, onOpen: openRaw, onNew: newRaw, onSimple: simpleRaw, notify, readOnly = false, minDate, maxDate, move = null, onMoveStart = () => {}, onMoveEnd = () => {}, payGroupRequest = null, onPayGroupHandled }: Props) {
   const setSelDate = (d: string) => setSelRaw(minDate && d < minDate ? minDate : maxDate && d > maxDate ? maxDate : d);
   const onOpen = readOnly ? () => {} : openRaw;
   const onNew = readOnly ? () => {} : newRaw;
@@ -1857,6 +1860,14 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     }
   };
 
+  // 단체 등록(현장 결제) 직후: 그 단체의 결제 등록을 바로 열어요 (단체가 화면 데이터에 들어온 뒤)
+  const payGroupReady = !!payGroupRequest && bookings.some((b) => b.groupId === payGroupRequest.groupId);
+  useEffect(() => {
+    if (!payGroupRequest || !payGroupReady) return;
+    openGroupPay(payGroupRequest.groupId);
+    onPayGroupHandled?.();
+  }, [payGroupRequest?.n, payGroupReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** 이동일 「이동 완료」 — 손님이 새 객실로 옮겼다고 기록해요 (객실 배치는 이미 이동일부터 새 객실이에요) */
   const finishMove = async (bk: Booking, m: PendingMove) => {
     const ch = await data.logChange({
@@ -2665,7 +2676,8 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           timeFee: planned.surcharge.draft.timeFee,
           memo: planned.surcharge.draft.memo,
         };
-        saved = await data.saveBooking(next, false);
+        // 빠른 업무도 낙관적 잠금: 창을 연 뒤 다른 직원이 고친 칸은 덮어쓰지 않아요
+        saved = await data.saveBooking(next, false, { opened: b });
         let collected = false;
         if (planned.collect && planned.payMethod && planned.surcharge.collectAmount > 0) {
           try {
@@ -2692,7 +2704,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           endTime: planned.endTime,
           price: planned.price,
         };
-        saved = await data.saveBooking(next, false);
+        saved = await data.saveBooking(next, false, { opened: b });
         let collected = false;
         if (planned.collectAmount > 0 && planned.payMethod) {
           try {
@@ -2785,7 +2797,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         segments: planned.draft.segments,
         nightRates: planned.draft.nightRates ?? live.nightRates ?? null,
       };
-      const saved = await data.saveBooking(next, false);
+      const saved = await data.saveBooking(next, false, { opened: live });
       void data.logChange({
         kind: "stay",
         groupId: live.groupId ?? null,
@@ -2843,7 +2855,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         bookingId: bk.groupId ? null : bk.id,
         summary: on ? `열린 숙박 켬${targets.length > 1 ? ` (${targets.length}실)` : ""} · 방 보호 ${hold === 0 ? "오늘 밤만" : `${hold}일`}` : `열린 숙박 끔${targets.length > 1 ? ` (${targets.length}실)` : ""}`,
       });
-      notify(on ? `${targets.length > 1 ? `${targets.length}실을 ` : ""}끝 날짜 없이 계속 묵는 것으로 해 두었어요 · 앱이 오늘 밤까지 이어 줘요` : "열린 숙박을 껐어요");
+      notify(on ? `${targets.length > 1 ? `${targets.length}실을 ` : ""}퇴실일 없이 계속 묵는 것으로 해 두었어요 · 박수는 앱이 자동으로 늘려요` : "열린 숙박을 껐어요");
     } catch (e) {
       notify(saveFailMessage(e, "열린 숙박을 저장하지 못했어요"));
     }
@@ -2947,8 +2959,12 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
     try {
+      const bk = data.bookings.find((x) => x.id === bookingId);
+      const gone = bk?.payments?.find((p) => p.id === payId);
       await data.deletePayment(bookingId, payId);
-      notify("결제 내역을 삭제했어요");
+      // 지운 결제도 원래 금액은 변경 기록에 「정정됨」으로 남겨요
+      if (gone) void data.logChange({ kind: "money", summary: fixPaymentDeleteSummary(gone, () => `${bk?.roomId ? L.roomLabel(bk.roomId) : "?"}호`, "결제 등록 화면에서 삭제"), groupId: bk?.groupId ?? null, bookingId: bk?.groupId ? null : bookingId, effectiveOn: today });
+      notify("결제 내역을 삭제했어요 · 원래 금액은 변경 기록에 남아요");
     } catch (e) {
       notify(saveFailMessage(e, "결제 내역을 삭제하지 못했어요"));
     } finally {
@@ -2960,8 +2976,10 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     if (readOnly || payDeskBusy) return;
     setPayDeskBusy(true);
     try {
+      const gone = data.groups.get(groupId)?.payments?.find((p) => p.id === payId);
       await data.deleteGroupPayment(groupId, payId);
-      notify("단체 결제 내역을 삭제했어요");
+      if (gone) void data.logChange({ kind: "money", summary: fixPaymentDeleteSummary(gone, () => "단체", "결제 등록 화면에서 삭제"), groupId, bookingId: null, effectiveOn: today });
+      notify("단체 결제 내역을 삭제했어요 · 원래 금액은 변경 기록에 남아요");
     } catch (e) {
       notify(saveFailMessage(e, "단체 결제 내역을 삭제하지 못했어요"));
     } finally {
@@ -2976,7 +2994,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
     try {
       const live = data.bookings.find((x) => x.id === b.id) ?? b;
       const hasTime = !!(live.earlyIn || live.lateOut);
-      await data.saveBooking({ ...live, price: newPrice, timeFee: hasTime ? 0 : live.timeFee }, false);
+      await data.saveBooking({ ...live, price: newPrice, timeFee: hasTime ? 0 : live.timeFee }, false, { opened: live });
       notify(`${live.guestName || "손님"} 님 잔금 맞춤 · 판매가 ${won(newPrice)}원`);
     } catch (e) {
       notify(saveFailMessage(e, "잔금을 맞추지 못했어요"));
@@ -3012,7 +3030,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         timeFee: planned.draft.timeFee,
         memo: planned.draft.memo,
       };
-      const saved = await data.saveBooking(next, false);
+      const saved = await data.saveBooking(next, false, { opened: b });
       let collected = false;
       if (planned.collectAmount > 0) {
         try {
@@ -3093,6 +3111,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         today={today}
         onEditCharges={shown && !readOnly ? () => shown.groupId ? setScheduleGroupId(shown.groupId) : setRecordFor({ groupId: null, bookingId: shown.id, focusKey: `in-${shown.id}` }) : undefined}
         onFinance={shown?.groupId && !readOnly ? () => setEvidenceGroupId(shown.groupId!) : undefined}
+        onPay={shown && !readOnly ? () => openPaymentDesk(shown) : undefined}
         readOnly={readOnly} busy={!!mvB || assignMode}
         hasAlerts={!!(status.note || hold || scheduled || dueMove || warnings.length || b?.noClean || b?.tentative || (b && b.typeId !== r.typeId) || (glance?.count ?? 0))}
         onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}
@@ -3429,6 +3448,16 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
                           const to = toGid ? groupMoveTargets(bookings, selectedGroupHead.groupId).find((t) => t.groupId === toGid) ?? null : null;
                           if (toGid && !to) return;
                           const roomNo = `${bk.roomId ? L.roomLabel(bk.roomId) : "?"}호`;
+                          const fromName = bk.groupName?.trim() || (bk.groupId ? "단체" : null);
+                          const money = groupMoveMoneyLines({
+                            roomNo,
+                            from: fromName,
+                            to: to?.name ?? null,
+                            roomPaid: (bk.payments ?? []).reduce((n, p) => n + p.amount, 0),
+                            groupPaid: (bk.groupId ? data.groups.get(bk.groupId)?.payments ?? [] : []).reduce((n, p) => n + p.amount, 0),
+                          });
+                          const ok = await askConfirm({ title: to ? `${roomNo}를 ${to.name}로 옮길까요?` : `${roomNo}를 단체에서 뺄까요?`, body: money.join("\n"), confirmLabel: to ? "옮기기" : "빼기" });
+                          if (!ok) return;
                           try {
                             await data.moveBookingGroup(bk, to ? { groupId: to.groupId, name: to.name } : null);
                             const sum = groupMoveSummary(roomNo, bk.groupName ?? null, to?.name ?? null);
@@ -3592,6 +3621,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
           busy={extendNightBusy}
           onCancel={() => !extendNightBusy && setExtendNight(null)}
           onConfirm={(input) => void commitOpsExtend(input)}
+          onGroupExtend={extendNight.booking.groupId && !readOnly ? () => { const gid = extendNight.booking.groupId!; setExtendNight(null); setExtendGroupId(gid); } : undefined}
         />
       ) : null}
       {connectStay ? (
@@ -3732,7 +3762,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
       {joinGroupId ? renderJoin(joinGroupId) : null}
 {renderMoveSched()}
       {renderRecord()}
-      {batchCheckoutOpen && !readOnly ? <BatchCheckoutSheet data={data} today={today} opts={nowOpts} busy={!!coBusy} onClose={()=>!coBusy&&setBatchCheckoutOpen(false)} onRun={async(ids,leaveBalance)=>{
+      {batchCheckoutOpen && !readOnly ? <BatchCheckoutSheet data={data} today={today} opts={nowOpts} busy={!!coBusy} onClose={()=>!coBusy&&setBatchCheckoutOpen(false)} onPay={(b)=>{if(coBusy)return;setBatchCheckoutOpen(false);openPaymentDesk(b);}} onRun={async(ids,leaveBalance)=>{
         if(coBusy)return {done:[],failed:ids.map(id=>({id,reason:"다른 퇴실 업무가 진행 중입니다."}))};
         setCoBusy("batch");
         try {return await runBatchCheckout(ids,()=>batchCheckoutRows(moveSettingsRef.current,bookingsRef.current,moveGroupsRef.current,today,{stayTimes:moveSettingsRef.current.stayTimes,clock:hotelWallClock()}),(id,patch)=>data.patchBooking(id,patch),leaveBalance)}finally{setCoBusy(null)}
@@ -3764,7 +3794,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onFinance={b => b.groupId ? setEvidenceGroupId(b.groupId) : setRecordFor({ groupId: null, bookingId: b.id })}
         onPay={b => openPaymentDesk(b)}
       /> : null}
-      {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} /> : null}
+      {scheduleGroupId && !readOnly ? <GroupScheduleSheet data={data} today={today} groupId={scheduleGroupId} onClose={() => setScheduleGroupId(null)} onSaved={notify} onExtend={() => { setExtendGroupId(scheduleGroupId); setScheduleGroupId(null); }} /> : null}
       {evidenceGroupId && !readOnly ? <GroupEvidenceSheet data={data} today={today} groupId={evidenceGroupId} onClose={() => setEvidenceGroupId(null)}
         onHighlight={() => { setHighlightGroup(evidenceGroupId); setEvidenceGroupId(null); }}
         onAddRooms={() => { setJoinGroupId(evidenceGroupId); setEvidenceGroupId(null); }}
@@ -3772,7 +3802,6 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         onRoom={b => { setEvidenceGroupId(null); if (b.roomId) { setSelectedRoomIds([b.roomId]); setSideMode("room"); sbx.reveal(); } else onOpen(b, viewDate); }}
         onEditSchedule={() => { setScheduleGroupId(evidenceGroupId); setEvidenceGroupId(null); }} onEditPayments={() => { setRecordFor({ groupId: evidenceGroupId, bookingId: null }); setEvidenceGroupId(null); }} /> : null}
       {leaveBkId ? renderLeave(leaveBkId) : null}
-    {renderChangeLog()}
       {renderChangeLog()}
       {payDesk ? (
         <PaymentDeskModal

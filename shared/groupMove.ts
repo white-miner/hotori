@@ -35,3 +35,16 @@ export function groupMoveRow(target: { groupId: string; name: string } | null): 
   if (!target) return { group_id: null, group_name: null };
   return { group_id: target.groupId, group_name: (target.name.trim() || "단체").slice(0, 40) };
 }
+
+/**
+ * 옮기기 전에 보여 줄 돈 안내 — 방 결제만 따라가고 단체 결제는 남아요 (나누거나 옮기지 않아요).
+ * roomPaid = 이 객실 예약에 적힌 결제 합계 · groupPaid = 원래 단체로 받은 결제 합계
+ */
+export function groupMoveMoneyLines(p: { roomNo: string; from: string | null; to: string | null; roomPaid: number; groupPaid: number }): string[] {
+  const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
+  const dest = p.to == null ? "개인 예약" : p.to;
+  const lines = [`방 결제만 따라갑니다: ${p.roomNo} 결제 ${won(p.roomPaid)}원 → ${dest}`];
+  if (p.from != null) lines.push(`단체 결제는 남습니다: ${p.from} 단체 결제 ${won(p.groupPaid)}원은 ${p.from}에 그대로`);
+  lines.push("객실 청구(박별 요금)도 이 방과 함께 옮겨 가요. 미수금은 옮긴 뒤 단체마다 다시 계산돼요.");
+  return lines;
+}

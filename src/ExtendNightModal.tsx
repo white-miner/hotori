@@ -23,6 +23,7 @@ export default function ExtendNightModal({
   busy,
   onCancel,
   onConfirm,
+  onGroupExtend,
 }: {
   today: string;
   booking: Booking;
@@ -31,6 +32,8 @@ export default function ExtendNightModal({
   busy?: boolean;
   onCancel: () => void;
   onConfirm: (input: OpsExtendInput) => void;
+  /** 단체 객실이면: 단체 전체를 늘리는 기간 연장으로 넘어가기 */
+  onGroupExtend?: () => void;
 }) {
   const defaultRate = nightRate(booking, typeRate);
   const [rate, setRate] = useState(defaultRate > 0 ? String(defaultRate) : "");
@@ -95,6 +98,12 @@ export default function ExtendNightModal({
           </p>
           <p><b>{dayLabel(addDays(booking.checkIn, booking.nights ?? 0))} 밤</b> 추가 · {dayLabel(addDays(booking.checkIn, (booking.nights ?? 0) + 1))} 퇴실</p>
           <p className="muted sm">기존 총액 {won(booking.price)}원에 입력한 약정 요금을 더합니다. 기본 후불이며, 카드·현금·이체는 이번 금액을 실제 수납한 경우 선택하세요.</p>
+          {onGroupExtend ? (
+            <p className="muted sm">
+              단체 객실이에요. 이 화면은 이 객실만 하룻밤 늘려요. 단체 여러 객실을 늘리려면{" "}
+              <button type="button" className="btn sm line" disabled={busy} onClick={onGroupExtend}>기간 연장</button>
+            </p>
+          ) : null}
           <div className="paytake">
             <PriceInp sm>
               <span className="pl">연장할 박 요금</span>

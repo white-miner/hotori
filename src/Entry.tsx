@@ -159,6 +159,8 @@ import {
   type SettleCycle,
   type StayMode,
   flatRate,
+  splitWeekdayWeekend,
+  weekdayWeekendRate,
   isLongStay,
   longPayState,
   nightAmount,
@@ -170,6 +172,7 @@ import {
   windowExtendBlock,
   withPlannedCharges,
 } from "../shared/longstay";
+import { weekendDaysText } from "../shared/seasonRates";
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OpenStayToggle from "./OpenStayToggle";
@@ -205,7 +208,7 @@ interface Props {
   today: string;
   req: EntryRequest;
   onClose: () => void;
-  onSaved: (msg: string, again?: Partial<Booking>) => void;
+  onSaved: (msg: string, again?: Partial<Booking>, payGroupId?: string) => void;
   /** 객실 배치에서 열었으면: 창을 닫고 빈 방을 눌러 옮기기 */
   onBoardMove?: () => void;
   notify: (m: string, opt?: ToastOpt) => void;
@@ -286,6 +289,12 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
   const [stayMode, setStayMode] = useState<StayMode>(base?.stayMode === "long_stay" ? "long_stay" : "standard");
   const [flatAmt, setFlatAmt] = useState(() => String(base?.longStayRate?.kind === "flat" ? base.longStayRate.flatAmount ?? "" : ""));
+  // 장기 요금표: 매일 동일 / 평일·주말 두 칸 (주말 = 설정의 주말 요일 밤)
+  const longWeekendDays = s.weekendDays;
+  const savedSplit = splitWeekdayWeekend(base?.longStayRate, longWeekendDays);
+  const [longRateKind, setLongRateKind] = useState<"flat" | "split">(() => (savedSplit ? "split" : "flat"));
+  const [wkdAmt, setWkdAmt] = useState(() => (savedSplit ? String(savedSplit.weekday) : ""));
+  const [wkeAmt, setWkeAmt] = useState(() => (savedSplit ? String(savedSplit.weekend) : ""));
   const [settleCycle, setSettleCycle] = useState<SettleCycle>(base?.settleCycle === "adhoc" ? "adhoc" : "weekly");
   const [nights, setNights] = useState(() =>
     clampStayNights(base?.nights ?? p.nights ?? (base?.stayMode === "long_stay" ? LONG_STAY_WINDOW_DEFAULT : 1)),
@@ -295,7 +304,15 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const long = stayMode === "long_stay";
   /** 수정 표준 숙박만 탭 사용 · 신규 표준은 night-pick only (Option D absorb #1) */
   const [stayTab, setStayTab] = useState<"period" | "paint">("period");
-  const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
+  // 요일마다 따로 저장된 예전 요금표(두 칸으로 못 푸는 것)는 고치지 않으면 그대로 둬요
+  const keepOddDow = !!base?.longStayRate && base.longStayRate.kind === "dow" && !savedSplit && longRateKind === "flat" && !flatAmt;
+  const longRate = !long
+    ? null
+    : keepOddDow
+      ? base!.longStayRate!
+      : longRateKind === "split"
+        ? weekdayWeekendRate(Number(wkdAmt || 0), Number(wkeAmt || 0), longWeekendDays)
+        : flatRate(Number(flatAmt || 0));
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const stayDateUx = entryStayDateUx({ isNew, kind, longStay: long });
   const showNightPick = stayDateUx === "night-pick" || (stayDateUx === "period-tabs" && stayTab === "paint");
@@ -436,6 +453,10 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [createDepMethod, setCreateDepMethod] = useState<BookPayMethod>("card");
   // 조기 퇴실: 날짜 · (환불 | 잔액 보관 | 없음) → 바로 저장 · refund_amount≠보관
   const [eoRefundMethod, setEoRefundMethod] = useState<BookPayMethod>("cash");
+  // 노쇼 확인: 받은 돈은 그대로 두고, 돌려줄 돈이 있으면 '환불' 한 줄(음수)로 같이 남겨요
+  const [noshowAsk, setNoshowAsk] = useState(false);
+  const [noshowRefund, setNoshowRefund] = useState("");
+  const [noshowMethod, setNoshowMethod] = useState<BookPayMethod>("cash");
   const [eo, setEo] = useState<{
     date: string;
     disposition: EarlyOutDisposition;
@@ -1418,14 +1439,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     if (!payTracked || payLeft <= 0) return;
     setRecv((r) => (r.amount ? r : { ...r, amount: String(payLeft) }));
   }, [payTracked, payLeft]);
+  // 직원에게 보이는 말은 미수금 · 선수금 · 정산 완료 · 수납 하나로 (장기·일반 같은 말)
   const payNoteOf = (kind: PayKind, amount: number, method: BookPayMethod, left: number) =>
-    kind === "deposit"
-      ? long
-        ? `${guestName} 님 선수 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수 ${won(left)}원` : ""}`
-        : `${guestName} 님 선금 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : ""}`
-      : long
-        ? `${guestName} 님 미수 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 잔액 ${won(left)}원` : " · 정산됨"}`
-        : `${guestName} 님 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : " · 완납"}`;
+    `${guestName} 님 ${kind === "deposit" ? "선수금 " : ""}${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 ${won(left)}원` : kind === "deposit" ? "" : " · 정산 완료"}`;
   /** 새 숙박 저장: 방이 여러 개면 한 단체로 묶어 저장 (객실마다 자기 요금표 · 합계는 소계의 합) */
   const nRooms = isNew && kind === "stay" && !long ? 1 + extraRooms.length : 1;
   /** 이 예약(단체면 전체)의 판매 합계 */
@@ -1471,7 +1487,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     const amount = Number(recv.amount || 0);
     const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
-    if (!long && kind === "deposit" && amount > saleAll) return setPayErr("선금이 판매 가격보다 커요.");
+    if (!long && kind === "deposit" && amount > saleAll) return setPayErr("선수금이 판매 가격보다 커요.");
     // 신규: 저장과 같은 턴에 결제 내역 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
@@ -1505,9 +1521,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           try {
             await data.addPayment(saved.id, { kind, method: recv.method, amount, bizDate: recv.date });
             const left = Math.max(0, payDue - amount);
-            payTail = ` · ${kind === "deposit" ? (long ? "선수" : "선금") : long ? "미수 수납" : "수납"} ${won(amount)}원(${BOOK_PAY_LABEL[recv.method]})`;
-            if (left) payTail += long ? ` · 미수 ${won(left)}원` : ` · 잔금 ${won(left)}원`;
-            else if (kind === "balance") payTail += long ? " · 정산됨" : " · 완납";
+            payTail = ` · ${kind === "deposit" ? "선수금 수납" : "수납"} ${won(amount)}원(${BOOK_PAY_LABEL[recv.method]})`;
+            if (left) payTail += ` · 미수금 ${won(left)}원`;
+            else if (kind === "balance") payTail += " · 정산 완료";
           } catch (e) {
             payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
           }
@@ -1730,6 +1746,17 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
       const lines = isNew && !override && createOnsitePay && isActive(saved) && isOnsite(s.platforms.find((x) => x.id === saved.platformId))
         ? createPaymentLines(createPayMode, { saleTotal: saleAll, depAmt: createDepAmt, depMethod: createDepMethod, tenders }) : [];
       const payTail = lines.length ? " · 수납 등록 완료" : "";
+      let noshowTail = "";
+      const nsGive = override === "noshow" && base && !base.groupId ? Math.min(Math.round(Number(noshowRefund) || 0), paidOf(base)) : 0;
+      if (nsGive > 0) {
+        try {
+          await data.addPayment(saved.id, { kind: "refund", method: noshowMethod, amount: -nsGive, bizDate: today, note: "노쇼 환불" });
+          noshowTail = ` · ${BOOK_PAY_LABEL[noshowMethod]} ${won(nsGive)}원 돌려줌 (결제 내역에 환불 한 줄)`;
+        } catch (e) {
+          noshowTail = ` · 돌려준 돈을 결제 내역에 남기지 못했어요 (${e instanceof Error ? e.message : "다시 시도"}) · 기록 정정에서 확인해 주세요`;
+        }
+      }
+      if (override === "noshow") { setNoshowAsk(false); setNoshowRefund(""); }
       const t = L.types.get(saved.typeId);
       const hold =
         kind === "stay" && isActive(saved) && !saved.roomId
@@ -1747,7 +1774,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         override === "cancelled"
           ? `${saved.guestName} 님 예약을 취소했어요 · 잔여 객실이 늘었어요`
           : override === "noshow"
-            ? `${saved.guestName} 님 노쇼로 표시했어요 · 수납액은 매출에 남고 잔여 객실이 늘었어요`
+            ? `${saved.guestName} 님 노쇼로 표시했어요 · 받은 돈은 그대로 두었어요${noshowTail} · 잔여 객실이 늘었어요`
             : revived
               ? `${saved.guestName} 님 예약을 되살렸어요${tail}`
               : `${saved.guestName} 님 예약을 ${isNew ? "기록" : "수정"}했어요${tail}`,
@@ -1809,7 +1836,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
         init={{ platformId, checkIn, nights }}
         onBack={() => setGroup(false)}
         onClose={onClose}
-        onSaved={(m) => onSaved(m)}
+        onSaved={(m, payGroupId) => onSaved(m, undefined, payGroupId)}
       />
     );
   return (
@@ -1889,8 +1916,38 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                 <h3>예약 상태</h3>
                 {isActive(draft) ? <>
                   <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "cancelled")}>취소 처리</button>
-                  <button type="button" className="btn line" disabled={busy} title="결제 금액은 매출에 남고 객실 재고는 비워요" onClick={() => void save(false, "noshow")}>노쇼 처리</button>
+                  <button type="button" className="btn line" disabled={busy} aria-expanded={noshowAsk} title="받은 돈은 그대로 두고 객실 재고는 비워요" onClick={() => setNoshowAsk((v) => !v)}>노쇼 처리…</button>
                 </> : <button type="button" className="btn line" disabled={busy} onClick={() => void save(false, "active")}>예약 되살리기</button>}
+                {isActive(draft) && noshowAsk && base ? (() => {
+                  const nsPaid = paidOf(base);
+                  const nsMax = base.groupId ? 0 : Math.max(0, nsPaid);
+                  const nsAmt = Math.min(Math.round(Number(noshowRefund) || 0), nsMax);
+                  return (
+                    <div className="noshow-ask" role="group" aria-label="노쇼 확인">
+                      <p><b>받은 돈은 그대로 둡니다.</b> 이 예약에 받은 돈 {won(nsPaid)}원은 매출에 남아요.</p>
+                      {payTracked && payLeft > 0 ? (
+                        <p>미수금 {won(payLeft)}원은 노쇼 뒤에는 받을 돈으로 잡지 않아요. 위약금 등을 받으려면 먼저 아래 결제 칸에서 수납한 뒤 노쇼 처리하세요.</p>
+                      ) : null}
+                      {base.groupId ? (
+                        <p className="muted sm">단체 결제는 단체에 남아요. 돌려줄 돈은 단체 결제 기록 정정에서 고쳐 주세요.</p>
+                      ) : nsPaid > 0 ? (
+                        <>
+                          <label className="inp price sm">
+                            <span className="pl">돌려줄 돈</span>
+                            <input className="num" inputMode="numeric" aria-label="노쇼 환불 금액" placeholder="0" value={noshowRefund ? won(Math.min(Number(noshowRefund), nsMax)) : ""} disabled={busy} onChange={(e) => setNoshowRefund(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                            원
+                          </label>
+                          {nsAmt > 0 ? <BookPayMethodCircles value={noshowMethod} onChange={setNoshowMethod} disabled={busy} /> : null}
+                          <small className="muted">비워 두면 환불 없이 노쇼만 처리해요 · 돌려주면 결제 내역에 &lsquo;환불&rsquo; 한 줄로 남아요 (최대 {won(nsMax)}원)</small>
+                        </>
+                      ) : null}
+                      <div className="noshow-acts">
+                        <button type="button" className="btn line" disabled={busy} onClick={() => { setNoshowAsk(false); setNoshowRefund(""); }}>닫기</button>
+                        <button type="button" className="btn stop" disabled={busy} onClick={() => void save(false, "noshow")}>{nsAmt > 0 ? `${won(nsAmt)}원 돌려주고 노쇼 처리` : "노쇼 처리"}</button>
+                      </div>
+                    </div>
+                  );
+                })() : null}
                 <p>취소·노쇼는 예약 상태를 변경하고 바로 저장해요.</p>
               </div>
             </div>
@@ -2105,7 +2162,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
               </b>
               <span>
                 {isLongStay(live)
-                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수금 수납」으로"
+                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수금은 「결제 등록」으로"
                   : "판매 가격에 오늘 요금을 더하고, 즉시 수납하거나 후불로 처리해요"}
                 {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
               </span>
@@ -2662,21 +2719,51 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                     요금표<em>*</em>
                   </label>
                   <div className="step">
-                    <span className="chip on">매일 동일</span>
-                    <label className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label="매일 단가"
-                        placeholder="80000"
-                        value={flatAmt ? won(Number(flatAmt)) : ""}
-                        onChange={(e) => setFlatAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                      />
-                      원/박
-                    </label>
+                    <button type="button" className={`chip ${longRateKind === "flat" ? "on" : ""}`} aria-pressed={longRateKind === "flat"} onClick={() => setLongRateKind("flat")}>매일 동일</button>
+                    <button
+                      type="button"
+                      className={`chip ${longRateKind === "split" ? "on" : ""}`}
+                      aria-pressed={longRateKind === "split"}
+                      onClick={() => {
+                        if (longRateKind !== "split" && !wkdAmt && !wkeAmt && flatAmt) { setWkdAmt(flatAmt); setWkeAmt(flatAmt); }
+                        setLongRateKind("split");
+                      }}
+                    >
+                      평일·주말
+                    </button>
+                    {longRateKind === "flat" ? (
+                      <label className="inp price sm">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          aria-label="매일 단가"
+                          placeholder="80000"
+                          value={flatAmt ? won(Number(flatAmt)) : ""}
+                          onChange={(e) => setFlatAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                        />
+                        원/박
+                      </label>
+                    ) : (
+                      <>
+                        <label className="inp price sm">
+                          <span className="pl">평일</span>
+                          <input className="num" inputMode="numeric" aria-label="평일 단가" placeholder="80000" value={wkdAmt ? won(Number(wkdAmt)) : ""} onChange={(e) => setWkdAmt(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                          원/박
+                        </label>
+                        <label className="inp price sm">
+                          <span className="pl">주말</span>
+                          <input className="num" inputMode="numeric" aria-label="주말 단가" placeholder="100000" value={wkeAmt ? won(Number(wkeAmt)) : ""} onChange={(e) => setWkeAmt(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                          원/박
+                        </label>
+                      </>
+                    )}
                   </div>
                   <div className="muted sm" style={{ marginTop: 6 }}>
-                    요일별 단가는 다음에 · 지금은 매일 같은 금액
+                    {keepOddDow
+                      ? "요일마다 따로 정한 요금표가 저장돼 있어요 · 바꾸려면 위에서 새로 입력하세요"
+                      : longRateKind === "split"
+                        ? `주말 = ${weekendDaysText(longWeekendDays)} 밤 (설정 › 객실 요금의 주말 요일) · 나머지는 평일 단가`
+                        : "매일 같은 금액 · 금·토처럼 주말 요금이 다르면 ‘평일·주말’을 고르세요"}
                   </div>
                 </div>
                 <div className="fld">
@@ -3297,7 +3384,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         <Check size={14} strokeWidth={2.6} /> 정산 완료 <span className="muted">· 수납액 {won(payPaid)}원</span>
                       </>
                     ) : (
-                      <span className="muted">{long ? "요금표를 입력하면 미수가 보여요" : "판매 가격을 입력하면 잔금이 보여요"}</span>
+                      <span className="muted">{long ? "요금표를 입력하면 미수금이 보여요" : "판매 가격을 입력하면 미수금이 보여요"}</span>
                     )}
                   </div>
                   <div className="paytake">
@@ -3336,7 +3423,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         type="button"
                         className="btn sm dark"
                         disabled={payBusy || payLeft <= 0}
-                        title={payLeft <= 0 ? (long ? "수납할 미수금이 없어요" : "수납할 잔금이 없어요") : undefined}
+                        title={payLeft <= 0 ? "수납할 미수금이 없어요" : undefined}
                         onClick={() => void recordPay("balance")}
                       >
                         {payBusy ? "저장 중…" : long ? "미수금 수납" : "수납"}
@@ -3346,7 +3433,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                       </button>
                     </div>
                   </div>
-                  {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선수금을 누르면 예약과 함께 저장돼요</div> : null}
                   {entryGroupId ? <div className="muted sm">단체 객실이에요 · 여기서 받은 돈은 단체 결제 한 줄로 등록돼요</div> : null}
                   {base && entryOpenCredits.length > 0 ? (
                     <div className="paytake" style={{ marginTop: 8 }}>

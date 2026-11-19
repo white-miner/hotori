@@ -549,7 +549,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                       className="price"
                       inputMode="numeric"
                       value={v != null && v > 0 ? String(v) : ""}
-                      placeholder={sug[dt] != null ? String(sug[dt]) : "금액"}
+                      placeholder="요금 없음"
+                      title={sug[dt] != null ? `비어 있으면 요금 없음으로 저장돼요 · 타입 요금 ${won(sug[dt]!)} (「타입 요금으로 채우기」로 넣을 수 있어요)` : "비어 있으면 요금 없음으로 저장돼요"}
                       disabled={busy}
                       onChange={(e) => setNightAmount(r.key, dt, e.target.value)}
                       aria-label={`${label(dt)} 1박 요금`}
@@ -562,6 +563,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
               {d.entered ? (
                 <>
                   입력 {d.entered}/{d.count}박 합계 {won(d.sum)}
+                  {d.entered < d.count ? <span className="smart-reg-nights-diff"> · 요금 없음 {d.count - d.entered}박</span> : null}
                   {d.total != null ? <> · 판매금 {won(d.total)}</> : null}
                   {d.diff != null && d.diff !== 0 ? (
                     <span className="smart-reg-nights-diff"> · 차액 {d.diff > 0 ? "+" : "−"}{won(Math.abs(d.diff))} (안내만 · 저장은 그대로 돼요)</span>
@@ -570,7 +572,7 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   ) : null}
                 </>
               ) : (
-                <span className="muted">입력한 박이 없으면 박별 요금 없이 저장돼요 (나중에 예약 옆 패널 「박별 요금 입력」에서 적을 수 있어요)</span>
+                <span className="muted">모든 박이 ‘요금 없음’이에요 · 판매금은 총액으로만 저장되고 박에 나누지 않아요 (나중에 예약 옆 패널 「박별 요금 입력」에서 적을 수 있어요)</span>
               )}
             </div>
           </div>
@@ -587,6 +589,8 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
   const fixBlockingCount = rows.filter((r) => isFixBlockingRow(r)).length;
   const fixLabelCount = rows.filter((r) => isFixLabelRow(r)).length;
   const actionableMissingPlatform = [...createTargets, ...cancelTargets].some((r) => !r.platformId);
+  /** 저장 버튼 옆 안내: 박별 요금이 빈 여러 박 예약 (총액을 박에 나누지 않아요) */
+  const noNightRateCount = createTargets.filter((r) => { const d = nightRatesDiff(r); return d.count > 1 && d.entered < d.count; }).length;
 
   /** CTA clickable with rows but nothing to upload / blocked — askConfirm next steps (prefs 신규 0건 안내). */
   const guideEmptyOrBlockedUpload = async (kind: "empty" | "fix"): Promise<void> => {
@@ -1113,6 +1117,11 @@ export default function SmartRegister({ data, s, today, tabs, banner, readOnly =
                   "확인 업로드"
                 )}
               </button>
+              {noNightRateCount > 0 && !busy ? (
+                <small className="muted smart-reg-nonight-note" role="note">
+                  박별 요금이 빈 예약 {noNightRateCount}건 · 빈 박은 ‘요금 없음’으로 저장되고, 판매금 총액을 박에 나누지 않아요
+                </small>
+              ) : null}
             </div>
 
             {summary && uploadPhase === "idle" ? (

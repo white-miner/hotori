@@ -52,7 +52,7 @@ export function useOpenFollow(data: HotelData, today: string, notify: (m: string
         busy.current = false;
       }
       if (done.length)
-        notify(`열린 숙박 ${done.length}건을 오늘 밤까지 이어 놓았어요 · 결제는 결제 등록에서`, {
+        notify(`퇴실 미정 숙박 ${done.length}건의 박수를 자동으로 늘렸어요 · 결제는 결제 등록에서`, {
           ms: 9000,
           action: { label: "되돌리기", run: () => void Promise.all(done.map((b) => dref.current.saveBooking(b, false))) },
         });

@@ -66,12 +66,14 @@ test("타임라인: 객실 이동은 이동 줄이 하나, 예정이면 future",
 test("정정 문장: 바뀐 칸만 · 삭제 · 총합 보존 (객실로 옮겨도 합계는 그대로)", () => {
   const before = lump;
   const s = fixPaymentSummary(before, { bookingId: "b602", groupId: null, kind: "balance", method: "cash", amount: 230_000, bizDate: "2026-10-26", nightDate: "2026-10-25", periodNights: 3 }, () => "602호");
-  assert.match(s, /^기록 정정 · 결제 수정/);
+  assert.match(s, /^기록 정정 · 결제 정정됨 \(원래 카드 690,000원/);
   assert.match(s, /금액 690,000 → 230,000원/);
   assert.match(s, /수단 카드 → 현금/);
   assert.match(s, /대상 단체 → 602호/);
   assert.match(s, /기간 미지정 → 10\/25~10\/27 · 3박/);
-  assert.match(fixPaymentDeleteSummary(p502, () => "502호"), /결제 삭제: 카드 80,000원 \(10\/26\) · 502호/);
+  assert.match(fixPaymentDeleteSummary(p502, () => "502호"), /결제 정정됨 · 삭제: 원래 카드 80,000원 \(10\/26\) · 502호$/);
+  assert.match(fixPaymentDeleteSummary(p502, () => "502호", " 금액 잘못 누름 "), / · 사유: 금액 잘못 누름$/);
+  assert.match(fixPaymentSummary(before, { ...before, bookingId: null, groupId: before.groupId, amount: 600_000 } as never, () => "602호", "카드 승인 금액 확인"), /사유: 카드 승인 금액 확인$/);
   // 단체 몫을 객실 줄로 바꾸면 장부 합계는 그대로
   const moved = { ...lump, groupId: null, bookingId: "b602", nightDate: "2026-10-25", periodNights: 3, amount: 690_000 } as Payment;
   const m = members();

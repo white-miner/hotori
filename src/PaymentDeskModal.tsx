@@ -205,7 +205,7 @@ export default function PaymentDeskModal({
     void (async () => {
       const ok = await askConfirm({
         title: "결제 내역 삭제",
-        body: "이 결제 내역을 삭제할까요? 잔금이 다시 늘어날 수 있어요.",
+        body: "이 결제 내역을 삭제할까요? 미수금이 다시 늘어날 수 있어요. 원래 금액은 변경 기록에 「정정됨」으로 남아요. 사유를 남기려면 기록 정정에서 고쳐 주세요.",
         confirmLabel: "삭제",
         danger: true,
       });
@@ -265,11 +265,11 @@ export default function PaymentDeskModal({
               수납 <b>{won(glance.paid)}</b>
             </span>
             <span className={glance.tracked && glance.left > 0 ? "left" : ""}>
-              {glance.ota ? "OTA" : "미수금"} <b>{glance.ota ? glance.label : won(glance.left)}</b>
+              {glance.ota ? "OTA" : "미수금"} <b>{glance.ota ? glance.label : glance.priceUnset ? "판매가 확정 전" : won(glance.left)}</b>
             </span>
           </div>
           {glance.ota ? <p className="muted sm">OTA 선결제 · 숙박료는 채널이 받았어요. 현장에서 받을 돈은 단체 추가 항목만 미수금에 들어가요.</p> : null}
-          {glance.priceUnset ? <p className="ferr">금액미정 예약이 있어요. 판매가 확정 후 수납해 주세요.</p> : null}
+          {glance.priceUnset ? <p className="muted sm">금액미정 예약이 있어요 · 받은 돈은 지금 적을 수 있고, 미수금은 판매가를 확정하면 계산돼요 (청구 − 받은 결제).</p> : null}
           {clearOk ? (
             <button type="button" className="btn sm line payment-desk-clear" disabled={busy} onClick={clearResidual}>
               잔금 조정 · {won(clearOk.cleared)}원 감액 (오청구·시간료)
@@ -285,7 +285,7 @@ export default function PaymentDeskModal({
                     inputMode="numeric"
                     placeholder="0"
                     aria-label="수납 금액"
-                    disabled={busy || glance.priceUnset}
+                    disabled={busy}
                     value={amount ? won(Number(amount)) : ""}
                     onChange={(e) => {
                       setAmount(e.target.value.replace(/\D/g, "").slice(0, 9));
@@ -489,7 +489,7 @@ export default function PaymentDeskModal({
             <button
               type="button"
               className="btn dark"
-              disabled={busy || (mode !== "credit" && glance.priceUnset)}
+              disabled={busy || (mode === "surcharge" && glance.priceUnset)}
               onClick={mode === "pay" ? submitPay : mode === "credit" ? submitCredit : submitSurcharge}
               autoFocus
             >
