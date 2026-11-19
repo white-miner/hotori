@@ -41,6 +41,29 @@ export function flatRate(amount: number): LongStayRate {
   return { kind: "flat", flatAmount: Math.max(0, Math.round(amount)), currency: "KRW" };
 }
 
+/** 평일·주말 두 칸 → 요일 요금표(kind "dow"). 주말 요일은 호텔 설정(weekendDays · 0=일 … 6=토, 그 요일 밤). */
+export function weekdayWeekendRate(weekday: number, weekend: number, weekendDays: readonly number[]): LongStayRate {
+  const wk = new Set(weekendDays);
+  const dowAmounts: NonNullable<LongStayRate["dowAmounts"]> = {};
+  for (let d = 0; d <= 6; d++) dowAmounts[d as 0 | 1 | 2 | 3 | 4 | 5 | 6] = Math.max(0, Math.round(wk.has(d) ? weekend : weekday));
+  return { kind: "dow", dowAmounts, currency: "KRW" };
+}
+
+/** 저장된 요금표 → 화면 두 칸. 요일 요금표가 평일끼리·주말끼리 같을 때만 두 칸으로 풀어요 (아니면 null) */
+export function splitWeekdayWeekend(rate: LongStayRate | null | undefined, weekendDays: readonly number[]): { weekday: number; weekend: number } | null {
+  if (!rate || rate.kind !== "dow") return null;
+  const wk = new Set(weekendDays);
+  let weekday: number | null = null, weekend: number | null = null;
+  for (let d = 0; d <= 6; d++) {
+    const a = rate.dowAmounts?.[d as 0 | 1 | 2 | 3 | 4 | 5 | 6];
+    if (a == null) return null;
+    if (wk.has(d)) { if (weekend != null && weekend !== a) return null; weekend = a; }
+    else { if (weekday != null && weekday !== a) return null; weekday = a; }
+  }
+  if (weekday == null && weekend == null) return null;
+  return { weekday: weekday ?? weekend!, weekend: weekend ?? weekday! };
+}
+
 /** 요금표에서 밤 D의 단가. 검증 실패 시 null */
 export function nightAmount(rate: LongStayRate | null | undefined, nightDate: string): number | null {
   if (!rate) return null;

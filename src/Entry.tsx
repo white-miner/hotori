@@ -159,6 +159,8 @@ import {
   type SettleCycle,
   type StayMode,
   flatRate,
+  splitWeekdayWeekend,
+  weekdayWeekendRate,
   isLongStay,
   longPayState,
   nightAmount,
@@ -170,6 +172,7 @@ import {
   windowExtendBlock,
   withPlannedCharges,
 } from "../shared/longstay";
+import { weekendDaysText } from "../shared/seasonRates";
 import NightPickCalendar from "./NightPickCalendar";
 import MiniFloorPlan, { type BuildingFilter } from "./MiniFloorPlan";
 import OpenStayToggle from "./OpenStayToggle";
@@ -286,6 +289,12 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const [checkIn, setCheckIn] = useState(base?.checkIn ?? p.checkIn ?? today);
   const [stayMode, setStayMode] = useState<StayMode>(base?.stayMode === "long_stay" ? "long_stay" : "standard");
   const [flatAmt, setFlatAmt] = useState(() => String(base?.longStayRate?.kind === "flat" ? base.longStayRate.flatAmount ?? "" : ""));
+  // 장기 요금표: 매일 동일 / 평일·주말 두 칸 (주말 = 설정의 주말 요일 밤)
+  const longWeekendDays = s.weekendDays;
+  const savedSplit = splitWeekdayWeekend(base?.longStayRate, longWeekendDays);
+  const [longRateKind, setLongRateKind] = useState<"flat" | "split">(() => (savedSplit ? "split" : "flat"));
+  const [wkdAmt, setWkdAmt] = useState(() => (savedSplit ? String(savedSplit.weekday) : ""));
+  const [wkeAmt, setWkeAmt] = useState(() => (savedSplit ? String(savedSplit.weekend) : ""));
   const [settleCycle, setSettleCycle] = useState<SettleCycle>(base?.settleCycle === "adhoc" ? "adhoc" : "weekly");
   const [nights, setNights] = useState(() =>
     clampStayNights(base?.nights ?? p.nights ?? (base?.stayMode === "long_stay" ? LONG_STAY_WINDOW_DEFAULT : 1)),
@@ -295,7 +304,15 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
   const long = stayMode === "long_stay";
   /** 수정 표준 숙박만 탭 사용 · 신규 표준은 night-pick only (Option D absorb #1) */
   const [stayTab, setStayTab] = useState<"period" | "paint">("period");
-  const longRate = long ? flatRate(Number(flatAmt || 0)) : null;
+  // 요일마다 따로 저장된 예전 요금표(두 칸으로 못 푸는 것)는 고치지 않으면 그대로 둬요
+  const keepOddDow = !!base?.longStayRate && base.longStayRate.kind === "dow" && !savedSplit && longRateKind === "flat" && !flatAmt;
+  const longRate = !long
+    ? null
+    : keepOddDow
+      ? base!.longStayRate!
+      : longRateKind === "split"
+        ? weekdayWeekendRate(Number(wkdAmt || 0), Number(wkeAmt || 0), longWeekendDays)
+        : flatRate(Number(flatAmt || 0));
   const setStayCheckIn = (d: string) => setCheckIn(d);
   const stayDateUx = entryStayDateUx({ isNew, kind, longStay: long });
   const showNightPick = stayDateUx === "night-pick" || (stayDateUx === "period-tabs" && stayTab === "paint");
@@ -2662,21 +2679,51 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                     요금표<em>*</em>
                   </label>
                   <div className="step">
-                    <span className="chip on">매일 동일</span>
-                    <label className="inp price sm">
-                      <input
-                        className="num"
-                        inputMode="numeric"
-                        aria-label="매일 단가"
-                        placeholder="80000"
-                        value={flatAmt ? won(Number(flatAmt)) : ""}
-                        onChange={(e) => setFlatAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
-                      />
-                      원/박
-                    </label>
+                    <button type="button" className={`chip ${longRateKind === "flat" ? "on" : ""}`} aria-pressed={longRateKind === "flat"} onClick={() => setLongRateKind("flat")}>매일 동일</button>
+                    <button
+                      type="button"
+                      className={`chip ${longRateKind === "split" ? "on" : ""}`}
+                      aria-pressed={longRateKind === "split"}
+                      onClick={() => {
+                        if (longRateKind !== "split" && !wkdAmt && !wkeAmt && flatAmt) { setWkdAmt(flatAmt); setWkeAmt(flatAmt); }
+                        setLongRateKind("split");
+                      }}
+                    >
+                      평일·주말
+                    </button>
+                    {longRateKind === "flat" ? (
+                      <label className="inp price sm">
+                        <input
+                          className="num"
+                          inputMode="numeric"
+                          aria-label="매일 단가"
+                          placeholder="80000"
+                          value={flatAmt ? won(Number(flatAmt)) : ""}
+                          onChange={(e) => setFlatAmt(e.target.value.replace(/\D/g, "").slice(0, 9))}
+                        />
+                        원/박
+                      </label>
+                    ) : (
+                      <>
+                        <label className="inp price sm">
+                          <span className="pl">평일</span>
+                          <input className="num" inputMode="numeric" aria-label="평일 단가" placeholder="80000" value={wkdAmt ? won(Number(wkdAmt)) : ""} onChange={(e) => setWkdAmt(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                          원/박
+                        </label>
+                        <label className="inp price sm">
+                          <span className="pl">주말</span>
+                          <input className="num" inputMode="numeric" aria-label="주말 단가" placeholder="100000" value={wkeAmt ? won(Number(wkeAmt)) : ""} onChange={(e) => setWkeAmt(e.target.value.replace(/\D/g, "").slice(0, 9))} />
+                          원/박
+                        </label>
+                      </>
+                    )}
                   </div>
                   <div className="muted sm" style={{ marginTop: 6 }}>
-                    요일별 단가는 다음에 · 지금은 매일 같은 금액
+                    {keepOddDow
+                      ? "요일마다 따로 정한 요금표가 저장돼 있어요 · 바꾸려면 위에서 새로 입력하세요"
+                      : longRateKind === "split"
+                        ? `주말 = ${weekendDaysText(longWeekendDays)} 밤 (설정 › 객실 요금의 주말 요일) · 나머지는 평일 단가`
+                        : "매일 같은 금액 · 금·토처럼 주말 요금이 다르면 ‘평일·주말’을 고르세요"}
                   </div>
                 </div>
                 <div className="fld">
