@@ -1435,14 +1435,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     if (!payTracked || payLeft <= 0) return;
     setRecv((r) => (r.amount ? r : { ...r, amount: String(payLeft) }));
   }, [payTracked, payLeft]);
+  // 직원에게 보이는 말은 미수금 · 선수금 · 정산 완료 · 수납 하나로 (장기·일반 같은 말)
   const payNoteOf = (kind: PayKind, amount: number, method: BookPayMethod, left: number) =>
-    kind === "deposit"
-      ? long
-        ? `${guestName} 님 선수 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수 ${won(left)}원` : ""}`
-        : `${guestName} 님 선금 ${won(amount)}원 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : ""}`
-      : long
-        ? `${guestName} 님 미수 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 잔액 ${won(left)}원` : " · 정산됨"}`
-        : `${guestName} 님 ${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 잔금 ${won(left)}원` : " · 완납"}`;
+    `${guestName} 님 ${kind === "deposit" ? "선수금 " : ""}${won(amount)}원 수납 (${BOOK_PAY_LABEL[method]})${left ? ` · 미수금 ${won(left)}원` : kind === "deposit" ? "" : " · 정산 완료"}`;
   /** 새 숙박 저장: 방이 여러 개면 한 단체로 묶어 저장 (객실마다 자기 요금표 · 합계는 소계의 합) */
   const nRooms = isNew && kind === "stay" && !long ? 1 + extraRooms.length : 1;
   /** 이 예약(단체면 전체)의 판매 합계 */
@@ -1488,7 +1483,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
     const amount = Number(recv.amount || 0);
     const v = validatePayment(amount, recv.method, recv.date);
     if (v) return setPayErr(v);
-    if (!long && kind === "deposit" && amount > saleAll) return setPayErr("선금이 판매 가격보다 커요.");
+    if (!long && kind === "deposit" && amount > saleAll) return setPayErr("선수금이 판매 가격보다 커요.");
     // 신규: 저장과 같은 턴에 결제 내역 기록 (선금·당일 완납)
     if (!base) {
       const draft = draftBase;
@@ -1522,9 +1517,9 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
           try {
             await data.addPayment(saved.id, { kind, method: recv.method, amount, bizDate: recv.date });
             const left = Math.max(0, payDue - amount);
-            payTail = ` · ${kind === "deposit" ? (long ? "선수" : "선금") : long ? "미수 수납" : "수납"} ${won(amount)}원(${BOOK_PAY_LABEL[recv.method]})`;
-            if (left) payTail += long ? ` · 미수 ${won(left)}원` : ` · 잔금 ${won(left)}원`;
-            else if (kind === "balance") payTail += long ? " · 정산됨" : " · 완납";
+            payTail = ` · ${kind === "deposit" ? "선수금 수납" : "수납"} ${won(amount)}원(${BOOK_PAY_LABEL[recv.method]})`;
+            if (left) payTail += ` · 미수금 ${won(left)}원`;
+            else if (kind === "balance") payTail += " · 정산 완료";
           } catch (e) {
             payTail = ` · 결제는 적지 못했어요: ${e instanceof Error ? e.message : "다시 시도해 주세요"}`;
           }
@@ -2122,7 +2117,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
               </b>
               <span>
                 {isLongStay(live)
-                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수는 「미수금 수납」으로"
+                  ? "원장에 그날 단가를 쌓고 재고 창을 하루 늘려요 · 미수금은 「결제 등록」으로"
                   : "판매 가격에 오늘 요금을 더하고, 즉시 수납하거나 후불로 처리해요"}
                 {L.roomLabel(live.roomId) ? ` · ${L.roomLabel(live.roomId)}호` : ""}
               </span>
@@ -3344,7 +3339,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         <Check size={14} strokeWidth={2.6} /> 정산 완료 <span className="muted">· 수납액 {won(payPaid)}원</span>
                       </>
                     ) : (
-                      <span className="muted">{long ? "요금표를 입력하면 미수가 보여요" : "판매 가격을 입력하면 잔금이 보여요"}</span>
+                      <span className="muted">{long ? "요금표를 입력하면 미수금이 보여요" : "판매 가격을 입력하면 미수금이 보여요"}</span>
                     )}
                   </div>
                   <div className="paytake">
@@ -3383,7 +3378,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                         type="button"
                         className="btn sm dark"
                         disabled={payBusy || payLeft <= 0}
-                        title={payLeft <= 0 ? (long ? "수납할 미수금이 없어요" : "수납할 잔금이 없어요") : undefined}
+                        title={payLeft <= 0 ? "수납할 미수금이 없어요" : undefined}
                         onClick={() => void recordPay("balance")}
                       >
                         {payBusy ? "저장 중…" : long ? "미수금 수납" : "수납"}
@@ -3393,7 +3388,7 @@ export default function Entry({ data, today, req, onClose, onSaved, notify, undo
                       </button>
                     </div>
                   </div>
-                  {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선금을 누르면 예약과 함께 저장돼요</div> : null}
+                  {!base ? <div className="muted sm">아직 저장 전이에요 · 수납·선수금을 누르면 예약과 함께 저장돼요</div> : null}
                   {entryGroupId ? <div className="muted sm">단체 객실이에요 · 여기서 받은 돈은 단체 결제 한 줄로 등록돼요</div> : null}
                   {base && entryOpenCredits.length > 0 ? (
                     <div className="paytake" style={{ marginTop: 8 }}>
