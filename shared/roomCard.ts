@@ -86,13 +86,13 @@ export function roomCardModel(i: RoomCardInput): RoomCardModel {
   const platPart = nowPlatformPayPart(b, plat);
   const parts = [...(platPart ? [platPart] : []), ...nowPayParts(b.payments, isLead ? i.info?.payments : null)];
   const tone: NowAmountTone = longStay ? "due" : nowAmountTone(b, plat, groupCtx, today);
-  const due = longStay ? (b.priceUnset ? 0 : Math.round(payState(b, plat).left)) : nowDueAmount(b, plat, groupCtx, today, isLead);
+  const due = longStay ? (b.priceUnset ? 0 : Math.round(payState(b, plat, today).left)) : nowDueAmount(b, plat, groupCtx, today, isLead);
   // 단체의 다른 객실은 받은 돈을 쓰지 않아요 (단체 결제는 대표객실에만) — 자기 플랫폼 금액만
   const payText = isMember
     ? platPart
       ? nowPayText([platPart])
       : null
-    : (nowPayText(parts) ?? (b.priceUnset ? "금액미정" : tone === "due" && b.price > 0 && due > 0 ? "미결제" : null));
+    : (nowPayText(parts) ?? (b.priceUnset ? "금액미정" : tone === "due" && b.price > 0 ? "미결제" : null));
 
   return {
     active,

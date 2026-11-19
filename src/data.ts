@@ -63,6 +63,7 @@ import { type GroupInfo, emptyGroupInfo, isGroupBadgeColor } from "../shared/set
 import { hashGroupBadgeColor } from "../shared/group";
 import { groupMoveRow } from "../shared/groupMove";
 import { saveScheduleChanges, scheduleLock, scheduleUpdateRow, type ScheduleChange } from "../shared/groupSchedule";
+import type { ExtendWriteLine } from "../shared/groupExtend";
 import {
   type NightCharge,
   chargesOutsideWindow,
@@ -974,6 +975,16 @@ export function useHotelData(hotelId: string) {
     if (result.error) void refresh();
     return result;
   }, [hotelId, refresh]);
+  /** 단체 기간 연장. DB 함수 한 번 = 한 트랜잭션. 중간 실패 시 저장된 객실이 남지 않아요. */
+  const extendGroupStay = useCallback(async (lines: ExtendWriteLine[]): Promise<Booking[]> => {
+    if (!lines.length) return [];
+    const { data, error } = await supabase.rpc("extend_group_stay", { p_lines: lines });
+    if (error) throw error;
+    const saved = ((data ?? []) as BookingRow[]).map(fromRow);
+    const m = new Map(saved.map((b) => [b.id, b]));
+    setBookingsLocal((list) => list.map((b) => m.get(b.id) ?? b));
+    return saved;
+  }, []);
   // 단체 한꺼번에: 모두 입실 · 단체 취소 · 이름/날짜 (정상 예약만, 한 문장)
   const patchGroup = useCallback(
     async (groupId: string, patch: { arrived?: boolean; status?: "cancelled"; groupName?: string; oldName?: string; checkIn?: string; nights?: number }): Promise<Booking[]> => {
@@ -1047,14 +1058,14 @@ export function useHotelData(hotelId: string) {
     [hotelId],
   );
   const addGroupPayment = useCallback(
-    async (id: string, p: { method: BookPayMethod; amount: number; bizDate: string }) => {
+    async (id: string, p: { method: BookPayMethod; amount: number; bizDate: string; kind?: "balance" | "deposit"; note?: string | null }) => {
       if (!groups.has(id)) {
         const r = await supabase.from("booking_groups").upsert({ id, hotel_id: hotelId }, { onConflict: "id", ignoreDuplicates: true });
         if (r.error) throw r.error;
       }
       const { data, error } = await supabase
         .from("booking_payments")
-        .insert({ group_id: id, kind: "balance", method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate })
+        .insert({ group_id: id, kind: p.kind ?? "balance", method: p.method, amount: Math.round(p.amount), biz_date: p.bizDate, note: p.note?.slice(0, 80) ?? null })
         .select(PAY_COLS)
         .single();
       if (error) throw error;
@@ -1298,6 +1309,7 @@ export function useHotelData(hotelId: string) {
     saveQuoteTypeRates,
     saveGroup,
     saveGroupSchedule,
+    extendGroupStay,
     patchGroup,
     groups,
     saveGroupInfo,

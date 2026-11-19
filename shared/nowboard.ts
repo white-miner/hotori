@@ -1,7 +1,8 @@
 // 현장 현황 보드(「현황」): 영업일 기준 상태 파생 (저장 필드가 아니라 규칙)
 import { clampHours, outTimeOf } from "./extratime";
 import { type Booking, type HotelSettings, type Platform, addDays, HOTEL_TIME_ZONE, isActive, md, nightBoard, occupiesNight, roomOnNight, stayEnd, usedNights, won } from "./ledger";
-import { PAYMENT_METHOD_LABEL, payState, type Payment, type PaymentMethod } from "./payment";
+import { PAYMENT_METHOD_LABEL, isOnsite, payState, type Payment, type PaymentMethod } from "./payment";
+import { groupFolio } from "./folio";
 import { type GroupInfo, settle } from "./settle";
 import { balanceLabel, groupLedger, type GroupLedger } from "./groupLedger";
 import { isPeriodPayable, stayNightAmounts } from "./periodPay";
@@ -398,14 +399,18 @@ export function nowAmountTone(
 ): NowAmountTone {
   if (b.priceUnset) return "neutral";
   if (today && group && b.groupId && b.stayMode !== "long_stay" && group.members.length > 0) {
-    const g = groupLedger(group.members, (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
-      extras: (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
-    });
-    if (g.roomCount > 0) {
-      // 오늘 밤까지 청구 vs 받은 돈 — 객실에 나누지 않고 합계끼리만 견줘요
-      const dueSoFar = g.rooms.reduce((n, r) => n + r.rows.filter((x) => x.date <= today).reduce((a, x) => a + x.amount, 0), 0) + g.extras;
-      if (g.paid < Math.min(dueSoFar, g.due)) return "due";
-      if (g.due > g.paid) return "partial";
+    const f = groupFolio(
+      group.members,
+      (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
+      (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+      { onsite: plat ? isOnsite(plat) : null, payMode: group.info?.payMode ?? null },
+      today,
+    );
+    if (f.priceUnset) return "neutral";
+    if (f.ota) return "paid";
+    if (f.roomCount > 0) {
+      if (f.owed > 0) return "due";
+      if (f.due > f.paid) return "partial";
       return "paid";
     }
   }
@@ -431,12 +436,16 @@ export function nowDueAmount(
   if (b.priceUnset || b.stayMode === "long_stay") return 0;
   if (b.groupId && group && group.members.length >= 2) {
     if (!isLead) return 0;
-    const g = groupLedger(group.members, (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0), today, {
-      extras: (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
-    });
-    return g.roomCount > 0 ? g.owed : 0;
+    const f = groupFolio(
+      group.members,
+      (group.info?.payments ?? []).reduce((n, p) => n + p.amount, 0),
+      (group.info?.extras ?? []).reduce((n, x) => n + x.amount, 0),
+      { onsite: plat ? isOnsite(plat) : null, payMode: group.info?.payMode ?? null },
+      today,
+    );
+    return f.roomCount > 0 ? f.owed : 0;
   }
-  const ps = nowPaySnap(b, plat, null);
+  const ps = payState(b, plat, today);
   return ps.tracked && ps.left > 0 ? Math.round(ps.left) : 0;
 }
 
@@ -521,7 +530,7 @@ export function nowAmountGlance(
   if (b.priceUnset) return "금액미정";
   if (b.stayMode === "long_stay") {
     const left = payState(b, plat).left;
-    return left > 0 ? `미수 ₩${won(left)}` : null;
+    return left > 0 ? `미수금 ₩${won(left)}` : null;
   }
   // 단체 객실: 칸에는 이 객실 자기 요금만 — 단체 결제·잔금·합계를 객실마다 되풀이해 적지 않아요 (단체 합계는 단체 머리글·대장 칸에만)
   if (group && b.groupId && !b.priceUnset && group.members.length > 0) {
@@ -529,7 +538,7 @@ export function nowAmountGlance(
     return own > 0 ? `₩${won(own)}` : null;
   }
   const ps = nowPaySnap(b, plat, group);
-  if (ps.tracked && ps.left > 0) return `잔금 ₩${won(ps.left)}`;
+  if (ps.tracked && ps.left > 0) return `미수금 ₩${won(ps.left)}`;
   if (ps.tracked && ps.left === 0) {
     const latest = latestPaymentOf(b, group?.info?.payments);
     if (latest) return `₩${won(latest.amount)}`;
@@ -613,7 +622,7 @@ export function simplePayGlance(b: Booking, onsite: boolean): string | null {
   if (!onsite || b.priceUnset) return null;
   const paid = (b.payments ?? []).reduce((n, x) => n + x.amount, 0);
   if (paid <= 0) return "후불";
-  if (b.price > 0 && paid >= b.price) return "완납";
+  if (b.price > 0 && paid >= b.price) return "정산 완료";
   if ((b.payments ?? []).some((p) => p.kind === "deposit")) return "선금";
   return null;
 }

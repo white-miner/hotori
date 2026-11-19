@@ -36,6 +36,7 @@ export default function GroupReceiptSheet({
   onLeave,
   onClose,
   onEditSchedule,
+  preset,
 }: {
   today: string;
   /** 단체 활성 숙박 예약(퇴실한 객실 포함) · 최신 데이터 */
@@ -59,14 +60,16 @@ export default function GroupReceiptSheet({
   onLeave?: (bookingId: string) => void;
   onClose: () => void;
   onEditSchedule?: () => void;
+  /** 기간 연장 직후: 금액 기본값은 연장분, 현재 잔액 전체로 바꿀 수 있어요. */
+  preset?: { amount: number; fullAmount: number; memo: string } | null;
 }) {
   const [tab, setTab] = useState("register"), scope = useId();
   const ledger = useMemo(() => groupLedger(members, groupLump, today, { extras }), [members, groupLump, today, extras]);
   const byId = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
-  const [amountEdit, setAmountEdit] = useState<string | null>(null);
+  const [amountEdit, setAmountEdit] = useState<string | null>(preset ? String(preset.amount) : null);
   const [method, setMethod] = useState<BookPayMethod>("card");
   const [bizDate, setBizDate] = useState(today);
-  const [memo, setMemo] = useState("");
+  const [memo, setMemo] = useState(preset?.memo ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ saved: Payment[]; amount: number } | null>(null);
@@ -164,7 +167,13 @@ export default function GroupReceiptSheet({
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } }}
                 />
               </PriceInp>
-              {amountEdit != null && suggest > 0 && amountNum !== suggest ? (
+              {preset ? (
+                <div className="grc-note">
+                  <button type="button" className="btn line sm" onClick={() => setAmountEdit(String(preset.amount))}>연장분 {won(preset.amount)}원</button>
+                  <button type="button" className="btn line sm" onClick={() => setAmountEdit(String(preset.fullAmount))}>현재 잔액 전체 {won(preset.fullAmount)}원</button>
+                </div>
+              ) : null}
+              {amountEdit != null && suggest > 0 && amountNum !== suggest && !preset ? (
                 <button type="button" className="grc-link block" onClick={() => setAmountEdit(null)}>
                   미수금 {won(suggest)}원으로 되돌리기
                 </button>

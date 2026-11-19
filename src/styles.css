@@ -5670,6 +5670,16 @@ body.dragging-move .mvbar { position: fixed; top: 8px; left: 12px; right: 12px; 
 .ghead-acts { display: flex; gap: 8px; margin-top: 6px; }
 .ghead-go { flex: 1; min-height: 46px; font-size: 15px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .ghead-sub { min-height: 46px; white-space: nowrap; }
+.gext { width: min(720px, 100%); }
+.gext-modes { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+.gext-modes label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.gext-rooms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.gext-rooms li { border: 1px solid var(--line, #eee); border-radius: 12px; padding: 8px 10px; }
+.gext-rooms li.on { border-color: #222; }
+.gext-rooms label { display: flex; gap: 8px; align-items: baseline; }
+.gext-nights { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.gext-nights li { display: flex; justify-content: space-between; gap: 8px; align-items: center; border: 0; padding: 0; }
+.gext-nights input { width: 140px; }
 .gjn-rooms { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow: auto; padding: 2px; }
 .gjn-arr { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
 .grc-hidden-date { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }

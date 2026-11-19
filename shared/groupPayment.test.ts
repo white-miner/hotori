@@ -8,16 +8,17 @@ import { deskPaymentLines } from "./paymentDesk";
 import { nowAmountGlance, nowGroupLine, nowPayMethodPrefix } from "./nowboard";
 import { emptyGroupInfo } from "./settle";
 
-const TODAY = "2026-10-25";
+const CHECKIN = "2026-10-25";
+const TODAY = "2026-10-27";
 const pay = (bookingId: string, amount: number, id = `p${amount}`): Payment => ({
   id, bookingId, kind: "balance", method: "cash", amount, bizDate: TODAY, createdAt: "2026-10-25T01:00:00Z",
 });
 const room = (id: string, roomId: string, per: number, payments: Payment[] = []): Booking =>
   ({
     id, kind: "stay", status: "active", platformId: "p", price: per * 3, guestName: "단체", typeId: "s", roomId,
-    checkIn: TODAY, nights: 3, startTime: null, endTime: null, arrived: false, memo: null, cancelledAt: null,
+    checkIn: CHECKIN, nights: 3, startTime: null, endTime: null, arrived: false, memo: null, cancelledAt: null,
     createdAt: "", updatedAt: "", segments: null, earlyOut: null, refund: null, checkedOutAt: null, groupId: "g1",
-    nightRates: { flat: per, nights: Object.fromEntries([0, 1, 2].map((i) => [addDays(TODAY, i), per])) },
+    nightRates: { flat: per, nights: Object.fromEntries([0, 1, 2].map((i) => [addDays(CHECKIN, i), per])) },
     payments,
   }) as unknown as Booking;
 const rooms = (p602: Payment[] = []) => [room("a", "602", 70_000, p602), room("b", "501", 80_000), room("c", "502", 80_000)];

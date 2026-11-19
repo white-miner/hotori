@@ -26,6 +26,7 @@ export default function GroupHead({
   record,
   onEditSchedule,
   onEvidence,
+  onExtend,
 }: {
   ledger: GroupLedger;
   today: string;
@@ -44,6 +45,7 @@ export default function GroupHead({
   record?: { lines: PayLine[]; onOpen: () => void } | null;
   onEditSchedule?: () => void;
   onEvidence?: () => void;
+  onExtend?: () => void;
 }) {
   const tone = groupTone(ledger);
   const next = receiptNextAction(ledger);
@@ -63,6 +65,11 @@ export default function GroupHead({
           <button type="button" className="btn dark ghead-go" onClick={onPay}>
             <CircleDollarSign size={16} strokeWidth={2.2} aria-hidden /> {next.label}
           </button>
+          {onExtend ? (
+            <button type="button" className="btn line ghead-sub" onClick={onExtend}>
+              기간 연장
+            </button>
+          ) : null}
           {onJoin ? (
             <button type="button" className="btn line ghead-sub" onClick={onJoin}>
               <Plus size={14} aria-hidden /> 객실 추가

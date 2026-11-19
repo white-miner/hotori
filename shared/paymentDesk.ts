@@ -8,6 +8,7 @@ import {
   type Payment,
   PAY_MAX,
   isBookPayMethod,
+  isOnsite,
   payState,
   validatePayment,
 } from "./payment";
@@ -20,9 +21,10 @@ import {
   type AddSurchargePlan,
 } from "./addSurcharge";
 import { type GroupInfo, settle } from "./settle";
+import { FOLIO_THROUGH_STAY, bookingFolio, groupFolio } from "./folio";
 
-export const PAYMENT_DESK_TITLE = "결제 / 납입";
-export const PAYMENT_DESK_CTA = "결제 / 납입";
+export const PAYMENT_DESK_TITLE = "결제 등록";
+export const PAYMENT_DESK_CTA = "결제 등록";
 
 export { BOOK_PAY_METHODS as PAYMENT_DESK_METHODS, BOOK_PAY_LABEL as PAYMENT_DESK_METHOD_LABEL };
 export { SURCHARGE_REASONS as PAYMENT_DESK_SURCHARGE_REASONS, SURCHARGE_REASON_LABEL };
@@ -39,38 +41,50 @@ export interface PaymentDeskGlance {
   group: boolean;
   memberCount: number;
   priceUnset: boolean;
+  /** 머리글과 같은 문구 */
+  label: string;
+  upcoming: number;
+  ota: boolean;
 }
 
 export function paymentDeskGlance(
   members: Booking[],
   plat: (Pick<Platform, "name"> & { onsite?: boolean | null }) | null | undefined,
   groupInfo?: GroupInfo | null,
+  today = FOLIO_THROUGH_STAY,
 ): PaymentDeskGlance {
   const active = members.filter((b) => b.status === "active");
   const priceUnset = active.some((b) => b.priceUnset);
   const groupId = active[0]?.groupId ?? null;
-  // 같은 groupId면 settle(방+단체 수납). 호출측이 형제 전부 넘겨야 due가 맞음.
   const isGroup = !!groupId && active.every((b) => b.groupId === groupId);
+  const onsite = isOnsite(plat);
 
   if (isGroup) {
-    const st = settle(active, groupInfo ?? null, plat);
+    const lump = (groupInfo?.payments ?? []).reduce((n, p) => n + p.amount, 0);
+    const extras = (groupInfo?.extras ?? []).reduce((n, x) => n + x.amount, 0);
+    const f = groupFolio(active, lump, extras, { onsite, payMode: groupInfo?.payMode ?? null, priceUnset }, today);
+    const st = settle(active, groupInfo ?? null, plat, today);
     return {
-      tracked: st.tracked,
+      tracked: f.tracked,
       due: st.total,
-      paid: st.paid,
-      left: st.left,
-      full: st.settled,
+      paid: f.paid,
+      left: f.owed,
+      full: f.tracked && f.owed === 0 && st.total > 0,
       group: active.length > 1,
       memberCount: active.length,
       priceUnset,
+      label: f.label,
+      upcoming: f.upcoming,
+      ota: f.ota,
     };
   }
 
   const b = active[0];
   if (!b) {
-    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false };
+    return { tracked: false, due: 0, paid: 0, left: 0, full: false, group: false, memberCount: 0, priceUnset: false, label: "청구 없음", upcoming: 0, ota: false };
   }
-  const ps = payState(b, plat);
+  const f = bookingFolio(b, onsite, today);
+  const ps = payState(b, plat, today);
   return {
     tracked: ps.tracked,
     due: ps.due,
@@ -80,6 +94,9 @@ export function paymentDeskGlance(
     group: false,
     memberCount: 1,
     priceUnset,
+    label: f.label,
+    upcoming: f.upcoming,
+    ota: f.ota,
   };
 }
 

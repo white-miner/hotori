@@ -238,9 +238,9 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   const groupSettle = (id: string) => {
     const g = allGroups.get(id);
     if (!g) return null;
-    return settle(g.members, data.groups.get(id), L.plats.get(g.members[0].platformId));
+    return settle(g.members, data.groups.get(id), L.plats.get(g.members[0].platformId), today);
   };
-  const leftOf = (b: Booking) => (b.groupId ? (groupSettle(b.groupId)?.left ?? 0) : payState(b, L.plats.get(b.platformId)).left);
+  const leftOf = (b: Booking) => (b.groupId ? (groupSettle(b.groupId)?.left ?? 0) : payState(b, L.plats.get(b.platformId), today).left);
   const q = query.trim().toLowerCase();
   // 조건(플랫폼·타입·종류·검색·상태)만 거른 목록: 기간 밖 입실이라도 기간 안에 조기 퇴실 환불이 있으면 매출 계산에 들어가요
   const matched = (rows ?? []).filter((b) => {
@@ -275,7 +275,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
   // 플랫폼·타입·종류·검색·상태로 거르면 매점은 상관없어서 빼요
   const filtered = !!(plat || type || kind || q || st === "void" || phase !== "all" || dueOnly || poWait);
   const dueTotal =
-    list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId)).left, 0) +
+    list.filter((b) => !b.groupId).reduce((n, b) => n + payState(b, L.plats.get(b.platformId), today).left, 0) +
     [...new Set(list.map((b) => b.groupId).filter((x): x is string => !!x))].reduce((n, id) => n + (groupSettle(id)?.left ?? 0), 0);
   const sumUp = ledgerSummary(sum, filtered ? null : shopSum?.amount ?? null);
   // 맨 위 요약: 매출(숙박·대실 + 매점) − 지출 = 순수익 · 현금 시재(매점 현금 − 현금 지출). 예약 조건과 상관없이 이 기간 전체
@@ -295,7 +295,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
             const per = perNight(b);
             const eo = isActive(b) && isEarlyOut(b);
             // 단체 방은 결제자가 하나라 방마다 잔금을 안 보여요 (단체 내역에서)
-            const ps = b.groupId ? { left: 0, full: false } : payState(b, p);
+            const ps = b.groupId ? { left: 0, full: false } : payState(b, p, today);
             const po = payoutOf(b, p);
             const poV = payoutValue(po);
             const stLabel = stayStatusLabel(b);
@@ -349,7 +349,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
                       {po.ok ? <Check size={11} strokeWidth={3} /> : null}입금 {won(poV)}
                     </small>
                   ) : null}
-                  {ps.left > 0 ? <small className="dueamt">잔금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">완납</small> : null}
+                  {ps.left > 0 ? <small className="dueamt">미수금 {won(ps.left)}</small> : ps.full ? <small className="paidtag">정산 완료</small> : null}
                 </span>
               </div>
             );
@@ -540,7 +540,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
     if (st === "active") bits.push("정상");
     if (st === "void") bits.push("취소·노쇼");
     if (phase !== "all") bits.push(STAY_PHASE_LABEL[phase]);
-    if (dueOnly) bits.push("잔금 있음");
+    if (dueOnly) bits.push("미수금 있음");
     if (poWait) bits.push("입금 미확인");
     if (q) bits.push(`검색「${query.trim()}」`);
     return bits;
@@ -687,7 +687,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           ) : null}
           {tab === "bookings" && dueTotal > 0 ? (
             <div className="lsum-f">
-              <span className="dueamt">잔금 있음 {won(dueTotal)}원</span> <span className="muted">· 이 목록의 미수금</span>
+              <span className="dueamt">미수금 {won(dueTotal)}원</span> <span className="muted">· 오늘 밤까지</span>
             </div>
           ) : null}
           {tab === "bookings" && sumUp.shop === null ? (
@@ -1131,7 +1131,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
           <option value="rec">최근 기록·수정 순</option>
         </select>
         <button type="button" className={`chip sm duechip ${dueOnly ? "on" : ""}`} aria-pressed={dueOnly} onClick={() => setDueOnly((x) => !x)}>
-          잔금 있음
+          미수금 있음
         </button>
         {feeUsed ? (
           <button type="button" className={`chip sm duechip ${poWait ? "on" : ""}`} aria-pressed={poWait} onClick={() => setPoWait((x) => !x)}>
@@ -1255,7 +1255,7 @@ export default function Ledger({ data, hotelId, today, query, setQuery, searchRe
         {list.length ? (
           <div className="ledger-print-foot print-only">
             합계 {list.length}건 · 정상 판매가 {won(listTotal)}원
-            {dueTotal > 0 ? ` · 잔금 있음 ${won(dueTotal)}원` : ""}
+            {dueTotal > 0 ? ` · 미수금 ${won(dueTotal)}원` : ""}
           </div>
         ) : null}
       </div>
