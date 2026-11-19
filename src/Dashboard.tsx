@@ -3099,6 +3099,7 @@ export default function Dashboard({ data, today, selDate, setSelDate: setSelRaw,
         today={today}
         onEditCharges={shown && !readOnly ? () => shown.groupId ? setScheduleGroupId(shown.groupId) : setRecordFor({ groupId: null, bookingId: shown.id, focusKey: `in-${shown.id}` }) : undefined}
         onFinance={shown?.groupId && !readOnly ? () => setEvidenceGroupId(shown.groupId!) : undefined}
+        onPay={shown && !readOnly ? () => openPaymentDesk(shown) : undefined}
         readOnly={readOnly} busy={!!mvB || assignMode}
         hasAlerts={!!(status.note || hold || scheduled || dueMove || warnings.length || b?.noClean || b?.tentative || (b && b.typeId !== r.typeId) || (glance?.count ?? 0))}
         onDetail={() => shown ? onOpen(shown, viewDate) : quick()} onQuick={quick} onStatus={statusTap}

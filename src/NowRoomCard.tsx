@@ -24,6 +24,8 @@ export interface NowRoomCardProps {
   today?: string;
   onEditCharges?: () => void;
   onFinance?: () => void;
+  /** 받을 돈(미수금) 숫자를 누르면 그 예약의 결제 등록 (단체면 단체 결제 등록) */
+  onPay?: () => void;
 }
 
 function cardFacts(p: NowRoomCardProps) {
@@ -96,7 +98,7 @@ export default function NowRoomCard(p: NowRoomCardProps) {
       </div> : b ? <span className="detail-cancelled">{b.status === "cancelled" ? "취소 예약" : "노쇼 예약"} · 상세 확인</span> : null}
       {active && b ? <div className="detail-tenders" role="button" tabIndex={0} onClick={e => { e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); if (p.onFinance && !readOnly) p.onFinance(); else setDetails(true); } }} title={readOnly ? "예약 경로" : `${ota ? `${platform.name} · ` : ""}${methods?.title ?? ""} · 클릭하여 수납 기록 확인`}><span title={readOnly ? "예약 경로" : undefined}>{readOnly ? platform?.name || "경로 미지정" : tenderLabel}</span>{!readOnly && wideAmount ? <span className={`detail-payment ${charges?.needsPrice ? "due" : model?.tone ?? "neutral"}`} title={`${group ? "단체 " : ""}${payment}`}>{charges?.needsPrice ? "확인 필요" : paymentLabel}</span> : null}</div> : null}
       {active && b && charges && !readOnly ? <div className="detail-contract">
-        {charges.due > 0 ? <button type="button" className="detail-charge-warning detail-due-line" title={group ? "단체 청구−단체 결제. 이 객실에 임의로 나눈 미수금이 아닙니다. 클릭하여 결제 근거 확인" : "객실 청구−실제 수납. 클릭하여 상세 확인"} onClick={e => { e.stopPropagation(); setDetails(true); }}>{charges.scope} ₩{won(charges.due)}</button> : null}
+        {charges.due > 0 ? <button type="button" className="detail-charge-warning detail-due-line" title={p.onPay ? (group ? "단체 청구−단체 결제. 이 객실에 임의로 나눈 미수금이 아닙니다. 클릭하여 단체 결제 등록" : "객실 청구−실제 수납. 클릭하여 결제 등록") : group ? "단체 청구−단체 결제. 이 객실에 임의로 나눈 미수금이 아닙니다. 클릭하여 결제 근거 확인" : "객실 청구−실제 수납. 클릭하여 상세 확인"} onClick={e => { e.stopPropagation(); if (p.onPay) p.onPay(); else setDetails(true); }}>{charges.scope} ₩{won(charges.due)}</button> : null}
         {charges.nights.length ? <><button type="button" className="detail-contract-title" title="총액을 나누지 않은 실제 저장 박별 요금. 클릭하여 전체 근거·수정" onClick={e => { e.stopPropagation(); setDetails(true); }}>박별 약정 요금 <span>전체 보기</span></button><div className="detail-contract-list" aria-label="박별 약정 요금">{charges.nights.map(n => <button type="button" key={n.date} title={`${cardWeekdayDate(n.date, true)} · ${n.amount == null ? "약정 요금 미등록" : `${won(n.amount)}원 (저장된 약정 금액)`}`} onClick={e => { e.stopPropagation(); setDetails(true); }}><span>{cardWeekdayDate(n.date)}</span><b className={n.amount == null ? "detail-charge-warning" : undefined}>{n.amount == null ? "요금 미등록" : `₩${won(n.amount)}`}</b></button>)}</div></> : null}
       </div> : null}
     </div>
